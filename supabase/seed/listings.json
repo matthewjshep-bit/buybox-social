@@ -1,0 +1,227 @@
+[
+  {
+    "ListingKey": "SAMPLE-1001",
+    "ListingId": "SAMPLE-1001",
+    "StandardStatus": "Active",
+    "ListPrice": 985000,
+    "UnparsedAddress": "4127 Larkmoor Ave NE",
+    "City": "Seattle",
+    "StateOrProvince": "WA",
+    "PostalCode": "98105",
+    "BedroomsTotal": 3,
+    "BathroomsTotalInteger": 2,
+    "LivingArea": 1840,
+    "YearBuilt": 1924,
+    "PropertySubType": "Single Family Residence",
+    "PublicRemarks": "A warm Ravenna-area Craftsman with a deep covered porch, original fir floors and an updated kitchen. The fenced back garden is ready for summer dinners, and the park and coffee are a short walk away.",
+    "ListAgentFullName": "Jordan Ellis",
+    "ListOfficeName": "Sample Realty",
+    "Media": [
+      {
+        "MediaURL": "/sample/ravenna-1.jpg",
+        "Order": 1,
+        "ShortDescription": "White Craftsman home with a covered front porch"
+      },
+      {
+        "MediaURL": "/sample/ravenna-2.jpg",
+        "Order": 2,
+        "ShortDescription": "Bright living room with plants and built-in shelves"
+      },
+      {
+        "MediaURL": "/sample/ravenna-3.jpg",
+        "Order": 3,
+        "ShortDescription": "White kitchen with marble counters and a gas range"
+      },
+      {
+        "MediaURL": "/sample/ravenna-4.jpg",
+        "Order": 4,
+        "ShortDescription": "White bathroom with a window and pedestal sink"
+      }
+    ]
+  },
+  {
+    "ListingKey": "SAMPLE-1002",
+    "ListingId": "SAMPLE-1002",
+    "StandardStatus": "Active",
+    "ListPrice": 1895000,
+    "UnparsedAddress": "1880 Tamsen Ridge Pl SE",
+    "City": "Bellevue",
+    "StateOrProvince": "WA",
+    "PostalCode": "98006",
+    "BedroomsTotal": 4,
+    "BathroomsTotalInteger": 3,
+    "LivingArea": 3320,
+    "YearBuilt": 2019,
+    "PropertySubType": "Single Family Residence",
+    "PublicRemarks": "Clean modern lines under a mature shade tree. Walls of glass open the great room to the lawn, and the primary suite has a spa-style bath and a private view of the trees.",
+    "ListAgentFullName": "Maya Chen",
+    "ListOfficeName": "Sample Realty",
+    "Media": [
+      {
+        "MediaURL": "/sample/bellevue-1.jpg",
+        "Order": 1,
+        "ShortDescription": "Dark modern home glowing at dusk beneath a large tree"
+      },
+      {
+        "MediaURL": "/sample/bellevue-2.jpg",
+        "Order": 2,
+        "ShortDescription": "Open living room with a wood accent wall"
+      },
+      {
+        "MediaURL": "/sample/bellevue-3.jpg",
+        "Order": 3,
+        "ShortDescription": "Primary bedroom with glass doors"
+      },
+      {
+        "MediaURL": "/sample/bellevue-4.jpg",
+        "Order": 4,
+        "ShortDescription": "Bathroom with a soaking tub and glass shower"
+      }
+    ]
+  },
+  {
+    "ListingKey": "SAMPLE-1003",
+    "ListingId": "SAMPLE-1003",
+    "StandardStatus": "Active",
+    "ListPrice": 724900,
+    "UnparsedAddress": "812 N Corbel St",
+    "City": "Tacoma",
+    "StateOrProvince": "WA",
+    "PostalCode": "98403",
+    "BedroomsTotal": 4,
+    "BathroomsTotalInteger": 3,
+    "LivingArea": 2650,
+    "YearBuilt": 2004,
+    "PropertySubType": "Single Family Residence",
+    "PublicRemarks": "A classic shingled home with a wraparound porch on a big, sunny lawn. Inside there is room to spread out, with a family room, a chef's kitchen and a finished bonus room upstairs.",
+    "ListAgentFullName": "Devon Okafor",
+    "ListOfficeName": "Sample Realty",
+    "Media": [
+      {
+        "MediaURL": "/sample/tacoma-1.jpg",
+        "Order": 1,
+        "ShortDescription": "Shingled home with a wraparound porch and green lawn"
+      },
+      {
+        "MediaURL": "/sample/tacoma-2.jpg",
+        "Order": 2,
+        "ShortDescription": "Living room with gray sofas and a built-in media wall"
+      },
+      {
+        "MediaURL": "/sample/tacoma-3.jpg",
+        "Order": 3,
+        "ShortDescription": "White kitchen with an island and pendant lights"
+      }
+    ]
+  },
+  {
+    "ListingKey": "SAMPLE-1004",
+    "ListingId": "SAMPLE-1004",
+    "StandardStatus": "Active",
+    "ListPrice": 839000,
+    "UnparsedAddress": "96 Fernhollow Ln",
+    "City": "Gig Harbor",
+    "StateOrProvince": "WA",
+    "PostalCode": "98335",
+    "BedroomsTotal": 3,
+    "BathroomsTotalInteger": 2,
+    "LivingArea": 2120,
+    "YearBuilt": 1998,
+    "PropertySubType": "Single Family Residence",
+    "PublicRemarks": "Tucked among tall evergreens, this cedar-sided retreat feels miles from everything but sits minutes from the harbor. Morning light fills the dining room and the vaulted great room.",
+    "ListAgentFullName": "Hannah Berg",
+    "ListOfficeName": "Sample Realty",
+    "Media": [
+      {
+        "MediaURL": "/sample/gigharbor-1.jpg",
+        "Order": 1,
+        "ShortDescription": "Cedar-sided home among tall evergreens at sunrise"
+      },
+      {
+        "MediaURL": "/sample/gigharbor-2.jpg",
+        "Order": 2,
+        "ShortDescription": "Dining room with a bay window and pendant lights"
+      },
+      {
+        "MediaURL": "/sample/gigharbor-3.jpg",
+        "Order": 3,
+        "ShortDescription": "Sunny living room with leather seating"
+      }
+    ]
+  },
+  {
+    "ListingKey": "SAMPLE-1005",
+    "ListingId": "SAMPLE-1005",
+    "StandardStatus": "Active",
+    "ListPrice": 1349000,
+    "UnparsedAddress": "10421 Halvard Way NE",
+    "City": "Kirkland",
+    "StateOrProvince": "WA",
+    "PostalCode": "98033",
+    "BedroomsTotal": 4,
+    "BathroomsTotalInteger": 3,
+    "LivingArea": 2780,
+    "YearBuilt": 2016,
+    "PropertySubType": "Single Family Residence",
+    "PublicRemarks": "Contemporary cedar and glass near downtown Kirkland. A floating staircase anchors the open main floor, and the upper bedrooms open onto a sheltered deck.",
+    "ListAgentFullName": "Luis Romero",
+    "ListOfficeName": "Sample Realty",
+    "Media": [
+      {
+        "MediaURL": "/sample/kirkland-1.jpg",
+        "Order": 1,
+        "ShortDescription": "Contemporary home with cedar panels and a landscaped walk"
+      },
+      {
+        "MediaURL": "/sample/kirkland-2.jpg",
+        "Order": 2,
+        "ShortDescription": "Open living room with a floating staircase"
+      },
+      {
+        "MediaURL": "/sample/kirkland-3.jpg",
+        "Order": 3,
+        "ShortDescription": "Bedroom opening onto a deck"
+      },
+      {
+        "MediaURL": "/sample/kirkland-4.jpg",
+        "Order": 4,
+        "ShortDescription": "Reading corner with a yellow armchair"
+      }
+    ]
+  },
+  {
+    "ListingKey": "SAMPLE-1006",
+    "ListingId": "SAMPLE-1006",
+    "StandardStatus": "Active",
+    "ListPrice": 1089000,
+    "UnparsedAddress": "2205 Brackenfield Ct NW",
+    "City": "Issaquah",
+    "StateOrProvince": "WA",
+    "PostalCode": "98027",
+    "BedroomsTotal": 5,
+    "BathroomsTotalInteger": 3,
+    "LivingArea": 3140,
+    "YearBuilt": 2002,
+    "PropertySubType": "Single Family Residence",
+    "PublicRemarks": "Traditional brick-front home on a quiet cul-de-sac with a generous yard. The main floor flows from a bright living room to the dining area, with space for everyone upstairs.",
+    "ListAgentFullName": "Priya Natarajan",
+    "ListOfficeName": "Sample Realty",
+    "Media": [
+      {
+        "MediaURL": "/sample/issaquah-1.jpg",
+        "Order": 1,
+        "ShortDescription": "Brick-front home with a wide lawn"
+      },
+      {
+        "MediaURL": "/sample/issaquah-2.jpg",
+        "Order": 2,
+        "ShortDescription": "Bright living room with windows on three sides"
+      },
+      {
+        "MediaURL": "/sample/issaquah-3.jpg",
+        "Order": 3,
+        "ShortDescription": "Simple sitting area with a dark sofa"
+      }
+    ]
+  }
+]
