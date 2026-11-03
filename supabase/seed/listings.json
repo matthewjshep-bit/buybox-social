@@ -18,24 +18,86 @@
     "ListOfficeName": "Sample Realty",
     "Media": [
       {
+        "MediaKey": "SAMPLE-1001-1",
         "MediaURL": "/sample/ravenna-1.jpg",
         "Order": 1,
-        "ShortDescription": "White Craftsman home with a covered front porch"
+        "ShortDescription": "White Craftsman home with a covered front porch",
+        "ImageOf": "Exterior",
+        "Features": [
+          "Covered porch"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Covered porch",
+            "x": 0.3,
+            "y": 0.8
+          }
+        ]
       },
       {
+        "MediaKey": "SAMPLE-1001-2",
         "MediaURL": "/sample/ravenna-2.jpg",
         "Order": 2,
-        "ShortDescription": "Bright living room with plants and built-in shelves"
+        "ShortDescription": "Bright living room with plants and built-in shelves",
+        "ImageOf": "Living room",
+        "Features": [
+          "Built-in shelves"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Built-in shelves",
+            "x": 0.14,
+            "y": 0.25
+          }
+        ]
       },
       {
+        "MediaKey": "SAMPLE-1001-3",
         "MediaURL": "/sample/ravenna-3.jpg",
         "Order": 3,
-        "ShortDescription": "White kitchen with marble counters and a gas range"
+        "ShortDescription": "White kitchen with marble counters and a gas range",
+        "ImageOf": "Kitchen",
+        "Features": [
+          "Marble counters",
+          "Gas range"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Marble counters",
+            "x": 0.11,
+            "y": 0.8
+          },
+          {
+            "tag": "Gas range",
+            "x": 0.84,
+            "y": 0.7
+          }
+        ]
       },
       {
+        "MediaKey": "SAMPLE-1001-4",
         "MediaURL": "/sample/ravenna-4.jpg",
         "Order": 4,
-        "ShortDescription": "White bathroom with a window and pedestal sink"
+        "ShortDescription": "White bathroom with a window and pedestal sink",
+        "ImageOf": "Bathroom",
+        "Features": [
+          "Pedestal sink"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Pedestal sink",
+            "x": 0.26,
+            "y": 0.82
+          }
+        ]
       }
     ],
     "Latitude": 47.6755,
@@ -61,24 +123,79 @@
     "ListOfficeName": "Sample Realty",
     "Media": [
       {
+        "MediaKey": "SAMPLE-1002-1",
         "MediaURL": "/sample/bellevue-1.jpg",
         "Order": 1,
-        "ShortDescription": "Dark modern home glowing at dusk beneath a large tree"
+        "ShortDescription": "Dark modern home glowing at dusk beneath a large tree",
+        "ImageOf": "Exterior",
+        "Features": [
+          "Modern design"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050
       },
       {
+        "MediaKey": "SAMPLE-1002-2",
         "MediaURL": "/sample/bellevue-2.jpg",
         "Order": 2,
-        "ShortDescription": "Open living room with a wood accent wall"
+        "ShortDescription": "Open living room with a wood accent wall",
+        "ImageOf": "Living room",
+        "Features": [
+          "Wood accent wall"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Wood accent wall",
+            "x": 0.9,
+            "y": 0.3
+          }
+        ]
       },
       {
+        "MediaKey": "SAMPLE-1002-3",
         "MediaURL": "/sample/bellevue-3.jpg",
         "Order": 3,
-        "ShortDescription": "Primary bedroom with glass doors"
+        "ShortDescription": "Primary bedroom with glass doors",
+        "ImageOf": "Bedroom",
+        "Features": [
+          "Glass doors"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Glass doors",
+            "x": 0.46,
+            "y": 0.38
+          }
+        ]
       },
       {
+        "MediaKey": "SAMPLE-1002-4",
         "MediaURL": "/sample/bellevue-4.jpg",
         "Order": 4,
-        "ShortDescription": "Bathroom with a soaking tub and glass shower"
+        "ShortDescription": "Bathroom with a soaking tub and glass shower",
+        "ImageOf": "Bathroom",
+        "Features": [
+          "Soaking tub",
+          "Glass shower"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Soaking tub",
+            "x": 0.22,
+            "y": 0.8
+          },
+          {
+            "tag": "Glass shower",
+            "x": 0.5,
+            "y": 0.4
+          }
+        ]
       }
     ],
     "Latitude": 47.568,
@@ -104,19 +221,73 @@
     "ListOfficeName": "Sample Realty",
     "Media": [
       {
+        "MediaKey": "SAMPLE-1003-1",
         "MediaURL": "/sample/tacoma-1.jpg",
         "Order": 1,
-        "ShortDescription": "Shingled home with a wraparound porch and green lawn"
+        "ShortDescription": "Shingled home with a wraparound porch and green lawn",
+        "ImageOf": "Exterior",
+        "Features": [
+          "Wraparound porch",
+          "Lawn"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Wraparound porch",
+            "x": 0.55,
+            "y": 0.6
+          },
+          {
+            "tag": "Lawn",
+            "x": 0.3,
+            "y": 0.9
+          }
+        ]
       },
       {
+        "MediaKey": "SAMPLE-1003-2",
         "MediaURL": "/sample/tacoma-2.jpg",
         "Order": 2,
-        "ShortDescription": "Living room with gray sofas and a built-in media wall"
+        "ShortDescription": "Living room with gray sofas and a built-in media wall",
+        "ImageOf": "Living room",
+        "Features": [
+          "Media wall"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Media wall",
+            "x": 0.85,
+            "y": 0.55
+          }
+        ]
       },
       {
+        "MediaKey": "SAMPLE-1003-3",
         "MediaURL": "/sample/tacoma-3.jpg",
         "Order": 3,
-        "ShortDescription": "White kitchen with an island and pendant lights"
+        "ShortDescription": "White kitchen with an island and pendant lights",
+        "ImageOf": "Kitchen",
+        "Features": [
+          "Kitchen island",
+          "Pendant lights"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Kitchen island",
+            "x": 0.78,
+            "y": 0.62
+          },
+          {
+            "tag": "Pendant lights",
+            "x": 0.74,
+            "y": 0.15
+          }
+        ]
       }
     ],
     "Latitude": 47.2655,
@@ -142,19 +313,73 @@
     "ListOfficeName": "Sample Realty",
     "Media": [
       {
+        "MediaKey": "SAMPLE-1004-1",
         "MediaURL": "/sample/gigharbor-1.jpg",
         "Order": 1,
-        "ShortDescription": "Cedar-sided home among tall evergreens at sunrise"
+        "ShortDescription": "Cedar-sided home among tall evergreens at sunrise",
+        "ImageOf": "Exterior",
+        "Features": [
+          "Cedar siding",
+          "Evergreens"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Cedar siding",
+            "x": 0.7,
+            "y": 0.62
+          },
+          {
+            "tag": "Evergreens",
+            "x": 0.4,
+            "y": 0.25
+          }
+        ]
       },
       {
+        "MediaKey": "SAMPLE-1004-2",
         "MediaURL": "/sample/gigharbor-2.jpg",
         "Order": 2,
-        "ShortDescription": "Dining room with a bay window and pendant lights"
+        "ShortDescription": "Dining room with a bay window and pendant lights",
+        "ImageOf": "Dining room",
+        "Features": [
+          "Bay window",
+          "Pendant lights"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Bay window",
+            "x": 0.37,
+            "y": 0.38
+          },
+          {
+            "tag": "Pendant lights",
+            "x": 0.5,
+            "y": 0.2
+          }
+        ]
       },
       {
+        "MediaKey": "SAMPLE-1004-3",
         "MediaURL": "/sample/gigharbor-3.jpg",
         "Order": 3,
-        "ShortDescription": "Sunny living room with leather seating"
+        "ShortDescription": "Sunny living room with leather seating",
+        "ImageOf": "Living room",
+        "Features": [
+          "Natural light"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Natural light",
+            "x": 0.9,
+            "y": 0.25
+          }
+        ]
       }
     ],
     "Latitude": 47.329,
@@ -180,24 +405,77 @@
     "ListOfficeName": "Sample Realty",
     "Media": [
       {
+        "MediaKey": "SAMPLE-1005-1",
         "MediaURL": "/sample/kirkland-1.jpg",
         "Order": 1,
-        "ShortDescription": "Contemporary home with cedar panels and a landscaped walk"
+        "ShortDescription": "Contemporary home with cedar panels and a landscaped walk",
+        "ImageOf": "Exterior",
+        "Features": [
+          "Cedar panels",
+          "Landscaping"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Cedar panels",
+            "x": 0.42,
+            "y": 0.3
+          },
+          {
+            "tag": "Landscaping",
+            "x": 0.7,
+            "y": 0.85
+          }
+        ]
       },
       {
+        "MediaKey": "SAMPLE-1005-2",
         "MediaURL": "/sample/kirkland-2.jpg",
         "Order": 2,
-        "ShortDescription": "Open living room with a floating staircase"
+        "ShortDescription": "Open living room with a floating staircase",
+        "ImageOf": "Living room",
+        "Features": [
+          "Floating staircase"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Floating staircase",
+            "x": 0.3,
+            "y": 0.35
+          }
+        ]
       },
       {
+        "MediaKey": "SAMPLE-1005-3",
         "MediaURL": "/sample/kirkland-3.jpg",
         "Order": 3,
-        "ShortDescription": "Bedroom opening onto a deck"
+        "ShortDescription": "Bedroom opening onto a deck",
+        "ImageOf": "Bedroom",
+        "Features": [
+          "Deck"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Deck",
+            "x": 0.7,
+            "y": 0.58
+          }
+        ]
       },
       {
+        "MediaKey": "SAMPLE-1005-4",
         "MediaURL": "/sample/kirkland-4.jpg",
         "Order": 4,
-        "ShortDescription": "Reading corner with a yellow armchair"
+        "ShortDescription": "Reading corner with a yellow armchair",
+        "ImageOf": "Reading nook",
+        "Features": [],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050
       }
     ],
     "Latitude": 47.681,
@@ -223,19 +501,58 @@
     "ListOfficeName": "Sample Realty",
     "Media": [
       {
+        "MediaKey": "SAMPLE-1006-1",
         "MediaURL": "/sample/issaquah-1.jpg",
         "Order": 1,
-        "ShortDescription": "Brick-front home with a wide lawn"
+        "ShortDescription": "Brick-front home with a wide lawn",
+        "ImageOf": "Exterior",
+        "Features": [
+          "Brick front",
+          "Lawn"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Brick front",
+            "x": 0.58,
+            "y": 0.68
+          },
+          {
+            "tag": "Lawn",
+            "x": 0.25,
+            "y": 0.9
+          }
+        ]
       },
       {
+        "MediaKey": "SAMPLE-1006-2",
         "MediaURL": "/sample/issaquah-2.jpg",
         "Order": 2,
-        "ShortDescription": "Bright living room with windows on three sides"
+        "ShortDescription": "Bright living room with windows on three sides",
+        "ImageOf": "Living room",
+        "Features": [
+          "Natural light"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Natural light",
+            "x": 0.38,
+            "y": 0.33
+          }
+        ]
       },
       {
+        "MediaKey": "SAMPLE-1006-3",
         "MediaURL": "/sample/issaquah-3.jpg",
         "Order": 3,
-        "ShortDescription": "Simple sitting area with a dark sofa"
+        "ShortDescription": "Simple sitting area with a dark sofa",
+        "ImageOf": "Sitting room",
+        "Features": [],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050
       }
     ],
     "Latitude": 47.54,
@@ -264,14 +581,35 @@
     "OnMarketDate": "2026-10-31",
     "Media": [
       {
+        "MediaKey": "SAMPLE-1007-1",
         "MediaURL": "/sample/fremont-1.jpg",
         "Order": 1,
-        "ShortDescription": "Modern townhouse with a lit front entry at dusk"
+        "ShortDescription": "Modern townhouse with a lit front entry at dusk",
+        "ImageOf": "Exterior",
+        "Features": [
+          "Front entry"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Front entry",
+            "x": 0.47,
+            "y": 0.66
+          }
+        ]
       },
       {
+        "MediaKey": "SAMPLE-1007-2",
         "MediaURL": "/sample/fremont-2.jpg",
         "Order": 2,
-        "ShortDescription": "Bright living and dining room with a red armchair"
+        "ShortDescription": "Bright living and dining room with a red armchair",
+        "ImageOf": "Living room",
+        "Features": [
+          "Open plan"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050
       }
     ]
   },
@@ -297,14 +635,33 @@
     "OnMarketDate": "2026-10-26",
     "Media": [
       {
+        "MediaKey": "SAMPLE-1008-1",
         "MediaURL": "/sample/edmonds-1.jpg",
         "Order": 1,
-        "ShortDescription": "Blue cottage behind a white picket fence"
+        "ShortDescription": "Blue cottage behind a white picket fence",
+        "ImageOf": "Exterior",
+        "Features": [
+          "Picket fence"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Picket fence",
+            "x": 0.45,
+            "y": 0.74
+          }
+        ]
       },
       {
+        "MediaKey": "SAMPLE-1008-2",
         "MediaURL": "/sample/edmonds-2.jpg",
         "Order": 2,
-        "ShortDescription": "Living room with a white sofa and teal pillows"
+        "ShortDescription": "Living room with a white sofa and teal pillows",
+        "ImageOf": "Living room",
+        "Features": [],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050
       }
     ]
   },
@@ -330,9 +687,29 @@
     "OnMarketDate": "2026-10-15",
     "Media": [
       {
+        "MediaKey": "SAMPLE-1009-1",
         "MediaURL": "/sample/olympia-1.jpg",
         "Order": 1,
-        "ShortDescription": "White cottage with a green roof under autumn maples"
+        "ShortDescription": "White cottage with a green roof under autumn maples",
+        "ImageOf": "Exterior",
+        "Features": [
+          "Green roof",
+          "Maple trees"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Green roof",
+            "x": 0.33,
+            "y": 0.13
+          },
+          {
+            "tag": "Maple trees",
+            "x": 0.82,
+            "y": 0.18
+          }
+        ]
       }
     ]
   },
@@ -358,9 +735,23 @@
     "OnMarketDate": "2026-10-09",
     "Media": [
       {
+        "MediaKey": "SAMPLE-1010-1",
         "MediaURL": "/sample/porttownsend-1.jpg",
         "Order": 1,
-        "ShortDescription": "Small red cabin on a grassy meadow"
+        "ShortDescription": "Small red cabin on a grassy meadow",
+        "ImageOf": "Exterior",
+        "Features": [
+          "Meadow"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Meadow",
+            "x": 0.55,
+            "y": 0.65
+          }
+        ]
       }
     ]
   },
@@ -386,9 +777,16 @@
     "OnMarketDate": "2026-10-29",
     "Media": [
       {
+        "MediaKey": "SAMPLE-1011-1",
         "MediaURL": "/sample/redmond-1.jpg",
         "Order": 1,
-        "ShortDescription": "White modern home with a stepped facade"
+        "ShortDescription": "White modern home with a stepped facade",
+        "ImageOf": "Exterior",
+        "Features": [
+          "Modern facade"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050
       }
     ]
   },
@@ -414,9 +812,29 @@
     "OnMarketDate": "2026-10-20",
     "Media": [
       {
+        "MediaKey": "SAMPLE-1012-1",
         "MediaURL": "/sample/sammamish-1.jpg",
         "Order": 1,
-        "ShortDescription": "Stone and shingle home with a three-car garage"
+        "ShortDescription": "Stone and shingle home with a three-car garage",
+        "ImageOf": "Exterior",
+        "Features": [
+          "Stone and shingle",
+          "Three-car garage"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Stone and shingle",
+            "x": 0.55,
+            "y": 0.38
+          },
+          {
+            "tag": "Three-car garage",
+            "x": 0.33,
+            "y": 0.6
+          }
+        ]
       }
     ]
   },
@@ -442,9 +860,29 @@
     "OnMarketDate": "2026-10-27",
     "Media": [
       {
+        "MediaKey": "SAMPLE-1013-1",
         "MediaURL": "/sample/mercer-1.jpg",
         "Order": 1,
-        "ShortDescription": "Dark modern home with wood accents and an open courtyard"
+        "ShortDescription": "Dark modern home with wood accents and an open courtyard",
+        "ImageOf": "Exterior",
+        "Features": [
+          "Courtyard",
+          "Wood accents"
+        ],
+        "ImageWidth": 1400,
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Courtyard",
+            "x": 0.5,
+            "y": 0.85
+          },
+          {
+            "tag": "Wood accents",
+            "x": 0.85,
+            "y": 0.75
+          }
+        ]
       }
     ]
   }

@@ -14,20 +14,6 @@ export const SORTS = {
 } as const;
 export type Sort = keyof typeof SORTS;
 
-export const FEED_SORTS = {
-  latest: "Latest",
-  reactions: "Most reactions",
-  liked: "Most liked",
-  talked: "Most talked about",
-  viewed: "Most viewed",
-} as const;
-export type FeedSort = keyof typeof FEED_SORTS;
-
-export const parseFeedSort = (value: string | string[] | undefined): FeedSort => {
-  const sort = Array.isArray(value) ? value[0] : value;
-  return sort && sort in FEED_SORTS ? (sort as FeedSort) : "latest";
-};
-
 export const HOME_TYPES = {
   house: { label: "Houses", value: "Single Family Residence" },
   townhouse: { label: "Townhouses", value: "Townhouse" },

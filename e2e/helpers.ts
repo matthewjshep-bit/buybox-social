@@ -1,4 +1,4 @@
-import { expect, type Browser, type Page } from "@playwright/test";
+import { expect, type Browser, type Locator, type Page } from "@playwright/test";
 
 const PNG_1PX =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAEBgIApD5fRAAAAABJRU5ErkJggg==";
@@ -52,4 +52,43 @@ export async function signUpBuyer(browser: Browser, email: string, name: string)
   await page.getByRole("button", { name: "Continue" }).click();
   await page.waitForURL((url) => url.pathname === "/");
   return page;
+}
+
+// The feed: one home per screen.
+export const homeIn = (page: Page, address: string) => page.getByRole("article", { name: address });
+
+// The heart on a home's rail (photo hearts are named "Like the kitchen").
+export const heartOf = (home: Locator) => home.getByRole("button", { name: /^Like (?!the )/ });
+
+export async function openComments(page: Page, home: Locator) {
+  await home.getByRole("button", { name: /^Comments/ }).click();
+  const sheet = page.getByRole("dialog", { name: "Comments" });
+  await expect(sheet).toBeVisible();
+  return sheet;
+}
+
+export async function openMore(page: Page, home: Locator) {
+  await home.getByRole("button", { name: "More options" }).click();
+  const sheet = page.getByRole("dialog", { name: "More" });
+  await expect(sheet).toBeVisible();
+  return sheet;
+}
+
+// Scrolls the feed to the very end, loading every home on the way.
+export async function scrollToEnd(page: Page) {
+  await expect(async () => {
+    await page.evaluate(() => {
+      const reel = document.querySelector<HTMLElement>("[data-reel]")!;
+      reel.scrollTo({ top: reel.scrollHeight });
+    });
+    await expect(page.getByRole("heading", { name: "You've seen every home for now" })).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 20_000 });
+}
+
+// Answers the first-name prompt and waits for it to close.
+export async function joinAs(page: Page, firstName: string) {
+  const field = page.getByRole("textbox", { name: "First name" });
+  await field.fill(firstName);
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(field).toBeHidden();
 }

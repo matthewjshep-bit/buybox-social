@@ -1,4 +1,4 @@
-import { ArrowLeft, Globe, Plus, RotateCcw, ThumbsDown, ThumbsUp, Trash2, X } from "lucide-react";
+import { ArrowLeft, Globe, Heart, Plus, RotateCcw, ThumbsDown, ThumbsUp, Trash2, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -8,7 +8,7 @@ import { LiveRefresh } from "@/components/live-refresh";
 import { requireAgent } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { appUrl, cn, formatPrice, timeAgo } from "@/lib/format";
-import { describeReaction, type AspectCounts } from "@/lib/reactions";
+import { describeReaction, NO_REACTION, type AspectCounts, type ReactionState } from "@/lib/reactions";
 import { getShareListings, getThread, type Share } from "@/lib/shares";
 import { removeComment, setHomeRemoved } from "../../actions";
 import { ClientNameEditor, ReplyForm, SendLink } from "./client";
@@ -97,23 +97,38 @@ function ClientProfile({
   listings: Listings;
   thread: Thread;
 }) {
-  const people = new Map<
-    string,
-    { name: string; liked: number; passed: number; likes: AspectCounts; dislikes: AspectCounts }
-  >();
-  for (const r of thread.reactions) {
-    const person = people.get(r.participantId) ?? {
-      name: r.name,
+  type Person = {
+    name: string;
+    liked: number;
+    passed: number;
+    likes: AspectCounts;
+    dislikes: AspectCounts;
+    // Things they liked in photos, with how many homes.
+    loved: Map<string, number>;
+  };
+  const people = new Map<string, Person>();
+  const personFor = (participantId: string, name: string): Person => {
+    const person: Person = people.get(participantId) ?? {
+      name,
       liked: 0,
       passed: 0,
       likes: {},
       dislikes: {},
+      loved: new Map(),
     };
+    people.set(participantId, person);
+    return person;
+  };
+  for (const r of thread.reactions) {
+    const person = personFor(r.participantId, r.name);
     if (r.state.reaction === "like") person.liked++;
     if (r.state.reaction === "dislike") person.passed++;
     for (const a of r.state.liked) person.likes[a] = (person.likes[a] ?? 0) + 1;
     for (const a of r.state.disliked) person.dislikes[a] = (person.dislikes[a] ?? 0) + 1;
-    people.set(r.participantId, person);
+  }
+  for (const like of thread.photoLikes) {
+    const person = personFor(like.participantId, like.name);
+    person.loved.set(like.tag, (person.loved.get(like.tag) ?? 0) + 1);
   }
 
   return (
@@ -144,6 +159,24 @@ function ClientProfile({
                 limit={10}
                 className="mt-2"
               />
+              {person.loved.size > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-sm">
+                  <span className="flex items-center gap-1 font-semibold text-rose-800">
+                    <Heart aria-hidden size={14} />
+                    Loved in photos
+                  </span>
+                  {[...person.loved]
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([tag, n]) => (
+                      <span
+                        key={tag}
+                        className="rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-900 ring-1 ring-rose-200"
+                      >
+                        {tag} <span className="tabular-nums">{n}</span>
+                      </span>
+                    ))}
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -161,7 +194,17 @@ function HomePanel({
   listing: Listings[number];
   thread: Thread;
 }) {
-  const reactions = thread.reactions.filter((r) => r.listingKey === listing.ListingKey);
+  // One line per person: their reaction plus what they liked in the photos.
+  const lines = new Map<string, { name: string; state: ReactionState; tags: string[] }>();
+  for (const r of thread.reactions.filter((r) => r.listingKey === listing.ListingKey)) {
+    lines.set(r.participantId, { name: r.name, state: r.state, tags: [] });
+  }
+  for (const like of thread.photoLikes.filter((l) => l.listingKey === listing.ListingKey)) {
+    const line = lines.get(like.participantId) ?? { name: like.name, state: NO_REACTION, tags: [] };
+    line.tags.push(like.tag);
+    lines.set(like.participantId, line);
+  }
+  const reactions = [...lines].map(([participantId, line]) => ({ participantId, ...line }));
   const comments = thread.comments.filter((c) => c.listingKey === listing.ListingKey);
   const isRemoved = Boolean(listing.removedAt);
   return (
@@ -197,16 +240,19 @@ function HomePanel({
         <ul className="mt-3 flex flex-col gap-1.5 text-sm">
           {reactions.map((r) => {
             const passed = r.state.reaction === "dislike";
-            const Icon = passed ? ThumbsDown : ThumbsUp;
+            const Icon = passed ? ThumbsDown : r.state.reaction ? ThumbsUp : Heart;
             return (
               <li key={r.participantId} className="flex items-start gap-2">
                 <Icon
                   aria-hidden
                   size={15}
-                  className={cn("mt-0.5 shrink-0", passed ? "text-amber-800" : "text-emerald-700")}
+                  className={cn(
+                    "mt-0.5 shrink-0",
+                    passed ? "text-amber-800" : r.state.reaction ? "text-emerald-700" : "text-rose-600",
+                  )}
                 />
                 <span>
-                  <span className="font-semibold">{r.name}</span> {describeReaction(r.state, { pass: true })}
+                  <span className="font-semibold">{r.name}</span> {describeReaction(r.state, r.tags)}
                 </span>
               </li>
             );
@@ -217,28 +263,46 @@ function HomePanel({
       )}
 
       {comments.length > 0 && (
-        <ul className="mt-3 flex flex-col gap-2">
+        <ul aria-label="Comments" className="mt-4 flex flex-col gap-3">
           {comments.map((comment) => (
-            <li key={comment.id} className="rounded-xl bg-stone-50 p-3 ring-1 ring-stone-200">
-              <div className="flex flex-wrap items-center gap-x-2 text-sm">
-                <span className="font-semibold">{comment.isAgent ? "You" : comment.name}</span>
-                <span className="text-xs text-stone-600">{timeAgo(comment.createdAt)}</span>
-                {comment.sharedPublicly && (
-                  <span className="inline-flex items-center gap-1 text-xs text-stone-600">
-                    <Globe aria-hidden size={12} /> Shared publicly
-                  </span>
+            <li key={comment.id} className="flex gap-3">
+              <span
+                aria-hidden
+                className={cn(
+                  "flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white",
+                  comment.isAgent ? "bg-ink" : "bg-brand",
                 )}
-                <form action={removeComment.bind(null, comment.id)} className="ml-auto">
-                  <button
-                    type="submit"
-                    aria-label={`Remove comment from ${comment.name}`}
-                    className="flex size-11 items-center justify-center rounded-lg text-stone-600 hover:bg-stone-200"
-                  >
-                    <Trash2 aria-hidden size={15} />
-                  </button>
-                </form>
+              >
+                {comment.name[0]?.toUpperCase()}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="break-words text-[15px] leading-snug">
+                  <span className="font-semibold">{comment.name}</span>
+                  {comment.isAgent && (
+                    <span className="ml-1.5 rounded bg-ink px-1.5 py-px align-[2px] text-[10px] font-bold uppercase tracking-wide text-white">
+                      Agent
+                    </span>
+                  )}{" "}
+                  <span className="whitespace-pre-line">{comment.body}</span>
+                </p>
+                <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-stone-600">
+                  <span>{timeAgo(comment.createdAt)}</span>
+                  {comment.sharedPublicly && (
+                    <span className="inline-flex items-center gap-1">
+                      <Globe aria-hidden size={11} /> Shared publicly
+                    </span>
+                  )}
+                </p>
               </div>
-              <p className="mt-0.5 whitespace-pre-line break-words text-[15px]">{comment.body}</p>
+              <form action={removeComment.bind(null, comment.id)}>
+                <button
+                  type="submit"
+                  aria-label={`Remove comment from ${comment.name}`}
+                  className="-mt-1.5 flex size-9 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100"
+                >
+                  <Trash2 aria-hidden size={14} />
+                </button>
+              </form>
             </li>
           ))}
         </ul>

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createShare, signInAgent } from "./helpers";
+import { createShare, heartOf, homeIn, joinAs, openComments, openMore, signInAgent } from "./helpers";
 
 test("an agent's client page: rename, what they want, remove and restore, add homes, private only", async ({
   browser,
@@ -17,36 +17,46 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
   const joe = await (await browser.newContext()).newPage();
   await joe.goto(url);
   await expect(joe.getByRole("heading", { level: 1 })).toHaveText("Joe, I picked these 2 homes for you");
-  const kirkland = joe.getByRole("article", { name: "10421 Halvard Way NE" });
-  await kirkland.getByRole("group", { name: "Your reaction" }).getByRole("button", { name: /^Like/ }).click();
-  await joe.getByRole("textbox", { name: "First name" }).fill("Joe");
-  await joe.getByRole("button", { name: "Continue" }).click();
-  await kirkland.getByRole("group", { name: "What do you like?" }).getByRole("button", { name: "Kitchen" }).click();
-  await kirkland.getByRole("button", { name: "Done" }).click();
+  const kirkland = homeIn(joe, "10421 Halvard Way NE");
+  await heartOf(kirkland).click();
+  await joinAs(joe, "Joe");
+  await expect(heartOf(kirkland)).toHaveAttribute("aria-pressed", "true");
+  await kirkland.getByRole("button", { name: "Next photo" }).click();
+  await kirkland.getByRole("button", { name: /^Like the floating staircase/ }).click();
+  await expect(kirkland.getByRole("button", { name: /^Like the floating staircase/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 
-  const olympia = joe.getByRole("article", { name: "1204 Quillan St SE" });
-  // Client links say Pass, not Dislike.
-  await expect(olympia.getByRole("button", { name: /^Dislike/ })).toHaveCount(0);
-  await olympia.getByRole("group", { name: "Your reaction" }).getByRole("button", { name: /^Pass/ }).click();
-  await olympia.getByRole("group", { name: "What don't you like?" }).getByRole("button", { name: "Exterior" }).click();
-  await olympia.getByRole("button", { name: "Done" }).click();
-  await expect(olympia.getByText("You passed, didn't like the exterior.")).toBeVisible();
-  await olympia.getByLabel("Add a comment").fill("Not a fan of farmhouse sinks.");
-  await olympia.getByRole("button", { name: "Post comment" }).click();
-  await expect(olympia.getByText("Not a fan of farmhouse sinks.")).toBeVisible();
+  const olympia = homeIn(joe, "1204 Quillan St SE");
+  // No Tinder-style buttons: passing is "Not for me", under More.
+  await expect(olympia.getByRole("button", { name: /^(Pass|Dislike)$/ })).toHaveCount(0);
+  const more = await openMore(joe, olympia);
+  await more.getByRole("button", { name: "Not for me" }).click();
+  const why = more.getByRole("group", { name: "What made you pass?" });
+  await why.getByRole("button", { name: "Exterior" }).click();
+  await expect(why.getByRole("button", { name: "Exterior" })).toHaveAttribute("aria-pressed", "true");
+  await joe.keyboard.press("Escape");
+  const chat = await openComments(joe, olympia);
+  await chat.getByLabel("Add a comment").fill("Not a fan of farmhouse sinks.");
+  await chat.getByRole("button", { name: "Post comment" }).click();
+  await expect(chat.getByText("Not a fan of farmhouse sinks.")).toBeVisible();
+  await joe.keyboard.press("Escape");
+  // The last screen says the agent sees it all.
+  await expect(joe.getByText("You've reacted to 2 of 2 homes.")).toBeAttached();
+  await expect(joe.getByText("Gwen Agent sees what you liked and said.")).toBeAttached();
 
   // Someone else reacts to the same home in public.
   const stranger = await (await browser.newContext()).newPage();
   await stranger.goto("/homes/SAMPLE-1005");
-  await stranger.getByRole("group", { name: "Your reaction" }).getByRole("button", { name: /^Like/ }).click();
-  await stranger.getByRole("textbox", { name: "First name" }).fill("Stella");
-  await stranger.getByRole("button", { name: "Continue" }).click();
-  await expect(
-    stranger.getByRole("group", { name: "Your reaction" }).getByRole("button", { name: /^Like/ }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await stranger.getByLabel("Add a comment").fill("Public: that staircase!");
-  await stranger.getByRole("button", { name: "Post comment" }).click();
-  await expect(stranger.getByText("Public: that staircase!")).toBeVisible();
+  const publicHome = homeIn(stranger, "10421 Halvard Way NE");
+  await heartOf(publicHome).click();
+  await joinAs(stranger, "Stella");
+  await expect(heartOf(publicHome)).toHaveAttribute("aria-pressed", "true");
+  const publicChat = await openComments(stranger, publicHome);
+  await publicChat.getByLabel("Add a comment").fill("Public: that staircase!");
+  await publicChat.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(publicChat.getByText("Public: that staircase!")).toBeVisible();
 
   // Joe's link and the agent's page show only Joe and the agent, never public activity.
   await joe.reload();
@@ -59,8 +69,11 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
   // What Joe wants, summed up across every home.
   const profile = agent.getByRole("region", { name: "What Joe wants" });
   await expect(profile).toContainText("Joe liked 1 of 2 homes · passed 1");
-  await expect(profile.getByText("Kitchen 1")).toBeVisible();
+  await expect(profile.getByText("Floating staircase 1")).toBeVisible();
   await expect(profile.getByText("Exterior 1")).toBeVisible();
+  await expect(agent.getByRole("region", { name: "10421 Halvard Way NE" })).toContainText(
+    "Joe liked the floating staircase",
+  );
 
   // Removing a home takes it off Joe's link but keeps everything he said.
   await agent.getByRole("button", { name: "Remove 1204 Quillan St SE" }).click();
@@ -71,14 +84,14 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
   await expect(profile).toContainText("of 2 homes");
   await expect(profile.getByText("Exterior 1")).toBeVisible();
   await joe.reload();
-  await expect(joe.getByRole("article", { name: "1204 Quillan St SE" })).toHaveCount(0);
+  await expect(homeIn(joe, "1204 Quillan St SE")).toHaveCount(0);
   await expect(joe.getByRole("heading", { level: 1 })).toHaveText("Joe, I picked this home for you");
 
   // ...and it can come back.
   await removed.getByRole("button", { name: "Restore 1204 Quillan St SE" }).click();
   await expect(agent.getByRole("region", { name: "Removed from their link" })).toHaveCount(0);
   await joe.reload();
-  await expect(joe.getByRole("article", { name: "1204 Quillan St SE" })).toBeVisible();
+  await expect(homeIn(joe, "1204 Quillan St SE")).toBeVisible();
 
   // More homes can go on the same link, so Joe's history stays in one place.
   await agent.getByRole("link", { name: "Add homes" }).click();
@@ -89,7 +102,7 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
   await agent.waitForURL("**/dashboard/shares/*");
   await expect(agent.getByRole("region", { name: "812 N Corbel St" })).toBeVisible();
   await joe.reload();
-  await expect(joe.getByRole("article", { name: "812 N Corbel St" })).toBeVisible();
+  await expect(homeIn(joe, "812 N Corbel St")).toBeVisible();
 
   // The dashboard lists the client by name.
   await agent.goto("/dashboard");

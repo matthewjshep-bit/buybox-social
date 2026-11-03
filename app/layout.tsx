@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Figtree, Fraunces } from "next/font/google";
+import { HeaderGate } from "@/components/header-gate";
 import { SiteHeader } from "@/components/site-header";
 import { appUrl } from "@/lib/format";
 import "./globals.css";
@@ -28,7 +29,9 @@ export default function RootLayout({ children, modal }: LayoutProps<"/">) {
         >
           Skip to main content
         </a>
-        <SiteHeader />
+        <HeaderGate>
+          <SiteHeader />
+        </HeaderGate>
         <div id="main" tabIndex={-1} className="outline-none">
           {children}
         </div>

@@ -9,6 +9,7 @@ import {
   fail,
   MAX_COMMENTS_PER_MINUTE,
   nameSchema,
+  photoLikeSchema,
   reactionSchema,
   readDevice,
   type ActionResult,
@@ -19,6 +20,8 @@ import {
   getShareByToken,
   shareHasListing,
 } from "@/lib/shares";
+import { aspectOfTag, photoTags } from "@/lib/photos";
+import { getListingPhoto } from "@/lib/public";
 import { describeReaction, type ReactionState } from "@/lib/reactions";
 
 const MAX_PARTICIPANTS = 25;
@@ -95,7 +98,7 @@ export async function setReaction(
       const address = await listingLabel(listingKey);
       await notifyAgent(
         actor.share.id,
-        `${actor.participant.first_name} ${describeReaction(state, { pass: true })} at ${address}`,
+        `${actor.participant.first_name} ${describeReaction(state)} at ${address}`,
       );
     });
   }
@@ -157,6 +160,36 @@ export async function setCommentSharing(
           and r.reaction = 'like'))
     returning c.id`;
   if (updated.length === 0) return fail("We couldn't find that comment.");
+  refresh();
+  return { ok: true };
+}
+
+// Liking something in a photo on an agent's link. Private to the link, like
+// everything else said there.
+export async function likePhotoInShare(
+  token: string,
+  listingKey: string,
+  mediaKey: string,
+  tag: string,
+  liked: boolean,
+): Promise<ActionResult> {
+  const input = photoLikeSchema.safeParse({ listingKey, mediaKey, tag, liked });
+  if (!input.success) return fail("We couldn't save that like.");
+  const actor = await resolveActor(token, listingKey);
+  if (!actor) return fail("Please add your name first.");
+  const photo = await getListingPhoto(listingKey, mediaKey);
+  if (!photo || !photoTags(photo).includes(tag)) return fail("That photo isn't there anymore.");
+  if (liked) {
+    await sql`
+      insert into photo_likes (share_id, listing_key, participant_id, media_key, tag, aspect)
+      values (${actor.share.id}, ${listingKey}, ${actor.participant.id}, ${mediaKey}, ${tag}, ${aspectOfTag(photo, tag)})
+      on conflict do nothing`;
+  } else {
+    await sql`
+      delete from photo_likes
+      where participant_id = ${actor.participant.id} and listing_key = ${listingKey}
+        and media_key = ${mediaKey} and tag = ${tag}`;
+  }
   refresh();
   return { ok: true };
 }

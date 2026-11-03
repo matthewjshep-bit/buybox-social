@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
-import type { ReactionState } from "./reactions";
+import type { Aspect, ReactionState } from "./reactions";
 
 export type CommentTag = "like" | "dislike";
 
@@ -102,7 +102,22 @@ export async function getThread(shareId: string) {
     left join accounts a on a.id = c.agent_id
     where c.share_id = ${shareId}
     order by c.created_at`;
+  const photoLikes = await sql<
+    { listing_key: string; participant_id: string; first_name: string; tag: string; aspect: Aspect | null }[]
+  >`
+    select pl.listing_key, pl.participant_id, p.first_name, pl.tag, pl.aspect
+    from photo_likes pl join participants p on p.id = pl.participant_id
+    where pl.share_id = ${shareId}
+    order by pl.created_at`;
   return {
+    // What each person liked in the photos.
+    photoLikes: photoLikes.map((l) => ({
+      listingKey: l.listing_key,
+      participantId: l.participant_id,
+      name: l.first_name,
+      tag: l.tag,
+      aspect: l.aspect,
+    })),
     reactions: reactions.map(
       (r): ThreadReaction => ({
         listingKey: r.listing_key,

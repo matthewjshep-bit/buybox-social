@@ -15,6 +15,8 @@ export default defineConfig({
     baseURL: `http://localhost:${PORT}`,
     ...devices["Pixel 7"],
     launchOptions: executablePath ? { executablePath } : {},
+    // A stuck click fails fast and says which step, instead of eating the test's whole timeout.
+    actionTimeout: 10_000,
     trace: "retain-on-failure",
   },
   // A throwaway in-memory database, then the production build.

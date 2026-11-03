@@ -37,6 +37,74 @@ a {
   outline-offset: 2px;
 }
 
+/* Places focus is moved to (a card, the end of the stream), not controls: no ring. */
+[tabindex="-1"]:focus-visible {
+  outline: none;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Sheets: up from the bottom on phones, in from the right on wide screens. */
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+/* The photo on screen drifts in slowly, so a still photo feels alive. */
+@keyframes ken-burns {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.07);
+  }
+}
+
+/* A double-tapped photo's heart. */
+@keyframes heart-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  15% {
+    opacity: 0.95;
+    transform: scale(1.15);
+  }
+  30% {
+    transform: scale(0.95);
+  }
+  70% {
+    opacity: 0.95;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

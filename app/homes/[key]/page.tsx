@@ -1,6 +1,4 @@
-import { ArrowLeft } from "lucide-react";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { ListingDetail } from "@/components/listing-detail";
 import { formatPrice } from "@/lib/format";
 import { getPublicListing } from "@/lib/public";
@@ -18,20 +16,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-// Opened directly or refreshed. From the homepage, the same content opens in a
-// pop-out instead: see app/@modal/(.)homes.
+// A home's own link: that home full screen, then the feed carries on from it.
+// From the map, the same home opens in a pop-out instead: see app/@modal/(.)homes.
 export default async function HomePage({ params }: Props) {
   const { key } = await params;
-  return (
-    <div className="mx-auto max-w-5xl px-0 pb-10 sm:px-5">
-      <nav className="px-4 py-3 sm:px-0">
-        <Link href="/" className="flex min-h-11 w-fit items-center gap-1.5 font-medium">
-          <ArrowLeft aria-hidden size={18} /> All homes
-        </Link>
-      </nav>
-      <main className="overflow-hidden bg-white shadow-sm ring-1 ring-stone-200 sm:rounded-2xl">
-        <ListingDetail listingKey={decodeURIComponent(key)} />
-      </main>
-    </div>
-  );
+  return <ListingDetail listingKey={decodeURIComponent(key)} />;
 }

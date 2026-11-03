@@ -6,7 +6,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
-import { LikeButton } from "@/components/listing-thread";
+import { HeartButton } from "@/components/like-pass";
+import { TrendingBadge } from "@/components/trending-badge";
 import type { MapHome } from "@/components/listing-map";
 import { activeLabel, cn, formatPrice } from "@/lib/format";
 import { aspectLabel, topAspects } from "@/lib/reactions";
@@ -326,10 +327,12 @@ function SearchCard({
               className="object-cover"
             />
           )}
-          <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
+          {/* Badges wrap before they reach the heart in the corner. */}
+          <div className="absolute left-3 right-16 top-3 flex flex-wrap gap-1.5">
             {isSampleListing(listing) && (
               <span className="rounded-full bg-black/70 px-2.5 py-1 text-xs font-medium text-white">Sample</span>
             )}
+            {buzz.trending && <TrendingBadge />}
             {active && (
               <span className="inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-xs font-semibold text-stone-900 shadow">
                 <Flame aria-hidden size={13} className="text-orange-700" />
@@ -389,7 +392,7 @@ function SearchCard({
           </p>
         </div>
       </Link>
-      <LikeButton
+      <HeartButton
         listingKey={listing.ListingKey}
         mine={result.mine}
         label={listing.UnparsedAddress}

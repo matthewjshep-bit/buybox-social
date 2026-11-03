@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import { createShare, signInAgent } from "./helpers";
+import { createShare, heartOf, homeIn, joinAs, openComments, openMore, signInAgent } from "./helpers";
 
 test("agent shares, two people react and comment, agent sees and replies", async ({ browser }) => {
   const agent = await signInAgent(browser, "alex@example.com", "Alex Rivera");
@@ -18,65 +18,67 @@ test("agent shares, two people react and comment, agent sees and replies", async
   );
   await expect(jamie.getByText("Alex Rivera", { exact: true })).toBeVisible();
   await expect(jamie.getByText("Harbor & Pine Realty")).toBeVisible();
-  await expect(jamie.getByText(/Sample listings for demonstration/)).toBeVisible();
+  await expect(jamie.getByText(/Sample listings, fictional and not for sale/)).toBeVisible();
 
-  const house = jamie.getByRole("article", { name: "4127 Larkmoor Ave NE" });
+  const house = homeIn(jamie, "4127 Larkmoor Ave NE");
   await house.getByRole("button", { name: "Next photo" }).click();
-  await expect(house.getByText("2 / 4")).toBeVisible();
+  await expect(house.getByText("Photo 2 of 4")).toBeAttached();
 
-  // First reaction asks for a name, then applies, and offers specifics.
-  const jamieReaction = house.getByRole("group", { name: "Your reaction" });
-  await jamieReaction.getByRole("button", { name: /^Like/ }).click();
-  await jamie.getByRole("textbox", { name: "First name" }).fill("Jamie");
-  await jamie.getByRole("button", { name: "Continue" }).click();
-  await expect(jamieReaction.getByRole("button", { name: /^Like/ })).toHaveAttribute("aria-pressed", "true");
-  const likes = house.getByRole("group", { name: "What do you like?" });
-  await likes.getByRole("button", { name: "Kitchen" }).click();
-  await likes.getByRole("button", { name: "Natural light" }).click();
-  await expect(likes.getByRole("button", { name: "Natural light" })).toHaveAttribute("aria-pressed", "true");
-  await house.getByRole("button", { name: "Done" }).click();
-  await expect(house.getByText("You liked the kitchen and natural light.")).toBeVisible();
+  // The first like asks for a name, then applies.
+  await heartOf(house).click();
+  await joinAs(jamie, "Jamie");
+  await expect(heartOf(house)).toHaveAttribute("aria-pressed", "true");
+  // On the kitchen photo, heart the kitchen and its marble counters.
+  await house.getByRole("button", { name: "Next photo" }).click();
+  await house.getByRole("button", { name: /^Like the kitchen/ }).click();
+  await house.getByRole("button", { name: /^Like the marble counters/ }).click();
+  await expect(house.getByRole("button", { name: /^Like the marble counters/ })).toHaveAttribute("aria-pressed", "true");
 
-  await house.getByLabel("Add a comment").fill("That porch is perfect.");
-  await house.getByRole("button", { name: "Post comment" }).click();
-  await expect(house.getByText("That porch is perfect.")).toBeVisible();
+  const jamieChat = await openComments(jamie, house);
+  await jamieChat.getByLabel("Add a comment").fill("That porch is perfect.");
+  await jamieChat.getByRole("button", { name: "Post comment" }).click();
+  await expect(jamieChat.getByText("That porch is perfect.")).toBeVisible();
+  await jamie.keyboard.press("Escape");
 
   // A second person on the same link joins the same thread.
   const samContext = await browser.newContext();
   const sam = await samContext.newPage();
   await sam.goto(url);
-  const samHouse = sam.getByRole("article", { name: "4127 Larkmoor Ave NE" });
-  await expect(samHouse.getByText("Jamie liked the kitchen and natural light")).toBeVisible();
-  await expect(samHouse.getByText("That porch is perfect.")).toBeVisible();
-  await samHouse.getByLabel("Add a comment").fill("The kitchen feels small.");
-  await samHouse.getByRole("button", { name: "Post comment" }).click();
-  await sam.getByRole("textbox", { name: "First name" }).fill("Sam");
-  await sam.getByRole("button", { name: "Continue" }).click();
-  await expect(samHouse.getByText("The kitchen feels small.")).toBeVisible();
+  const samHouse = homeIn(sam, "4127 Larkmoor Ave NE");
+  const samChat = await openComments(sam, samHouse);
+  await expect(samChat.getByText("Jamie liked the kitchen and marble counters")).toBeVisible();
+  await expect(samChat.getByText("That porch is perfect.")).toBeVisible();
+  await samChat.getByLabel("Add a comment").fill("The kitchen feels small.");
+  await samChat.getByRole("button", { name: "Post comment" }).click();
+  await joinAs(sam, "Sam");
+  await expect(samChat.getByText("The kitchen feels small.")).toBeVisible();
+  await sam.keyboard.press("Escape");
 
-  // Specifics can be picked straight from the dropdown.
-  const samReaction = samHouse.getByRole("group", { name: "Your reaction" });
-  await samReaction.getByRole("button", { name: "What don't you like?" }).click();
-  await samHouse.getByRole("group", { name: "What don't you like?" }).getByRole("button", { name: "Yard" }).click();
-  await expect(samReaction.getByRole("button", { name: /^Pass/ })).toHaveAttribute("aria-pressed", "true");
-  await samHouse.getByRole("button", { name: "Done" }).click();
+  // Not for me, and why.
+  const samMore = await openMore(sam, samHouse);
+  const notForMe = samMore.getByRole("button", { name: "Not for me" });
+  await notForMe.click();
+  await samMore.getByRole("group", { name: "What made you pass?" }).getByRole("button", { name: "Yard" }).click();
+  await expect(notForMe).toHaveAttribute("aria-pressed", "true");
 
   // Reactions persist across a reload; tapping again switches one off.
   await jamie.reload();
-  await expect(jamieReaction.getByRole("button", { name: /^Like/ })).toHaveAttribute("aria-pressed", "true");
-  await expect(house.getByText("Sam passed, didn't like the yard")).toBeVisible();
-  await samReaction.getByRole("button", { name: /^Pass/ }).click();
-  await expect(samReaction.getByRole("button", { name: /^Pass/ })).toHaveAttribute("aria-pressed", "false");
+  await expect(heartOf(house)).toHaveAttribute("aria-pressed", "true");
+  let thread = await openComments(jamie, house);
+  await expect(thread.getByText("You liked the kitchen and marble counters")).toBeVisible();
+  await expect(thread.getByText("Sam passed, didn't like the yard")).toBeVisible();
+  await notForMe.click();
+  await expect(notForMe).toHaveAttribute("aria-pressed", "false");
   await jamie.reload();
-  await expect(house.getByText(/Sam passed/)).toHaveCount(0);
-  await samReaction.getByRole("button", { name: /^Pass/ }).click();
-  await expect(samReaction.getByRole("button", { name: /^Pass/ })).toHaveAttribute("aria-pressed", "true");
-  await samHouse.getByRole("button", { name: "Done" }).click();
+  thread = await openComments(jamie, house);
+  await expect(thread.getByText(/Sam passed/)).toHaveCount(0);
+  await notForMe.click();
+  await expect(notForMe).toHaveAttribute("aria-pressed", "true");
 
   // The agent sees all of it in plain words, and replies.
   await agent.reload();
   const panel = agent.getByRole("region", { name: "4127 Larkmoor Ave NE" });
-  await expect(panel.getByText("liked the kitchen and natural light")).toBeVisible();
+  await expect(panel.getByText("liked the kitchen and marble counters")).toBeVisible();
   await expect(panel.getByText("passed on this")).toBeVisible();
   await expect(panel.getByText("That porch is perfect.")).toBeVisible();
   await expect(panel.getByText("The kitchen feels small.")).toBeVisible();
@@ -85,18 +87,20 @@ test("agent shares, two people react and comment, agent sees and replies", async
   await expect(panel.getByText("We can measure it at the showing.")).toBeVisible();
 
   await jamie.reload();
-  await expect(house.getByText("We can measure it at the showing.")).toBeVisible();
+  thread = await openComments(jamie, house);
+  await expect(thread.getByText("We can measure it at the showing.")).toBeVisible();
 
   // The agent can remove a comment.
   await panel.getByRole("button", { name: "Remove comment from Sam" }).click();
   await expect(panel.getByText("The kitchen feels small.")).toHaveCount(0);
   await jamie.reload();
-  await expect(house.getByText("The kitchen feels small.")).toHaveCount(0);
+  thread = await openComments(jamie, house);
+  await expect(thread.getByText("The kitchen feels small.")).toHaveCount(0);
 
   // A comment containing markup is shown as plain text.
-  await house.getByLabel("Add a comment").fill("<img src=x onerror=alert(1)>");
-  await house.getByRole("button", { name: "Post comment" }).click();
-  await expect(house.getByText("<img src=x onerror=alert(1)>")).toBeVisible();
+  await thread.getByLabel("Add a comment").fill("<img src=x onerror=alert(1)>");
+  await thread.getByRole("button", { name: "Post comment" }).click();
+  await expect(thread.getByText("<img src=x onerror=alert(1)>")).toBeVisible();
 
   // Includes hydration mismatches, which only show up as page errors.
   expect(pageErrors).toEqual([]);
@@ -159,11 +163,10 @@ test("isolation: tokens, agents and signed-out visitors stay in their lane", asy
   const context = await browser.newContext();
   const client = await context.newPage();
   await client.goto(shareA.url);
-  await client.getByRole("group", { name: "Your reaction" }).first().getByRole("button", { name: /^Like/ }).click();
-  await client.getByRole("textbox", { name: "First name" }).fill("Casey");
-  await client.getByRole("button", { name: "Continue" }).click();
-  await expect(client.getByRole("group", { name: "Your reaction" }).first().getByRole("button", { name: /^Like/ })).toHaveAttribute("aria-pressed", "true");
+  await heartOf(client.getByRole("article").first()).click();
+  await joinAs(client, "Casey");
+  await expect(heartOf(client.getByRole("article").first())).toHaveAttribute("aria-pressed", "true");
   await client.goto(shareB.url);
-  await client.getByRole("group", { name: "Your reaction" }).first().getByRole("button", { name: /^Like/ }).click();
+  await heartOf(client.getByRole("article").first()).click();
   await expect(client.getByRole("textbox", { name: "First name" })).toBeVisible();
 });

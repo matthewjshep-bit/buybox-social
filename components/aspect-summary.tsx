@@ -9,7 +9,7 @@ export function AspectSummary({
   limit = 5,
   className,
   likeLabel = "People like",
-  dislikeLabel = "People don't like",
+  dislikeLabel = "People pass on",
 }: {
   liked: AspectCounts;
   disliked: AspectCounts;

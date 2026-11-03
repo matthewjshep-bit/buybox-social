@@ -1,16 +1,19 @@
 import { firstName, type Account } from "./auth";
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
-import type { AspectCounts, ReactionState } from "./reactions";
-import type { CommentTag } from "./shares";
+import { mediaKeyOf, NO_PHOTO_LIKES } from "./photos";
+import { NO_REACTION, TRENDING_MIN_THIS_WEEK, type AspectCounts, type ReactionState } from "./reactions";
+import { getPublicPhotoLikes, getPublicTimelines } from "./timeline";
 
 export type Totals = { likes: number; dislikes: number; comments: number };
 
 // Signs of life around a listing, drawn from public pages and private shares.
-export type Buzz = { sends: number; views: number; lastActivityAt: string | null };
+// `trending` is real: several reactions or comments in the past week.
+export type Buzz = { sends: number; views: number; lastActivityAt: string | null; trending: boolean };
 
-// Which specifics people call out. Likes come from everywhere; dislikes only
-// from public reactions, since private chats never warn strangers off a home.
+// Which specifics people call out. Likes come from everywhere, photo likes
+// included; dislikes only from public reactions, since private chats never
+// warn strangers off a home.
 export type AspectTotals = { liked: AspectCounts; disliked: AspectCounts };
 
 export type HomeCard = {
@@ -31,6 +34,7 @@ export type TotalsRow = {
   sends: number;
   views: number;
   last_activity: Date | null;
+  this_week: number;
   liked_aspects: AspectCounts;
   disliked_aspects: AspectCounts;
 };
@@ -42,6 +46,7 @@ export const toTotals = (row: TotalsRow) => ({
     sends: row.sends,
     views: row.views,
     lastActivityAt: row.last_activity?.toISOString() ?? null,
+    trending: row.this_week >= TRENDING_MIN_THIS_WEEK,
   },
   aspects: { liked: row.liked_aspects, disliked: row.disliked_aspects },
 });
@@ -54,12 +59,15 @@ export const totalsForListing = () => sql`
     pr.likes as pub_like, pr.dislikes as pub_dislike, pc.n as pub_comments,
     xr.likes as priv_like, xr.dislikes as priv_dislike, xc.n as priv_comments,
     xs.n as sends, v.n as views, la.counts as liked_aspects, da.counts as disliked_aspects,
+    wk.n as this_week,
     greatest(
       (select max(updated_at) from public_reactions where listing_key = l.listing_key),
       (select max(created_at) from public_comments where listing_key = l.listing_key),
       (select max(updated_at) from reactions where listing_key = l.listing_key),
       (select max(created_at) from comments
         where listing_key = l.listing_key and participant_id is not null),
+      (select max(created_at) from public_photo_likes where listing_key = l.listing_key),
+      (select max(created_at) from photo_likes where listing_key = l.listing_key),
       xs.last_sent
     ) as last_activity
   from (select 1) as one
@@ -85,17 +93,41 @@ export const totalsForListing = () => sql`
   cross join lateral (
     select coalesce(jsonb_object_agg(aspect, n), '{}'::jsonb) as counts
     from (
+      -- Once per person per specific, whether they picked it or liked it in a photo.
       select aspect, count(*)::int as n from (
-        select unnest(liked) as aspect from public_reactions where listing_key = l.listing_key
-        union all
-        select unnest(liked) from reactions where listing_key = l.listing_key) a
+        select 'v' || visitor_id as who, unnest(liked) as aspect
+        from public_reactions where listing_key = l.listing_key
+        union
+        select 'p' || participant_id, unnest(liked) from reactions where listing_key = l.listing_key
+        union
+        select 'v' || visitor_id, aspect from public_photo_likes
+        where listing_key = l.listing_key and aspect is not null
+        union
+        select 'p' || participant_id, aspect from photo_likes
+        where listing_key = l.listing_key and aspect is not null) a
       group by aspect) c) la
   cross join lateral (
     select coalesce(jsonb_object_agg(aspect, n), '{}'::jsonb) as counts
     from (
       select aspect, count(*)::int as n from (
         select unnest(disliked) as aspect from public_reactions where listing_key = l.listing_key) a
-      group by aspect) c) da`;
+      group by aspect) c) da
+  cross join lateral (
+    select
+      (select count(*) from public_reactions
+        where listing_key = l.listing_key and updated_at > now() - interval '7 days')
+      + (select count(*) from public_comments
+        where listing_key = l.listing_key and created_at > now() - interval '7 days')
+      + (select count(*) from reactions
+        where listing_key = l.listing_key and updated_at > now() - interval '7 days')
+      + (select count(*) from comments
+        where listing_key = l.listing_key and participant_id is not null
+          and created_at > now() - interval '7 days')
+      + (select count(*) from public_photo_likes
+        where listing_key = l.listing_key and created_at > now() - interval '7 days')
+      + (select count(*) from photo_likes
+        where listing_key = l.listing_key and created_at > now() - interval '7 days')
+      as n) wk`;
 
 // Shared sort orders, for the listing aliased `l` and its totals `t`.
 export const ORDER_BY = {
@@ -106,28 +138,7 @@ export const ORDER_BY = {
   latest: () => sql`t.last_activity desc nulls last`,
 };
 
-export async function getHomeCards(): Promise<HomeCard[]> {
-  const rows = await sql<({ data: Listing } & TotalsRow)[]>`
-    select l.data, t.*
-    from listings l
-    cross join lateral (${totalsForListing()}) t
-    where l.standard_status = 'Active'
-    order by ${ORDER_BY.reactions()}, ${ORDER_BY.talked()}, ${ORDER_BY.latest()}, l.listing_key
-    limit 60`;
-  return rows.map((row) => ({ listing: row.data, ...toTotals(row) }));
-}
-
-export type PublicReaction = { visitorId: string; name: string; state: ReactionState };
-export type PublicComment = {
-  id: string;
-  visitorId: string;
-  name: string;
-  tag: CommentTag | null;
-  body: string;
-  createdAt: string;
-};
-
-export async function getPublicListing(listingKey: string) {
+export async function getPublicListing(listingKey: string, visitorId: string | null = null) {
   if (listingKey.length > 100) return null;
   const [row] = await sql<({ data: Listing; standard_status: string } & TotalsRow)[]>`
     select l.data, l.standard_status, t.*
@@ -135,64 +146,35 @@ export async function getPublicListing(listingKey: string) {
     cross join lateral (${totalsForListing()}) t
     where l.listing_key = ${listingKey}`;
   if (!row) return null;
+  const listing: Listing = {
+    ...row.data,
+    StandardStatus: row.standard_status,
+    Media: [...row.data.Media].sort((a, b) => a.Order - b.Order),
+  };
 
-  const reactions = await sql<({ visitor_id: string; first_name: string } & ReactionState)[]>`
-    select r.visitor_id, v.first_name, r.reaction, r.liked, r.disliked
-    from public_reactions r join visitors v on v.id = r.visitor_id
-    where r.listing_key = ${listingKey}
-    order by r.updated_at`;
-  const comments = await sql<
-    {
-      id: string;
-      visitor_id: string;
-      first_name: string;
-      tag: CommentTag | null;
-      body: string;
-      created_at: Date;
-    }[]
-  >`
-    select c.id, c.visitor_id, v.first_name, c.tag, c.body, c.created_at
-    from public_comments c join visitors v on v.id = c.visitor_id
-    where c.listing_key = ${listingKey}
-    order by c.created_at`;
-
-  // Only comments their authors chose to share, which needs a like. No names.
-  const highlights = await sql<{ id: string; body: string; created_at: Date }[]>`
-    select id, body, created_at from comments
-    where listing_key = ${listingKey} and shared_publicly
-    order by created_at desc
-    limit 6`;
+  const [[mine], timelines, photoLikes] = await Promise.all([
+    visitorId
+      ? sql<ReactionState[]>`
+          select reaction, liked, disliked from public_reactions
+          where listing_key = ${listingKey} and visitor_id = ${visitorId}`
+      : Promise.resolve([] as ReactionState[]),
+    getPublicTimelines([listing], visitorId),
+    getPublicPhotoLikes([listingKey], visitorId),
+  ]);
 
   return {
-    highlights: highlights.map((h) => ({
-      id: h.id,
-      body: h.body,
-      createdAt: h.created_at.toISOString(),
-    })),
-    listing: {
-      ...row.data,
-      StandardStatus: row.standard_status,
-      Media: [...row.data.Media].sort((a, b) => a.Order - b.Order),
-    },
+    listing,
     ...toTotals(row),
-    reactions: reactions.map(
-      (r): PublicReaction => ({
-        visitorId: r.visitor_id,
-        name: r.first_name,
-        state: { reaction: r.reaction, liked: r.liked, disliked: r.disliked },
-      }),
-    ),
-    comments: comments.map(
-      (c): PublicComment => ({
-        id: c.id,
-        visitorId: c.visitor_id,
-        name: c.first_name,
-        tag: c.tag,
-        body: c.body,
-        createdAt: c.created_at.toISOString(),
-      }),
-    ),
+    mine: mine ? { reaction: mine.reaction, liked: mine.liked, disliked: mine.disliked } : NO_REACTION,
+    timeline: timelines.get(listingKey) ?? [],
+    photoLikes: photoLikes.get(listingKey) ?? NO_PHOTO_LIKES,
   };
+}
+
+// One photo of a listing, to check a photo like against what's really in it.
+export async function getListingPhoto(listingKey: string, mediaKey: string) {
+  const [row] = await sql<{ data: Listing }[]>`select data from listings where listing_key = ${listingKey}`;
+  return row?.data.Media.find((photo) => mediaKeyOf(photo) === mediaKey) ?? null;
 }
 
 export async function getVisitor(deviceToken: string | undefined) {

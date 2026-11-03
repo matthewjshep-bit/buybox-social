@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { joinAs } from "./helpers";
 
 const card = (page: import("@playwright/test").Page, address: string) =>
   page.getByRole("listitem").filter({ has: page.getByRole("link", { name: new RegExp(address) }) });
@@ -71,8 +72,7 @@ test("map-and-list search with filters, pins, sorting and the pop-out", async ({
   // The thumbs-up likes a home straight from the card (asking a signed-out visitor for a name).
   const heart = page.getByRole("button", { name: "Like 10421 Halvard Way NE" });
   await heart.click();
-  await page.getByRole("textbox", { name: "First name" }).fill("Remy");
-  await page.getByRole("button", { name: "Continue" }).click();
+  await joinAs(page, "Remy");
   await expect(heart).toHaveAttribute("aria-pressed", "true");
   await page.reload();
   await expect(page.getByRole("button", { name: "Like 10421 Halvard Way NE" })).toHaveAttribute("aria-pressed", "true");

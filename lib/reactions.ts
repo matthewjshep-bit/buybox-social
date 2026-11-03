@@ -30,6 +30,9 @@ export const NO_REACTION: ReactionState = { reaction: null, liked: [], disliked:
 
 export type AspectCounts = Partial<Record<Aspect, number>>;
 
+// A home is "trending" with this many reactions or comments in the past week.
+export const TRENDING_MIN_THIS_WEEK = 3;
+
 // Tapping Like or Dislike itself: on, or off again.
 export function toggleOverall(state: ReactionState, sentiment: Sentiment): ReactionState {
   if (state.reaction !== sentiment) return { ...state, reaction: sentiment };
@@ -56,38 +59,51 @@ export function toggleAspect(state: ReactionState, sentiment: Sentiment, aspect:
   };
 }
 
-const listOf = (aspects: Aspect[]) => {
-  const labels = aspects.map((a) => aspectLabel(a).toLowerCase());
+// "the kitchen", "the kitchen and natural light", "the yard, vibe and price".
+const listOf = (things: string[]) => {
+  const labels = things.map((thing) => thing.toLowerCase());
   if (labels.length <= 1) return `the ${labels[0] ?? ""}`;
   return `the ${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
 };
 
-// "liked the kitchen and vibe", "didn't like this", "liked this, but not the yard".
-// On client links the negative choice is called Pass, so `pass` words it that way.
-export function describeReaction(
-  { reaction, liked, disliked }: ReactionState,
-  { pass = false }: { pass?: boolean } = {},
-): string {
-  if (reaction === "dislike" && pass) {
-    if (disliked.length && liked.length) return `passed, didn't like ${listOf(disliked)} but liked ${listOf(liked)}`;
-    if (disliked.length) return `passed, didn't like ${listOf(disliked)}`;
-    if (liked.length) return `passed, but liked ${listOf(liked)}`;
-    return "passed on this";
+// Specifics plus anything liked in the photos, without repeats ("Kitchen" twice).
+const likedThings = (liked: Aspect[], photoTags: string[]) => {
+  const things = liked.map(aspectLabel) as string[];
+  for (const tag of photoTags) {
+    if (!things.some((t) => t.toLowerCase() === tag.toLowerCase())) things.push(tag);
   }
+  return things;
+};
+
+// "liked the kitchen and vibe", "passed on this", "passed, didn't like the yard",
+// "liked the marble counters" (from a photo). The negative choice is called
+// Pass everywhere, so it's worded that way.
+export function describeReaction({ reaction, liked, disliked }: ReactionState, photoTags: string[] = []): string {
+  const likes = likedThings(liked, photoTags);
+  const dislikes = disliked.map(aspectLabel) as string[];
   if (reaction === "like") {
-    if (liked.length && disliked.length) return `liked ${listOf(liked)} but not ${listOf(disliked)}`;
-    if (liked.length) return `liked ${listOf(liked)}`;
-    if (disliked.length) return `liked this, but not ${listOf(disliked)}`;
+    if (likes.length && dislikes.length) return `liked ${listOf(likes)} but not ${listOf(dislikes)}`;
+    if (likes.length) return `liked ${listOf(likes)}`;
+    if (dislikes.length) return `liked this, but not ${listOf(dislikes)}`;
     return "liked this";
   }
   if (reaction === "dislike") {
-    if (disliked.length && liked.length) return `didn't like ${listOf(disliked)}, but liked ${listOf(liked)}`;
-    if (disliked.length) return `didn't like ${listOf(disliked)}`;
-    if (liked.length) return `didn't like this, but liked ${listOf(liked)}`;
-    return "didn't like this";
+    if (dislikes.length && likes.length) return `passed, didn't like ${listOf(dislikes)} but liked ${listOf(likes)}`;
+    if (dislikes.length) return `passed, didn't like ${listOf(dislikes)}`;
+    if (likes.length) return `passed, but liked ${listOf(likes)}`;
+    return "passed on this";
   }
+  if (likes.length) return `liked ${listOf(likes)}`;
   return "reacted";
 }
+
+// The specifics offered after Like or Pass. Things you can see are liked right
+// on the photos, so Like offers only what photos can't show; Pass, which
+// photos can't express, offers everything.
+export const CHIPS: Record<Sentiment, Aspect[]> = {
+  like: ["price", "location", "layout", "vibe"],
+  dislike: ASPECTS.map((a) => a.id),
+};
 
 // What a stranger may see of a private reaction: the likes, never the dislikes.
 export const publicSideOf = (state: ReactionState): ReactionState | null =>

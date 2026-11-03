@@ -1,0 +1,834 @@
+"use client";
+
+import { ArrowUp, Heart, MessageCircle, MoreHorizontal, Send, Share2, Sparkles, ThumbsDown, User } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { loadReel, recordView, reloadReelHome } from "@/app/homes/actions";
+import { AspectSummary } from "@/components/aspect-summary";
+import { AspectChips, useReactions } from "@/components/like-pass";
+import { CommentComposer, NameGate, Timeline, type ThreadActions } from "@/components/listing-thread";
+import { usePhotoLikes } from "@/components/photo-likes";
+import { ReelPhotos } from "@/components/reel-photos";
+import { Sheet } from "@/components/sheet";
+import type { FeedPost, Headline } from "@/lib/feed";
+import { cn, formatPrice, timeAgo } from "@/lib/format";
+import { isSampleListing, type ListingMedia } from "@/lib/listings/types";
+import { photoTags, tagPhrase } from "@/lib/photos";
+import { describeReaction, NO_REACTION, type Aspect, type ReactionState } from "@/lib/reactions";
+
+// The feed: one home per screen, scrolled up like a reel, for as long as you
+// keep going. Photos fill the screen; the price, the facts and who's talking
+// sit over them, with the buttons down the right-hand side.
+
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+export function ReelFeed({
+  initial,
+  mode,
+  actions,
+  myName,
+  prompt,
+  header,
+  intro,
+  end,
+  infinite = false,
+  embedded = false,
+  agentName,
+}: {
+  initial: FeedPost[];
+  // Public pages, or an agent's private link.
+  mode: "public" | "share";
+  actions: ThreadActions;
+  myName: string | null;
+  prompt: string;
+  // Floats over the top of the feed.
+  header?: ReactNode;
+  // A first screen before the homes (an agent's note).
+  intro?: ReactNode;
+  // The last screen, after the homes.
+  end?: ReactNode;
+  // Loads more homes as you near the end.
+  infinite?: boolean;
+  // Inside a pop-out rather than filling the screen.
+  embedded?: boolean;
+  agentName?: string;
+}) {
+  // The order is fixed when the page opens, so a background refresh never
+  // reshuffles the homes under your thumb. Agent links follow the page, which
+  // reloads after every change there.
+  const [first] = useState(initial);
+  const [more, setMore] = useState<FeedPost[]>([]);
+  const [reloaded, setReloaded] = useState<Record<string, FeedPost>>({});
+  const [hasMore, setHasMore] = useState(infinite);
+  const [loading, setLoading] = useState(false);
+  const posts = (mode === "share" ? initial : [...first, ...more]).map(
+    (post) => reloaded[post.listing.ListingKey] ?? post,
+  );
+
+  const reload = useCallback(async (listingKey: string) => {
+    if (mode === "share") return;
+    const post = await reloadReelHome(listingKey);
+    if (post) setReloaded((current) => ({ ...current, [listingKey]: post }));
+  }, [mode]);
+
+  // On public pages, saving a comment reloads just that home's conversation.
+  const threadActions: ThreadActions =
+    mode === "share"
+      ? actions
+      : {
+          ...actions,
+          comment: async (listingKey, body, sharePublicly, parentId) => {
+            const result = await actions.comment(listingKey, body, sharePublicly, parentId);
+            if (result.ok) reload(listingKey);
+            return result;
+          },
+        };
+
+  return (
+    <NameGate actions={threadActions} myName={myName} prompt={prompt}>
+      <Feed
+        posts={posts}
+        mode={mode}
+        header={header}
+        intro={intro}
+        end={end}
+        embedded={embedded}
+        agentName={agentName}
+        hasMore={hasMore}
+        loading={loading}
+        onNearEnd={async () => {
+          if (!hasMore || loading) return;
+          setLoading(true);
+          const next = await loadReel(posts.map((post) => post.listing.ListingKey)).catch(() => []);
+          setMore((current) => [...current, ...next]);
+          if (next.length === 0) setHasMore(false);
+          setLoading(false);
+        }}
+      />
+    </NameGate>
+  );
+}
+
+function Feed({
+  posts,
+  mode,
+  header,
+  intro,
+  end,
+  embedded,
+  agentName,
+  hasMore,
+  loading,
+  onNearEnd,
+}: {
+  posts: FeedPost[];
+  mode: "public" | "share";
+  header?: ReactNode;
+  intro?: ReactNode;
+  end?: ReactNode;
+  embedded: boolean;
+  agentName?: string;
+  hasMore: boolean;
+  loading: boolean;
+  onNearEnd: () => void;
+}) {
+  const scroller = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(0);
+  const [sheet, setSheet] = useState<{ kind: "comments" | "more"; key: string } | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const reactions = useReactions(Object.fromEntries(posts.map((post) => [post.listing.ListingKey, post.mine])));
+  const offset = intro ? 1 : 0;
+  const panelCount = offset + posts.length + 1;
+  const activePost = posts[active - offset];
+
+  // Which screen is showing.
+  useEffect(() => {
+    const root = scroller.current;
+    if (!root) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) setActive(Number((entry.target as HTMLElement).dataset.panel));
+        }
+      },
+      { root, threshold: 0.6 },
+    );
+    root.querySelectorAll("[data-panel]").forEach((panel) => observer.observe(panel));
+    return () => observer.disconnect();
+  }, [panelCount]);
+
+  // More homes before you reach the end.
+  useEffect(() => {
+    if (hasMore && active >= offset + posts.length - 3) onNearEnd();
+  }, [active, hasMore, offset, posts.length, onNearEnd]);
+
+  // A home counts as viewed once it's been on screen for a moment.
+  const viewed = useRef(new Set<string>());
+  useEffect(() => {
+    const key = activePost?.listing.ListingKey;
+    if (!key || viewed.current.has(key)) return;
+    const timer = setTimeout(() => {
+      viewed.current.add(key);
+      recordView(key).catch(() => {});
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [activePost]);
+
+  const goTo = (index: number) => {
+    const root = scroller.current;
+    if (!root) return;
+    const target = Math.max(0, Math.min(panelCount - 1, index));
+    root.scrollTo({ top: target * root.clientHeight, behavior: reducedMotion() ? "auto" : "smooth" });
+  };
+
+  // ↑ and ↓ move between homes, unless you're typing or a sheet is open.
+  useEffect(() => {
+    if (embedded) return;
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (target.closest("input, textarea, select, [contenteditable]") || document.querySelector("dialog[open]")) return;
+      if (event.key === "ArrowDown" || event.key === "PageDown") goTo(active + 1);
+      else if (event.key === "ArrowUp" || event.key === "PageUp") goTo(active - 1);
+      else return;
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  const say = (message: string) => {
+    setToast(message);
+    setTimeout(() => setToast(null), 2200);
+  };
+
+  const share = async (post: FeedPost) => {
+    const url =
+      mode === "share" ? window.location.href : `${window.location.origin}/homes/${encodeURIComponent(post.listing.ListingKey)}`;
+    const title = `${post.listing.UnparsedAddress} · ${formatPrice(post.listing.ListPrice)}`;
+    try {
+      if (navigator.share) await navigator.share({ title, url });
+      else {
+        await navigator.clipboard.writeText(url);
+        say("Link copied");
+      }
+    } catch {
+      // Closing the share sheet isn't an error.
+    }
+  };
+
+  const sheetPost = sheet && posts.find((post) => post.listing.ListingKey === sheet.key);
+  const reviewed = posts.filter((post) => reactions.states[post.listing.ListingKey]?.reaction).length;
+
+  return (
+    <div
+      className={cn(
+        "overflow-hidden bg-stone-950 text-white",
+        embedded ? "relative h-full w-full" : "fixed inset-0 z-30",
+      )}
+    >
+      {mode === "public" && !embedded && <h1 className="sr-only">Homes for you</h1>}
+      <div
+        ref={scroller}
+        data-reel
+        className="h-full snap-y snap-mandatory overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {intro && (
+          <section data-panel={0} aria-label="Welcome" className="relative h-full snap-start snap-always">
+            {intro}
+          </section>
+        )}
+        {posts.map((post, i) => {
+          const key = post.listing.ListingKey;
+          const state = reactions.states[key] ?? NO_REACTION;
+          return (
+            <Panel
+              key={key}
+              index={offset + i}
+              post={post}
+              mode={mode}
+              active={active === offset + i}
+              near={Math.abs(active - (offset + i)) <= 1}
+              state={state}
+              base={reactions.base[key] ?? NO_REACTION}
+              error={reactions.errors[key]}
+              onLike={() => reactions.choose(key, "like")}
+              onDoubleTapLike={() => reactions.like(key)}
+              onComments={() => setSheet({ kind: "comments", key })}
+              onMore={() => setSheet({ kind: "more", key })}
+              onShare={() => share(post)}
+            />
+          );
+        })}
+        <section
+          data-panel={offset + posts.length}
+          aria-label="The end"
+          className="relative flex h-full snap-start snap-always flex-col items-center justify-center overflow-y-auto px-6 py-24 text-center"
+        >
+          {hasMore || loading ? (
+            <p role="status" className="text-white/80">
+              Finding more homes…
+            </p>
+          ) : (
+            <>
+              {mode === "share" && posts.length > 0 && (
+                <p className="mb-3 text-sm text-white/80">
+                  You&apos;ve reacted to {reviewed} of {posts.length} {posts.length === 1 ? "home" : "homes"}.
+                </p>
+              )}
+              {end}
+              {!embedded && (
+                <button
+                  type="button"
+                  onClick={() => goTo(0)}
+                  className="mt-6 flex min-h-11 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-white/90 hover:bg-white/10"
+                >
+                  <ArrowUp aria-hidden size={16} /> Back to the top
+                </button>
+              )}
+            </>
+          )}
+        </section>
+      </div>
+
+      {header && <div className="absolute inset-x-0 top-0 z-20">{header}</div>}
+      {mode === "share" && posts.length > 1 && active >= offset && active < offset + posts.length && (
+        <p
+          aria-live="polite"
+          className="absolute right-4 top-[calc(env(safe-area-inset-top)+4rem)] z-20 rounded-full bg-black/45 px-2.5 py-1 text-xs font-semibold tabular-nums backdrop-blur-sm"
+        >
+          {active - offset + 1} of {posts.length}
+        </p>
+      )}
+      {toast && (
+        <p
+          role="status"
+          className="absolute bottom-24 left-1/2 z-40 -translate-x-1/2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-ink shadow-lg"
+        >
+          {toast}
+        </p>
+      )}
+
+      <CommentsSheet
+        post={sheet?.kind === "comments" ? (sheetPost ?? null) : null}
+        mode={mode}
+        canShare={sheetPost ? reactions.states[sheetPost.listing.ListingKey]?.reaction === "like" : false}
+        onClose={() => setSheet(null)}
+      />
+      <MoreSheet
+        post={sheet?.kind === "more" ? (sheetPost ?? null) : null}
+        state={sheetPost ? (reactions.states[sheetPost.listing.ListingKey] ?? NO_REACTION) : NO_REACTION}
+        agentName={agentName}
+        onPass={() => sheetPost && reactions.choose(sheetPost.listing.ListingKey, "dislike")}
+        onToggle={(aspect) => sheetPost && reactions.toggle(sheetPost.listing.ListingKey, aspect)}
+        onNext={() => {
+          setSheet(null);
+          goTo(active + 1);
+        }}
+        onClose={() => setSheet(null)}
+      />
+    </div>
+  );
+}
+
+function Panel({
+  index,
+  post,
+  mode,
+  active,
+  near,
+  state,
+  base,
+  error,
+  onLike,
+  onDoubleTapLike,
+  onComments,
+  onMore,
+  onShare,
+}: {
+  index: number;
+  post: FeedPost;
+  mode: "public" | "share";
+  active: boolean;
+  // Close enough to load its photos.
+  near: boolean;
+  state: ReactionState;
+  base: ReactionState;
+  error?: string;
+  onLike: () => void;
+  onDoubleTapLike: () => void;
+  onComments: () => void;
+  onMore: () => void;
+  onShare: () => void;
+}) {
+  const { listing } = post;
+  const [photo, setPhoto] = useState(0);
+  // Photos load as a home comes close, and stay once loaded.
+  const [loaded, setLoaded] = useState(near);
+  if (near && !loaded) setLoaded(true);
+  const photos = usePhotoLikes(listing.ListingKey, post.photoLikes);
+  const liked = state.reaction === "like";
+  // Everyone who liked the home or anything in its photos, once each; yours
+  // counts the moment you tap.
+  const likes =
+    post.likes - (base.reaction === "like" || photos.hadAny ? 1 : 0) + (liked || photos.hasAny ? 1 : 0);
+  const spotted = (photo: ListingMedia) => new Set((photo.Spots ?? []).map((spot) => spot.tag));
+  const comments = post.timeline.filter((item) => item.kind === "comment").length;
+  const current = listing.Media[photo];
+
+  const likeWhatsShown = (shown: ListingMedia) => {
+    onDoubleTapLike();
+    const subject = photoTags(shown)[0];
+    if (subject && photos.enabled && !photos.isLiked(shown, subject)) photos.set(shown, subject, true);
+  };
+
+  return (
+    <article
+      data-panel={index}
+      data-home={listing.ListingKey}
+      aria-label={listing.UnparsedAddress}
+      className="relative h-full snap-start snap-always overflow-hidden bg-stone-950"
+    >
+      {loaded && (
+        <ReelPhotos
+          media={listing.Media}
+          address={listing.UnparsedAddress}
+          active={active}
+          priority={index <= 1}
+          onIndexChange={setPhoto}
+          onDoubleTap={likeWhatsShown}
+          spots={(shown) =>
+            photos.enabled &&
+            (shown.Spots ?? []).map((spot) => (
+              <PhotoSpot
+                key={spot.tag}
+                spot={spot}
+                liked={photos.isLiked(shown, spot.tag)}
+                count={photos.count(shown, spot.tag)}
+                onToggle={() => photos.set(shown, spot.tag, !photos.isLiked(shown, spot.tag))}
+              />
+            ))
+          }
+        />
+      )}
+      {/* Shade at the bottom keeps the caption readable over any photo. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-linear-to-t from-black/85 via-black/40 to-transparent"
+      />
+
+      <div className="pointer-events-none absolute inset-0 mx-auto max-w-5xl">
+        <Rail
+          address={listing.UnparsedAddress}
+          liked={liked}
+          likes={likes}
+          comments={comments}
+          mode={mode}
+          onLike={onLike}
+          onComments={onComments}
+          onShare={onShare}
+          onMore={onMore}
+        />
+
+        <div className="pointer-events-auto absolute inset-x-0 bottom-0 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pr-20 [text-shadow:0_1px_3px_rgb(0_0_0/0.45)] sm:px-6 sm:pr-24">
+          {/* Whatever in the photo has no spot to point at (the room itself, "open plan"). */}
+          {current && photos.enabled && photoTags(current).some((tag) => !spotted(current).has(tag)) && (
+            <div role="group" aria-label="Like what's in this photo" className="mb-3 flex flex-wrap gap-1.5">
+              {photoTags(current).filter((tag) => !spotted(current).has(tag)).map((tag) => {
+                const on = photos.isLiked(current, tag);
+                const n = photos.count(current, tag);
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    aria-pressed={on}
+                    aria-label={`Like ${tagPhrase(tag)}${n > 0 ? `, ${n} ${n === 1 ? "like" : "likes"}` : ""}`}
+                    onClick={() => photos.set(current, tag, !on)}
+                    className={cn(
+                      "flex min-h-9 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold backdrop-blur-md transition-transform [text-shadow:none] active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100",
+                      on ? "bg-white text-rose-600" : "bg-white/20 text-white hover:bg-white/30",
+                    )}
+                  >
+                    <Heart aria-hidden size={14} strokeWidth={2.5} className={cn(on && "fill-current")} />
+                    {tag}
+                    {n > 0 && <span className="tabular-nums opacity-80">{n}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <ActivityLine headline={post.headline} trending={post.buzz.trending} onOpen={onComments} />
+
+          <p className="mt-1 flex flex-wrap items-baseline gap-x-3">
+            <span className="font-display text-3xl font-semibold tabular-nums sm:text-4xl">
+              {formatPrice(listing.ListPrice)}
+            </span>
+            <span className="text-[15px] font-medium">
+              {listing.BedroomsTotal} bd · {listing.BathroomsTotalInteger} ba ·{" "}
+              {listing.LivingArea.toLocaleString("en-US")} sq ft
+            </span>
+          </p>
+          <h2 className="text-[15px] font-semibold leading-snug">
+            {listing.UnparsedAddress}, {listing.City}
+          </h2>
+          <Description listing={post.listing} reasons={post.reasons} />
+          {error && (
+            <p role="alert" className="mt-1 text-sm font-semibold text-rose-200">
+              {error}
+            </p>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function RailButton({
+  label,
+  count,
+  pressed,
+  onClick,
+  children,
+  name,
+}: {
+  label: string;
+  count?: string | number;
+  pressed?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+  name: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={name}
+      aria-pressed={pressed}
+      onClick={onClick}
+      className="group flex w-14 flex-col items-center gap-0.5 text-xs font-semibold [text-shadow:0_1px_3px_rgb(0_0_0/0.6)]"
+    >
+      <span className="flex size-12 items-center justify-center rounded-full bg-black/25 backdrop-blur-sm transition-transform group-active:scale-90 motion-reduce:transition-none motion-reduce:group-active:scale-100">
+        {children}
+      </span>
+      <span aria-hidden className="tabular-nums">
+        {count ?? label}
+      </span>
+    </button>
+  );
+}
+
+function Rail({
+  address,
+  liked,
+  likes,
+  comments,
+  mode,
+  onLike,
+  onComments,
+  onShare,
+  onMore,
+}: {
+  address: string;
+  liked: boolean;
+  likes: number;
+  comments: number;
+  mode: "public" | "share";
+  onLike: () => void;
+  onComments: () => void;
+  onShare: () => void;
+  onMore: () => void;
+}) {
+  return (
+    <div className="pointer-events-auto absolute bottom-[max(9rem,calc(env(safe-area-inset-bottom)+8rem))] right-2 z-10 flex flex-col items-center gap-4 sm:right-4">
+      <RailButton
+        name={`Like ${address}${likes ? `, ${likes} ${likes === 1 ? "like" : "likes"}` : ""}`}
+        label="Like"
+        count={likes || "Like"}
+        pressed={liked}
+        onClick={onLike}
+      >
+        <Heart
+          aria-hidden
+          size={30}
+          strokeWidth={2}
+          className={cn(liked ? "fill-rose-500 text-rose-500" : "text-white", "drop-shadow")}
+        />
+      </RailButton>
+      <RailButton
+        name={`Comments${comments ? `, ${comments}` : ""}`}
+        label="Comments"
+        count={comments || "Comment"}
+        onClick={onComments}
+      >
+        <MessageCircle aria-hidden size={28} className="drop-shadow" />
+      </RailButton>
+      <RailButton name={mode === "share" ? "Invite someone" : "Share"} label={mode === "share" ? "Invite" : "Share"} onClick={onShare}>
+        {mode === "share" ? <Send aria-hidden size={26} /> : <Share2 aria-hidden size={26} className="drop-shadow" />}
+      </RailButton>
+      <RailButton name="More options" label="More" onClick={onMore}>
+        <MoreHorizontal aria-hidden size={28} />
+      </RailButton>
+    </div>
+  );
+}
+
+function headlineText(headline: Headline) {
+  if (headline.kind === "sent") {
+    return headline.who === "you" ? "You sent this to a client" : "An agent sent this to a buyer";
+  }
+  const who =
+    headline.who === "anonymous" ? "A buyer" : headline.who === "client" ? `${headline.name}, your client,` : headline.name;
+  if (headline.kind === "comment") return headline.who === "anonymous" ? "A buyer commented privately" : `${who} commented`;
+  if (headline.kind === "photo") return `${who} liked ${tagPhrase(headline.tag)}`;
+  return `${who} ${describeReaction(headline.state)}`;
+}
+
+// The latest thing someone did, like a caption's first line. Opens the conversation.
+function ActivityLine({
+  headline,
+  trending,
+  onOpen,
+}: {
+  headline: Headline | null;
+  trending: boolean;
+  onOpen: () => void;
+}) {
+  if (!headline && !trending) return null;
+  const named = headline && "name" in headline;
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {headline && (
+        <button type="button" onClick={onOpen} className="flex min-h-9 items-center gap-2 text-left text-sm">
+          <span
+            aria-hidden
+            className={cn(
+              "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold [text-shadow:none]",
+              named ? "bg-brand text-white" : "bg-white/25 text-white",
+            )}
+          >
+            {named ? headline.name[0]?.toUpperCase() : headline.kind === "sent" ? <Send size={13} /> : <User size={14} />}
+          </span>
+          <span>
+            <span className="font-semibold">{headlineText(headline)}</span>
+            <span className="text-white/75" suppressHydrationWarning>
+              {" "}
+              · {timeAgo(headline.at)}
+            </span>
+          </span>
+        </button>
+      )}
+      {trending && (
+        <span className="rounded-full bg-rose-500/90 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide [text-shadow:none]">
+          Trending
+        </span>
+      )}
+    </div>
+  );
+}
+
+// The listing's description, two lines until you ask for more, then who listed it.
+function Description({ listing, reasons }: { listing: FeedPost["listing"]; reasons: string[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-1 text-sm leading-snug text-white/90">
+      {reasons.length > 0 && (
+        <p className="flex flex-wrap items-center gap-1 font-semibold text-white">
+          <Sparkles aria-hidden size={13} />
+          For you: {reasons.join(" · ")}
+        </p>
+      )}
+      {listing.PublicRemarks && (
+        <p className={cn("mt-0.5", !open && "line-clamp-2")}>
+          {listing.PublicRemarks}
+        </p>
+      )}
+      {listing.PublicRemarks && listing.PublicRemarks.length > 110 && (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          className="min-h-8 text-sm font-semibold text-white"
+        >
+          {open ? "less" : "more"}
+        </button>
+      )}
+      <p className="mt-0.5 text-xs text-white/75">
+        {listing.ListAgentFullName && `Listed by ${listing.ListAgentFullName}`}
+        {listing.ListOfficeName && ` · ${listing.ListOfficeName}`}
+        {isSampleListing(listing) && " · Sample listing"}
+      </p>
+    </div>
+  );
+}
+
+function CommentsSheet({
+  post,
+  mode,
+  canShare,
+  onClose,
+}: {
+  post: FeedPost | null;
+  mode: "public" | "share";
+  canShare: boolean;
+  onClose: () => void;
+}) {
+  const comments = post?.timeline.filter((item) => item.kind === "comment").length ?? 0;
+  return (
+    <Sheet
+      open={Boolean(post)}
+      onClose={onClose}
+      label="Comments"
+      title={comments ? `${comments} ${comments === 1 ? "comment" : "comments"}` : "Comments"}
+      footer={
+        post && (
+          <CommentComposer
+            listingKey={post.listing.ListingKey}
+            compact={mode === "public"}
+            canShare={mode === "share" && canShare}
+          />
+        )
+      }
+    >
+      {post && (
+        <>
+          {mode === "public" && (
+            <>
+              <AspectSummary liked={post.aspects.liked} disliked={post.aspects.disliked} limit={4} />
+              <Buzz post={post} />
+            </>
+          )}
+          <div className="mt-4">
+            <Timeline listingKey={post.listing.ListingKey} items={post.timeline} canShare={canShare} composer={false} />
+          </div>
+          {mode === "public" && (
+            <p className="mt-6 text-xs text-stone-600">
+              Comments here are public. Buyers&apos; private chats with their agents stay private unless they choose to
+              share.
+            </p>
+          )}
+        </>
+      )}
+    </Sheet>
+  );
+}
+
+// The quiet signals: views, agents sending it, private conversations.
+function Buzz({ post }: { post: FeedPost }) {
+  const parts = [
+    post.buzz.views > 0 && `${post.buzz.views} ${post.buzz.views === 1 ? "view" : "views"}`,
+    post.buzz.sends > 0 && `sent to ${post.buzz.sends} ${post.buzz.sends === 1 ? "buyer" : "buyers"} by agents`,
+    post.privateComments > 0 &&
+      `${post.privateComments} ${post.privateComments === 1 ? "comment" : "comments"} in private chats`,
+  ].filter(Boolean);
+  if (parts.length === 0) return null;
+  return (
+    <p aria-label="Activity" className="mt-2 text-sm text-stone-600">
+      {parts.join(" · ")}
+    </p>
+  );
+}
+
+function MoreSheet({
+  post,
+  state,
+  agentName,
+  onPass,
+  onToggle,
+  onNext,
+  onClose,
+}: {
+  post: FeedPost | null;
+  state: ReactionState;
+  agentName?: string;
+  onPass: () => void;
+  onToggle: (aspect: Aspect) => void;
+  onNext: () => void;
+  onClose: () => void;
+}) {
+  const passed = state.reaction === "dislike";
+  return (
+    <Sheet open={Boolean(post)} onClose={onClose} label="More" title="More">
+      {post && (
+        <div className="flex flex-col gap-5">
+          <button
+            type="button"
+            aria-pressed={passed}
+            onClick={onPass}
+            className={cn(
+              "flex min-h-12 items-center justify-center gap-2 rounded-xl border font-semibold",
+              passed ? "border-amber-800 bg-amber-800 text-white" : "border-stone-300 bg-white hover:border-stone-500",
+            )}
+          >
+            <ThumbsDown aria-hidden size={18} />
+            Not for me
+          </button>
+          {state.reaction ? (
+            <AspectChips state={state} onToggle={onToggle} />
+          ) : (
+            <p className="text-sm text-stone-600">
+              Like it with the heart, or tell us it&apos;s not for you
+              {agentName ? `, and ${agentName} will know` : ""}. Either way, your picks get better.
+            </p>
+          )}
+          {passed && (
+            <button
+              type="button"
+              onClick={onNext}
+              className="flex min-h-12 items-center justify-center rounded-xl bg-ink font-semibold text-white"
+            >
+              Next home
+            </button>
+          )}
+          {!agentName && (
+            <Link
+              href={`/search?q=${encodeURIComponent(post.listing.City)}`}
+              className="text-sm font-semibold text-brand underline-offset-2 hover:underline"
+            >
+              See homes near {post.listing.City} on the map
+            </Link>
+          )}
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
+// A heart pinned to something in the photo: the floating staircase, the deck.
+function PhotoSpot({
+  spot,
+  liked,
+  count,
+  onToggle,
+}: {
+  spot: { tag: string; x: number; y: number };
+  liked: boolean;
+  count: number;
+  onToggle: () => void;
+}) {
+  // Near an edge, the label opens inward so it stays on the photo.
+  const shift = spot.x > 0.7 ? "-88%" : spot.x < 0.3 ? "-12%" : "-50%";
+  return (
+    <button
+      type="button"
+      aria-pressed={liked}
+      aria-label={`Like ${tagPhrase(spot.tag)}${count > 0 ? `, ${count} ${count === 1 ? "like" : "likes"}` : ""}`}
+      onClick={onToggle}
+      style={{ left: `${spot.x * 100}%`, top: `${spot.y * 100}%`, transform: `translate(${shift}, -50%)` }}
+      className={cn(
+        "absolute z-10 flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-full py-1 pl-1 pr-3 text-[13px] font-semibold shadow-lg backdrop-blur-md transition-colors",
+        liked ? "bg-white text-rose-600" : "bg-black/45 text-white hover:bg-black/60",
+      )}
+    >
+      <span
+        className={cn(
+          "flex size-7 items-center justify-center rounded-full",
+          liked ? "bg-rose-500 text-white" : "bg-white/90 text-rose-500",
+        )}
+      >
+        <Heart aria-hidden size={14} strokeWidth={2.5} className="fill-current" />
+      </span>
+      {spot.tag}
+      {count > 0 && <span className="tabular-nums opacity-80">{count}</span>}
+    </button>
+  );
+}

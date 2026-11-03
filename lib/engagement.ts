@@ -49,3 +49,11 @@ export async function ensureDevice() {
   });
   return device;
 }
+
+// A like on something in a photo: which photo, and which of its tags.
+export const photoLikeSchema = z.object({
+  listingKey: z.string().min(1).max(100),
+  mediaKey: z.string().min(1).max(500),
+  tag: z.string().min(1).max(60),
+  liked: z.boolean(),
+});
