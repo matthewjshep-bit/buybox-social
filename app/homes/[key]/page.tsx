@@ -24,11 +24,10 @@ export default async function HomePage({ params }: Props) {
   const { key } = await params;
   return (
     <div className="mx-auto max-w-5xl px-0 pb-10 sm:px-5">
-      <nav className="flex items-center justify-between px-4 py-3 sm:px-0">
-        <Link href="/" className="flex min-h-11 items-center gap-1.5 font-medium">
+      <nav className="px-4 py-3 sm:px-0">
+        <Link href="/" className="flex min-h-11 w-fit items-center gap-1.5 font-medium">
           <ArrowLeft aria-hidden size={18} /> All homes
         </Link>
-        <span className="font-display text-lg font-semibold">BuyBox Social</span>
       </nav>
       <main className="overflow-hidden bg-white shadow-sm ring-1 ring-stone-200 sm:rounded-2xl">
         <ListingDetail listingKey={decodeURIComponent(key)} />

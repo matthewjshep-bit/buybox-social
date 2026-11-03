@@ -4,16 +4,20 @@ import useEmblaCarousel from "embla-carousel-react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
+import { cn } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
 
 export function PhotoCarousel({
   media,
   address,
   priority = false,
+  fillHeight = false,
 }: {
   media: ListingMedia[];
   address: string;
   priority?: boolean;
+  // On wide screens, stretch to the height of the parent instead of 4:3.
+  fillHeight?: boolean;
 }) {
   const [emblaRef, embla] = useEmblaCarousel();
   const [index, setIndex] = useState(0);
@@ -35,18 +39,21 @@ export function PhotoCarousel({
       role="group"
       aria-roledescription="carousel"
       aria-label={`Photos of ${address}`}
-      className="group relative bg-stone-200"
+      className={cn("group relative bg-stone-200", fillHeight && "lg:h-full")}
     >
-      <div ref={emblaRef} className="overflow-hidden">
-        <div className="flex touch-pan-y">
+      <div ref={emblaRef} className={cn("overflow-hidden", fillHeight && "lg:h-full")}>
+        <div className={cn("flex touch-pan-y", fillHeight && "lg:h-full")}>
           {media.map((photo, i) => (
-            <div key={photo.MediaURL} className="relative aspect-[4/3] w-full shrink-0">
+            <div
+              key={photo.MediaURL}
+              className={cn("relative aspect-[4/3] w-full shrink-0", fillHeight && "lg:aspect-auto lg:h-full")}
+            >
               <Image
                 src={photo.MediaURL}
                 alt={photo.ShortDescription ?? `${address}, photo ${i + 1}`}
                 fill
                 priority={priority && i === 0}
-                sizes="(max-width: 640px) 100vw, 576px"
+                sizes={fillHeight ? "(max-width: 1024px) 100vw, 720px" : "(max-width: 640px) 100vw, 576px"}
                 className="object-cover"
               />
             </div>

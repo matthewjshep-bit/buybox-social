@@ -11,7 +11,7 @@ export function ListingFacts({ listing }: { listing: Listing }) {
           {listing.StandardStatus}
         </p>
       )}
-      <p className="font-display text-3xl">{formatPrice(listing.ListPrice)}</p>
+      <p className="font-display text-3xl tabular-nums">{formatPrice(listing.ListPrice)}</p>
       <h2 className="mt-1 font-medium">
         {listing.UnparsedAddress}
         <span className="block text-sm font-normal text-stone-600">
@@ -20,10 +20,11 @@ export function ListingFacts({ listing }: { listing: Listing }) {
       </h2>
       <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-stone-700">
         <li className="flex items-center gap-1.5">
-          <Bed aria-hidden size={16} /> {listing.BedroomsTotal} beds
+          <Bed aria-hidden size={16} /> {listing.BedroomsTotal} {listing.BedroomsTotal === 1 ? "bed" : "beds"}
         </li>
         <li className="flex items-center gap-1.5">
-          <Bath aria-hidden size={16} /> {listing.BathroomsTotalInteger} baths
+          <Bath aria-hidden size={16} /> {listing.BathroomsTotalInteger}{" "}
+          {listing.BathroomsTotalInteger === 1 ? "bath" : "baths"}
         </li>
         <li className="flex items-center gap-1.5">
           <Ruler aria-hidden size={16} /> {listing.LivingArea.toLocaleString("en-US")} sq ft

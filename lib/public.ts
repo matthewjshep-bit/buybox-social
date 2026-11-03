@@ -1,62 +1,59 @@
+import { firstName, type Account } from "./auth";
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
-import type { CommentTag, Reaction } from "./shares";
+import type { AspectCounts, ReactionState } from "./reactions";
+import type { CommentTag } from "./shares";
 
-export type Totals = { loves: number; maybes: number; passes: number; comments: number };
+export type Totals = { likes: number; dislikes: number; comments: number };
 
 // Signs of life around a listing, drawn from public pages and private shares.
-// All positive or neutral, so nothing here steers anyone away from a home.
 export type Buzz = { sends: number; views: number; lastActivityAt: string | null };
+
+// Which specifics people call out. Likes come from everywhere; dislikes only
+// from public reactions, since private chats never warn strangers off a home.
+export type AspectTotals = { liked: AspectCounts; disliked: AspectCounts };
 
 export type HomeCard = {
   listing: Listing;
   publicTotals: Totals;
   privateTotals: Totals;
   buzz: Buzz;
+  aspects: AspectTotals;
 };
 
-type TotalsRow = {
-  pub_love: number;
-  pub_maybe: number;
-  pub_pass: number;
+export type TotalsRow = {
+  pub_like: number;
+  pub_dislike: number;
   pub_comments: number;
-  priv_love: number;
-  priv_maybe: number;
-  priv_pass: number;
+  priv_like: number;
+  priv_dislike: number;
   priv_comments: number;
   sends: number;
   views: number;
   last_activity: Date | null;
+  liked_aspects: AspectCounts;
+  disliked_aspects: AspectCounts;
 };
 
-const toTotals = (row: TotalsRow) => ({
-  publicTotals: {
-    loves: row.pub_love,
-    maybes: row.pub_maybe,
-    passes: row.pub_pass,
-    comments: row.pub_comments,
-  },
-  privateTotals: {
-    loves: row.priv_love,
-    maybes: row.priv_maybe,
-    passes: row.priv_pass,
-    comments: row.priv_comments,
-  },
+export const toTotals = (row: TotalsRow) => ({
+  publicTotals: { likes: row.pub_like, dislikes: row.pub_dislike, comments: row.pub_comments },
+  privateTotals: { likes: row.priv_like, dislikes: row.priv_dislike, comments: row.priv_comments },
   buzz: {
     sends: row.sends,
     views: row.views,
     lastActivityAt: row.last_activity?.toISOString() ?? null,
   },
+  aspects: { liked: row.liked_aspects, disliked: row.disliked_aspects },
 });
 
 // Totals for the listing aliased `l` in the enclosing query. Private share
 // threads contribute counts only, never names or words, and only clients'
 // comments count, not agent replies.
-const totalsForListing = () => sql`
+export const totalsForListing = () => sql`
   select
-    pr.love as pub_love, pr.maybe as pub_maybe, pr.pass as pub_pass, pc.n as pub_comments,
-    xr.love as priv_love, xr.maybe as priv_maybe, xr.pass as priv_pass, xc.n as priv_comments,
-    xs.n as sends, v.n as views,
+    pr.likes as pub_like, pr.dislikes as pub_dislike, pc.n as pub_comments,
+    xr.likes as priv_like, xr.dislikes as priv_dislike, xc.n as priv_comments,
+    xs.n as sends, v.n as views, la.counts as liked_aspects, da.counts as disliked_aspects,
     greatest(
       (select max(updated_at) from public_reactions where listing_key = l.listing_key),
       (select max(created_at) from public_comments where listing_key = l.listing_key),
@@ -67,16 +64,14 @@ const totalsForListing = () => sql`
     ) as last_activity
   from (select 1) as one
   cross join lateral (
-    select count(*) filter (where reaction = 'love')::int as love,
-           count(*) filter (where reaction = 'maybe')::int as maybe,
-           count(*) filter (where reaction = 'pass')::int as pass
+    select count(*) filter (where reaction = 'like')::int as likes,
+           count(*) filter (where reaction = 'dislike')::int as dislikes
     from public_reactions where listing_key = l.listing_key) pr
   cross join lateral (
     select count(*)::int as n from public_comments where listing_key = l.listing_key) pc
   cross join lateral (
-    select count(*) filter (where reaction = 'love')::int as love,
-           count(*) filter (where reaction = 'maybe')::int as maybe,
-           count(*) filter (where reaction = 'pass')::int as pass
+    select count(*) filter (where reaction = 'like')::int as likes,
+           count(*) filter (where reaction = 'dislike')::int as dislikes
     from reactions where listing_key = l.listing_key) xr
   cross join lateral (
     select count(*)::int as n from comments
@@ -86,7 +81,30 @@ const totalsForListing = () => sql`
     from share_listings sl join shares s on s.id = sl.share_id
     where sl.listing_key = l.listing_key) xs
   cross join lateral (
-    select count(*)::int as n from listing_views where listing_key = l.listing_key) v`;
+    select count(*)::int as n from listing_views where listing_key = l.listing_key) v
+  cross join lateral (
+    select coalesce(jsonb_object_agg(aspect, n), '{}'::jsonb) as counts
+    from (
+      select aspect, count(*)::int as n from (
+        select unnest(liked) as aspect from public_reactions where listing_key = l.listing_key
+        union all
+        select unnest(liked) from reactions where listing_key = l.listing_key) a
+      group by aspect) c) la
+  cross join lateral (
+    select coalesce(jsonb_object_agg(aspect, n), '{}'::jsonb) as counts
+    from (
+      select aspect, count(*)::int as n from (
+        select unnest(disliked) as aspect from public_reactions where listing_key = l.listing_key) a
+      group by aspect) c) da`;
+
+// Shared sort orders, for the listing aliased `l` and its totals `t`.
+export const ORDER_BY = {
+  reactions: () => sql`t.pub_like + t.pub_dislike + t.priv_like + t.priv_dislike desc`,
+  liked: () => sql`t.pub_like + t.priv_like desc`,
+  talked: () => sql`t.pub_comments + t.priv_comments desc`,
+  viewed: () => sql`t.views desc`,
+  latest: () => sql`t.last_activity desc nulls last`,
+};
 
 export async function getHomeCards(): Promise<HomeCard[]> {
   const rows = await sql<({ data: Listing } & TotalsRow)[]>`
@@ -94,15 +112,12 @@ export async function getHomeCards(): Promise<HomeCard[]> {
     from listings l
     cross join lateral (${totalsForListing()}) t
     where l.standard_status = 'Active'
-    order by
-      t.pub_love + t.pub_maybe + t.pub_pass + t.pub_comments
-        + t.priv_love + t.priv_maybe + t.priv_pass + t.priv_comments + t.sends desc,
-      t.last_activity desc nulls last, l.updated_at desc, l.listing_key
+    order by ${ORDER_BY.reactions()}, ${ORDER_BY.talked()}, ${ORDER_BY.latest()}, l.listing_key
     limit 60`;
   return rows.map((row) => ({ listing: row.data, ...toTotals(row) }));
 }
 
-export type PublicReaction = { visitorId: string; name: string; reaction: Reaction };
+export type PublicReaction = { visitorId: string; name: string; state: ReactionState };
 export type PublicComment = {
   id: string;
   visitorId: string;
@@ -121,8 +136,8 @@ export async function getPublicListing(listingKey: string) {
     where l.listing_key = ${listingKey}`;
   if (!row) return null;
 
-  const reactions = await sql<{ visitor_id: string; first_name: string; reaction: Reaction }[]>`
-    select r.visitor_id, v.first_name, r.reaction
+  const reactions = await sql<({ visitor_id: string; first_name: string } & ReactionState)[]>`
+    select r.visitor_id, v.first_name, r.reaction, r.liked, r.disliked
     from public_reactions r join visitors v on v.id = r.visitor_id
     where r.listing_key = ${listingKey}
     order by r.updated_at`;
@@ -141,10 +156,10 @@ export async function getPublicListing(listingKey: string) {
     where c.listing_key = ${listingKey}
     order by c.created_at`;
 
-  // Only comments their authors chose to share, and only "Like" ones. No names.
+  // Only comments their authors chose to share, which needs a like. No names.
   const highlights = await sql<{ id: string; body: string; created_at: Date }[]>`
     select id, body, created_at from comments
-    where listing_key = ${listingKey} and shared_publicly and tag = 'like'
+    where listing_key = ${listingKey} and shared_publicly
     order by created_at desc
     limit 6`;
 
@@ -161,7 +176,11 @@ export async function getPublicListing(listingKey: string) {
     },
     ...toTotals(row),
     reactions: reactions.map(
-      (r): PublicReaction => ({ visitorId: r.visitor_id, name: r.first_name, reaction: r.reaction }),
+      (r): PublicReaction => ({
+        visitorId: r.visitor_id,
+        name: r.first_name,
+        state: { reaction: r.reaction, liked: r.liked, disliked: r.disliked },
+      }),
     ),
     comments: comments.map(
       (c): PublicComment => ({
@@ -181,4 +200,25 @@ export async function getVisitor(deviceToken: string | undefined) {
   const [visitor] = await sql<{ id: string; first_name: string }[]>`
     select id, first_name from visitors where device_token = ${deviceToken}`;
   return visitor ?? null;
+}
+
+// Who a person's public reactions and comments belong to: their account when
+// signed in (so it follows them across devices), otherwise this browser.
+export async function getPublicIdentity(account: Account | null, deviceToken: string | undefined) {
+  if (account?.role) {
+    const [visitor] = await sql<{ id: string; first_name: string }[]>`
+      select id, first_name from visitors where account_id = ${account.id}`;
+    return { visitor: visitor ?? null, name: firstName(account) };
+  }
+  const visitor = await getVisitor(deviceToken);
+  return { visitor, name: visitor?.first_name ?? null };
+}
+
+export async function ensureAccountVisitor(account: Account) {
+  const [visitor] = await sql<{ id: string; first_name: string }[]>`
+    insert into visitors (device_token, first_name, account_id)
+    values (${`account:${account.id}`}, ${firstName(account)}, ${account.id})
+    on conflict (account_id) do update set first_name = excluded.first_name
+    returning id, first_name`;
+  return visitor;
 }

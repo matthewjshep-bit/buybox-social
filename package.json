@@ -10,7 +10,8 @@
     "db:local": "mkdir -p .data && pglite-server --db=.data/pg --port=54329",
     "db:setup": "node --env-file-if-exists=.env.local --import tsx scripts/db-setup.ts",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "postinstall": "node scripts/copy-map-worker.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -18,10 +19,12 @@
     "clsx": "^2.1.1",
     "embla-carousel-react": "^8.6.0",
     "lucide-react": "^1.66.0",
+    "maplibre-gl": "^6.16.0",
     "next": "16.4.3",
     "postgres": "^4.0.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "react-map-gl": "^8.1.3",
     "zod": "^4.6.7"
   },
   "devDependencies": {

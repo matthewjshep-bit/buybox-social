@@ -8,9 +8,13 @@ export async function signInAgent(browser: Browser, email: string, name: string)
   const page = await context.newPage();
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.waitForURL("**/welcome");
+  await page.getByRole("radio", { name: /I'm an agent/ }).check();
+  await page.getByLabel("Your name").fill(name);
+  await page.getByRole("button", { name: "Continue" }).click();
   await page.waitForURL("**/dashboard/profile");
-  await page.getByLabel("Full name").fill(name);
+  await expect(page.getByLabel("Full name")).toHaveValue(name);
   await page.getByLabel("Brokerage").fill("Harbor & Pine Realty");
   await page.getByRole("button", { name: "Merlot" }).click();
   await page.getByLabel("Your photo").setInputFiles({
@@ -35,4 +39,17 @@ export async function createShare(page: Page, addresses: string[]) {
   await page.waitForURL("**/dashboard/shares/*");
   const url = await page.getByLabel("Your link is ready").inputValue();
   return { url, dashboardUrl: page.url() };
+}
+
+export async function signUpBuyer(browser: Browser, email: string, name: string) {
+  const page = await (await browser.newContext()).newPage();
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(email);
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.waitForURL("**/welcome");
+  await page.getByRole("radio", { name: /I'm buying a home/ }).check();
+  await page.getByLabel("Your name").fill(name);
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.waitForURL((url) => url.pathname === "/");
+  return page;
 }

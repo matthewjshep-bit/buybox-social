@@ -1,6 +1,7 @@
 "use server";
 
 import { refresh } from "next/cache";
+import { getCurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import {
   commentSchema,
@@ -12,8 +13,8 @@ import {
   readDevice,
   type ActionResult,
 } from "@/lib/engagement";
-import { getVisitor } from "@/lib/public";
-import type { CommentTag, Reaction } from "@/lib/shares";
+import { ensureAccountVisitor, getVisitor } from "@/lib/public";
+import type { ReactionState } from "@/lib/reactions";
 
 // Counts each browser once per listing, from public pages and share links alike.
 export async function recordView(listingKey: string): Promise<void> {
@@ -41,27 +42,32 @@ async function resolveVisitor(listingKey: string) {
   const [listing] = await sql`
     select 1 from listings where listing_key = ${listingKey} and standard_status = 'Active'`;
   if (!listing) return null;
+  const account = await getCurrentUser();
+  if (account?.role) return ensureAccountVisitor(account);
   return getVisitor(await readDevice());
 }
 
 export async function setPublicReaction(
   listingKey: string,
-  reaction: Reaction | null,
+  input: ReactionState,
 ): Promise<ActionResult> {
-  if (!reactionSchema.safeParse(reaction).success) return fail("Unknown reaction.");
+  const parsed = reactionSchema.safeParse(input);
+  if (!parsed.success) return fail("We couldn't save that reaction.");
+  const state = parsed.data;
   const visitor = await resolveVisitor(listingKey);
   if (!visitor) return fail("Please add your name first.");
 
-  if (reaction === null) {
+  if (state.reaction === null) {
     await sql`
       delete from public_reactions
       where listing_key = ${listingKey} and visitor_id = ${visitor.id}`;
   } else {
     await sql`
-      insert into public_reactions (listing_key, visitor_id, reaction)
-      values (${listingKey}, ${visitor.id}, ${reaction})
+      insert into public_reactions (listing_key, visitor_id, reaction, liked, disliked)
+      values (${listingKey}, ${visitor.id}, ${state.reaction}, ${state.liked}::text[], ${state.disliked}::text[])
       on conflict (listing_key, visitor_id)
-      do update set reaction = excluded.reaction, updated_at = now()`;
+      do update set reaction = excluded.reaction, liked = excluded.liked,
+        disliked = excluded.disliked, updated_at = now()`;
   }
   refresh();
   return { ok: true };
@@ -70,9 +76,8 @@ export async function setPublicReaction(
 export async function addPublicComment(
   listingKey: string,
   body: string,
-  tag: CommentTag | null,
 ): Promise<ActionResult> {
-  const parsed = commentSchema.safeParse({ body, tag });
+  const parsed = commentSchema.safeParse(body);
   if (!parsed.success) return fail("Comments can be up to 1,000 characters.");
   const visitor = await resolveVisitor(listingKey);
   if (!visitor) return fail("Please add your name first.");
@@ -83,8 +88,8 @@ export async function addPublicComment(
   if (count >= MAX_COMMENTS_PER_MINUTE) return fail("Slow down a little, then try again.");
 
   await sql`
-    insert into public_comments (listing_key, visitor_id, tag, body)
-    values (${listingKey}, ${visitor.id}, ${parsed.data.tag}, ${parsed.data.body})`;
+    insert into public_comments (listing_key, visitor_id, body)
+    values (${listingKey}, ${visitor.id}, ${parsed.data})`;
   refresh();
   return { ok: true };
 }

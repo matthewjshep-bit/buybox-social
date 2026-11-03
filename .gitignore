@@ -46,3 +46,6 @@ test-results/
 playwright-report/
 !.env.example
 test-results-server.log
+
+# copied from node_modules by scripts/copy-map-worker.mjs
+/public/vendor/

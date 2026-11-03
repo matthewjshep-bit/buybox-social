@@ -1,28 +1,34 @@
-import { Eye, Flame, Heart, Lock, MessageCircle, Quote, Send } from "lucide-react";
+import { Eye, Flame, Lock, MessageCircle, Quote, Send, ThumbsDown, ThumbsUp } from "lucide-react";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { addPublicComment, joinPublic, setPublicReaction } from "@/app/homes/actions";
 import { ListingFacts } from "@/components/listing-facts";
-import { CommentThread, NameGate, ReactionBar } from "@/components/listing-thread";
+import { AspectSummary } from "@/components/aspect-summary";
+import { CommentThread, NameGate, ReactionPicker } from "@/components/listing-thread";
 import { LiveRefresh } from "@/components/live-refresh";
 import { PhotoCarousel } from "@/components/photo-carousel";
 import { ViewTracker } from "@/components/view-tracker";
+import { getCurrentUser } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
 import { activeLabel, timeAgo } from "@/lib/format";
 import { isSampleListing, type Listing } from "@/lib/listings/types";
-import { getPublicListing, getVisitor, type Buzz, type Totals } from "@/lib/public";
+import { getPublicIdentity, getPublicListing, type Buzz, type Totals } from "@/lib/public";
 
 // The public view of one listing, shown in the homepage pop-out and as a full page.
 export async function ListingDetail({ listingKey }: { listingKey: string }) {
-  const [data, device] = await Promise.all([getPublicListing(listingKey), readDevice()]);
+  const [data, device, account] = await Promise.all([
+    getPublicListing(listingKey),
+    readDevice(),
+    getCurrentUser(),
+  ]);
   if (!data) notFound();
-  const me = await getVisitor(device);
+  const { visitor: me, name: myName } = await getPublicIdentity(account, device);
   const { listing } = data;
 
   return (
     <NameGate
       actions={{ join: joinPublic, react: setPublicReaction, comment: addPublicComment }}
-      myName={me?.first_name ?? null}
+      myName={myName}
       prompt="Your first name shows next to what you post, and anyone visiting can see it. No account or password needed."
     >
       <LiveRefresh />
@@ -44,12 +50,13 @@ export async function ListingDetail({ listingKey }: { listingKey: string }) {
         >
           <h3 className="mb-3 pr-12 font-display text-xl">What people think</h3>
           <BuzzStrip buzz={data.buzz} publicTotals={data.publicTotals} privateTotals={data.privateTotals} />
+          <AspectSummary liked={data.aspects.liked} disliked={data.aspects.disliked} className="mt-4" />
           <div className="mt-4">
-            <ReactionBar
+            <ReactionPicker
               listingKey={listing.ListingKey}
               reactions={data.reactions.map((r) => ({
                 name: r.name,
-                reaction: r.reaction,
+                state: r.state,
                 mine: r.visitorId === me?.id,
               }))}
             />
@@ -94,8 +101,8 @@ function Chip({ icon, children }: { icon: ReactNode; children: ReactNode }) {
 
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-// Activity from everywhere, private shares included, as counts only. Passes and
-// maybes are left out on purpose: tastes differ, and this shouldn't warn anyone off.
+// Activity from everywhere, as counts only. Dislikes count only when made in
+// public: a private chat never warns strangers off a home.
 function BuzzStrip({
   buzz,
   publicTotals,
@@ -105,7 +112,7 @@ function BuzzStrip({
   publicTotals: Totals;
   privateTotals: Totals;
 }) {
-  const loves = publicTotals.loves + privateTotals.loves;
+  const likes = publicTotals.likes + privateTotals.likes;
   const active = activeLabel(buzz.lastActivityAt);
   const chips = [
     active && (
@@ -118,9 +125,14 @@ function BuzzStrip({
         {count(buzz.views, "view")}
       </Chip>
     ),
-    loves > 0 && (
-      <Chip key="loves" icon={<Heart aria-hidden size={15} className="text-brand" fill="currentColor" />}>
-        {count(loves, "love")}
+    likes > 0 && (
+      <Chip key="likes" icon={<ThumbsUp aria-hidden size={15} className="text-emerald-700" />}>
+        {count(likes, "like")}
+      </Chip>
+    ),
+    publicTotals.dislikes > 0 && (
+      <Chip key="dislikes" icon={<ThumbsDown aria-hidden size={15} className="text-amber-800" />}>
+        {count(publicTotals.dislikes, "dislike")}
       </Chip>
     ),
     buzz.sends > 0 && (

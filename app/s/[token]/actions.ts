@@ -18,9 +18,8 @@ import {
   getParticipant,
   getShareByToken,
   shareHasListing,
-  type CommentTag,
-  type Reaction,
 } from "@/lib/shares";
+import { describeReaction, type ReactionState } from "@/lib/reactions";
 
 const MAX_PARTICIPANTS = 25;
 
@@ -53,43 +52,50 @@ async function resolveActor(token: string, listingKey: string) {
   return participant ? { share: found.share, participant } : null;
 }
 
+const likesHome = async (participantId: string, listingKey: string) => {
+  const [row] = await sql`
+    select 1 from reactions
+    where participant_id = ${participantId} and listing_key = ${listingKey} and reaction = 'like'`;
+  return Boolean(row);
+};
+
 const listingLabel = async (listingKey: string) => {
   const [row] = await sql<{ address: string }[]>`
     select data->>'UnparsedAddress' as address from listings where listing_key = ${listingKey}`;
   return row?.address ?? "a listing";
 };
 
-const REACTION_VERBS: Record<Reaction, string> = {
-  love: "loved",
-  maybe: "said maybe to",
-  pass: "passed on",
-};
-
+// Saves someone's whole reaction to a home: overall like or dislike plus any
+// specifics. Clearing everything removes it.
 export async function setReaction(
   token: string,
   listingKey: string,
-  reaction: Reaction | null,
+  input: ReactionState,
 ): Promise<ActionResult> {
-  if (!reactionSchema.safeParse(reaction).success) return fail("Unknown reaction.");
+  const parsed = reactionSchema.safeParse(input);
+  if (!parsed.success) return fail("We couldn't save that reaction.");
+  const state = parsed.data;
   const actor = await resolveActor(token, listingKey);
   if (!actor) return fail("Please add your name first.");
 
-  if (reaction === null) {
+  if (state.reaction === null) {
     await sql`
       delete from reactions
       where share_id = ${actor.share.id} and listing_key = ${listingKey}
         and participant_id = ${actor.participant.id}`;
   } else {
     await sql`
-      insert into reactions (share_id, listing_key, participant_id, reaction)
-      values (${actor.share.id}, ${listingKey}, ${actor.participant.id}, ${reaction})
+      insert into reactions (share_id, listing_key, participant_id, reaction, liked, disliked)
+      values (${actor.share.id}, ${listingKey}, ${actor.participant.id}, ${state.reaction},
+              ${state.liked}::text[], ${state.disliked}::text[])
       on conflict (share_id, listing_key, participant_id)
-      do update set reaction = excluded.reaction, updated_at = now()`;
+      do update set reaction = excluded.reaction, liked = excluded.liked,
+        disliked = excluded.disliked, updated_at = now()`;
     after(async () => {
       const address = await listingLabel(listingKey);
       await notifyAgent(
         actor.share.id,
-        `${actor.participant.first_name} ${REACTION_VERBS[reaction]} ${address}`,
+        `${actor.participant.first_name} ${describeReaction(state, { pass: true })} at ${address}`,
       );
     });
   }
@@ -101,15 +107,15 @@ export async function addComment(
   token: string,
   listingKey: string,
   body: string,
-  tag: CommentTag | null,
   sharePublicly = false,
 ): Promise<ActionResult> {
-  const parsed = commentSchema.safeParse({ body, tag });
+  const parsed = commentSchema.safeParse(body);
   if (!parsed.success) return fail("Comments can be up to 1,000 characters.");
-  // Only "Like" comments can go public, and only when their author says so.
-  const shared = sharePublicly === true && parsed.data.tag === "like";
   const actor = await resolveActor(token, listingKey);
   if (!actor) return fail("Please add your name first.");
+  // A comment goes public only when its author asks, and only once they like
+  // the home, so shared quotes never warn other buyers off it.
+  const shared = sharePublicly === true && (await likesHome(actor.participant.id, listingKey));
 
   const [{ count }] = await sql<{ count: number }[]>`
     select count(*)::int as count from comments
@@ -118,9 +124,8 @@ export async function addComment(
   if (count >= MAX_COMMENTS_PER_MINUTE) return fail("Slow down a little, then try again.");
 
   await sql`
-    insert into comments (share_id, listing_key, participant_id, tag, body, shared_publicly)
-    values (${actor.share.id}, ${listingKey}, ${actor.participant.id}, ${parsed.data.tag},
-            ${parsed.data.body}, ${shared})`;
+    insert into comments (share_id, listing_key, participant_id, body, shared_publicly)
+    values (${actor.share.id}, ${listingKey}, ${actor.participant.id}, ${parsed.data}, ${shared})`;
   after(async () => {
     const address = await listingLabel(listingKey);
     await notifyAgent(actor.share.id, `${actor.participant.first_name} commented on ${address}`);
@@ -141,11 +146,16 @@ export async function setCommentSharing(
   }
   const participant = await getParticipant(found.share.id, await readDevice());
   if (!participant) return fail("We couldn't find that comment.");
+  // Taking a comment back is always allowed; sharing it needs a like.
   const updated = await sql`
-    update comments set shared_publicly = ${shared === true}
-    where id::text = ${commentId} and share_id = ${found.share.id}
-      and participant_id = ${participant.id} and tag = 'like'
-    returning id`;
+    update comments c set shared_publicly = ${shared === true}
+    where c.id::text = ${commentId} and c.share_id = ${found.share.id}
+      and c.participant_id = ${participant.id}
+      and (${shared !== true} or exists (
+        select 1 from reactions r
+        where r.participant_id = c.participant_id and r.listing_key = c.listing_key
+          and r.reaction = 'like'))
+    returning c.id`;
   if (updated.length === 0) return fail("We couldn't find that comment.");
   refresh();
   return { ok: true };

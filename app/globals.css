@@ -1,19 +1,25 @@
 @import "tailwindcss";
 
+/* Semantic color tokens. Components use these names, never raw hex values. */
 @theme inline {
   --color-brand: var(--brand);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
   --font-sans: var(--font-body);
   --font-display: var(--font-heading);
 }
 
 :root {
   color-scheme: light;
+  /* An agent's own color replaces this on their branded pages. */
   --brand: #1f5f5b;
+  --surface: #f6f4ef;
+  --ink: #1c1917;
 }
 
 body {
-  background: #f6f4ef;
-  color: #1c1917;
+  background: var(--surface);
+  color: var(--ink);
 }
 
 button:not(:disabled),
@@ -21,7 +27,22 @@ a {
   cursor: pointer;
 }
 
+button,
+a {
+  touch-action: manipulation;
+}
+
 :focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

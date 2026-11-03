@@ -1,8 +1,74 @@
 "use client";
 
-import { Check, Copy, ExternalLink, MessageSquare } from "lucide-react";
-import { useState, useTransition } from "react";
-import { replyAsAgent } from "../../actions";
+import { Check, Copy, ExternalLink, MessageSquare, Pencil } from "lucide-react";
+import { useActionState, useState, useTransition } from "react";
+import { renameClient, replyAsAgent, type FormState } from "../../actions";
+
+// The client's name as the page title, editable in place.
+export function ClientNameEditor({ shareId, name }: { shareId: string; name: string }) {
+  const [editing, setEditing] = useState(false);
+  const [state, action, pending] = useActionState<FormState, FormData>(
+    async (previous, form) => {
+      const result = await renameClient(shareId, previous, form);
+      if (!result.error) setEditing(false);
+      return result;
+    },
+    {},
+  );
+
+  if (!editing) {
+    return (
+      <div className="mt-1 flex flex-wrap items-center gap-2">
+        <h1 className="font-display text-3xl">{name || "Unnamed client"}</h1>
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-stone-700 hover:bg-stone-200/60"
+        >
+          <Pencil aria-hidden size={15} />
+          {name ? "Rename" : "Add their name"}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form action={action} className="mt-1 flex flex-wrap items-start gap-2">
+      <div className="min-w-0 flex-1 sm:max-w-sm">
+        <label htmlFor="clientName" className="sr-only">
+          Client&apos;s name
+        </label>
+        <input
+          id="clientName"
+          name="clientName"
+          defaultValue={name}
+          required
+          maxLength={60}
+          autoFocus
+          autoComplete="off"
+          placeholder="Client's name"
+          aria-describedby={state.error ? "clientName-error" : undefined}
+          className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 font-display text-2xl outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
+        />
+        {state.error && (
+          <p id="clientName-error" role="alert" className="mt-1 text-sm text-red-700">
+            {state.error}
+          </p>
+        )}
+      </div>
+      <button
+        type="submit"
+        disabled={pending}
+        className="min-h-12 rounded-xl bg-brand px-5 font-semibold text-white disabled:opacity-60"
+      >
+        {pending ? "Saving…" : "Save"}
+      </button>
+      <button type="button" onClick={() => setEditing(false)} className="min-h-12 rounded-xl px-4 font-medium">
+        Cancel
+      </button>
+    </form>
+  );
+}
 
 export function SendLink({
   url,

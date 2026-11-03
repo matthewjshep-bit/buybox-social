@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { z } from "zod";
+import { ASPECT_IDS, type Aspect } from "./reactions";
 
 // Shared by private share threads and public listing pages.
 
@@ -10,19 +11,21 @@ export const fail = (error: string): ActionResult => ({ ok: false, error });
 
 export const MAX_COMMENTS_PER_MINUTE = 10;
 
-export const REACTION_VALUES = ["love", "maybe", "pass"] as const;
 
 export const nameSchema = z
   .string()
   .transform((name) => name.replace(/\s+/g, " ").trim())
   .pipe(z.string().min(1).max(40));
 
-export const commentSchema = z.object({
-  body: z.string().trim().min(1).max(1000),
-  tag: z.enum(["like", "dislike"]).nullable(),
-});
+export const commentSchema = z.string().trim().min(1).max(1000);
 
-export const reactionSchema = z.enum(REACTION_VALUES).nullable();
+const aspects = z.array(z.enum(ASPECT_IDS as [Aspect, ...Aspect[]])).max(ASPECT_IDS.length);
+
+export const reactionSchema = z
+  .object({ reaction: z.enum(["like", "dislike"]).nullable(), liked: aspects, disliked: aspects })
+  .transform((r) => ({ ...r, liked: [...new Set(r.liked)], disliked: [...new Set(r.disliked)] }))
+  .refine((r) => !r.liked.some((a) => r.disliked.includes(a)))
+  .refine((r) => r.reaction !== null || (r.liked.length === 0 && r.disliked.length === 0));
 
 // Identifies this browser, so people can react and comment without an account.
 const DEVICE_COOKIE = "bb_device";

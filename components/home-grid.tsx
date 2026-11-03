@@ -1,4 +1,4 @@
-import { Eye, Flame, Heart, MessageCircle } from "lucide-react";
+import { Eye, Flame, MessageCircle, ThumbsUp } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { activeLabel, formatPrice } from "@/lib/format";
@@ -23,7 +23,7 @@ export function HomeGrid({ cards }: { cards: HomeCard[] }) {
       ) : (
         <ul className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {cards.map(({ listing, publicTotals, privateTotals, buzz }, index) => {
-            const loves = publicTotals.loves + privateTotals.loves;
+            const likes = publicTotals.likes + privateTotals.likes;
             const comments = publicTotals.comments + privateTotals.comments;
             const active = activeLabel(buzz.lastActivityAt);
             return (
@@ -55,7 +55,7 @@ export function HomeGrid({ cards }: { cards: HomeCard[] }) {
                     )}
                   </div>
                   <div className="p-4">
-                    <p className="font-display text-2xl">{formatPrice(listing.ListPrice)}</p>
+                    <p className="font-display text-2xl tabular-nums">{formatPrice(listing.ListPrice)}</p>
                     <p className="mt-0.5 text-sm text-stone-700">
                       {listing.BedroomsTotal} bd · {listing.BathroomsTotalInteger} ba ·{" "}
                       {listing.LivingArea.toLocaleString("en-US")} sq ft
@@ -64,14 +64,14 @@ export function HomeGrid({ cards }: { cards: HomeCard[] }) {
                       {listing.UnparsedAddress}, {listing.City}
                     </p>
                     <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-stone-200 pt-3 text-sm text-stone-700 [&>span]:whitespace-nowrap">
-                      {loves + comments + buzz.views === 0 ? (
+                      {likes + comments + buzz.views === 0 ? (
                         <span>Be the first to react</span>
                       ) : (
                         <>
-                          {loves > 0 && (
+                          {likes > 0 && (
                             <span className="flex items-center gap-1.5">
-                              <Heart aria-hidden size={15} className="text-brand" fill="currentColor" />
-                              {loves} {loves === 1 ? "love" : "loves"}
+                              <ThumbsUp aria-hidden size={15} className="text-emerald-700" />
+                              {likes} {likes === 1 ? "like" : "likes"}
                             </span>
                           )}
                           {comments > 0 && (

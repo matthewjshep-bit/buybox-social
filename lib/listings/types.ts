@@ -22,6 +22,9 @@ export type Listing = {
   PropertySubType?: string;
   PublicRemarks?: string;
   ListAgentFullName?: string;
+  Latitude?: number;
+  Longitude?: number;
+  OnMarketDate?: string;
   ListOfficeName?: string;
   Media: ListingMedia[];
 };

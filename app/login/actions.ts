@@ -30,7 +30,7 @@ export async function requestSignIn(_: LoginState, form: FormData): Promise<Logi
 
   if (devLoginEnabled) {
     (await cookies()).set(DEV_COOKIE, email.data, { httpOnly: true, sameSite: "lax", path: "/" });
-    redirect("/dashboard");
+    redirect("/");
   }
 
   return { error: "Sign-in isn't set up yet." };

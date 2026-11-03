@@ -4,14 +4,19 @@ import { cache } from "react";
 import { sql } from "./db";
 import { createSupabase, supabaseConfigured } from "./supabase/server";
 
-export type Agent = {
+export type Role = "agent" | "buyer";
+
+export type Account = {
   id: string;
   email: string;
   full_name: string;
+  role: Role | null;
   brokerage: string;
   photo_data_url: string | null;
   brand_color: string;
 };
+
+export type Agent = Account & { role: "agent" };
 
 export const DEV_COOKIE = "bb_dev_user";
 
@@ -32,19 +37,35 @@ async function getAuthUser(): Promise<{ id: string; email: string } | null> {
   return null;
 }
 
-export const getCurrentAgent = cache(async (): Promise<Agent | null> => {
+export const firstName = (account: Pick<Account, "full_name">) =>
+  account.full_name.trim().split(/\s+/)[0] || "Someone";
+
+// The signed-in person, if any. Their account row is created on first sign-in;
+// `role` stays null until they finish sign-up at /welcome.
+export const getCurrentUser = cache(async (): Promise<Account | null> => {
   const user = await getAuthUser();
   if (!user) return null;
-  const [agent] = await sql<Agent[]>`
-    insert into agents (auth_user_id, email)
+  const [existing] = await sql<Account[]>`
+    select id, email, full_name, role, brokerage, photo_data_url, brand_color
+    from accounts where auth_user_id = ${user.id}`;
+  if (existing) return existing;
+  const [created] = await sql<Account[]>`
+    insert into accounts (auth_user_id, email)
     values (${user.id}, ${user.email})
     on conflict (auth_user_id) do update set email = excluded.email
-    returning id, email, full_name, brokerage, photo_data_url, brand_color`;
-  return agent;
+    returning id, email, full_name, role, brokerage, photo_data_url, brand_color`;
+  return created;
 });
 
+export async function requireUser(): Promise<Account & { role: Role }> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  if (!user.role) redirect("/welcome");
+  return user as Account & { role: Role };
+}
+
 export async function requireAgent(): Promise<Agent> {
-  const agent = await getCurrentAgent();
-  if (!agent) redirect("/login");
-  return agent;
+  const user = await requireUser();
+  if (user.role !== "agent") redirect("/");
+  return user as Agent;
 }

@@ -22,7 +22,7 @@ export async function notifyAgent(shareId: string, summary: string) {
   try {
     const [row] = await sql<{ email: string }[]>`
       update shares s set last_notified_at = now()
-      from agents a
+      from accounts a
       where s.id = ${shareId} and a.id = s.agent_id
         and (s.last_notified_at is null or s.last_notified_at < now() - interval '10 minutes')
       returning a.email`;

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { cn, formatPrice } from "@/lib/format";
 import type { Listing } from "@/lib/listings/types";
-import { createShare } from "../actions";
+import { addHomesToShare, createShare } from "../actions";
 
 const MAX_LISTINGS = 3;
 
@@ -16,9 +16,12 @@ const inputClass =
 export function ShareBuilder({
   results,
   initialQuery,
+  addTo,
 }: {
   results: Listing[];
   initialQuery: string;
+  // Adding to an existing client's link rather than starting a new one.
+  addTo?: { shareId: string; clientName: string };
 }) {
   const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
@@ -36,8 +39,11 @@ export function ShareBuilder({
     setQuery(value);
     clearTimeout(debounce.current);
     debounce.current = setTimeout(() => {
-      const params = value.trim() ? `?q=${encodeURIComponent(value.trim())}` : "";
-      router.replace(`/dashboard/new${params}`, { scroll: false });
+      const params = new URLSearchParams();
+      if (addTo) params.set("share", addTo.shareId);
+      if (value.trim()) params.set("q", value.trim());
+      const search = params.toString();
+      router.replace(`/dashboard/new${search ? `?${search}` : ""}`, { scroll: false });
     }, 250);
   };
 
@@ -54,11 +60,10 @@ export function ShareBuilder({
   const submit = () => {
     setError(null);
     startTransition(async () => {
-      const result = await createShare({
-        listingKeys: picked.map((l) => l.ListingKey),
-        clientName,
-        note,
-      });
+      const listingKeys = picked.map((l) => l.ListingKey);
+      const result = addTo
+        ? await addHomesToShare(addTo.shareId, listingKeys)
+        : await createShare({ listingKeys, clientName, note });
       if (result?.error) setError(result.error);
     });
   };
@@ -122,32 +127,36 @@ export function ShareBuilder({
       )}
 
       <div className="mt-6 flex flex-col gap-4 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
-        <div>
-          <label htmlFor="clientName" className="text-sm font-medium">
-            Client&apos;s first name (optional)
-          </label>
-          <input
-            id="clientName"
-            maxLength={60}
-            value={clientName}
-            onChange={(event) => setClientName(event.target.value)}
-            className={cn(inputClass, "mt-1")}
-          />
-        </div>
-        <div>
-          <label htmlFor="note" className="text-sm font-medium">
-            Personal note (optional)
-          </label>
-          <textarea
-            id="note"
-            rows={3}
-            maxLength={500}
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            placeholder="This one has the yard you mentioned."
-            className={cn(inputClass, "mt-1 resize-y")}
-          />
-        </div>
+        {!addTo && (
+          <>
+            <div>
+              <label htmlFor="clientName" className="text-sm font-medium">
+                Client&apos;s first name (optional)
+              </label>
+              <input
+                id="clientName"
+                maxLength={60}
+                value={clientName}
+                onChange={(event) => setClientName(event.target.value)}
+                className={cn(inputClass, "mt-1")}
+              />
+            </div>
+            <div>
+              <label htmlFor="note" className="text-sm font-medium">
+                Personal note (optional)
+              </label>
+              <textarea
+                id="note"
+                rows={3}
+                maxLength={500}
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder="This one has the yard you mentioned."
+                className={cn(inputClass, "mt-1 resize-y")}
+              />
+            </div>
+          </>
+        )}
         {error && (
           <p role="alert" className="text-sm text-red-700">
             {error}
@@ -163,7 +172,9 @@ export function ShareBuilder({
             ? "Creating…"
             : picked.length === 0
               ? "Pick at least 1 home"
-              : `Create link for ${picked.length} ${picked.length === 1 ? "home" : "homes"}`}
+              : addTo
+                ? `Add ${picked.length} ${picked.length === 1 ? "home" : "homes"} to ${addTo.clientName ? `${addTo.clientName}'s` : "their"} link`
+                : `Create link for ${picked.length} ${picked.length === 1 ? "home" : "homes"}`}
         </button>
       </div>
     </div>

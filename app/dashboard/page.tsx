@@ -23,12 +23,12 @@ export default async function DashboardPage() {
 
   const shares = await sql<Row[]>`
     select s.id, s.client_name, s.created_at,
-      (select array_agg(l.data->>'UnparsedAddress' order by sl.position)
+      (select coalesce(array_agg(l.data->>'UnparsedAddress' order by sl.position), '{}')
          from share_listings sl join listings l on l.listing_key = sl.listing_key
-         where sl.share_id = s.id) as addresses,
+         where sl.share_id = s.id and sl.removed_at is null) as addresses,
       (select l.data->'Media'->0->>'MediaURL'
          from share_listings sl join listings l on l.listing_key = sl.listing_key
-         where sl.share_id = s.id order by sl.position limit 1) as photo,
+         where sl.share_id = s.id and sl.removed_at is null order by sl.position limit 1) as photo,
       (select count(*)::int from reactions r where r.share_id = s.id) as reaction_count,
       (select count(*)::int from comments c where c.share_id = s.id and c.agent_id is null) as comment_count
     from shares s

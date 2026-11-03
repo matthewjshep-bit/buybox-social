@@ -37,7 +37,7 @@ export function LoginForm({ devMode }: { devMode: boolean }) {
         disabled={pending}
         className="mt-4 min-h-12 w-full rounded-xl bg-brand font-semibold text-white disabled:opacity-60"
       >
-        {pending ? "One moment…" : devMode ? "Sign in" : "Email me a link"}
+        {pending ? "One moment…" : devMode ? "Continue" : "Email me a link"}
       </button>
     </form>
   );

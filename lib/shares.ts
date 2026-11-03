@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
+import type { ReactionState } from "./reactions";
 
-export type Reaction = "love" | "maybe" | "pass";
 export type CommentTag = "like" | "dislike";
 
 export type ShareAgent = {
@@ -24,7 +24,7 @@ export type ThreadReaction = {
   listingKey: string;
   participantId: string;
   name: string;
-  reaction: Reaction;
+  state: ReactionState;
 };
 
 export type ThreadComment = {
@@ -48,7 +48,7 @@ export async function getShareByToken(token: string) {
   const [row] = await sql<(Share & ShareAgent)[]>`
     select s.id, s.token, s.agent_id, s.client_name, s.note,
            a.full_name, a.brokerage, a.photo_data_url, a.brand_color
-    from shares s join agents a on a.id = s.agent_id
+    from shares s join accounts a on a.id = s.agent_id
     where s.token = ${token}`;
   if (!row) return null;
   const { full_name, brokerage, photo_data_url, brand_color, ...share } = row;
@@ -58,24 +58,27 @@ export async function getShareByToken(token: string) {
   };
 }
 
-export async function getShareListings(shareId: string) {
-  const rows = await sql<{ data: Listing; standard_status: string }[]>`
-    select l.data, l.standard_status
+// The homes on a share. Clients only ever see the ones still on their link;
+// the agent's view also includes homes they removed, flagged with `removedAt`.
+export async function getShareListings(shareId: string, { includeRemoved = false } = {}) {
+  const rows = await sql<{ data: Listing; standard_status: string; removed_at: Date | null }[]>`
+    select l.data, l.standard_status, sl.removed_at
     from share_listings sl join listings l on l.listing_key = sl.listing_key
-    where sl.share_id = ${shareId}
+    where sl.share_id = ${shareId} and (${includeRemoved} or sl.removed_at is null)
     order by sl.position`;
   return rows.map((row) => ({
     ...row.data,
     StandardStatus: row.standard_status,
     Media: [...row.data.Media].sort((a, b) => a.Order - b.Order),
+    removedAt: row.removed_at?.toISOString() ?? null,
   }));
 }
 
 export async function getThread(shareId: string) {
   const reactions = await sql<
-    { listing_key: string; participant_id: string; first_name: string; reaction: Reaction }[]
+    ({ listing_key: string; participant_id: string; first_name: string } & ReactionState)[]
   >`
-    select r.listing_key, r.participant_id, p.first_name, r.reaction
+    select r.listing_key, r.participant_id, p.first_name, r.reaction, r.liked, r.disliked
     from reactions r join participants p on p.id = r.participant_id
     where r.share_id = ${shareId}
     order by r.updated_at`;
@@ -96,7 +99,7 @@ export async function getThread(shareId: string) {
            a.full_name as agent_name, c.tag, c.body, c.created_at, c.shared_publicly
     from comments c
     left join participants p on p.id = c.participant_id
-    left join agents a on a.id = c.agent_id
+    left join accounts a on a.id = c.agent_id
     where c.share_id = ${shareId}
     order by c.created_at`;
   return {
@@ -105,7 +108,7 @@ export async function getThread(shareId: string) {
         listingKey: r.listing_key,
         participantId: r.participant_id,
         name: r.first_name,
-        reaction: r.reaction,
+        state: { reaction: r.reaction, liked: r.liked, disliked: r.disliked },
       }),
     ),
     comments: comments.map(
@@ -135,6 +138,6 @@ export async function getParticipant(shareId: string, deviceToken: string | unde
 export async function shareHasListing(shareId: string, listingKey: string) {
   const [row] = await sql`
     select 1 from share_listings
-    where share_id = ${shareId} and listing_key = ${listingKey}`;
+    where share_id = ${shareId} and listing_key = ${listingKey} and removed_at is null`;
   return Boolean(row);
 }

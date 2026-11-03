@@ -1,9 +1,10 @@
 "use client";
 
-import { Globe, Heart, HelpCircle, ThumbsDown, ThumbsUp, X } from "lucide-react";
+import { Check, ChevronDown, Globe, ThumbsDown, ThumbsUp } from "lucide-react";
 import {
   createContext,
   useContext,
+  useId,
   useOptimistic,
   useRef,
   useState,
@@ -14,7 +15,16 @@ import { PhotoCarousel } from "@/components/photo-carousel";
 import type { ActionResult } from "@/lib/engagement";
 import { cn, timeAgo } from "@/lib/format";
 import { isSampleListing, type Listing } from "@/lib/listings/types";
-import type { CommentTag, Reaction } from "@/lib/shares";
+import {
+  ASPECTS,
+  describeReaction,
+  NO_REACTION,
+  toggleAspect,
+  toggleOverall,
+  type ReactionState,
+  type Sentiment,
+} from "@/lib/reactions";
+import type { CommentTag } from "@/lib/shares";
 import { ListingFacts } from "./listing-facts";
 import { ViewTracker } from "./view-tracker";
 
@@ -22,13 +32,8 @@ import { ViewTracker } from "./view-tracker";
 // listing pages. Each passes in Server Actions bound to its own thread.
 export type ThreadActions = {
   join: (firstName: string) => Promise<ActionResult>;
-  react: (listingKey: string, reaction: Reaction | null) => Promise<ActionResult>;
-  comment: (
-    listingKey: string,
-    body: string,
-    tag: CommentTag | null,
-    sharePublicly: boolean,
-  ) => Promise<ActionResult>;
+  react: (listingKey: string, state: ReactionState) => Promise<ActionResult>;
+  comment: (listingKey: string, body: string, sharePublicly: boolean) => Promise<ActionResult>;
   // Private threads only: an author shares or un-shares their own "Like" comment.
   setSharing?: (commentId: string, shared: boolean) => Promise<ActionResult>;
 };
@@ -142,15 +147,28 @@ export function NameGate({
   );
 }
 
-const REACTIONS: { value: Reaction; label: string; verb: string; icon: typeof Heart }[] = [
-  { value: "love", label: "Love", verb: "love it", icon: Heart },
-  { value: "maybe", label: "Maybe", verb: "maybe", icon: HelpCircle },
-  { value: "pass", label: "Pass", verb: "pass", icon: X },
-];
+const SENTIMENTS = [
+  {
+    value: "like",
+    label: "Like",
+    icon: ThumbsUp,
+    question: "What do you like?",
+    on: "border-emerald-700 bg-emerald-700 text-white",
+    chipOn: "border-emerald-700 bg-emerald-50 text-emerald-900",
+  },
+  {
+    value: "dislike",
+    label: "Dislike",
+    icon: ThumbsDown,
+    question: "What don't you like?",
+    on: "border-amber-800 bg-amber-800 text-white",
+    chipOn: "border-amber-800 bg-amber-50 text-amber-900",
+  },
+] as const;
 
 const MAX_NAMED_REACTIONS = 6;
 
-export type CardReaction = { name: string; reaction: Reaction; mine: boolean };
+export type CardReaction = { name: string; state: ReactionState; mine: boolean };
 export type CardComment = {
   id: string;
   name: string;
@@ -162,55 +180,131 @@ export type CardComment = {
   sharedPublicly?: boolean;
 };
 
-export function ReactionBar({
+// Like or Dislike in one tap. Each has a dropdown of specifics (kitchen, yard,
+// ...), so people can say what they mean without typing.
+export function ReactionPicker({
   listingKey,
   reactions,
+  pass = false,
 }: {
   listingKey: string;
   reactions: CardReaction[];
+  // Client links call the negative choice Pass rather than Dislike.
+  pass?: boolean;
 }) {
   const { actions, ensureName } = useThread();
-  const serverMine = reactions.find((r) => r.mine)?.reaction ?? null;
-  const [mine, setOptimisticMine] = useOptimistic(serverMine);
-  const [, startReaction] = useTransition();
+  const [mine, setMine] = useOptimistic(reactions.find((r) => r.mine)?.state ?? NO_REACTION);
+  const [, startTransition] = useTransition();
+  const [open, setOpen] = useState<Sentiment | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const panelId = useId();
   const others = reactions.filter((r) => !r.mine);
 
-  const react = async (value: Reaction) => {
-    if (!(await ensureName())) return;
-    const next = mine === value ? null : value;
+  const save = async (next: ReactionState) => {
+    if (!(await ensureName())) return false;
     setError(null);
-    startReaction(async () => {
-      setOptimisticMine(next);
+    startTransition(async () => {
+      setMine(next);
       const result = await actions.react(listingKey, next);
       if (!result.ok) setError(result.error);
     });
+    return true;
   };
 
+  const tapOverall = async (sentiment: Sentiment) => {
+    const next = toggleOverall(mine, sentiment);
+    // Offer the specifics right away; picking any is optional.
+    if (await save(next)) setOpen(next.reaction === sentiment ? sentiment : null);
+  };
+
+  const openSentiment = SENTIMENTS.find((s) => s.value === open);
+  const openList = open === "like" ? mine.liked : mine.disliked;
+
   return (
-    <>
-      <div role="group" aria-label="Your reaction" className="grid grid-cols-3 gap-2">
-        {REACTIONS.map(({ value, label, icon: Icon }) => {
-          const selected = mine === value;
+    <div>
+      <div role="group" aria-label="Your reaction" className="grid grid-cols-2 gap-2">
+        {SENTIMENTS.map(({ value, label: baseLabel, icon: Icon, question, on }) => {
+          const label = pass && value === "dislike" ? "Pass" : baseLabel;
+          const selected = mine.reaction === value;
+          const picked = (value === "like" ? mine.liked : mine.disliked).length;
           return (
-            <button
+            <div
               key={value}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => react(value)}
               className={cn(
-                "flex min-h-12 items-center justify-center gap-1.5 rounded-xl border font-semibold transition-colors",
-                selected
-                  ? "border-brand bg-brand text-white"
-                  : "border-stone-300 bg-white text-stone-800 hover:border-stone-500",
+                "flex overflow-hidden rounded-xl border transition-colors",
+                selected ? on : "border-stone-300 bg-white text-stone-800",
               )}
             >
-              <Icon aria-hidden size={18} fill={selected && value === "love" ? "currentColor" : "none"} />
-              {label}
-            </button>
+              <button
+                type="button"
+                aria-pressed={selected}
+                onClick={() => tapOverall(value)}
+                className="flex min-h-12 flex-1 items-center justify-center gap-2 font-semibold hover:bg-black/5"
+              >
+                <Icon aria-hidden size={18} strokeWidth={selected ? 2.5 : 2} />
+                {label}
+                {picked > 0 && <span className="text-sm font-medium opacity-90">· {picked}</span>}
+              </button>
+              <button
+                type="button"
+                aria-label={question}
+                aria-expanded={open === value}
+                aria-controls={open === value ? panelId : undefined}
+                onClick={() => setOpen(open === value ? null : value)}
+                className={cn(
+                  "flex w-11 shrink-0 items-center justify-center border-l hover:bg-black/5",
+                  selected ? "border-white/30" : "border-stone-300",
+                )}
+              >
+                <ChevronDown
+                  aria-hidden
+                  size={18}
+                  className={cn("transition-transform motion-reduce:transition-none", open === value && "rotate-180")}
+                />
+              </button>
+            </div>
           );
         })}
       </div>
+
+      {openSentiment && (
+        <div id={panelId} className="mt-2 rounded-xl bg-stone-50 p-3 ring-1 ring-stone-200">
+          <p className="text-sm font-semibold">
+            {openSentiment.question} <span className="font-normal text-stone-600">Pick any.</span>
+          </p>
+          <div role="group" aria-label={openSentiment.question} className="mt-2 flex flex-wrap gap-2">
+            {ASPECTS.map(({ id, label }) => {
+              const on = openList.includes(id);
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => save(toggleAspect(mine, openSentiment.value, id))}
+                  className={cn(
+                    "flex min-h-11 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium transition-colors",
+                    on ? openSentiment.chipOn : "border-stone-300 bg-white text-stone-800 hover:border-stone-500",
+                  )}
+                >
+                  {on && <Check aria-hidden size={14} />}
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            onClick={() => setOpen(null)}
+            className="mt-2 min-h-11 px-1 text-sm font-semibold text-brand"
+          >
+            Done
+          </button>
+        </div>
+      )}
+
+      {!open && (mine.liked.length > 0 || mine.disliked.length > 0) && (
+        <p className="mt-2 text-sm text-stone-700">You {describeReaction(mine, { pass })}.</p>
+      )}
       {error && (
         <p role="alert" className="mt-2 text-sm text-red-700">
           {error}
@@ -220,21 +314,64 @@ export function ReactionBar({
         <p className="mt-3 text-sm text-stone-700">
           {others
             .slice(0, MAX_NAMED_REACTIONS)
-            .map((r) => `${r.name}: ${REACTIONS.find((x) => x.value === r.reaction)?.verb}`)
+            .map((r) => `${r.name} ${describeReaction(r.state, { pass })}`)
             .join(" · ")}
           {others.length > MAX_NAMED_REACTIONS && ` · and ${others.length - MAX_NAMED_REACTIONS} more`}
         </p>
       )}
-    </>
+    </div>
+  );
+}
+
+// A quick thumbs-up for cards: likes the whole home, or un-likes it.
+export function LikeButton({
+  listingKey,
+  mine,
+  label,
+  className,
+}: {
+  listingKey: string;
+  mine: ReactionState;
+  label: string;
+  className?: string;
+}) {
+  const { actions, ensureName } = useThread();
+  const [state, setState] = useOptimistic(mine);
+  const [, startTransition] = useTransition();
+  const liked = state.reaction === "like";
+  return (
+    <button
+      type="button"
+      aria-label={`Like ${label}`}
+      aria-pressed={liked}
+      onClick={async () => {
+        if (!(await ensureName())) return;
+        const next = toggleOverall(state, "like");
+        startTransition(async () => {
+          setState(next);
+          await actions.react(listingKey, next);
+        });
+      }}
+      className={cn(
+        "flex size-11 items-center justify-center rounded-full shadow transition-colors",
+        liked ? "bg-emerald-700 text-white" : "bg-white/95 text-stone-800 hover:text-emerald-700",
+        className,
+      )}
+    >
+      <ThumbsUp aria-hidden size={20} strokeWidth={liked ? 2.5 : 2} />
+    </button>
   );
 }
 
 export function CommentThread({
   listingKey,
   comments,
+  canShare = false,
 }: {
   listingKey: string;
   comments: CardComment[];
+  // Private threads only, once someone likes the home: they may share a comment publicly.
+  canShare?: boolean;
 }) {
   return (
     <>
@@ -246,11 +383,11 @@ export function CommentThread({
       {comments.length > 0 && (
         <ul className="mt-3 flex flex-col gap-3">
           {comments.map((comment) => (
-            <CommentRow key={comment.id} comment={comment} />
+            <CommentRow key={comment.id} comment={comment} canShare={canShare} />
           ))}
         </ul>
       )}
-      <CommentComposer listingKey={listingKey} />
+      <CommentComposer listingKey={listingKey} canShare={canShare} />
     </>
   );
 }
@@ -261,11 +398,13 @@ export function ListingCard({
   priority,
   reactions,
   comments,
+  pass = false,
 }: {
   listing: Listing;
   priority: boolean;
   reactions: CardReaction[];
   comments: CardComment[];
+  pass?: boolean;
 }) {
   return (
     <article
@@ -277,11 +416,15 @@ export function ListingCard({
       <div className="p-5">
         <ListingFacts listing={listing} />
         <div className="mt-5">
-          <ReactionBar listingKey={listing.ListingKey} reactions={reactions} />
+          <ReactionPicker listingKey={listing.ListingKey} reactions={reactions} pass={pass} />
         </div>
       </div>
       <div className="border-t border-stone-200 bg-stone-50/70 p-5">
-        <CommentThread listingKey={listing.ListingKey} comments={comments} />
+        <CommentThread
+          listingKey={listing.ListingKey}
+          comments={comments}
+          canShare={reactions.find((r) => r.mine)?.state.reaction === "like"}
+        />
         <p className="mt-4 text-xs text-stone-600">
           {listing.ListOfficeName && `Listed by ${listing.ListOfficeName}. `}
           {isSampleListing(listing) && "Sample listing, not a real home for sale."}
@@ -291,10 +434,12 @@ export function ListingCard({
   );
 }
 
-function CommentRow({ comment }: { comment: CardComment }) {
+function CommentRow({ comment, canShare }: { comment: CardComment; canShare: boolean }) {
   const { actions } = useThread();
   const [pending, startTransition] = useTransition();
-  const canToggle = comment.mine && comment.tag === "like" && actions.setSharing;
+  // Taking a comment back is always allowed; sharing it needs a like.
+  const canToggle =
+    comment.mine && actions.setSharing && (comment.sharedPublicly || canShare);
   return (
     <li className="rounded-xl bg-white p-3 ring-1 ring-stone-200">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
@@ -353,25 +498,31 @@ function TagChip({ tag }: { tag: CommentTag }) {
   );
 }
 
-function CommentComposer({ listingKey }: { listingKey: string }) {
+export function CommentComposer({
+  listingKey,
+  compact = false,
+  canShare = false,
+}: {
+  listingKey: string;
+  // A single line, for the feed.
+  compact?: boolean;
+  canShare?: boolean;
+}) {
   const { actions, ensureName } = useThread();
   const [body, setBody] = useState("");
-  const [tag, setTag] = useState<CommentTag | null>(null);
   const [sharePublicly, setSharePublicly] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const inputId = `comment-${listingKey}`;
-  const canShare = Boolean(actions.setSharing) && tag === "like";
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!body.trim() || !(await ensureName())) return;
     setError(null);
     startTransition(async () => {
-      const result = await actions.comment(listingKey, body, tag, canShare && sharePublicly);
+      const result = await actions.comment(listingKey, body, canShare && sharePublicly);
       if (result.ok) {
         setBody("");
-        setTag(null);
         setSharePublicly(false);
       } else {
         setError(result.error);
@@ -379,34 +530,40 @@ function CommentComposer({ listingKey }: { listingKey: string }) {
     });
   };
 
+  if (compact) {
+    return (
+      <form onSubmit={submit} className="mt-2 border-t border-stone-100 pt-1">
+        <div className="flex items-center gap-2">
+          <label htmlFor={inputId} className="sr-only">
+            Add a comment
+          </label>
+          <input
+            id={inputId}
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            maxLength={1000}
+            placeholder="Add a comment…"
+            className="min-h-11 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-stone-500"
+          />
+          <button
+            type="submit"
+            disabled={pending || !body.trim()}
+            className="min-h-11 px-2 font-semibold text-brand disabled:opacity-40"
+          >
+            {pending ? "Posting…" : "Post"}
+          </button>
+        </div>
+        {error && (
+          <p role="alert" className="text-sm text-red-700">
+            {error}
+          </p>
+        )}
+      </form>
+    );
+  }
+
   return (
     <form onSubmit={submit} className="mt-3">
-      <div role="group" aria-label="Comment type" className="flex gap-2">
-        {(["like", "dislike"] as const).map((value) => {
-          const like = value === "like";
-          const Icon = like ? ThumbsUp : ThumbsDown;
-          const selected = tag === value;
-          return (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => setTag(selected ? null : value)}
-              className={cn(
-                "flex min-h-11 items-center gap-1.5 rounded-full border px-4 text-sm font-medium transition-colors",
-                selected
-                  ? like
-                    ? "border-emerald-800 bg-emerald-100 text-emerald-900"
-                    : "border-amber-800 bg-amber-100 text-amber-900"
-                  : "border-stone-300 bg-white text-stone-800",
-              )}
-            >
-              <Icon aria-hidden size={14} />
-              {like ? "Like" : "Don't like"}
-            </button>
-          );
-        })}
-      </div>
       <label htmlFor={inputId} className="sr-only">
         Add a comment
       </label>
@@ -416,14 +573,8 @@ function CommentComposer({ listingKey }: { listingKey: string }) {
         onChange={(event) => setBody(event.target.value)}
         maxLength={1000}
         rows={2}
-        placeholder={
-          tag === "like"
-            ? "What do you like about it?"
-            : tag === "dislike"
-              ? "What don't you like about it?"
-              : "Add a comment…"
-        }
-        className="mt-2 w-full resize-y rounded-xl border border-stone-300 bg-white px-4 py-3 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
+        placeholder="Add a comment…"
+        className="w-full resize-y rounded-xl border border-stone-300 bg-white px-4 py-3 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
       />
       {canShare && (
         <label className="mt-2 flex min-h-11 cursor-pointer items-start gap-2.5 text-sm text-stone-700">

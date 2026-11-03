@@ -24,13 +24,19 @@ test("agent shares, two people react and comment, agent sees and replies", async
   await house.getByRole("button", { name: "Next photo" }).click();
   await expect(house.getByText("2 / 4")).toBeVisible();
 
-  // First reaction asks for a name, then applies.
-  await house.getByRole("button", { name: "Love" }).click();
+  // First reaction asks for a name, then applies, and offers specifics.
+  const jamieReaction = house.getByRole("group", { name: "Your reaction" });
+  await jamieReaction.getByRole("button", { name: /^Like/ }).click();
   await jamie.getByRole("textbox", { name: "First name" }).fill("Jamie");
   await jamie.getByRole("button", { name: "Continue" }).click();
-  await expect(house.getByRole("button", { name: "Love" })).toHaveAttribute("aria-pressed", "true");
+  await expect(jamieReaction.getByRole("button", { name: /^Like/ })).toHaveAttribute("aria-pressed", "true");
+  const likes = house.getByRole("group", { name: "What do you like?" });
+  await likes.getByRole("button", { name: "Kitchen" }).click();
+  await likes.getByRole("button", { name: "Natural light" }).click();
+  await expect(likes.getByRole("button", { name: "Natural light" })).toHaveAttribute("aria-pressed", "true");
+  await house.getByRole("button", { name: "Done" }).click();
+  await expect(house.getByText("You liked the kitchen and natural light.")).toBeVisible();
 
-  await house.getByRole("button", { name: "Like", exact: true }).click();
   await house.getByLabel("Add a comment").fill("That porch is perfect.");
   await house.getByRole("button", { name: "Post comment" }).click();
   await expect(house.getByText("That porch is perfect.")).toBeVisible();
@@ -40,31 +46,38 @@ test("agent shares, two people react and comment, agent sees and replies", async
   const sam = await samContext.newPage();
   await sam.goto(url);
   const samHouse = sam.getByRole("article", { name: "4127 Larkmoor Ave NE" });
-  await expect(samHouse.getByText("Jamie: love it")).toBeVisible();
+  await expect(samHouse.getByText("Jamie liked the kitchen and natural light")).toBeVisible();
   await expect(samHouse.getByText("That porch is perfect.")).toBeVisible();
-  await samHouse.getByRole("button", { name: "Don't like", exact: true }).click();
   await samHouse.getByLabel("Add a comment").fill("The kitchen feels small.");
   await samHouse.getByRole("button", { name: "Post comment" }).click();
   await sam.getByRole("textbox", { name: "First name" }).fill("Sam");
   await sam.getByRole("button", { name: "Continue" }).click();
   await expect(samHouse.getByText("The kitchen feels small.")).toBeVisible();
-  await samHouse.getByRole("button", { name: "Maybe" }).click();
-  await expect(samHouse.getByRole("button", { name: "Maybe" })).toHaveAttribute("aria-pressed", "true");
 
-  // Reactions persist across a reload, and tapping again switches them off.
+  // Specifics can be picked straight from the dropdown.
+  const samReaction = samHouse.getByRole("group", { name: "Your reaction" });
+  await samReaction.getByRole("button", { name: "What don't you like?" }).click();
+  await samHouse.getByRole("group", { name: "What don't you like?" }).getByRole("button", { name: "Yard" }).click();
+  await expect(samReaction.getByRole("button", { name: /^Pass/ })).toHaveAttribute("aria-pressed", "true");
+  await samHouse.getByRole("button", { name: "Done" }).click();
+
+  // Reactions persist across a reload; tapping again switches one off.
   await jamie.reload();
-  await expect(house.getByRole("button", { name: "Love" })).toHaveAttribute("aria-pressed", "true");
-  await expect(house.getByText("Sam: maybe")).toBeVisible();
-  await samHouse.getByRole("button", { name: "Maybe" }).click();
-  await expect(samHouse.getByRole("button", { name: "Maybe" })).toHaveAttribute("aria-pressed", "false");
-  await samHouse.getByRole("button", { name: "Maybe" }).click();
-  await expect(samHouse.getByRole("button", { name: "Maybe" })).toHaveAttribute("aria-pressed", "true");
+  await expect(jamieReaction.getByRole("button", { name: /^Like/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(house.getByText("Sam passed, didn't like the yard")).toBeVisible();
+  await samReaction.getByRole("button", { name: /^Pass/ }).click();
+  await expect(samReaction.getByRole("button", { name: /^Pass/ })).toHaveAttribute("aria-pressed", "false");
+  await jamie.reload();
+  await expect(house.getByText(/Sam passed/)).toHaveCount(0);
+  await samReaction.getByRole("button", { name: /^Pass/ }).click();
+  await expect(samReaction.getByRole("button", { name: /^Pass/ })).toHaveAttribute("aria-pressed", "true");
+  await samHouse.getByRole("button", { name: "Done" }).click();
 
-  // The agent sees all of it, and replies.
+  // The agent sees all of it in plain words, and replies.
   await agent.reload();
   const panel = agent.getByRole("region", { name: "4127 Larkmoor Ave NE" });
-  await expect(panel.getByText("Jamie: Love")).toBeVisible();
-  await expect(panel.getByText("Sam: Maybe")).toBeVisible();
+  await expect(panel.getByText("liked the kitchen and natural light")).toBeVisible();
+  await expect(panel.getByText("passed on this")).toBeVisible();
   await expect(panel.getByText("That porch is perfect.")).toBeVisible();
   await expect(panel.getByText("The kitchen feels small.")).toBeVisible();
   await panel.getByLabel("Reply to your client").fill("We can measure it at the showing.");
@@ -146,11 +159,11 @@ test("isolation: tokens, agents and signed-out visitors stay in their lane", asy
   const context = await browser.newContext();
   const client = await context.newPage();
   await client.goto(shareA.url);
-  await client.getByRole("button", { name: "Love" }).first().click();
+  await client.getByRole("group", { name: "Your reaction" }).first().getByRole("button", { name: /^Like/ }).click();
   await client.getByRole("textbox", { name: "First name" }).fill("Casey");
   await client.getByRole("button", { name: "Continue" }).click();
-  await expect(client.getByRole("button", { name: "Love" }).first()).toHaveAttribute("aria-pressed", "true");
+  await expect(client.getByRole("group", { name: "Your reaction" }).first().getByRole("button", { name: /^Like/ })).toHaveAttribute("aria-pressed", "true");
   await client.goto(shareB.url);
-  await client.getByRole("button", { name: "Love" }).first().click();
+  await client.getByRole("group", { name: "Your reaction" }).first().getByRole("button", { name: /^Like/ }).click();
   await expect(client.getByRole("textbox", { name: "First name" })).toBeVisible();
 });

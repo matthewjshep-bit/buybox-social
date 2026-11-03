@@ -82,11 +82,12 @@ export default async function SharePage({ params }: Props) {
           {listings.map((listing, index) => (
             <ListingCard
               key={listing.ListingKey}
+              pass
               listing={listing}
               priority={index === 0}
               reactions={thread.reactions
                 .filter((r) => r.listingKey === listing.ListingKey)
-                .map((r) => ({ name: r.name, reaction: r.reaction, mine: r.participantId === me?.id }))}
+                .map((r) => ({ name: r.name, state: r.state, mine: r.participantId === me?.id }))}
               comments={thread.comments
                 .filter((c) => c.listingKey === listing.ListingKey)
                 .map((c) => ({

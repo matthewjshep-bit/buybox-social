@@ -36,11 +36,11 @@ You need free accounts at Supabase, Vercel and Resend.
    ```bash
    DATABASE_URL="<pooler string>" pnpm db:setup
    ```
-3. **Sign-in link template:** in Supabase under Authentication > Email Templates > Magic Link, set the link to:
+3. **Sign-in link templates:** in Supabase under Authentication > Email Templates, set the link in both **Magic Link** and **Confirm signup** to:
    ```
-   {{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=magiclink
+   {{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=email
    ```
-   This lets links work when opened in an email app's built-in browser. Under URL Configuration, set the Site URL to your deployed address.
+   This lets links work when opened in an email app's built-in browser. Free projects can only edit templates after adding their own email sender (SMTP). Under URL Configuration, set the Site URL to your deployed address and add `<that address>/auth/callback` to Redirect URLs.
 4. **Resend:** verify your sending domain and create an API key.
 5. **Vercel:** import the project and set these variables. Do **not** set `ALLOW_DEV_LOGIN`.
 
@@ -49,8 +49,8 @@ You need free accounts at Supabase, Vercel and Resend.
    | `DATABASE_URL` | Supabase pooler string |
    | `DATABASE_POOL_MAX` | `5` |
    | `APP_URL` | Your deployed address |
-   | `NEXT_PUBLIC_SUPABASE_URL` | From Supabase |
-   | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | From Supabase |
+   | `SUPABASE_URL` | From Supabase |
+   | `SUPABASE_PUBLISHABLE_KEY` | From Supabase |
    | `RESEND_API_KEY` | From Resend |
    | `EMAIL_FROM` | For example `BuyBox Social <alerts@yourdomain.com>` |
 

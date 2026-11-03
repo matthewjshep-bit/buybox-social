@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
       : code
         ? await supabase.auth.exchangeCodeForSession(code)
         : { error: new Error("missing sign-in parameters") };
-    if (!error) return NextResponse.redirect(new URL("/dashboard", appUrl()));
+    if (!error) return NextResponse.redirect(new URL("/", appUrl()));
     console.error("[auth] callback failed", error.message);
   }
   return NextResponse.redirect(new URL("/login?error=link", appUrl()));
