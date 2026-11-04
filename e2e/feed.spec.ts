@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, openComments, openMore, photoList, pin, scrollToEnd, signInAgent, signUpBuyer } from "./helpers";
+import { commentIn, createShare, heartOf, homeIn, openComments, openMore, photoList, pin, scrollToEnd, signInAgent, signUpBuyer } from "./helpers";
 
 async function expectLogoGoesHome(page: Page) {
   const logo = page.getByRole("link", { name: "BuyBox Social" });
@@ -63,7 +63,7 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await expect(thread).toContainText(/A buyer liked the evergreens · .+ · private chat/);
   await sheet.getByLabel("Add a comment").fill("Those trees are gorgeous.");
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
-  await expect(thread).toContainText("Bea Those trees are gorgeous.");
+  await expect(commentIn(thread, "Bea", "Those trees are gorgeous.")).toBeVisible();
   await expect(thread).toContainText("You liked the exterior");
   await buyer.keyboard.press("Escape");
   await expect(sheet).toBeHidden();

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, openComments, openMore, pin, signInAgent } from "./helpers";
+import { commentIn, createShare, heartOf, homeIn, joinAs, openComments, openMore, pin, signInAgent } from "./helpers";
 
 const SECRET = "We could go 50k over asking.";
 const SHARED = "That fenced yard is perfect for our dog.";
@@ -19,7 +19,7 @@ test("public pages show activity, never private words, and private threads share
   const clientHome = homeIn(client, BRACKENFIELD);
   let chat = await openComments(client, clientHome);
   await chat.getByLabel("Add a comment").fill(SECRET);
-  await chat.getByRole("button", { name: "Post comment" }).click();
+  await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByText(SECRET)).toBeVisible();
   // Sharing publicly is only offered once you like the home.
   await expect(chat.getByLabel(/share this anonymously/)).toHaveCount(0);
@@ -32,7 +32,7 @@ test("public pages show activity, never private words, and private threads share
   chat = await openComments(client, clientHome);
   await chat.getByLabel(/share this anonymously/).check();
   await chat.getByLabel("Add a comment").fill(SHARED);
-  await chat.getByRole("button", { name: "Post comment" }).click();
+  await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByText("Shared anonymously on the public page")).toBeVisible();
   await client.keyboard.press("Escape");
 
@@ -81,7 +81,7 @@ test("public pages show activity, never private words, and private threads share
   await expect(sheet.getByLabel(/share this anonymously/)).toHaveCount(0);
   await sheet.getByLabel("Add a comment").fill("Love the quiet cul-de-sac.");
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
-  await expect(thread).toContainText("Morgan Love the quiet cul-de-sac.");
+  await expect(commentIn(thread, "Morgan", "Love the quiet cul-de-sac.")).toBeVisible();
   await expect(thread).toContainText("You liked the natural light");
   await expect(sheet.getByText("Natural light 1")).toBeVisible();
   await page.keyboard.press("Escape");

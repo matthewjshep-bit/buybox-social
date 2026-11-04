@@ -1,6 +1,6 @@
 "use client";
 
-import { Globe, Heart, Lock, ThumbsDown, ThumbsUp, User } from "lucide-react";
+import { ArrowUp, Globe, Heart, Lock, ThumbsDown, ThumbsUp, User } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -154,72 +154,47 @@ export function Timeline({
   listingKey,
   items,
   canShare = false,
-  composer = true,
+  onReply,
 }: {
   listingKey: string;
   items: TimelineItem[];
   // Private threads only, once someone likes the home: they may share a comment publicly.
   canShare?: boolean;
-  composer?: boolean;
+  // Reply points the comment box below at that comment.
+  onReply?: (target: ReplyTarget) => void;
 }) {
   const top = items.filter((item) => item.kind === "reaction" || !item.parentId);
+  if (top.length === 0) {
+    return (
+      <div className="flex flex-col items-center px-6 py-12 text-center">
+        <p className="text-lg font-semibold">No comments yet</p>
+        <p className="mt-1 text-sm text-stone-600">Start the conversation.</p>
+      </div>
+    );
+  }
   return (
-    <>
-      {top.length > 0 ? (
-        <ul aria-label="Comments and likes" className="flex flex-col gap-4">
-          {top.map((item) =>
-            item.kind === "comment" ? (
-              <CommentItem
-                key={item.id}
-                listingKey={listingKey}
-                comment={item}
-                replies={items.filter(
-                  (reply): reply is TimelineComment => reply.kind === "comment" && reply.parentId === item.id,
-                )}
-                canShare={canShare}
-              />
-            ) : (
-              <ReactionItem key={item.id} item={item} />
-            ),
-          )}
-        </ul>
-      ) : (
-        <p className="text-sm text-stone-600">No comments yet. Start the conversation.</p>
+    <ul aria-label="Comments and likes" className="flex flex-col gap-5">
+      {top.map((item) =>
+        item.kind === "comment" ? (
+          <CommentItem
+            key={item.id}
+            listingKey={listingKey}
+            comment={item}
+            replies={items.filter(
+              (reply): reply is TimelineComment => reply.kind === "comment" && reply.parentId === item.id,
+            )}
+            canShare={canShare}
+            onReply={onReply}
+          />
+        ) : (
+          <ReactionItem key={item.id} item={item} />
+        ),
       )}
-      {composer && <CommentComposer listingKey={listingKey} canShare={canShare} />}
-    </>
+    </ul>
   );
 }
 
-// The latest few, for a card in the stream. The full conversation is a tap away.
-export function TimelinePreview({ items, total, href }: { items: TimelineItem[]; total: number; href: string }) {
-  if (items.length === 0) return null;
-  return (
-    <div className="mt-2">
-      {total > items.length && (
-        <Link href={href} scroll={false} className="flex min-h-9 items-center text-[15px] text-stone-600">
-          View all {total}
-        </Link>
-      )}
-      <ul aria-label="Latest comments and likes" className="mt-1 flex flex-col gap-2.5">
-        {items.map((item) =>
-          item.kind === "comment" ? (
-            <li key={item.id} className="flex items-start gap-2.5">
-              <Avatar name={item.name} anonymous={item.fromPrivateChat} agent={item.isAgent} small />
-              <p className="min-w-0 flex-1 break-words pt-0.5 text-[15px] leading-snug">
-                <Who name={item.name} profileId={item.profileId} />{" "}
-                <span className="whitespace-pre-line">{item.body}</span>
-                {item.fromPrivateChat && <span className="text-xs text-stone-600"> · from a private chat</span>}
-              </p>
-            </li>
-          ) : (
-            <ReactionItem key={item.id} item={item} small />
-          ),
-        )}
-      </ul>
-    </div>
-  );
-}
+export type ReplyTarget = { id: string; name: string; mine: boolean };
 
 function Avatar({
   name,
@@ -256,9 +231,9 @@ function Avatar({
 
 // A person's name, linking to their profile when they have a public one.
 function Who({ name, profileId }: { name: string; profileId?: string }) {
-  if (!profileId) return <span className="font-semibold">{name}</span>;
+  if (!profileId) return <span className="font-semibold text-ink">{name}</span>;
   return (
-    <Link href={`/people/${profileId}`} className="font-semibold underline-offset-2 hover:underline">
+    <Link href={`/people/${profileId}`} className="font-semibold text-ink underline-offset-2 hover:underline">
       {name}
     </Link>
   );
@@ -273,7 +248,7 @@ function When({ at }: { at: string }) {
 }
 
 // "Morgan liked the marble counters" with a thumbnail of the photo.
-function ReactionItem({ item, small = false }: { item: TimelineReaction; small?: boolean }) {
+function ReactionItem({ item }: { item: TimelineReaction }) {
   const passed = item.state.reaction === "dislike";
   const badge = passed ? (
     <ThumbsDown size={10} className="text-amber-800" />
@@ -285,22 +260,22 @@ function ReactionItem({ item, small = false }: { item: TimelineReaction; small?:
   // The photo of the latest thing they liked.
   const thumb = item.photos.findLast((photo) => photo.mediaUrl)?.mediaUrl;
   return (
-    <li className={cn("flex items-center", small ? "gap-2.5" : "gap-3")}>
-      <Avatar name={item.name} anonymous={item.fromPrivateChat} badge={badge} small={small} />
+    <li className="flex items-center gap-3">
+      <Avatar name={item.name} anonymous={item.fromPrivateChat} badge={badge} />
       <p className="min-w-0 flex-1 break-words text-[15px] leading-snug">
         <Who name={item.mine ? "You" : item.name} profileId={item.profileId} />{" "}
         {describeReaction(
           item.state,
           item.photos.map((photo) => photo.tag),
         )}
-        <span className="text-xs text-stone-600">
+        <span className="text-[13px] text-stone-500">
           {" "}
           · <When at={item.at} />
           {item.fromPrivateChat && " · private chat"}
         </span>
       </p>
       {thumb && (
-        <span className={cn("relative shrink-0 overflow-hidden rounded-md bg-stone-200", small ? "size-8" : "size-10")}>
+        <span className="relative size-10 shrink-0 overflow-hidden rounded-md bg-stone-200">
           <Image src={thumb} alt="" fill sizes="40px" className="object-cover" />
         </span>
       )}
@@ -308,63 +283,75 @@ function ReactionItem({ item, small = false }: { item: TimelineReaction; small?:
   );
 }
 
+// Who and when, then what they said, then Reply and the likes; replies fold
+// away under "View 2 replies", like on a reel.
 function CommentItem({
   listingKey,
   comment,
   replies = [],
   canShare,
+  onReply,
 }: {
   listingKey: string;
   comment: TimelineComment;
   replies?: TimelineComment[];
   canShare: boolean;
+  onReply?: (target: ReplyTarget) => void;
 }) {
   const { actions } = useThread();
   const [pending, startTransition] = useTransition();
-  const [replying, setReplying] = useState(false);
   const reply = Boolean(comment.parentId);
   // Taking a comment back is always allowed; sharing it needs a like.
   const canToggle = comment.mine && actions.setSharing && (comment.sharedPublicly || canShare);
   const likeable = Boolean(actions.likeComment) && !comment.fromPrivateChat;
+
+  // Replies open when you add one, so you see it land.
+  const [open, setOpen] = useState(false);
+  const [count, setCount] = useState(replies.length);
+  if (replies.length !== count) {
+    setCount(replies.length);
+    if (replies.length > count && replies.at(-1)?.mine) setOpen(true);
+  }
+
   return (
     <li className="flex gap-3">
       <Avatar name={comment.name} anonymous={comment.fromPrivateChat} agent={comment.isAgent} small={reply} />
       <div className="min-w-0 flex-1">
-        <p className="break-words text-[15px] leading-snug">
-          {/* Comments carry their author's name, yours included, like on Instagram. */}
+        <p className="flex flex-wrap items-center gap-x-1 text-[13px] leading-snug text-stone-500">
           <Who name={comment.name} profileId={comment.profileId} />
           {comment.isAgent && (
-            <span className="ml-1.5 rounded bg-ink px-1.5 py-px align-[2px] text-[10px] font-bold uppercase tracking-wide text-white">
+            <span className="rounded bg-ink px-1.5 py-px text-[10px] font-bold uppercase tracking-wide text-white">
               Agent
             </span>
-          )}{" "}
-          <span className="whitespace-pre-line">{comment.body}</span>
+          )}
+          <span>
+            · <When at={comment.at} />
+          </span>
         </p>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-stone-600">
-          <When at={comment.at} />
-          {comment.fromPrivateChat && (
-            <span className="inline-flex items-center gap-1">
-              <Lock aria-hidden size={11} /> Shared from a private chat
-            </span>
-          )}
-          {comment.likes > 0 && likeable && (
-            <span className="font-semibold">
-              {comment.likes} {comment.likes === 1 ? "like" : "likes"}
-            </span>
-          )}
-          {likeable && !reply && (
+        <p className="mt-0.5 whitespace-pre-line break-words text-[15px] leading-snug">{comment.body}</p>
+        <div className="flex flex-wrap items-center gap-x-4 text-[13px] font-semibold text-stone-500">
+          {likeable && !reply && onReply && (
             <button
               type="button"
-              aria-expanded={replying}
-              onClick={() => setReplying((open) => !open)}
-              className="flex min-h-9 items-center font-semibold hover:text-stone-900"
+              onClick={() => onReply({ id: comment.id, name: comment.name, mine: comment.mine })}
+              className="flex min-h-9 items-center hover:text-ink"
             >
               Reply
               <span className="sr-only"> to {comment.mine ? "your comment" : comment.name}</span>
             </button>
           )}
+          {comment.likes > 0 && likeable && (
+            <span>
+              {comment.likes} {comment.likes === 1 ? "like" : "likes"}
+            </span>
+          )}
+          {comment.fromPrivateChat && (
+            <span className="inline-flex min-h-9 items-center gap-1 font-normal">
+              <Lock aria-hidden size={11} /> Shared from a private chat
+            </span>
+          )}
           {comment.sharedPublicly && (
-            <span className="inline-flex items-center gap-1">
+            <span className="inline-flex min-h-9 items-center gap-1 font-normal">
               <Globe aria-hidden size={11} /> Shared anonymously on the public page
             </span>
           )}
@@ -377,31 +364,31 @@ function CommentItem({
                   await actions.setSharing!(comment.id, !comment.sharedPublicly);
                 })
               }
-              className="flex min-h-9 items-center font-semibold text-brand underline-offset-2 hover:underline disabled:opacity-50"
+              className="flex min-h-9 items-center text-brand underline-offset-2 hover:underline disabled:opacity-50"
             >
               {comment.sharedPublicly ? "Make private" : "Share anonymously"}
             </button>
           )}
         </div>
-        {(replies.length > 0 || replying) && (
-          <div className="mt-2">
-            {replies.length > 0 && (
-              <ul aria-label={`Replies to ${comment.name}`} className="flex flex-col gap-3">
+        {replies.length > 0 && (
+          <>
+            <button
+              type="button"
+              aria-expanded={open}
+              onClick={() => setOpen(!open)}
+              className="flex min-h-9 items-center gap-2.5 text-[13px] font-semibold text-stone-500 hover:text-ink"
+            >
+              <span aria-hidden className="h-px w-6 bg-stone-300" />
+              {open ? "Hide replies" : `View ${replies.length} ${replies.length === 1 ? "reply" : "replies"}`}
+            </button>
+            {open && (
+              <ul aria-label={`Replies to ${comment.name}`} className="mt-2 flex flex-col gap-4">
                 {replies.map((child) => (
                   <CommentItem key={child.id} listingKey={listingKey} comment={child} canShare={false} />
                 ))}
               </ul>
             )}
-            {replying && (
-              <CommentComposer
-                compact
-                listingKey={listingKey}
-                parentId={comment.id}
-                replyTo={comment.mine ? "yourself" : comment.name}
-                onPosted={() => setReplying(false)}
-              />
-            )}
-          </div>
+          </>
         )}
       </div>
       {likeable && <CommentHeart comment={comment} />}
@@ -427,49 +414,54 @@ function CommentHeart({ comment }: { comment: TimelineComment }) {
         });
       }}
       className={cn(
-        "-mr-2 -mt-1.5 flex size-9 shrink-0 items-center justify-center rounded-full hover:bg-stone-100",
+        "-mr-1 flex size-9 shrink-0 flex-col items-center justify-center rounded-full text-[11px] font-semibold tabular-nums hover:bg-stone-100",
         state.liked ? "text-rose-600" : "text-stone-500",
       )}
     >
-      <Heart aria-hidden size={14} className={cn(state.liked && "fill-current")} />
+      <Heart aria-hidden size={15} className={cn(state.liked && "fill-current")} />
     </button>
   );
 }
 
+const QUICK = ["❤️", "🙌", "🔥", "👏", "😍", "😮", "😂"];
+
+// The comment box pinned under the comments: a pill you type into, with a row
+// of quick emoji above it. Reply on a comment points it at that comment.
 export function CommentComposer({
   listingKey,
-  compact = false,
   canShare = false,
-  parentId = null,
-  replyTo,
+  replyTo = null,
+  onCancelReply,
   onPosted,
 }: {
   listingKey: string;
-  // A single line, for the feed and for replies.
-  compact?: boolean;
   canShare?: boolean;
-  parentId?: string | null;
-  replyTo?: string;
+  replyTo?: ReplyTarget | null;
+  onCancelReply?: () => void;
   onPosted?: () => void;
 }) {
   const { actions, ensureName } = useThread();
   const [body, setBody] = useState("");
   // Back to the box after posting: the Post button disables once the box is
   // empty, and a focused disabled button swallows keys (like Escape).
-  const field = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
+  const field = useRef<HTMLTextAreaElement>(null);
   const [sharePublicly, setSharePublicly] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  // The same home can show a composer twice (a card and its pop-out), so ids are per instance.
+  // The same home can show a composer twice (a page and its pop-out), so ids are per instance.
   const inputId = useId();
-  const label = replyTo ? `Reply to ${replyTo}` : "Add a comment";
+  const who = replyTo ? (replyTo.mine ? "yourself" : replyTo.name) : null;
 
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!body.trim() || !(await ensureName())) return;
+  const submit = async () => {
+    if (!body.trim() || pending || !(await ensureName())) return;
     setError(null);
     startTransition(async () => {
-      const result = await actions.comment(listingKey, body, canShare && sharePublicly, parentId);
+      const result = await actions.comment(
+        listingKey,
+        body,
+        canShare && !replyTo && sharePublicly,
+        replyTo?.id ?? null,
+      );
       if (result.ok) {
         setBody("");
         field.current?.focus();
@@ -481,81 +473,94 @@ export function CommentComposer({
     });
   };
 
-  if (compact) {
-    return (
-      <form onSubmit={submit} className="mt-2 border-t border-stone-100 pt-1">
-        <div className="flex items-center gap-2">
-          <label htmlFor={inputId} className="sr-only">
-            {label}
-          </label>
-          <input
-            ref={field}
-            id={inputId}
-            value={body}
-            onChange={(event) => setBody(event.target.value)}
-            maxLength={1000}
-            autoFocus={Boolean(parentId)}
-            placeholder={parentId ? "Write a reply…" : "Add a comment…"}
-            className="min-h-11 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-stone-500"
-          />
-          <button
-            type="submit"
-            disabled={pending || !body.trim()}
-            className="min-h-11 px-2 font-semibold text-brand disabled:opacity-40"
-          >
-            {pending ? "Posting…" : "Post"}
-          </button>
-        </div>
-        {error && (
-          <p role="alert" className="text-sm text-red-700">
-            {error}
-          </p>
-        )}
-      </form>
-    );
-  }
-
   return (
-    <form onSubmit={submit} className="mt-3">
-      <label htmlFor={inputId} className="sr-only">
-        Add a comment
-      </label>
-      <textarea
-        ref={field}
-        id={inputId}
-        value={body}
-        onChange={(event) => setBody(event.target.value)}
-        maxLength={1000}
-        rows={2}
-        placeholder="Add a comment…"
-        className="w-full resize-y rounded-xl border border-stone-300 bg-white px-4 py-3 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
-      />
-      {canShare && (
-        <label className="mt-2 flex min-h-11 cursor-pointer items-start gap-2.5 text-sm text-stone-700">
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+    >
+      {replyTo ? (
+        <p className="flex min-h-9 items-center justify-between gap-2 px-2 text-[13px] text-stone-600">
+          <span>
+            Replying to <span className="font-semibold text-ink">{who}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              onCancelReply?.();
+              field.current?.focus();
+            }}
+            className="flex min-h-9 items-center px-1 font-semibold hover:text-ink"
+          >
+            Cancel<span className="sr-only"> reply</span>
+          </button>
+        </p>
+      ) : (
+        <div className="flex justify-between px-1 pb-1">
+          {QUICK.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              onClick={() => {
+                setBody((current) => current + emoji);
+                field.current?.focus();
+              }}
+              className="flex size-10 items-center justify-center rounded-full text-[22px] transition-transform hover:bg-stone-100 active:scale-90"
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex items-end gap-2 rounded-3xl bg-stone-100 py-1 pl-4 pr-1 focus-within:ring-2 focus-within:ring-brand/30">
+        <label htmlFor={inputId} className="sr-only">
+          {who ? `Reply to ${who}` : "Add a comment"}
+        </label>
+        <textarea
+          ref={field}
+          id={inputId}
+          data-composer
+          value={body}
+          onChange={(event) => setBody(event.target.value)}
+          onKeyDown={(event) => {
+            // Enter posts; Shift+Enter starts a new line.
+            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              submit();
+            }
+          }}
+          maxLength={1000}
+          rows={1}
+          enterKeyHint="send"
+          placeholder={who ? `Reply to ${who}…` : "Add a comment…"}
+          className="max-h-28 min-h-10 min-w-0 flex-1 resize-none bg-transparent py-2 text-base leading-6 outline-none [field-sizing:content] placeholder:text-stone-500"
+        />
+        <button
+          type="submit"
+          aria-label="Post"
+          disabled={pending || !body.trim()}
+          className="mb-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-brand text-white transition-opacity disabled:opacity-30"
+        >
+          <ArrowUp aria-hidden size={18} strokeWidth={2.5} className={cn(pending && "animate-pulse")} />
+        </button>
+      </div>
+      {canShare && !replyTo && (
+        <label className="mt-1.5 flex min-h-9 cursor-pointer items-center gap-2.5 px-2 text-[13px] text-stone-700">
           <input
             type="checkbox"
             checked={sharePublicly}
             onChange={(event) => setSharePublicly(event.target.checked)}
-            className="mt-0.5 size-5 shrink-0 accent-[var(--brand)]"
+            className="size-4.5 shrink-0 accent-[var(--brand)]"
           />
-          <span>
-            Also share this anonymously on the public listing page, to help other buyers. Your
-            name stays private.
-          </span>
+          <span>Also share this anonymously on the public listing page. Your name stays private.</span>
         </label>
       )}
       {error && (
-        <p role="alert" className="mt-1 text-sm text-red-700">
+        <p role="alert" className="mt-1 px-2 text-sm text-red-700">
           {error}
         </p>
       )}
-      <button
-        type="submit"
-        disabled={pending || !body.trim()}
-        className="mt-2 min-h-11 w-full rounded-xl bg-brand font-semibold text-white disabled:opacity-50"
-      >
-        {pending ? "Posting…" : "Post comment"}
-      </button>
     </form>
   );
 }

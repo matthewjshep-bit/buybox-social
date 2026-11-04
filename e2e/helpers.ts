@@ -65,6 +65,14 @@ export const homeIn = (page: Page, address: string) => page.getByRole("article",
 // The heart on a home's rail (photo hearts are named "Like the kitchen").
 export const heartOf = (home: Locator) => home.getByRole("button", { name: /^Like (?!the )/ });
 
+// One comment in a thread: who wrote it, and what it says.
+export function commentIn(thread: Locator, name: string, body: string) {
+  return thread
+    .getByRole("listitem")
+    .filter({ hasText: body })
+    .filter({ has: thread.page().getByText(name, { exact: true }) });
+}
+
 export async function openComments(page: Page, home: Locator) {
   await home.getByRole("button", { name: /^Comments/ }).click();
   const sheet = page.getByRole("dialog", { name: "Comments" });

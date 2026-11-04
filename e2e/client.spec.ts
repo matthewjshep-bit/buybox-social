@@ -38,7 +38,7 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
   await joe.keyboard.press("Escape");
   const chat = await openComments(joe, olympia);
   await chat.getByLabel("Add a comment").fill("Not a fan of farmhouse sinks.");
-  await chat.getByRole("button", { name: "Post comment" }).click();
+  await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByText("Not a fan of farmhouse sinks.")).toBeVisible();
   await joe.keyboard.press("Escape");
   // The last screen says the agent sees it all.

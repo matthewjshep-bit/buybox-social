@@ -41,7 +41,7 @@ test("one package, a link for each person: they react, the agent compares and re
 
   const jamieChat = await openComments(jamie, house);
   await jamieChat.getByLabel("Add a comment").fill("That porch is perfect.");
-  await jamieChat.getByRole("button", { name: "Post comment" }).click();
+  await jamieChat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(jamieChat.getByText("That porch is perfect.")).toBeVisible();
   await jamie.keyboard.press("Escape");
 
@@ -55,7 +55,7 @@ test("one package, a link for each person: they react, the agent compares and re
   await expect(samChat.getByText("Jamie liked the kitchen and marble counters")).toBeVisible();
   await expect(samChat.getByText("That porch is perfect.")).toBeVisible();
   await samChat.getByLabel("Add a comment").fill("The kitchen feels small.");
-  await samChat.getByRole("button", { name: "Post comment" }).click();
+  await samChat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(samChat.getByText("The kitchen feels small.")).toBeVisible();
   await sam.keyboard.press("Escape");
 
@@ -136,7 +136,7 @@ test("one package, a link for each person: they react, the agent compares and re
   // A comment containing markup is shown as plain text.
   thread = await openComments(jamie, house);
   await thread.getByLabel("Add a comment").fill("<img src=x onerror=alert(1)>");
-  await thread.getByRole("button", { name: "Post comment" }).click();
+  await thread.getByRole("button", { name: "Post", exact: true }).click();
   await expect(thread.getByText("<img src=x onerror=alert(1)>")).toBeVisible();
 
   // Includes hydration mismatches, which only show up as page errors.

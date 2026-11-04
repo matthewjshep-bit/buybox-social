@@ -16,11 +16,12 @@ import {
   User,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { flushSync } from "react-dom";
 import { loadReel, recordView, reloadReelHome } from "@/app/homes/actions";
 import { AspectSummary } from "@/components/aspect-summary";
 import { AspectChips, useReactions } from "@/components/like-pass";
-import { CommentComposer, NameGate, Timeline, type ThreadActions } from "@/components/listing-thread";
+import { CommentComposer, NameGate, Timeline, type ReplyTarget, type ThreadActions } from "@/components/listing-thread";
 import { usePhotoLikes } from "@/components/photo-likes";
 import { ReelPhotos } from "@/components/reel-photos";
 import { Sheet } from "@/components/sheet";
@@ -166,6 +167,7 @@ function Feed({
   loading: boolean;
   onNearEnd: () => void;
 }) {
+  const frame = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
   const [sheet, setSheet] = useState<{ kind: "comments" | "more"; key: string } | null>(null);
@@ -260,6 +262,14 @@ function Feed({
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // Comments rise from the bottom. From the comment bar, the cursor goes
+  // straight into the comment box, in the same tap, so a phone opens its
+  // keyboard (it won't for focus that arrives later).
+  const openComments = (key: string, compose = false) => {
+    flushSync(() => setSheet({ kind: "comments", key }));
+    if (compose) frame.current?.ownerDocument.querySelector<HTMLElement>("dialog[open] [data-composer]")?.focus();
+  };
+
   const say = (message: string) => {
     setToast(message);
     setTimeout(() => setToast(null), 2200);
@@ -285,6 +295,7 @@ function Feed({
 
   return (
     <div
+      ref={frame}
       className={cn(
         "overflow-hidden bg-stone-950 text-white",
         embedded ? "relative h-full w-full" : "fixed inset-0 z-30",
@@ -319,7 +330,9 @@ function Feed({
               error={reactions.errors[key]}
               onLike={() => reactions.choose(key, "like")}
               onDoubleTapLike={() => reactions.like(key)}
-              onComments={() => setSheet({ kind: "comments", key })}
+              onComments={() => openComments(key)}
+              onCompose={() => openComments(key, true)}
+              squeezed={sheet?.kind === "comments" && sheet.key === key}
               onMore={() => setSheet({ kind: "more", key })}
               onShare={mode === "share" && !canInvite ? undefined : () => share(post)}
             />
@@ -356,7 +369,17 @@ function Feed({
         </section>
       </div>
 
-      {header && <div className="absolute inset-x-0 top-0 z-20">{header}</div>}
+      {header && (
+        // Out of the way while the comments are up, so the photo has the top.
+        <div
+          className={cn(
+            "absolute inset-x-0 top-0 z-20 transition-opacity duration-300",
+            sheet?.kind === "comments" && "pointer-events-none opacity-0",
+          )}
+        >
+          {header}
+        </div>
+      )}
       {mode === "share" && posts.length > 1 && active >= offset && active < offset + posts.length && (
         <p
           aria-live="polite"
@@ -378,12 +401,14 @@ function Feed({
         post={sheet?.kind === "comments" ? (sheetPost ?? null) : null}
         mode={mode}
         canShare={sheetPost ? reactions.states[sheetPost.listing.ListingKey]?.reaction === "like" : false}
+        anchor={frame}
         onClose={() => setSheet(null)}
       />
       <MoreSheet
         post={sheet?.kind === "more" ? (sheetPost ?? null) : null}
         state={sheetPost ? (reactions.states[sheetPost.listing.ListingKey] ?? NO_REACTION) : NO_REACTION}
         agentName={agentName}
+        anchor={frame}
         onPass={() => sheetPost && reactions.choose(sheetPost.listing.ListingKey, "dislike")}
         onToggle={(aspect) => sheetPost && reactions.toggle(sheetPost.listing.ListingKey, aspect)}
         onNext={() => {
@@ -410,6 +435,8 @@ function Panel({
   onLike,
   onDoubleTapLike,
   onComments,
+  onCompose,
+  squeezed,
   onMore,
   onShare,
 }: {
@@ -428,6 +455,10 @@ function Panel({
   onLike: () => void;
   onDoubleTapLike: () => void;
   onComments: () => void;
+  // The comment bar: comments open with the cursor in the box.
+  onCompose: () => void;
+  // Its comments are open: the photo moves up into the space above them.
+  squeezed: boolean;
   onMore: () => void;
   onShare?: () => void;
 }) {
@@ -480,6 +511,7 @@ function Panel({
           }}
           onDoubleTap={likeWhatsShown}
           peek={nudge === "photos"}
+          squeezed={squeezed}
           overlay={nudge && <NudgeHint nudge={nudge} />}
           spots={(shown) =>
             photos.enabled &&
@@ -498,10 +530,19 @@ function Panel({
       {/* Shade at the bottom keeps the caption readable over any photo. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-linear-to-t from-black/85 via-black/40 to-transparent"
+        className={cn(
+          "pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-linear-to-t from-black/85 via-black/40 to-transparent transition-opacity duration-300",
+          squeezed && "opacity-0",
+        )}
       />
 
-      <div className="pointer-events-none absolute inset-0 mx-auto max-w-5xl">
+      {/* The caption and buttons step aside while its comments are open. */}
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-0 mx-auto max-w-5xl transition-opacity duration-300",
+          squeezed && "opacity-0",
+        )}
+      >
         <Rail
           address={listing.UnparsedAddress}
           things={things}
@@ -517,8 +558,8 @@ function Panel({
 
         {/* Only the caption's links and buttons take a touch: a swipe that
             starts on its text, where a thumb usually is, turns the photos. */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pr-20 [text-shadow:0_1px_3px_rgb(0_0_0/0.45)] sm:px-6 sm:pr-24 [&_a]:pointer-events-auto [&_button]:pointer-events-auto">
-          <div className="max-w-2xl">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 [&_a]:pointer-events-auto [&_button]:pointer-events-auto">
+          <div className="max-w-2xl pr-16 [text-shadow:0_1px_3px_rgb(0_0_0/0.45)] sm:pr-20">
             <ActivityLine headline={post.headline} trending={post.buzz.trending} onOpen={onComments} />
 
             {/* Price first and on its own; the facts and the address each get a line. */}
@@ -556,6 +597,15 @@ function Panel({
               </p>
             )}
           </div>
+          {/* Right under the description, like a reel: tap and type. */}
+          <button
+            type="button"
+            onClick={onCompose}
+            className="mt-2.5 flex h-11 w-full max-w-2xl items-center gap-3 rounded-full border border-white/15 bg-white/10 pl-4 pr-3 text-left text-[15px] text-white/75 backdrop-blur-md transition-colors hover:bg-white/15"
+          >
+            <span className="min-w-0 flex-1 truncate">Add a comment…</span>
+            <Send aria-hidden size={18} className="shrink-0 opacity-70" />
+          </button>
         </div>
       </div>
     </article>
@@ -621,7 +671,7 @@ function Rail({
   onMore: () => void;
 }) {
   return (
-    <div className="pointer-events-auto absolute bottom-[max(9rem,calc(env(safe-area-inset-bottom)+8rem))] right-2 z-10 flex flex-col items-center gap-4 sm:right-4">
+    <div className="pointer-events-auto absolute bottom-[max(12rem,calc(env(safe-area-inset-bottom)+11.25rem))] right-2 z-10 flex flex-col items-center gap-4 sm:right-4">
       <LikeWithList things={things}>
         <RailButton
           name={`Like ${address}${likes ? `, ${likes} ${likes === 1 ? "like" : "likes"}` : ""}`}
@@ -751,30 +801,57 @@ function Description({ listing, reasons }: { listing: FeedPost["listing"]; reaso
   );
 }
 
+const NO_ITEMS: FeedPost["timeline"] = [];
+
 function CommentsSheet({
   post,
   mode,
   canShare,
+  anchor,
   onClose,
 }: {
   post: FeedPost | null;
   mode: "public" | "share";
   canShare: boolean;
+  anchor: RefObject<HTMLElement | null>;
   onClose: () => void;
 }) {
-  const comments = post?.timeline.filter((item) => item.kind === "comment").length ?? 0;
+  const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
+  const end = useRef<HTMLDivElement>(null);
+  const items = post?.timeline ?? NO_ITEMS;
+  const comments = items.filter((item) => item.kind === "comment").length;
+
+  // A new comment of yours scrolls into view at the bottom, where it lands.
+  const seen = useRef(items.length);
+  useEffect(() => {
+    const last = items.at(-1);
+    if (items.length > seen.current && last?.kind === "comment" && last.mine) {
+      end.current?.scrollIntoView({ block: "end", behavior: reducedMotion() ? "auto" : "smooth" });
+    }
+    seen.current = items.length;
+  }, [items]);
+
+  const close = () => {
+    setReplyTo(null);
+    onClose();
+  };
+
   return (
     <Sheet
       open={Boolean(post)}
-      onClose={onClose}
+      onClose={close}
       label="Comments"
       title={comments ? `${comments} ${comments === 1 ? "comment" : "comments"}` : "Comments"}
+      anchor={anchor}
+      tall
       footer={
         post && (
           <CommentComposer
             listingKey={post.listing.ListingKey}
-            compact={mode === "public"}
             canShare={mode === "share" && canShare}
+            replyTo={replyTo}
+            onCancelReply={() => setReplyTo(null)}
+            onPosted={() => setReplyTo(null)}
           />
         )
       }
@@ -782,20 +859,29 @@ function CommentsSheet({
       {post && (
         <>
           {mode === "public" && (
-            <>
+            // Hidden when neither has anything to say yet.
+            <div className="mb-5 border-b border-stone-100 pb-4 empty:hidden">
               <AspectSummary liked={post.aspects.liked} disliked={post.aspects.disliked} limit={4} />
               <Buzz post={post} />
-            </>
+            </div>
           )}
-          <div className="mt-4">
-            <Timeline listingKey={post.listing.ListingKey} items={post.timeline} canShare={canShare} composer={false} />
-          </div>
+          <Timeline
+            listingKey={post.listing.ListingKey}
+            items={items}
+            canShare={canShare}
+            onReply={(target) => {
+              setReplyTo(target);
+              // In the same tap, so a phone shows its keyboard.
+              end.current?.ownerDocument.querySelector<HTMLElement>("dialog[open] [data-composer]")?.focus();
+            }}
+          />
           {mode === "public" && (
-            <p className="mt-6 text-xs text-stone-600">
+            <p className="mt-8 text-center text-xs text-stone-500">
               Comments here are public. Buyers&apos; private chats with their agents stay private unless they choose to
               share.
             </p>
           )}
+          <div ref={end} />
         </>
       )}
     </Sheet>
@@ -826,10 +912,12 @@ function MoreSheet({
   onToggle,
   onNext,
   onClose,
+  anchor,
 }: {
   post: FeedPost | null;
   state: ReactionState;
   agentName?: string;
+  anchor: RefObject<HTMLElement | null>;
   onPass: () => void;
   onToggle: (aspect: Aspect) => void;
   onNext: () => void;
@@ -837,7 +925,7 @@ function MoreSheet({
 }) {
   const passed = state.reaction === "dislike";
   return (
-    <Sheet open={Boolean(post)} onClose={onClose} label="More" title="More">
+    <Sheet open={Boolean(post)} onClose={onClose} label="More" title="More" anchor={anchor}>
       {post && (
         <div className="flex flex-col gap-5">
           <button

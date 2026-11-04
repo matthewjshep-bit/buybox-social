@@ -24,6 +24,7 @@ export function ReelPhotos({
   onDoubleTap,
   spots,
   peek,
+  squeezed = false,
   overlay,
 }: {
   media: ListingMedia[];
@@ -37,6 +38,8 @@ export function ReelPhotos({
   spots?: (photo: ListingMedia) => ReactNode;
   // Slide a little and back, to show there are more photos (until touched).
   peek?: boolean;
+  // The comments are open: the photo glides up into the space above them.
+  squeezed?: boolean;
   // Drawn over the photos; `--photo-top` and `--photo-bottom` say where they sit.
   overlay?: ReactNode;
 }) {
@@ -93,8 +96,13 @@ export function ReelPhotos({
       aria-roledescription="carousel"
       aria-label={`Photos of ${address}`}
       onPointerDownCapture={() => setTouched(true)}
-      // The photo fits between the header and the caption, so neither covers it.
-      className="absolute inset-0 [--photo-bottom:17.5rem] [--photo-top:4.5rem] lg:[--photo-bottom:18.5rem] lg:[--photo-top:4rem]"
+      data-squeezed={squeezed || undefined}
+      // The photo fits between the header and the caption (and its comment
+      // bar), so neither covers it; with the comments open, above them.
+      className={cn(
+        "group/carousel absolute inset-0 [--photo-bottom:21rem] [--photo-top:4.5rem] lg:[--photo-bottom:22rem] lg:[--photo-top:4rem]",
+        "data-squeezed:[--photo-bottom:calc(72cqh_+_1rem)] data-squeezed:[--photo-top:calc(env(safe-area-inset-top)_+_0.75rem)]",
+      )}
     >
       <div ref={emblaRef} className="h-full overflow-hidden">
         <div
@@ -159,7 +167,7 @@ export function ReelPhotos({
         <>
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-x-0 top-[calc(env(safe-area-inset-top)+4rem)] flex justify-center gap-1.5"
+            className="pointer-events-none absolute inset-x-0 top-[calc(env(safe-area-inset-top)+4rem)] flex justify-center gap-1.5 transition-opacity duration-300 group-data-squeezed/carousel:opacity-0"
           >
             {media.map((photo, i) => (
               <span
@@ -233,7 +241,7 @@ function PhotoFrame({ photo, children }: { photo: ListingMedia; children: ReactN
   const height = `min(${room}, 100cqw / ${ratio})`;
   return (
     <div
-      className="absolute"
+      className="absolute transition-[width,height,left,top] duration-300 ease-out motion-reduce:transition-none"
       style={{
         width,
         height,
