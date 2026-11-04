@@ -513,7 +513,7 @@ export function CommentComposer({
           ))}
         </div>
       )}
-      <div className="flex items-end gap-2 rounded-3xl bg-stone-100 py-1 pl-4 pr-1 focus-within:ring-2 focus-within:ring-brand/30">
+      <div className="flex items-end gap-2 rounded-3xl bg-stone-100 py-1 pl-4 pr-1 focus-within:ring-2 focus-within:ring-brand/50">
         <label htmlFor={inputId} className="sr-only">
           {who ? `Reply to ${who}` : "Add a comment"}
         </label>

@@ -42,6 +42,11 @@ a {
   outline: none;
 }
 
+/* The comment box: the rounded pill around it shows focus instead. */
+[data-composer]:focus-visible {
+  outline: none;
+}
+
 @keyframes rise-in {
   from {
     opacity: 0;
