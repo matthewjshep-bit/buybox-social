@@ -92,3 +92,20 @@ export async function joinAs(page: Page, firstName: string) {
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(field).toBeHidden();
 }
+
+// A heart pinned to something in a home's photo ("the floating staircase").
+export const pin = (home: Locator, name: RegExp | string) =>
+  home.getByRole("group", { name: /^Photos of/ }).getByRole("button", { name });
+
+// The list that slides out of a home's heart: everything in the photo on
+// screen. Opened the phone way, by pressing and holding the heart.
+export async function photoList(home: Locator) {
+  const heart = heartOf(home);
+  await heart.scrollIntoViewIfNeeded();
+  await heart.dispatchEvent("pointerdown", { pointerType: "touch", isPrimary: true });
+  await home.page().waitForTimeout(600);
+  await heart.dispatchEvent("pointerup", { pointerType: "touch", isPrimary: true });
+  const list = home.getByRole("group", { name: "Like what's in this photo" });
+  await expect(list).toBeVisible();
+  return list;
+}

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, openComments, openMore, signInAgent } from "./helpers";
+import { createShare, heartOf, homeIn, joinAs, openComments, openMore, pin, signInAgent } from "./helpers";
 
 test("an agent's client page: rename, what they want, remove and restore, add homes, private only", async ({
   browser,
@@ -22,8 +22,8 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
   await joinAs(joe, "Joe");
   await expect(heartOf(kirkland)).toHaveAttribute("aria-pressed", "true");
   await kirkland.getByRole("button", { name: "Next photo" }).click();
-  await kirkland.getByRole("button", { name: /^Like the floating staircase/ }).click();
-  await expect(kirkland.getByRole("button", { name: /^Like the floating staircase/ })).toHaveAttribute(
+  await pin(kirkland, /^Like the floating staircase/).click();
+  await expect(pin(kirkland, /^Like the floating staircase/)).toHaveAttribute(
     "aria-pressed",
     "true",
   );

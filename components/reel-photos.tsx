@@ -71,7 +71,7 @@ export function ReelPhotos({
             <div
               key={photo.MediaURL}
               onClick={(event) => tap(event, photo, i)}
-              className="relative h-full w-full shrink-0 select-none overflow-hidden [container-type:size]"
+              className="group/photo relative h-full w-full shrink-0 select-none overflow-hidden [container-type:size]"
             >
               {/* The same photo, blurred, fills the space around it. */}
               {!isVideo(photo) && (

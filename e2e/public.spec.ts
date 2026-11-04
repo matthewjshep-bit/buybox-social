@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, openComments, openMore, signInAgent } from "./helpers";
+import { createShare, heartOf, homeIn, joinAs, openComments, openMore, pin, signInAgent } from "./helpers";
 
 const SECRET = "We could go 50k over asking.";
 const SHARED = "That fenced yard is perfect for our dog.";
@@ -28,8 +28,8 @@ test("public pages show activity, never private words, and private threads share
 
   await heartOf(clientHome).click();
   await expect(heartOf(clientHome)).toHaveAttribute("aria-pressed", "true");
-  await clientHome.getByRole("button", { name: /^Like the brick front/ }).click();
-  await expect(clientHome.getByRole("button", { name: /^Like the brick front/ })).toHaveAttribute("aria-pressed", "true");
+  await pin(clientHome, /^Like the brick front/).click();
+  await expect(pin(clientHome, /^Like the brick front/)).toHaveAttribute("aria-pressed", "true");
   chat = await openComments(client, clientHome);
   await chat.getByLabel(/share this anonymously/).check();
   await chat.getByLabel("Add a comment").fill(SHARED);
@@ -77,8 +77,8 @@ test("public pages show activity, never private words, and private threads share
   await joinAs(page, "Morgan");
   await expect(heartOf(post)).toHaveAttribute("aria-pressed", "true");
   await post.getByRole("button", { name: "Next photo" }).click();
-  await post.getByRole("button", { name: /^Like the natural light/ }).click();
-  await expect(post.getByRole("button", { name: /^Like the natural light/ })).toHaveAttribute("aria-pressed", "true");
+  await pin(post, /^Like the natural light/).click();
+  await expect(pin(post, /^Like the natural light/)).toHaveAttribute("aria-pressed", "true");
   sheet = await openComments(page, post);
   await expect(sheet.getByLabel(/share this anonymously/)).toHaveCount(0);
   await sheet.getByLabel("Add a comment").fill("Love the quiet cul-de-sac.");

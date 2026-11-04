@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, openComments, openMore, scrollToEnd, signInAgent, signUpBuyer } from "./helpers";
+import { createShare, heartOf, homeIn, joinAs, openComments, openMore, photoList, pin, scrollToEnd, signInAgent, signUpBuyer } from "./helpers";
 
 async function expectLogoGoesHome(page: Page) {
   const logo = page.getByRole("link", { name: "BuyBox Social" });
@@ -20,8 +20,8 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await heartOf(clientHome).click();
   await joinAs(client, "Toby");
   await expect(heartOf(clientHome)).toHaveAttribute("aria-pressed", "true");
-  await clientHome.getByRole("button", { name: /^Like the evergreens/ }).click();
-  await expect(clientHome.getByRole("button", { name: /^Like the evergreens/ })).toHaveAttribute("aria-pressed", "true");
+  await pin(clientHome, /^Like the evergreens/).click();
+  await expect(pin(clientHome, /^Like the evergreens/)).toHaveAttribute("aria-pressed", "true");
 
   // That agent's feed names their own client, and says what they liked.
   await agent.goto("/");
@@ -38,7 +38,7 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await expect(post.getByRole("button", { name: "Like 96 Fernhollow Ln, 1 like" })).toHaveAttribute("aria-pressed", "false");
   // The heart sits on the evergreens themselves, in the photo.
   await post.scrollIntoViewIfNeeded();
-  await expect(post.getByRole("button", { name: "Like the evergreens, 1 like" })).toBeVisible();
+  await expect(pin(post, "Like the evergreens, 1 like")).toBeVisible();
   // No more Hinge-style Pass and Like buttons.
   await expect(buyer.getByRole("button", { name: /^(Pass|Dislike)$/ })).toHaveCount(0);
   await expect(buyer.getByText("Toby")).toHaveCount(0);
@@ -50,7 +50,10 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   // Double-tapping a photo likes what it shows, too.
   await post.scrollIntoViewIfNeeded();
   await post.getByRole("group", { name: /Photos of/ }).dblclick();
-  await expect(post.getByRole("button", { name: /^Like the exterior/ })).toHaveAttribute("aria-pressed", "true");
+  // Hovering the heart lists everything in the photo; the double-tap liked the exterior.
+  const list = await photoList(post);
+  await expect(list.getByRole("button", { name: /^Like the exterior/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(list.getByRole("button", { name: /^Like the evergreens/ })).toHaveAttribute("aria-pressed", "false");
   await expect(heartOf(post)).toHaveAttribute("aria-pressed", "true");
 
   // Comments open in a sheet: who said what, and who liked what.

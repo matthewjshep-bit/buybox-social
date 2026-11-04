@@ -372,9 +372,18 @@ function Panel({
   // counts the moment you tap.
   const likes =
     post.likes - (base.reaction === "like" || photos.hadAny ? 1 : 0) + (liked || photos.hasAny ? 1 : 0);
-  const spotted = (photo: ListingMedia) => new Set((photo.Spots ?? []).map((spot) => spot.tag));
-  const comments = post.timeline.filter((item) => item.kind === "comment").length;
   const current = listing.Media[photo];
+  // Everything in the photo on screen, for the list that slides out of the heart.
+  const things =
+    current && photos.enabled
+      ? photoTags(current).map((tag) => ({
+          tag,
+          liked: photos.isLiked(current, tag),
+          count: photos.count(current, tag),
+          toggle: () => photos.set(current, tag, !photos.isLiked(current, tag)),
+        }))
+      : [];
+  const comments = post.timeline.filter((item) => item.kind === "comment").length;
 
   const likeWhatsShown = (shown: ListingMedia) => {
     onDoubleTapLike();
@@ -420,6 +429,7 @@ function Panel({
       <div className="pointer-events-none absolute inset-0 mx-auto max-w-5xl">
         <Rail
           address={listing.UnparsedAddress}
+          things={things}
           liked={liked}
           likes={likes}
           comments={comments}
@@ -431,33 +441,6 @@ function Panel({
         />
 
         <div className="pointer-events-auto absolute inset-x-0 bottom-0 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pr-20 [text-shadow:0_1px_3px_rgb(0_0_0/0.45)] sm:px-6 sm:pr-24">
-          {/* Whatever in the photo has no spot to point at (the room itself, "open plan"). */}
-          {current && photos.enabled && photoTags(current).some((tag) => !spotted(current).has(tag)) && (
-            <div role="group" aria-label="Like what's in this photo" className="mb-3 flex flex-wrap gap-1.5">
-              {photoTags(current).filter((tag) => !spotted(current).has(tag)).map((tag) => {
-                const on = photos.isLiked(current, tag);
-                const n = photos.count(current, tag);
-                return (
-                  <button
-                    key={tag}
-                    type="button"
-                    aria-pressed={on}
-                    aria-label={`Like ${tagPhrase(tag)}${n > 0 ? `, ${n} ${n === 1 ? "like" : "likes"}` : ""}`}
-                    onClick={() => photos.set(current, tag, !on)}
-                    className={cn(
-                      "flex min-h-9 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold backdrop-blur-md transition-transform [text-shadow:none] active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100",
-                      on ? "bg-white text-rose-600" : "bg-white/20 text-white hover:bg-white/30",
-                    )}
-                  >
-                    <Heart aria-hidden size={14} strokeWidth={2.5} className={cn(on && "fill-current")} />
-                    {tag}
-                    {n > 0 && <span className="tabular-nums opacity-80">{n}</span>}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
           <ActivityLine headline={post.headline} trending={post.buzz.trending} onOpen={onComments} />
 
           <p className="mt-1 flex flex-wrap items-baseline gap-x-3">
@@ -517,8 +500,11 @@ function RailButton({
   );
 }
 
+type Thing = { tag: string; liked: boolean; count: number; toggle: () => void };
+
 function Rail({
   address,
+  things,
   liked,
   likes,
   comments,
@@ -529,6 +515,7 @@ function Rail({
   onMore,
 }: {
   address: string;
+  things: Thing[];
   liked: boolean;
   likes: number;
   comments: number;
@@ -540,20 +527,22 @@ function Rail({
 }) {
   return (
     <div className="pointer-events-auto absolute bottom-[max(9rem,calc(env(safe-area-inset-bottom)+8rem))] right-2 z-10 flex flex-col items-center gap-4 sm:right-4">
-      <RailButton
-        name={`Like ${address}${likes ? `, ${likes} ${likes === 1 ? "like" : "likes"}` : ""}`}
-        label="Like"
-        count={likes || "Like"}
-        pressed={liked}
-        onClick={onLike}
-      >
-        <Heart
-          aria-hidden
-          size={30}
-          strokeWidth={2}
-          className={cn(liked ? "fill-rose-500 text-rose-500" : "text-white", "drop-shadow")}
-        />
-      </RailButton>
+      <LikeWithList things={things}>
+        <RailButton
+          name={`Like ${address}${likes ? `, ${likes} ${likes === 1 ? "like" : "likes"}` : ""}`}
+          label="Like"
+          count={likes || "Like"}
+          pressed={liked}
+          onClick={onLike}
+        >
+          <Heart
+            aria-hidden
+            size={30}
+            strokeWidth={2}
+            className={cn(liked ? "fill-rose-500 text-rose-500" : "text-white", "drop-shadow")}
+          />
+        </RailButton>
+      </LikeWithList>
       <RailButton
         name={`Comments${comments ? `, ${comments}` : ""}`}
         label="Comments"
@@ -793,7 +782,100 @@ function MoreSheet({
   );
 }
 
-// A heart pinned to something in the photo: the floating staircase, the deck.
+// Hovering the heart (or pressing and holding it on a phone) slides out
+// everything in the photo on screen, each with its own heart.
+function LikeWithList({ things, children }: { things: Thing[]; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const wrapper = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const hold = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const held = useRef(false);
+
+  // A tap anywhere else closes a list opened by holding.
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: PointerEvent) => {
+      if (!wrapper.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [open]);
+
+  const release = () => {
+    if (hold.current) clearTimeout(hold.current);
+    hold.current = null;
+  };
+
+  return (
+    <div
+      ref={wrapper}
+      data-open={open || undefined}
+      className="group/like relative"
+      onPointerDown={(event) => {
+        held.current = false;
+        if (event.pointerType === "mouse" || things.length === 0) return;
+        hold.current = setTimeout(() => {
+          held.current = true;
+          setOpen(true);
+        }, 450);
+      }}
+      onPointerUp={release}
+      onPointerCancel={release}
+      onPointerLeave={release}
+      // Holding the heart opens the list; letting go shouldn't also like the
+      // home. Picks from the list always go through.
+      onClickCapture={(event) => {
+        if (!held.current) return;
+        held.current = false;
+        if (list.current?.contains(event.target as Node)) return;
+        event.stopPropagation();
+        event.preventDefault();
+      }}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      {children}
+      {things.length > 0 && (
+        <div
+          ref={list}
+          role="group"
+          aria-label="Like what's in this photo"
+          className="invisible absolute right-full top-1/2 -translate-y-1/2 pr-2 opacity-0 transition-[opacity,visibility] duration-150 group-hover/like:visible group-hover/like:opacity-100 group-has-focus-visible/like:visible group-has-focus-visible/like:opacity-100 group-data-open/like:visible group-data-open/like:opacity-100"
+        >
+          <ul className="flex flex-col items-end gap-1.5">
+            {things.map((thing, i) => (
+              <li
+                key={thing.tag}
+                style={{ transitionDelay: `${i * 45}ms` }}
+                className="translate-x-4 opacity-0 transition duration-200 ease-out group-hover/like:translate-x-0 group-hover/like:opacity-100 group-has-focus-visible/like:translate-x-0 group-has-focus-visible/like:opacity-100 group-data-open/like:translate-x-0 group-data-open/like:opacity-100 motion-reduce:translate-x-0"
+              >
+                <button
+                  type="button"
+                  aria-pressed={thing.liked}
+                  aria-label={`Like ${tagPhrase(thing.tag)}${thing.count > 0 ? `, ${thing.count} ${thing.count === 1 ? "like" : "likes"}` : ""}`}
+                  onClick={thing.toggle}
+                  className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full bg-black/50 px-3 text-[13px] font-semibold text-white backdrop-blur-md hover:bg-black/70 [text-shadow:none]"
+                >
+                  <Heart
+                    aria-hidden
+                    size={13}
+                    strokeWidth={2.5}
+                    className={cn(thing.liked ? "fill-rose-500 text-rose-500" : "text-white")}
+                  />
+                  {thing.tag}
+                  {thing.count > 0 && <span className="tabular-nums opacity-75">{thing.count}</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Something in the photo you can like: the floating staircase, the deck. At
+// rest just a faint dot, so the photo stays clear. Pointing at it (or the
+// first tap on a phone) unfolds what it is; clicking (or a second tap) likes it.
 function PhotoSpot({
   spot,
   liked,
@@ -805,30 +887,52 @@ function PhotoSpot({
   count: number;
   onToggle: () => void;
 }) {
-  // Near an edge, the label opens inward so it stays on the photo.
-  const shift = spot.x > 0.7 ? "-88%" : spot.x < 0.3 ? "-12%" : "-50%";
+  const [open, setOpen] = useState(false);
+  const pointer = useRef("mouse");
+  // Near the right edge, the label unfolds to the left so it stays on the photo.
+  const leftward = spot.x > 0.62;
   return (
     <button
       type="button"
       aria-pressed={liked}
       aria-label={`Like ${tagPhrase(spot.tag)}${count > 0 ? `, ${count} ${count === 1 ? "like" : "likes"}` : ""}`}
-      onClick={onToggle}
-      style={{ left: `${spot.x * 100}%`, top: `${spot.y * 100}%`, transform: `translate(${shift}, -50%)` }}
+      data-open={open || undefined}
+      onPointerDown={(event) => {
+        pointer.current = event.pointerType;
+      }}
+      onClick={() => {
+        if (pointer.current === "touch" && !open) {
+          setOpen(true);
+          return;
+        }
+        onToggle();
+      }}
+      onBlur={() => setOpen(false)}
+      // Anchored on the side it unfolds away from, so the label has room to open.
+      style={
+        leftward
+          ? { right: `${(1 - spot.x) * 100}%`, top: `${spot.y * 100}%`, transform: "translate(14px, -50%)" }
+          : { left: `${spot.x * 100}%`, top: `${spot.y * 100}%`, transform: "translate(-14px, -50%)" }
+      }
       className={cn(
-        "absolute z-10 flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-full py-1 pl-1 pr-3 text-[13px] font-semibold shadow-lg backdrop-blur-md transition-colors",
-        liked ? "bg-white text-rose-600" : "bg-black/45 text-white hover:bg-black/60",
+        "group/spot absolute z-10 flex h-7 items-center rounded-full transition-colors duration-200",
+        "hover:bg-black/45 hover:backdrop-blur-md focus-visible:bg-black/45 data-open:bg-black/45 data-open:backdrop-blur-md",
+        leftward && "flex-row-reverse",
       )}
     >
-      <span
-        className={cn(
-          "flex size-7 items-center justify-center rounded-full",
-          liked ? "bg-rose-500 text-white" : "bg-white/90 text-rose-500",
+      <span className="flex size-7 shrink-0 items-center justify-center">
+        {liked ? (
+          <Heart aria-hidden size={13} strokeWidth={2.5} className="fill-rose-500 text-rose-500 drop-shadow" />
+        ) : (
+          <span className="size-2.5 rounded-full bg-white/55 shadow-[0_0_0_4px_rgb(255_255_255/0.18),0_1px_3px_rgb(0_0_0/0.35)] transition-colors group-hover/photo:bg-white/80 group-hover/spot:bg-white" />
         )}
-      >
-        <Heart aria-hidden size={14} strokeWidth={2.5} className="fill-current" />
       </span>
-      {spot.tag}
-      {count > 0 && <span className="tabular-nums opacity-80">{count}</span>}
+      <span className="grid grid-cols-[0fr] opacity-0 transition-all duration-200 ease-out group-hover/spot:grid-cols-[1fr] group-hover/spot:opacity-100 group-focus-visible/spot:grid-cols-[1fr] group-focus-visible/spot:opacity-100 group-data-open/spot:grid-cols-[1fr] group-data-open/spot:opacity-100 motion-reduce:transition-none">
+        <span className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap px-1.5 text-[13px] font-semibold text-white">
+          {spot.tag}
+          {count > 0 && <span className="tabular-nums opacity-75">{count}</span>}
+        </span>
+      </span>
     </button>
   );
 }

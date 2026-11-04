@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, openComments, openMore, signInAgent } from "./helpers";
+import { createShare, heartOf, homeIn, joinAs, openComments, openMore, photoList, pin, signInAgent } from "./helpers";
 
 test("agent shares, two people react and comment, agent sees and replies", async ({ browser }) => {
   const agent = await signInAgent(browser, "alex@example.com", "Alex Rivera");
@@ -30,9 +30,10 @@ test("agent shares, two people react and comment, agent sees and replies", async
   await expect(heartOf(house)).toHaveAttribute("aria-pressed", "true");
   // On the kitchen photo, heart the kitchen and its marble counters.
   await house.getByRole("button", { name: "Next photo" }).click();
-  await house.getByRole("button", { name: /^Like the kitchen/ }).click();
-  await house.getByRole("button", { name: /^Like the marble counters/ }).click();
-  await expect(house.getByRole("button", { name: /^Like the marble counters/ })).toHaveAttribute("aria-pressed", "true");
+  // The kitchen itself, from the list on the heart; the counters, from their spot in the photo.
+  await (await photoList(house)).getByRole("button", { name: /^Like the kitchen/ }).click();
+  await pin(house, /^Like the marble counters/).click();
+  await expect(pin(house, /^Like the marble counters/)).toHaveAttribute("aria-pressed", "true");
 
   const jamieChat = await openComments(jamie, house);
   await jamieChat.getByLabel("Add a comment").fill("That porch is perfect.");
