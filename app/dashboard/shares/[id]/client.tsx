@@ -1,8 +1,8 @@
 "use client";
 
-import { Check, Copy, ExternalLink, MessageSquare, Pencil } from "lucide-react";
-import { useActionState, useState, useTransition } from "react";
-import { renameClient, replyAsAgent, type FormState } from "../../actions";
+import { Check, Copy, ExternalLink, MessageSquare, Pencil, UserPlus } from "lucide-react";
+import { useActionState, useId, useState, useTransition } from "react";
+import { addPerson, renameClient, replyAsAgent, type FormState } from "../../actions";
 
 // The client's name as the page title, editable in place.
 export function ClientNameEditor({ shareId, name }: { shareId: string; name: string }) {
@@ -74,22 +74,25 @@ export function SendLink({
   url,
   clientName,
   count,
+  label = "Your link is ready",
 }: {
   url: string;
   clientName: string;
   count: number;
+  label?: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const id = useId();
   const greeting = clientName ? `Hi ${clientName}, ` : "";
   const message = `${greeting}I picked ${count === 1 ? "a home" : `${count} homes`} for you. Tell me what you think: ${url}`;
 
   return (
-    <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
-      <label htmlFor="share-url" className="text-sm font-semibold">
-        Your link is ready
+    <div className="rounded-2xl bg-white p-4 ring-1 ring-stone-200">
+      <label htmlFor={id} className="text-sm font-semibold">
+        {label}
       </label>
       <input
-        id="share-url"
+        id={id}
         readOnly
         value={url}
         onFocus={(event) => event.target.select()}
@@ -171,6 +174,42 @@ export function ReplyForm({ shareId, listingKey }: { shareId: string; listingKey
         className="min-h-11 rounded-xl bg-brand px-4 font-semibold text-white disabled:opacity-50"
       >
         Reply
+      </button>
+    </form>
+  );
+}
+
+// Someone else to send the package to, with a link of their own.
+export function AddPersonForm({ shareId }: { shareId: string }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(addPerson.bind(null, shareId), {});
+  return (
+    <form action={action} className="flex flex-wrap items-start gap-2">
+      <div className="min-w-0 flex-1">
+        <label htmlFor="new-person" className="sr-only">
+          Their first name
+        </label>
+        <input
+          id="new-person"
+          name="firstName"
+          required
+          maxLength={40}
+          autoComplete="off"
+          placeholder="Their first name"
+          className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
+        />
+        {state.error && (
+          <p role="alert" className="mt-1 text-sm text-red-700">
+            {state.error}
+          </p>
+        )}
+      </div>
+      <button
+        type="submit"
+        disabled={pending}
+        className="flex min-h-11 items-center gap-1.5 rounded-xl border border-stone-300 bg-white px-4 text-sm font-semibold disabled:opacity-60"
+      >
+        <UserPlus aria-hidden size={16} />
+        {pending ? "Adding…" : "Add a person"}
       </button>
     </form>
   );

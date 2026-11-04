@@ -39,10 +39,11 @@ export default async function SharePage({ params }: Props) {
   const { token } = await params;
   const found = await getShareByToken(token);
   if (!found) notFound();
-  const { share, agent } = found;
+  const { share, agent, person } = found;
 
   const [listings, device] = await Promise.all([getShareListings(share.id), readDevice()]);
-  const me = await getParticipant(share.id, device);
+  // Someone's own link is them; otherwise it's whoever this device joined as.
+  const me = person ?? (await getParticipant(share.id, device));
   const keys = listings.map((listing) => listing.ListingKey);
   const [timelines, photoLikes] = await Promise.all([
     getShareTimelines(share.id, listings, me?.id ?? null),
@@ -87,6 +88,8 @@ export default async function SharePage({ params }: Props) {
         initial={posts}
         mode="share"
         agentName={agentName}
+        // A personal link opens as its owner, so it isn't one to pass around.
+        canInvite={!person}
         actions={{
           join: joinThread.bind(null, token),
           react: setReaction.bind(null, token),
@@ -108,7 +111,7 @@ export default async function SharePage({ params }: Props) {
                 </div>
               </div>
               <h1 className="mt-6 font-display text-4xl leading-tight sm:text-5xl">
-                {share.client_name ? `${share.client_name}, I` : "I"} picked{" "}
+                {person ? `${person.first_name}, I` : share.client_name ? `${share.client_name}, I` : "I"} picked{" "}
                 {count === 1 ? "this home" : `these ${count} homes`} for you
               </h1>
               {share.note && (
@@ -134,10 +137,19 @@ export default async function SharePage({ params }: Props) {
             </p>
             <div className="mt-8 rounded-2xl bg-white p-5 text-ink">
               <h3 className="font-semibold">Deciding with someone?</h3>
-              <p className="mt-1 text-sm text-stone-600">
-                Send them this link so you can all weigh in here, together with {agentName}.
-              </p>
-              <InviteButton token={token} />
+              {person ? (
+                <p className="mt-1 text-sm text-stone-600">
+                  Ask {agentName} to add them. They&apos;ll get their own link, so you each pick what you like
+                  and {agentName} can see where you agree.
+                </p>
+              ) : (
+                <>
+                  <p className="mt-1 text-sm text-stone-600">
+                    Send them this link so you can all weigh in here, together with {agentName}.
+                  </p>
+                  <InviteButton token={token} />
+                </>
+              )}
             </div>
           </div>
         }

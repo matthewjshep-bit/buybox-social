@@ -24,7 +24,10 @@
         "ShortDescription": "White Craftsman home with a covered front porch",
         "ImageOf": "Exterior",
         "Features": [
-          "Covered porch"
+          "Covered porch",
+          "Front door",
+          "Dormer windows",
+          "Mature trees"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -33,6 +36,21 @@
             "tag": "Covered porch",
             "x": 0.3,
             "y": 0.8
+          },
+          {
+            "tag": "Front door",
+            "x": 0.62,
+            "y": 0.68
+          },
+          {
+            "tag": "Dormer windows",
+            "x": 0.49,
+            "y": 0.41
+          },
+          {
+            "tag": "Mature trees",
+            "x": 0.85,
+            "y": 0.22
           }
         ]
       },
@@ -43,7 +61,11 @@
         "ShortDescription": "Bright living room with plants and built-in shelves",
         "ImageOf": "Living room",
         "Features": [
-          "Built-in shelves"
+          "Built-in shelves",
+          "Gray sofa",
+          "Hanging plants",
+          "Big windows",
+          "Hardwood floors"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -52,6 +74,26 @@
             "tag": "Built-in shelves",
             "x": 0.14,
             "y": 0.25
+          },
+          {
+            "tag": "Gray sofa",
+            "x": 0.58,
+            "y": 0.58
+          },
+          {
+            "tag": "Hanging plants",
+            "x": 0.85,
+            "y": 0.25
+          },
+          {
+            "tag": "Big windows",
+            "x": 0.66,
+            "y": 0.18
+          },
+          {
+            "tag": "Hardwood floors",
+            "x": 0.7,
+            "y": 0.88
           }
         ]
       },
@@ -63,7 +105,12 @@
         "ImageOf": "Kitchen",
         "Features": [
           "Marble counters",
-          "Gas range"
+          "Gas range",
+          "Kitchen sink",
+          "Glass cabinets",
+          "Shaker cabinets",
+          "Hexagon backsplash",
+          "Range hood"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -77,6 +124,31 @@
             "tag": "Gas range",
             "x": 0.84,
             "y": 0.7
+          },
+          {
+            "tag": "Kitchen sink",
+            "x": 0.12,
+            "y": 0.55
+          },
+          {
+            "tag": "Glass cabinets",
+            "x": 0.37,
+            "y": 0.22
+          },
+          {
+            "tag": "Shaker cabinets",
+            "x": 0.5,
+            "y": 0.75
+          },
+          {
+            "tag": "Hexagon backsplash",
+            "x": 0.5,
+            "y": 0.47
+          },
+          {
+            "tag": "Range hood",
+            "x": 0.88,
+            "y": 0.1
           }
         ]
       },
@@ -87,7 +159,10 @@
         "ShortDescription": "White bathroom with a window and pedestal sink",
         "ImageOf": "Bathroom",
         "Features": [
-          "Pedestal sink"
+          "Pedestal sink",
+          "Bathroom window",
+          "Mirror",
+          "Plants"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -96,6 +171,21 @@
             "tag": "Pedestal sink",
             "x": 0.26,
             "y": 0.82
+          },
+          {
+            "tag": "Bathroom window",
+            "x": 0.53,
+            "y": 0.35
+          },
+          {
+            "tag": "Mirror",
+            "x": 0.27,
+            "y": 0.42
+          },
+          {
+            "tag": "Plants",
+            "x": 0.55,
+            "y": 0.75
           }
         ]
       }
@@ -129,10 +219,35 @@
         "ShortDescription": "Dark modern home glowing at dusk beneath a large tree",
         "ImageOf": "Exterior",
         "Features": [
-          "Modern design"
+          "Modern design",
+          "Covered patio",
+          "Lawn",
+          "Mature tree"
         ],
         "ImageWidth": 1400,
-        "ImageHeight": 1050
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Modern design",
+            "x": 0.22,
+            "y": 0.42
+          },
+          {
+            "tag": "Covered patio",
+            "x": 0.68,
+            "y": 0.64
+          },
+          {
+            "tag": "Lawn",
+            "x": 0.35,
+            "y": 0.88
+          },
+          {
+            "tag": "Mature tree",
+            "x": 0.42,
+            "y": 0.18
+          }
+        ]
       },
       {
         "MediaKey": "SAMPLE-1002-2",
@@ -141,7 +256,11 @@
         "ShortDescription": "Open living room with a wood accent wall",
         "ImageOf": "Living room",
         "Features": [
-          "Wood accent wall"
+          "Wood accent wall",
+          "Sectional sofa",
+          "Fireplace",
+          "Open kitchen",
+          "Floor-to-ceiling windows"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -150,6 +269,26 @@
             "tag": "Wood accent wall",
             "x": 0.9,
             "y": 0.3
+          },
+          {
+            "tag": "Sectional sofa",
+            "x": 0.2,
+            "y": 0.75
+          },
+          {
+            "tag": "Fireplace",
+            "x": 0.67,
+            "y": 0.51
+          },
+          {
+            "tag": "Open kitchen",
+            "x": 0.5,
+            "y": 0.45
+          },
+          {
+            "tag": "Floor-to-ceiling windows",
+            "x": 0.2,
+            "y": 0.42
           }
         ]
       },
@@ -160,7 +299,10 @@
         "ShortDescription": "Primary bedroom with glass doors",
         "ImageOf": "Bedroom",
         "Features": [
-          "Glass doors"
+          "Glass doors",
+          "Upholstered bed",
+          "Reading chair",
+          "Ceiling fan"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -169,6 +311,21 @@
             "tag": "Glass doors",
             "x": 0.46,
             "y": 0.38
+          },
+          {
+            "tag": "Upholstered bed",
+            "x": 0.3,
+            "y": 0.68
+          },
+          {
+            "tag": "Reading chair",
+            "x": 0.9,
+            "y": 0.8
+          },
+          {
+            "tag": "Ceiling fan",
+            "x": 0.5,
+            "y": 0.05
           }
         ]
       },
@@ -180,7 +337,9 @@
         "ImageOf": "Bathroom",
         "Features": [
           "Soaking tub",
-          "Glass shower"
+          "Glass shower",
+          "Double vanity",
+          "Clerestory window"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -194,6 +353,16 @@
             "tag": "Glass shower",
             "x": 0.5,
             "y": 0.4
+          },
+          {
+            "tag": "Double vanity",
+            "x": 0.85,
+            "y": 0.7
+          },
+          {
+            "tag": "Clerestory window",
+            "x": 0.42,
+            "y": 0.19
           }
         ]
       }
@@ -228,7 +397,9 @@
         "ImageOf": "Exterior",
         "Features": [
           "Wraparound porch",
-          "Lawn"
+          "Lawn",
+          "Cedar shingles",
+          "Dormer window"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -242,6 +413,16 @@
             "tag": "Lawn",
             "x": 0.3,
             "y": 0.9
+          },
+          {
+            "tag": "Cedar shingles",
+            "x": 0.25,
+            "y": 0.42
+          },
+          {
+            "tag": "Dormer window",
+            "x": 0.51,
+            "y": 0.4
           }
         ]
       },
@@ -252,7 +433,10 @@
         "ShortDescription": "Living room with gray sofas and a built-in media wall",
         "ImageOf": "Living room",
         "Features": [
-          "Media wall"
+          "Media wall",
+          "Gray sofas",
+          "Pendant lamp",
+          "Area rug"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -261,6 +445,21 @@
             "tag": "Media wall",
             "x": 0.85,
             "y": 0.55
+          },
+          {
+            "tag": "Gray sofas",
+            "x": 0.44,
+            "y": 0.6
+          },
+          {
+            "tag": "Pendant lamp",
+            "x": 0.43,
+            "y": 0.26
+          },
+          {
+            "tag": "Area rug",
+            "x": 0.4,
+            "y": 0.84
           }
         ]
       },
@@ -272,7 +471,12 @@
         "ImageOf": "Kitchen",
         "Features": [
           "Kitchen island",
-          "Pendant lights"
+          "Pendant lights",
+          "Stainless appliances",
+          "Bar stools",
+          "Subway backsplash",
+          "White cabinets",
+          "Kitchen sink"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -286,6 +490,31 @@
             "tag": "Pendant lights",
             "x": 0.74,
             "y": 0.15
+          },
+          {
+            "tag": "Stainless appliances",
+            "x": 0.15,
+            "y": 0.55
+          },
+          {
+            "tag": "Bar stools",
+            "x": 0.85,
+            "y": 0.85
+          },
+          {
+            "tag": "Subway backsplash",
+            "x": 0.4,
+            "y": 0.47
+          },
+          {
+            "tag": "White cabinets",
+            "x": 0.42,
+            "y": 0.27
+          },
+          {
+            "tag": "Kitchen sink",
+            "x": 0.62,
+            "y": 0.53
           }
         ]
       }
@@ -320,7 +549,8 @@
         "ImageOf": "Exterior",
         "Features": [
           "Cedar siding",
-          "Evergreens"
+          "Evergreens",
+          "Dormer windows"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -334,6 +564,11 @@
             "tag": "Evergreens",
             "x": 0.4,
             "y": 0.25
+          },
+          {
+            "tag": "Dormer windows",
+            "x": 0.88,
+            "y": 0.37
           }
         ]
       },
@@ -345,7 +580,10 @@
         "ImageOf": "Dining room",
         "Features": [
           "Bay window",
-          "Pendant lights"
+          "Pendant lights",
+          "Dining table",
+          "Hardwood floors",
+          "Vaulted ceiling"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -359,6 +597,21 @@
             "tag": "Pendant lights",
             "x": 0.5,
             "y": 0.2
+          },
+          {
+            "tag": "Dining table",
+            "x": 0.5,
+            "y": 0.66
+          },
+          {
+            "tag": "Hardwood floors",
+            "x": 0.3,
+            "y": 0.9
+          },
+          {
+            "tag": "Vaulted ceiling",
+            "x": 0.75,
+            "y": 0.1
           }
         ]
       },
@@ -369,7 +622,11 @@
         "ShortDescription": "Sunny living room with leather seating",
         "ImageOf": "Living room",
         "Features": [
-          "Natural light"
+          "Natural light",
+          "Gallery wall",
+          "Leather sofa",
+          "Accent chairs",
+          "Coffee table"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -378,6 +635,26 @@
             "tag": "Natural light",
             "x": 0.9,
             "y": 0.25
+          },
+          {
+            "tag": "Gallery wall",
+            "x": 0.4,
+            "y": 0.3
+          },
+          {
+            "tag": "Leather sofa",
+            "x": 0.82,
+            "y": 0.65
+          },
+          {
+            "tag": "Accent chairs",
+            "x": 0.15,
+            "y": 0.72
+          },
+          {
+            "tag": "Coffee table",
+            "x": 0.5,
+            "y": 0.66
           }
         ]
       }
@@ -412,7 +689,10 @@
         "ImageOf": "Exterior",
         "Features": [
           "Cedar panels",
-          "Landscaping"
+          "Landscaping",
+          "Floor-to-ceiling windows",
+          "Front door",
+          "Paver walkway"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -424,8 +704,23 @@
           },
           {
             "tag": "Landscaping",
-            "x": 0.7,
-            "y": 0.85
+            "x": 0.88,
+            "y": 0.8
+          },
+          {
+            "tag": "Floor-to-ceiling windows",
+            "x": 0.42,
+            "y": 0.63
+          },
+          {
+            "tag": "Front door",
+            "x": 0.27,
+            "y": 0.63
+          },
+          {
+            "tag": "Paver walkway",
+            "x": 0.56,
+            "y": 0.88
           }
         ]
       },
@@ -436,7 +731,10 @@
         "ShortDescription": "Open living room with a floating staircase",
         "ImageOf": "Living room",
         "Features": [
-          "Floating staircase"
+          "Floating staircase",
+          "Blue sofa",
+          "Sideboard",
+          "Coffee table"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -445,6 +743,21 @@
             "tag": "Floating staircase",
             "x": 0.3,
             "y": 0.35
+          },
+          {
+            "tag": "Blue sofa",
+            "x": 0.42,
+            "y": 0.74
+          },
+          {
+            "tag": "Sideboard",
+            "x": 0.75,
+            "y": 0.6
+          },
+          {
+            "tag": "Coffee table",
+            "x": 0.52,
+            "y": 0.88
           }
         ]
       },
@@ -455,7 +768,11 @@
         "ShortDescription": "Bedroom opening onto a deck",
         "ImageOf": "Bedroom",
         "Features": [
-          "Deck"
+          "Deck",
+          "Glass doors",
+          "Rocking chair",
+          "Pendant lamp",
+          "Tree views"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -464,6 +781,26 @@
             "tag": "Deck",
             "x": 0.7,
             "y": 0.58
+          },
+          {
+            "tag": "Glass doors",
+            "x": 0.4,
+            "y": 0.42
+          },
+          {
+            "tag": "Rocking chair",
+            "x": 0.88,
+            "y": 0.7
+          },
+          {
+            "tag": "Pendant lamp",
+            "x": 0.12,
+            "y": 0.55
+          },
+          {
+            "tag": "Tree views",
+            "x": 0.8,
+            "y": 0.28
           }
         ]
       },
@@ -473,9 +810,36 @@
         "Order": 4,
         "ShortDescription": "Reading corner with a yellow armchair",
         "ImageOf": "Reading nook",
-        "Features": [],
+        "Features": [
+          "Yellow armchair",
+          "Wall art",
+          "Floor lamp",
+          "Hardwood floors"
+        ],
         "ImageWidth": 1400,
-        "ImageHeight": 1050
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Yellow armchair",
+            "x": 0.5,
+            "y": 0.66
+          },
+          {
+            "tag": "Wall art",
+            "x": 0.55,
+            "y": 0.28
+          },
+          {
+            "tag": "Floor lamp",
+            "x": 0.37,
+            "y": 0.2
+          },
+          {
+            "tag": "Hardwood floors",
+            "x": 0.4,
+            "y": 0.92
+          }
+        ]
       }
     ],
     "Latitude": 47.681,
@@ -508,20 +872,32 @@
         "ImageOf": "Exterior",
         "Features": [
           "Brick front",
-          "Lawn"
+          "Lawn",
+          "Arched window",
+          "Mature trees"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
         "Spots": [
           {
             "tag": "Brick front",
-            "x": 0.58,
-            "y": 0.68
+            "x": 0.6,
+            "y": 0.76
           },
           {
             "tag": "Lawn",
             "x": 0.25,
             "y": 0.9
+          },
+          {
+            "tag": "Arched window",
+            "x": 0.53,
+            "y": 0.58
+          },
+          {
+            "tag": "Mature trees",
+            "x": 0.8,
+            "y": 0.4
           }
         ]
       },
@@ -532,7 +908,10 @@
         "ShortDescription": "Bright living room with windows on three sides",
         "ImageOf": "Living room",
         "Features": [
-          "Natural light"
+          "Natural light",
+          "Armchairs",
+          "Fireplace",
+          "Dining area"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -541,6 +920,21 @@
             "tag": "Natural light",
             "x": 0.38,
             "y": 0.33
+          },
+          {
+            "tag": "Armchairs",
+            "x": 0.3,
+            "y": 0.68
+          },
+          {
+            "tag": "Fireplace",
+            "x": 0.7,
+            "y": 0.5
+          },
+          {
+            "tag": "Dining area",
+            "x": 0.9,
+            "y": 0.62
           }
         ]
       },
@@ -550,9 +944,36 @@
         "Order": 3,
         "ShortDescription": "Simple sitting area with a dark sofa",
         "ImageOf": "Sitting room",
-        "Features": [],
+        "Features": [
+          "Black loveseat",
+          "Vintage dresser",
+          "Floor lamp",
+          "Potted ficus"
+        ],
         "ImageWidth": 1400,
-        "ImageHeight": 1050
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Black loveseat",
+            "x": 0.42,
+            "y": 0.78
+          },
+          {
+            "tag": "Vintage dresser",
+            "x": 0.74,
+            "y": 0.77
+          },
+          {
+            "tag": "Floor lamp",
+            "x": 0.88,
+            "y": 0.4
+          },
+          {
+            "tag": "Potted ficus",
+            "x": 0.2,
+            "y": 0.5
+          }
+        ]
       }
     ],
     "Latitude": 47.54,
@@ -587,7 +1008,10 @@
         "ShortDescription": "Modern townhouse with a lit front entry at dusk",
         "ImageOf": "Exterior",
         "Features": [
-          "Front entry"
+          "Front entry",
+          "Garage",
+          "Wall sconces",
+          "Landscaping"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -596,6 +1020,21 @@
             "tag": "Front entry",
             "x": 0.47,
             "y": 0.66
+          },
+          {
+            "tag": "Garage",
+            "x": 0.14,
+            "y": 0.78
+          },
+          {
+            "tag": "Wall sconces",
+            "x": 0.31,
+            "y": 0.6
+          },
+          {
+            "tag": "Landscaping",
+            "x": 0.6,
+            "y": 0.88
           }
         ]
       },
@@ -606,10 +1045,36 @@
         "ShortDescription": "Bright living and dining room with a red armchair",
         "ImageOf": "Living room",
         "Features": [
-          "Open plan"
+          "Open plan",
+          "Dining table",
+          "Kitchen",
+          "Red armchair",
+          "Big windows"
         ],
         "ImageWidth": 1400,
-        "ImageHeight": 1050
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Dining table",
+            "x": 0.25,
+            "y": 0.72
+          },
+          {
+            "tag": "Kitchen",
+            "x": 0.09,
+            "y": 0.55
+          },
+          {
+            "tag": "Red armchair",
+            "x": 0.6,
+            "y": 0.62
+          },
+          {
+            "tag": "Big windows",
+            "x": 0.86,
+            "y": 0.27
+          }
+        ]
       }
     ]
   },
@@ -641,7 +1106,10 @@
         "ShortDescription": "Blue cottage behind a white picket fence",
         "ImageOf": "Exterior",
         "Features": [
-          "Picket fence"
+          "Picket fence",
+          "Blue shutters",
+          "Chimney",
+          "Garden"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -650,6 +1118,21 @@
             "tag": "Picket fence",
             "x": 0.45,
             "y": 0.74
+          },
+          {
+            "tag": "Blue shutters",
+            "x": 0.34,
+            "y": 0.52
+          },
+          {
+            "tag": "Chimney",
+            "x": 0.39,
+            "y": 0.23
+          },
+          {
+            "tag": "Garden",
+            "x": 0.12,
+            "y": 0.55
           }
         ]
       },
@@ -659,9 +1142,36 @@
         "Order": 2,
         "ShortDescription": "Living room with a white sofa and teal pillows",
         "ImageOf": "Living room",
-        "Features": [],
+        "Features": [
+          "White sofa",
+          "Abstract art",
+          "Table lamps",
+          "Windows"
+        ],
         "ImageWidth": 1400,
-        "ImageHeight": 1050
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "White sofa",
+            "x": 0.5,
+            "y": 0.82
+          },
+          {
+            "tag": "Abstract art",
+            "x": 0.5,
+            "y": 0.42
+          },
+          {
+            "tag": "Table lamps",
+            "x": 0.09,
+            "y": 0.6
+          },
+          {
+            "tag": "Windows",
+            "x": 0.09,
+            "y": 0.3
+          }
+        ]
       }
     ]
   },
@@ -694,7 +1204,9 @@
         "ImageOf": "Exterior",
         "Features": [
           "Green roof",
-          "Maple trees"
+          "Maple trees",
+          "Picket fence",
+          "Red front door"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -708,6 +1220,16 @@
             "tag": "Maple trees",
             "x": 0.82,
             "y": 0.18
+          },
+          {
+            "tag": "Picket fence",
+            "x": 0.25,
+            "y": 0.72
+          },
+          {
+            "tag": "Red front door",
+            "x": 0.57,
+            "y": 0.6
           }
         ]
       }
@@ -741,7 +1263,9 @@
         "ShortDescription": "Small red cabin on a grassy meadow",
         "ImageOf": "Exterior",
         "Features": [
-          "Meadow"
+          "Meadow",
+          "Red siding",
+          "Wildflowers"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -750,6 +1274,16 @@
             "tag": "Meadow",
             "x": 0.55,
             "y": 0.65
+          },
+          {
+            "tag": "Red siding",
+            "x": 0.48,
+            "y": 0.42
+          },
+          {
+            "tag": "Wildflowers",
+            "x": 0.12,
+            "y": 0.85
           }
         ]
       }
@@ -783,10 +1317,41 @@
         "ShortDescription": "White modern home with a stepped facade",
         "ImageOf": "Exterior",
         "Features": [
-          "Modern facade"
+          "Modern facade",
+          "Front walk",
+          "Lawn",
+          "Front door",
+          "Pine trees"
         ],
         "ImageWidth": 1400,
-        "ImageHeight": 1050
+        "ImageHeight": 1050,
+        "Spots": [
+          {
+            "tag": "Modern facade",
+            "x": 0.24,
+            "y": 0.28
+          },
+          {
+            "tag": "Front walk",
+            "x": 0.38,
+            "y": 0.86
+          },
+          {
+            "tag": "Lawn",
+            "x": 0.75,
+            "y": 0.88
+          },
+          {
+            "tag": "Front door",
+            "x": 0.37,
+            "y": 0.64
+          },
+          {
+            "tag": "Pine trees",
+            "x": 0.88,
+            "y": 0.18
+          }
+        ]
       }
     ]
   },
@@ -819,20 +1384,38 @@
         "ImageOf": "Exterior",
         "Features": [
           "Stone and shingle",
-          "Three-car garage"
+          "Three-car garage",
+          "Arched window",
+          "Front door",
+          "Front lawn"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
         "Spots": [
           {
             "tag": "Stone and shingle",
-            "x": 0.55,
-            "y": 0.38
+            "x": 0.7,
+            "y": 0.5
           },
           {
             "tag": "Three-car garage",
-            "x": 0.33,
-            "y": 0.6
+            "x": 0.3,
+            "y": 0.62
+          },
+          {
+            "tag": "Arched window",
+            "x": 0.55,
+            "y": 0.33
+          },
+          {
+            "tag": "Front door",
+            "x": 0.55,
+            "y": 0.59
+          },
+          {
+            "tag": "Front lawn",
+            "x": 0.7,
+            "y": 0.8
           }
         ]
       }
@@ -867,7 +1450,8 @@
         "ImageOf": "Exterior",
         "Features": [
           "Courtyard",
-          "Wood accents"
+          "Wood accents",
+          "Perforated screens"
         ],
         "ImageWidth": 1400,
         "ImageHeight": 1050,
@@ -881,6 +1465,11 @@
             "tag": "Wood accents",
             "x": 0.85,
             "y": 0.75
+          },
+          {
+            "tag": "Perforated screens",
+            "x": 0.22,
+            "y": 0.3
           }
         ]
       }

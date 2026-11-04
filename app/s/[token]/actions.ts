@@ -31,6 +31,8 @@ export async function joinThread(token: string, firstName: string): Promise<Acti
   if (!name.success) return fail("Please enter your first name.");
   const found = await getShareByToken(token);
   if (!found) return fail("This link is no longer available.");
+  // Someone's own link already knows who they are.
+  if (found.person) return { ok: true };
 
   const device = await ensureDevice();
   if (!(await getParticipant(found.share.id, device))) {
@@ -46,12 +48,17 @@ export async function joinThread(token: string, firstName: string): Promise<Acti
   return { ok: true };
 }
 
-// The token picks the share and the device cookie picks the person, so a link
-// can only ever act on its own thread.
+// Who's acting on a link. Someone's own link is them; on the package's own
+// link the device cookie picks the person. Either way a link can only ever
+// act on its own package.
+async function personOn(found: NonNullable<Awaited<ReturnType<typeof getShareByToken>>>) {
+  return found.person ?? (await getParticipant(found.share.id, await readDevice()));
+}
+
 async function resolveActor(token: string, listingKey: string) {
   const found = await getShareByToken(token);
   if (!found || !(await shareHasListing(found.share.id, listingKey))) return null;
-  const participant = await getParticipant(found.share.id, await readDevice());
+  const participant = await personOn(found);
   return participant ? { share: found.share, participant } : null;
 }
 
@@ -147,7 +154,7 @@ export async function setCommentSharing(
   if (!found || typeof commentId !== "string" || commentId.length > 64) {
     return fail("We couldn't find that comment.");
   }
-  const participant = await getParticipant(found.share.id, await readDevice());
+  const participant = await personOn(found);
   if (!participant) return fail("We couldn't find that comment.");
   // Taking a comment back is always allowed; sharing it needs a like.
   const updated = await sql`

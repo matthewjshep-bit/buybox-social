@@ -5,13 +5,13 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
   browser,
 }) => {
   const agent = await signInAgent(browser, "gwen@example.com", "Gwen Agent");
-  const { url } = await createShare(agent, ["10421 Halvard", "1204 Quillan"]);
+  const { url } = await createShare(agent, ["10421 Halvard", "1204 Quillan"], ["Joe"]);
 
-  // The client can be renamed in place.
+  // The package can be renamed in place.
   await agent.getByRole("button", { name: "Rename" }).click();
-  await agent.getByLabel("Client's name").fill("Joe");
+  await agent.getByLabel("Client's name").fill("Joe & Ana");
   await agent.getByRole("button", { name: "Save" }).click();
-  await expect(agent.getByRole("heading", { level: 1, name: "Joe" })).toBeVisible();
+  await expect(agent.getByRole("heading", { level: 1, name: "Joe & Ana" })).toBeVisible();
 
   // Joe likes one home's kitchen and passes on the other's exterior.
   const joe = await (await browser.newContext()).newPage();
@@ -19,7 +19,6 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
   await expect(joe.getByRole("heading", { level: 1 })).toHaveText("Joe, I picked these 2 homes for you");
   const kirkland = homeIn(joe, "10421 Halvard Way NE");
   await heartOf(kirkland).click();
-  await joinAs(joe, "Joe");
   await expect(heartOf(kirkland)).toHaveAttribute("aria-pressed", "true");
   await kirkland.getByRole("button", { name: "Next photo" }).click();
   await pin(kirkland, /^Like the floating staircase/).click();
@@ -69,8 +68,8 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
   // What Joe wants, summed up across every home.
   const profile = agent.getByRole("region", { name: "What Joe wants" });
   await expect(profile).toContainText("Joe liked 1 of 2 homes · passed 1");
-  await expect(profile.getByText("Floating staircase 1")).toBeVisible();
-  await expect(profile.getByText("Exterior 1")).toBeVisible();
+  await expect(profile.getByText("Floating staircase", { exact: true })).toBeVisible();
+  await expect(profile.getByText("Exterior", { exact: true })).toBeVisible();
   await expect(agent.getByRole("region", { name: "10421 Halvard Way NE" })).toContainText(
     "Joe liked the floating staircase",
   );
@@ -82,7 +81,7 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
   await expect(removed.getByText("Not a fan of farmhouse sinks.")).toBeVisible();
   await expect(removed.getByText("Joe passed, didn't like the exterior")).toBeVisible();
   await expect(profile).toContainText("of 2 homes");
-  await expect(profile.getByText("Exterior 1")).toBeVisible();
+  await expect(profile.getByText("Exterior", { exact: true })).toBeVisible();
   await joe.reload();
   await expect(homeIn(joe, "1204 Quillan St SE")).toHaveCount(0);
   await expect(joe.getByRole("heading", { level: 1 })).toHaveText("Joe, I picked this home for you");
@@ -98,7 +97,7 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
   await expect(agent.getByRole("heading", { name: "Add homes for Joe" })).toBeVisible();
   await expect(agent.getByRole("button", { name: /10421 Halvard/ })).toHaveCount(0);
   await agent.getByRole("button", { name: /812 N Corbel/ }).click();
-  await agent.getByRole("button", { name: "Add 1 home to Joe's link" }).click();
+  await agent.getByRole("button", { name: "Add 1 home to Joe & Ana's link" }).click();
   await agent.waitForURL("**/dashboard/shares/*");
   await expect(agent.getByRole("region", { name: "812 N Corbel St" })).toBeVisible();
   await joe.reload();

@@ -43,19 +43,44 @@ export const newShareToken = () => randomBytes(24).toString("base64url");
 
 export const isShareToken = (token: string) => /^[\w-]{32}$/.test(token);
 
+// A link opens a package two ways: the package's own link (anyone can join
+// by giving a first name), or one person's own link (it opens as them).
 export async function getShareByToken(token: string) {
   if (!isShareToken(token)) return null;
-  const [row] = await sql<(Share & ShareAgent)[]>`
+  const [row] = await sql<(Share & ShareAgent & { person_id: string | null; person_name: string | null })[]>`
     select s.id, s.token, s.agent_id, s.client_name, s.note,
-           a.full_name, a.brokerage, a.photo_data_url, a.brand_color
-    from shares s join accounts a on a.id = s.agent_id
-    where s.token = ${token}`;
+           a.full_name, a.brokerage, a.photo_data_url, a.brand_color,
+           p.id as person_id, p.first_name as person_name
+    from shares s
+    join accounts a on a.id = s.agent_id
+    left join participants p on p.share_id = s.id and p.token = ${token}
+    where s.token = ${token} or s.id = (select share_id from participants where token = ${token})
+    limit 1`;
   if (!row) return null;
-  const { full_name, brokerage, photo_data_url, brand_color, ...share } = row;
+  const { full_name, brokerage, photo_data_url, brand_color, person_id, person_name, ...share } = row;
   return {
     share: share as Share,
     agent: { full_name, brokerage, photo_data_url, brand_color } as ShareAgent,
+    // Set when the link is someone's own.
+    person: person_id ? { id: person_id, first_name: person_name! } : null,
   };
+}
+
+// The people an agent added to a package, each with their own link.
+export async function getInvitees(shareId: string) {
+  return sql<{ id: string; first_name: string; token: string }[]>`
+    select id, first_name, token from participants
+    where share_id = ${shareId} and token is not null
+    order by invited_at, first_name`;
+}
+
+// Adds someone to a package with their own link. Returns their link token.
+export async function invitePerson(shareId: string, firstName: string, tx: typeof sql = sql) {
+  const token = newShareToken();
+  await tx`
+    insert into participants (share_id, device_token, first_name, token, invited_at)
+    values (${shareId}, ${`invite:${token}`}, ${firstName}, ${token}, now())`;
+  return token;
 }
 
 // The homes on a share. Clients only ever see the ones still on their link;

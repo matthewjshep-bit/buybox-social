@@ -1,13 +1,17 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, openComments, openMore, photoList, pin, signInAgent } from "./helpers";
+import { createShare, heartOf, homeIn, openComments, openMore, photoList, pin, signInAgent } from "./helpers";
 
-test("agent shares, two people react and comment, agent sees and replies", async ({ browser }) => {
+test("one package, a link for each person: they react, the agent compares and replies", async ({ browser }) => {
+  test.setTimeout(60_000);
   const agent = await signInAgent(browser, "alex@example.com", "Alex Rivera");
-  const { url } = await createShare(agent, ["4127 Larkmoor", "1880 Tamsen"]);
-  expect(url).toMatch(/\/s\/[\w-]{32}$/);
+  const { urls } = await createShare(agent, ["4127 Larkmoor", "1880 Tamsen"], ["Jamie", "Sam"]);
+  expect(urls.Jamie).toMatch(/\/s\/[\w-]{32}$/);
+  expect(urls.Sam).toMatch(/\/s\/[\w-]{32}$/);
+  expect(urls.Sam).not.toBe(urls.Jamie);
+  const url = urls.Jamie;
 
-  // Client opens the link in a fresh browser, with no account.
+  // Jamie opens her own link in a fresh browser, with no account.
   const jamieContext = await browser.newContext();
   const jamie = await jamieContext.newPage();
   const pageErrors: string[] = [];
@@ -24,14 +28,14 @@ test("agent shares, two people react and comment, agent sees and replies", async
   await house.getByRole("button", { name: "Next photo" }).click();
   await expect(house.getByText("Photo 2 of 4")).toBeAttached();
 
-  // The first like asks for a name, then applies.
+  // Her link already knows who she is: no name to type.
   await heartOf(house).click();
-  await joinAs(jamie, "Jamie");
   await expect(heartOf(house)).toHaveAttribute("aria-pressed", "true");
+  await expect(jamie.getByRole("textbox", { name: "First name" })).toBeHidden();
   // On the kitchen photo, heart the kitchen and its marble counters.
   await house.getByRole("button", { name: "Next photo" }).click();
   // The kitchen itself, from the list on the heart; the counters, from their spot in the photo.
-  await (await photoList(house)).getByRole("button", { name: /^Like the kitchen/ }).click();
+  await (await photoList(house)).getByRole("button", { name: /^Like the kitchen(,|$)/ }).click();
   await pin(house, /^Like the marble counters/).click();
   await expect(pin(house, /^Like the marble counters/)).toHaveAttribute("aria-pressed", "true");
 
@@ -41,17 +45,17 @@ test("agent shares, two people react and comment, agent sees and replies", async
   await expect(jamieChat.getByText("That porch is perfect.")).toBeVisible();
   await jamie.keyboard.press("Escape");
 
-  // A second person on the same link joins the same thread.
+  // Sam opens his own link to the same package, and the same conversation.
   const samContext = await browser.newContext();
   const sam = await samContext.newPage();
-  await sam.goto(url);
+  await sam.goto(urls.Sam);
+  await expect(sam.getByRole("heading", { level: 1 })).toHaveText("Sam, I picked these 2 homes for you");
   const samHouse = homeIn(sam, "4127 Larkmoor Ave NE");
   const samChat = await openComments(sam, samHouse);
   await expect(samChat.getByText("Jamie liked the kitchen and marble counters")).toBeVisible();
   await expect(samChat.getByText("That porch is perfect.")).toBeVisible();
   await samChat.getByLabel("Add a comment").fill("The kitchen feels small.");
   await samChat.getByRole("button", { name: "Post comment" }).click();
-  await joinAs(sam, "Sam");
   await expect(samChat.getByText("The kitchen feels small.")).toBeVisible();
   await sam.keyboard.press("Escape");
 
@@ -97,8 +101,40 @@ test("agent shares, two people react and comment, agent sees and replies", async
   await jamie.reload();
   thread = await openComments(jamie, house);
   await expect(thread.getByText("The kitchen feels small.")).toHaveCount(0);
+  await jamie.keyboard.press("Escape");
+
+  // Sam passed on the house, but liked its kitchen too.
+  await sam.keyboard.press("Escape");
+  await samHouse.getByRole("button", { name: "Next photo" }).click();
+  await samHouse.getByRole("button", { name: "Next photo" }).click();
+  await (await photoList(samHouse)).getByRole("button", { name: /^Like the kitchen(,|$)/ }).click();
+  await expect(pin(samHouse, /^Like the marble counters/)).toBeVisible();
+
+  // The agent sees them side by side: where they agree, and where they don't.
+  await agent.reload();
+  const compare = agent.getByRole("region", { name: "What they each want" });
+  await expect(compare).toContainText("Both like: Kitchen");
+  await expect(compare).toContainText("Only Jamie: Marble counters");
+  await expect(compare.getByRole("row", { name: /4127 Larkmoor/ })).toContainText("Liked: kitchen, marble counters");
+  await expect(compare.getByRole("row", { name: /4127 Larkmoor/ })).toContainText("Passed");
+  // ...and homes they might both like, one tap from their links.
+  const suggested = agent.getByRole("region", { name: "Homes they might both like" });
+  await expect(suggested).toContainText("812 N Corbel St");
+  await suggested.getByRole("button", { name: "Add 812 N Corbel St" }).click();
+  await expect(agent.getByRole("region", { name: "812 N Corbel St" })).toBeVisible();
+  await sam.reload();
+  await expect(homeIn(sam, "812 N Corbel St")).toBeAttached();
+
+  // Someone else can be added later, with a link of their own.
+  await agent.getByPlaceholder("Their first name").fill("Robin");
+  await agent.getByRole("button", { name: "Add a person" }).click();
+  const robinUrl = await agent.getByLabel("Robin's link").inputValue();
+  const robin = await (await browser.newContext()).newPage();
+  await robin.goto(robinUrl);
+  await expect(robin.getByRole("heading", { level: 1 })).toHaveText("Robin, I picked these 3 homes for you");
 
   // A comment containing markup is shown as plain text.
+  thread = await openComments(jamie, house);
   await thread.getByLabel("Add a comment").fill("<img src=x onerror=alert(1)>");
   await thread.getByRole("button", { name: "Post comment" }).click();
   await expect(thread.getByText("<img src=x onerror=alert(1)>")).toBeVisible();
@@ -160,14 +196,12 @@ test("isolation: tokens, agents and signed-out visitors stay in their lane", asy
   await anonPage.goto("/dashboard");
   await expect(anonPage).toHaveURL(/\/login$/);
 
-  // A device joined on one share is a stranger on another.
+  // Each link acts as its own person, on its own package only.
   const context = await browser.newContext();
   const client = await context.newPage();
   await client.goto(shareA.url);
   await heartOf(client.getByRole("article").first()).click();
-  await joinAs(client, "Casey");
   await expect(heartOf(client.getByRole("article").first())).toHaveAttribute("aria-pressed", "true");
   await client.goto(shareB.url);
-  await heartOf(client.getByRole("article").first()).click();
-  await expect(client.getByRole("textbox", { name: "First name" })).toBeVisible();
+  await expect(heartOf(client.getByRole("article").first())).toHaveAttribute("aria-pressed", "false");
 });

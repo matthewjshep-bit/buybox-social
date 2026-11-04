@@ -14,8 +14,8 @@ const ROLES = [
   {
     value: "agent",
     icon: Briefcase,
-    title: "I'm an agent",
-    text: "Send clients homes and see how they feel about them.",
+    title: "I send homes to clients",
+    text: "An agent, team or company. Send homes and see what each person likes about them.",
   },
 ] as const;
 

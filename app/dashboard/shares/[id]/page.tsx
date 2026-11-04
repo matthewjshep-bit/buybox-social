@@ -3,15 +3,15 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
-import { AspectSummary } from "@/components/aspect-summary";
 import { LiveRefresh } from "@/components/live-refresh";
 import { requireAgent } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { appUrl, cn, formatPrice, timeAgo } from "@/lib/format";
-import { describeReaction, NO_REACTION, type AspectCounts, type ReactionState } from "@/lib/reactions";
+import { describeReaction, NO_REACTION, type ReactionState } from "@/lib/reactions";
+import { comparePeople, suggestHomes, type Suggestion } from "@/lib/compare";
 import { getShareListings, getThread, type Share } from "@/lib/shares";
-import { removeComment, setHomeRemoved } from "../../actions";
-import { ClientNameEditor, ReplyForm, SendLink } from "./client";
+import { addSuggestedHome, removeComment, setHomeRemoved } from "../../actions";
+import { AddPersonForm, ClientNameEditor, ReplyForm, SendLink } from "./client";
 
 type Listings = Awaited<ReturnType<typeof getShareListings>>;
 type Thread = Awaited<ReturnType<typeof getThread>>;
@@ -27,13 +27,23 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
     where id = ${id} and agent_id = ${agent.id}`;
   if (!share) notFound();
 
-  const [listings, thread] = await Promise.all([
+  const [listings, thread, people] = await Promise.all([
     getShareListings(share.id, { includeRemoved: true }),
     getThread(share.id),
+    // Everyone on the package: people the agent added, and anyone who joined
+    // through the package's own link.
+    sql<{ id: string; first_name: string; token: string | null }[]>`
+      select id, first_name, token from participants
+      where share_id = ${id}
+      order by invited_at nulls last, created_at, first_name`,
   ]);
   const active = listings.filter((l) => !l.removedAt);
   const removed = listings.filter((l) => l.removedAt);
   const clientName = share.client_name || "Unnamed client";
+  const invitees = people.filter((p) => p.token);
+  const everyone = people.map((p) => ({ id: p.id, name: p.first_name }));
+  const comparison = comparePeople(everyone, thread, listings);
+  const { suggestions, together } = await suggestHomes(everyone, thread, listings);
 
   return (
     <>
@@ -42,9 +52,41 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
         <ArrowLeft aria-hidden size={16} /> All shares
       </Link>
       <ClientNameEditor shareId={share.id} name={share.client_name} />
-      <SendLink url={`${appUrl()}/s/${share.token}`} clientName={share.client_name} count={active.length} />
 
-      <ClientProfile clientName={clientName} listings={listings} thread={thread} />
+      <section aria-labelledby="links-title" className="mt-4">
+        <h2 id="links-title" className="sr-only">
+          Their links
+        </h2>
+        <div className="flex flex-col gap-3">
+          {invitees.length > 0 ? (
+            invitees.map((person) => (
+              <SendLink
+                key={person.id}
+                url={`${appUrl()}/s/${person.token}`}
+                clientName={person.first_name}
+                count={active.length}
+                label={`${person.first_name}'s link`}
+              />
+            ))
+          ) : (
+            <SendLink url={`${appUrl()}/s/${share.token}`} clientName={share.client_name} count={active.length} />
+          )}
+        </div>
+        <p className="mt-3 text-sm text-stone-600">
+          Everyone gets their own link, so you can see what each person likes, and where they agree.
+        </p>
+        <div className="mt-2">
+          <AddPersonForm shareId={share.id} />
+        </div>
+      </section>
+
+      <WhatTheyWant clientName={clientName} comparison={comparison} homeCount={listings.length} />
+      <Suggestions
+        shareId={share.id}
+        suggestions={suggestions}
+        together={together}
+        people={comparison.summaries.filter((s) => s.likes.length > 0).map((s) => s.person.name)}
+      />
 
       <div className="mt-8 flex items-center justify-between gap-3">
         <h2 className="font-display text-2xl">On their link</h2>
@@ -86,101 +128,211 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
   );
 }
 
-// What this client likes and passes on, across every home ever sent to them,
-// including ones since removed. One row per person on the link.
-function ClientProfile({
+// What each person likes and passes on, across every home ever sent, including
+// ones since removed; and with two or more people, where they agree and differ.
+function WhatTheyWant({
   clientName,
-  listings,
-  thread,
+  comparison,
+  homeCount,
 }: {
   clientName: string;
-  listings: Listings;
-  thread: Thread;
+  comparison: ReturnType<typeof comparePeople>;
+  homeCount: number;
 }) {
-  type Person = {
-    name: string;
-    liked: number;
-    passed: number;
-    likes: AspectCounts;
-    dislikes: AspectCounts;
-    // Things they liked in photos, with how many homes.
-    loved: Map<string, number>;
-  };
-  const people = new Map<string, Person>();
-  const personFor = (participantId: string, name: string): Person => {
-    const person: Person = people.get(participantId) ?? {
-      name,
-      liked: 0,
-      passed: 0,
-      likes: {},
-      dislikes: {},
-      loved: new Map(),
-    };
-    people.set(participantId, person);
-    return person;
-  };
-  for (const r of thread.reactions) {
-    const person = personFor(r.participantId, r.name);
-    if (r.state.reaction === "like") person.liked++;
-    if (r.state.reaction === "dislike") person.passed++;
-    for (const a of r.state.liked) person.likes[a] = (person.likes[a] ?? 0) + 1;
-    for (const a of r.state.disliked) person.dislikes[a] = (person.dislikes[a] ?? 0) + 1;
-  }
-  for (const like of thread.photoLikes) {
-    const person = personFor(like.participantId, like.name);
-    person.loved.set(like.tag, (person.loved.get(like.tag) ?? 0) + 1);
-  }
-
+  const { summaries, both, only, homes } = comparison;
+  const heard = summaries.filter((s) => s.liked + s.passed + s.likes.length > 0);
+  const several = summaries.length >= 2;
   return (
     <section aria-labelledby="profile-title" className="mt-6 rounded-2xl bg-white p-5 ring-1 ring-stone-200">
       <h2 id="profile-title" className="font-display text-2xl">
-        What {clientName} wants
+        {several ? "What they each want" : `What ${summaries[0]?.person.name ?? clientName} wants`}
       </h2>
-      {people.size === 0 ? (
+      {heard.length === 0 ? (
         <p className="mt-1 text-stone-700">
-          Once they react, you&apos;ll see what they like and pass on here, across every home you send.
+          Once they react, you&apos;ll see what {several ? "each person likes" : "they like"} and passes on here,
+          across every home you send.
         </p>
       ) : (
-        <ul className="mt-3 flex flex-col gap-4">
-          {[...people.entries()].map(([participantId, person]) => (
-            <li key={participantId}>
-              <p className="text-[15px]">
-                <span className="font-semibold">{person.name}</span> liked{" "}
-                <span className="tabular-nums">{person.liked}</span> of{" "}
-                <span className="tabular-nums">{listings.length}</span>{" "}
-                {listings.length === 1 ? "home" : "homes"} · passed{" "}
-                <span className="tabular-nums">{person.passed}</span>
+        <>
+          {heard.length >= 2 && (
+            <div className="mt-3 flex flex-col gap-1.5 rounded-xl bg-stone-50 p-3 text-sm ring-1 ring-stone-200">
+              <p>
+                <span className="font-semibold">{heard.length === 2 ? "Both like" : "Everyone likes"}:</span>{" "}
+                {both.length > 0 ? both.join(" · ") : <span className="text-stone-600">nothing in common yet</span>}
               </p>
-              <AspectSummary
-                liked={person.likes}
-                disliked={person.dislikes}
-                likeLabel="Likes"
-                dislikeLabel="Doesn't like"
-                limit={10}
-                className="mt-2"
-              />
-              {person.loved.size > 0 && (
-                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-sm">
-                  <span className="flex items-center gap-1 font-semibold text-rose-800">
-                    <Heart aria-hidden size={14} />
-                    Loved in photos
-                  </span>
-                  {[...person.loved]
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([tag, n]) => (
-                      <span
-                        key={tag}
-                        className="rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-900 ring-1 ring-rose-200"
-                      >
-                        {tag} <span className="tabular-nums">{n}</span>
-                      </span>
-                    ))}
-                </div>
+              {heard.map((s) =>
+                only[s.person.id]?.length ? (
+                  <p key={s.person.id}>
+                    <span className="font-semibold">Only {s.person.name}:</span> {only[s.person.id].join(" · ")}
+                  </p>
+                ) : null,
               )}
-            </li>
-          ))}
-        </ul>
+            </div>
+          )}
+          <ul className="mt-4 flex flex-col gap-4">
+            {summaries.map((s) => (
+              <li key={s.person.id}>
+                <p className="text-[15px]">
+                  <span className="font-semibold">{s.person.name}</span>{" "}
+                  {s.liked + s.passed + s.likes.length === 0 ? (
+                    <span className="text-stone-600">hasn&apos;t reacted yet</span>
+                  ) : (
+                    <>
+                      liked <span className="tabular-nums">{s.liked}</span> of{" "}
+                      <span className="tabular-nums">{homeCount}</span> {homeCount === 1 ? "home" : "homes"} · passed{" "}
+                      <span className="tabular-nums">{s.passed}</span>
+                    </>
+                  )}
+                </p>
+                <Things label="Likes" tone="like" things={s.likes} />
+                <Things label="Passes on" tone="pass" things={s.passes} />
+              </li>
+            ))}
+          </ul>
+          {several && heard.length > 0 && (
+            <div className="mt-5 overflow-x-auto">
+              <table className="w-full min-w-[32rem] text-left text-sm">
+                <caption className="sr-only">Each home, by person</caption>
+                <thead>
+                  <tr className="border-b border-stone-200 text-stone-600">
+                    <th scope="col" className="py-2 pr-3 font-medium">
+                      Home
+                    </th>
+                    {summaries.map((s) => (
+                      <th key={s.person.id} scope="col" className="py-2 pr-3 font-medium">
+                        {s.person.name}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {homes.map((home) => (
+                    <tr key={home.listing.ListingKey} className="border-b border-stone-100 align-top">
+                      <th scope="row" className="py-2 pr-3 font-medium">
+                        {home.listing.UnparsedAddress}
+                      </th>
+                      {summaries.map((s) => {
+                        const cell = home.cells[s.person.id];
+                        const Icon = cell.reaction === "dislike" ? ThumbsDown : cell.reaction === "like" ? ThumbsUp : Heart;
+                        const said = cell.reaction || cell.likes.length > 0;
+                        return (
+                          <td key={s.person.id} className="py-2 pr-3">
+                            {said ? (
+                              <span className="flex items-start gap-1.5">
+                                <Icon
+                                  aria-hidden
+                                  size={14}
+                                  className={cn(
+                                    "mt-0.5 shrink-0",
+                                    cell.reaction === "dislike"
+                                      ? "text-amber-800"
+                                      : cell.reaction === "like"
+                                        ? "text-emerald-700"
+                                        : "text-rose-600",
+                                  )}
+                                />
+                                <span>
+                                  {cell.reaction === "dislike" ? "Passed" : cell.reaction === "like" ? "Liked" : "Liked"}
+                                  {cell.reaction === "dislike" && cell.passes.length > 0
+                                    ? `: ${cell.passes.join(", ").toLowerCase()}`
+                                    : cell.likes.length > 0
+                                      ? `: ${cell.likes.join(", ").toLowerCase()}`
+                                      : ""}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-stone-500">Not yet</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
+    </section>
+  );
+}
+
+function Things({ label, tone, things }: { label: string; tone: "like" | "pass"; things: string[] }) {
+  if (things.length === 0) return null;
+  const Icon = tone === "like" ? Heart : ThumbsDown;
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-sm">
+      <span className={cn("flex items-center gap-1 font-semibold", tone === "like" ? "text-rose-800" : "text-amber-900")}>
+        <Icon aria-hidden size={14} />
+        {label}
+      </span>
+      {things.map((thing) => (
+        <span
+          key={thing}
+          className={cn(
+            "rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1",
+            tone === "like" ? "bg-rose-50 text-rose-900 ring-rose-200" : "bg-amber-50 text-amber-900 ring-amber-200",
+          )}
+        >
+          {thing}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// Homes not on the package yet that fit what they've liked so far.
+function Suggestions({
+  shareId,
+  suggestions,
+  together,
+  people,
+}: {
+  shareId: string;
+  suggestions: Suggestion[];
+  together: boolean;
+  people: string[];
+}) {
+  if (suggestions.length === 0) return null;
+  return (
+    <section aria-labelledby="suggest-title" className="mt-6 rounded-2xl bg-white p-5 ring-1 ring-stone-200">
+      <h2 id="suggest-title" className="font-display text-2xl">
+        {together ? `Homes ${people.length === 2 ? "they might both" : "they might all"} like` : `Homes ${people[0] ?? "they"} might like`}
+      </h2>
+      <p className="text-sm text-stone-600">From what they&apos;ve liked so far.</p>
+      <ul className="mt-3 flex flex-col gap-3">
+        {suggestions.map(({ listing, reasons }) => (
+          <li key={listing.ListingKey} className="flex items-center gap-3">
+            <span className="relative size-16 shrink-0 overflow-hidden rounded-xl bg-stone-200">
+              {listing.Media[0] && (
+                <Image src={listing.Media[0].MediaURL} alt="" fill sizes="64px" className="object-cover" />
+              )}
+            </span>
+            <div className="min-w-0 flex-1 text-sm">
+              <p className="truncate font-semibold">{listing.UnparsedAddress}</p>
+              <p className="text-stone-700">
+                {formatPrice(listing.ListPrice)} · {listing.City}
+              </p>
+              <p className="text-stone-600">
+                {Object.entries(reasons)
+                  .filter(([, why]) => why.length > 0)
+                  .map(([name, why]) => `${name}: ${why.join(", ")}`)
+                  .join(" · ")}
+              </p>
+            </div>
+            <form action={addSuggestedHome.bind(null, shareId, listing.ListingKey)}>
+              <button
+                type="submit"
+                className="flex min-h-11 items-center gap-1.5 rounded-xl border border-stone-300 px-3 text-sm font-semibold hover:bg-stone-50"
+              >
+                <Plus aria-hidden size={16} /> Add
+                <span className="sr-only"> {listing.UnparsedAddress}</span>
+              </button>
+            </form>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

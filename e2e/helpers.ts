@@ -10,12 +10,12 @@ export async function signInAgent(browser: Browser, email: string, name: string)
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Continue" }).click();
   await page.waitForURL("**/welcome");
-  await page.getByRole("radio", { name: /I'm an agent/ }).check();
+  await page.getByRole("radio", { name: /I send homes to clients/ }).check();
   await page.getByLabel("Your name").fill(name);
   await page.getByRole("button", { name: "Continue" }).click();
   await page.waitForURL("**/dashboard/profile");
   await expect(page.getByLabel("Full name")).toHaveValue(name);
-  await page.getByLabel("Brokerage").fill("Harbor & Pine Realty");
+  await page.getByLabel("Company (brokerage)").fill("Harbor & Pine Realty");
   await page.getByRole("button", { name: "Merlot" }).click();
   await page.getByLabel("Your photo").setInputFiles({
     name: "me.png",
@@ -28,17 +28,22 @@ export async function signInAgent(browser: Browser, email: string, name: string)
   return page;
 }
 
-export async function createShare(page: Page, addresses: string[]) {
+// A package of homes for one or more people. Each person gets their own link.
+export async function createShare(page: Page, addresses: string[], people: string[] = ["Jamie"]) {
   await page.goto("/dashboard/new");
   for (const address of addresses) {
     await page.getByRole("button", { name: new RegExp(address) }).click();
   }
-  await page.getByLabel(/Client's first name/).fill("Jamie");
+  for (const [i, name] of people.entries()) {
+    if (i > 0) await page.getByRole("button", { name: "Add another person" }).click();
+    await page.getByLabel(`Person ${i + 1}'s first name`).fill(name);
+  }
   await page.getByLabel(/Personal note/).fill("This one has the yard you mentioned.");
   await page.getByRole("button", { name: /Create link/ }).click();
   await page.waitForURL("**/dashboard/shares/*");
-  const url = await page.getByLabel("Your link is ready").inputValue();
-  return { url, dashboardUrl: page.url() };
+  const urls: Record<string, string> = {};
+  for (const name of people) urls[name] = await page.getByLabel(`${name}'s link`).inputValue();
+  return { url: urls[people[0]], urls, dashboardUrl: page.url() };
 }
 
 export async function signUpBuyer(browser: Browser, email: string, name: string) {

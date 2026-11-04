@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, openComments, openMore, photoList, pin, scrollToEnd, signInAgent, signUpBuyer } from "./helpers";
+import { createShare, heartOf, homeIn, openComments, openMore, photoList, pin, scrollToEnd, signInAgent, signUpBuyer } from "./helpers";
 
 async function expectLogoGoesHome(page: Page) {
   const logo = page.getByRole("link", { name: "BuyBox Social" });
@@ -12,13 +12,12 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   test.setTimeout(90_000);
   // An agent's client likes a home, and the evergreens in its photo, on a private link.
   const agent = await signInAgent(browser, "fran@example.com", "Fran Agent");
-  const { url } = await createShare(agent, ["96 Fernhollow"]);
+  const { url } = await createShare(agent, ["96 Fernhollow"], ["Toby"]);
   const client = await (await browser.newContext()).newPage();
   await client.goto(url);
-  await expect(client.getByRole("heading", { level: 1 })).toHaveText("Jamie, I picked this home for you");
+  await expect(client.getByRole("heading", { level: 1 })).toHaveText("Toby, I picked this home for you");
   const clientHome = homeIn(client, "96 Fernhollow Ln");
   await heartOf(clientHome).click();
-  await joinAs(client, "Toby");
   await expect(heartOf(clientHome)).toHaveAttribute("aria-pressed", "true");
   await pin(clientHome, /^Like the evergreens/).click();
   await expect(pin(clientHome, /^Like the evergreens/)).toHaveAttribute("aria-pressed", "true");

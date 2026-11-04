@@ -6,7 +6,7 @@ import { z } from "zod";
 import { requireAgent } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { BRAND_COLORS } from "@/lib/format";
-import { newShareToken } from "@/lib/shares";
+import { invitePerson, newShareToken } from "@/lib/shares";
 
 export type FormState = { error?: string };
 
@@ -43,13 +43,17 @@ export async function saveProfile(_: FormState, form: FormData): Promise<FormSta
 
 const shareSchema = z.object({
   listingKeys: z.array(z.string().max(100)).min(1).max(3),
-  clientName: z.string().trim().max(60),
+  people: z.array(z.string().trim().max(40)).max(6),
   note: z.string().trim().max(500),
 });
 
+// "Jenny", "Jenny & Mike", "Jenny, Mike & Sam".
+const namesTogether = (names: string[]) =>
+  names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} & ${names.at(-1)}`;
+
 export async function createShare(input: {
   listingKeys: string[];
-  clientName: string;
+  people: string[];
   note: string;
 }): Promise<FormState> {
   const agent = await requireAgent();
@@ -60,11 +64,20 @@ export async function createShare(input: {
   const found = await sql`select listing_key from listings where listing_key in ${sql(keys)}`;
   if (found.length !== keys.length) return { error: "One of those homes is no longer available." };
 
+  const people = [...new Set(parsed.data.people.filter(Boolean))];
+
   const shareId = await sql.begin(async (tx) => {
     const [share] = await tx<{ id: string }[]>`
       insert into shares (token, agent_id, client_name, note)
-      values (${newShareToken()}, ${agent.id}, ${parsed.data.clientName}, ${parsed.data.note})
+      values (${newShareToken()}, ${agent.id}, ${namesTogether(people).slice(0, 60)}, ${parsed.data.note})
       returning id`;
+    // Everyone gets their own link, so what each of them likes is theirs.
+    for (const name of people) {
+      const token = newShareToken();
+      await tx`
+        insert into participants (share_id, device_token, first_name, token, invited_at)
+        values (${share.id}, ${`invite:${token}`}, ${name}, ${token}, now())`;
+    }
     for (const [position, key] of keys.entries()) {
       await tx`
         insert into share_listings (share_id, listing_key, position)
@@ -83,6 +96,25 @@ async function ownShare(agentId: string, shareId: string) {
   const [share] = await sql<{ id: string }[]>`
     select id from shares where id = ${shareId} and agent_id = ${agentId}`;
   return share ?? null;
+}
+
+// Adds someone to a package, with their own link.
+export async function addPerson(shareId: string, _: FormState, form: FormData): Promise<FormState> {
+  const agent = await requireAgent();
+  const name = z.string().trim().min(1).max(40).safeParse(form.get("firstName"));
+  if (!name.success) return { error: "Please enter their first name." };
+  if (!(await ownShare(agent.id, shareId))) return { error: "We couldn't find that package." };
+  const [{ count }] = await sql<{ count: number }[]>`
+    select count(*)::int as count from participants where share_id = ${shareId}`;
+  if (count >= 25) return { error: "That's as many people as one package can have." };
+  await invitePerson(shareId, name.data);
+  refresh();
+  return {};
+}
+
+// A suggested home, added straight to the package.
+export async function addSuggestedHome(shareId: string, listingKey: string): Promise<void> {
+  await addHomesToShare(shareId, [listingKey]);
 }
 
 export async function renameClient(shareId: string, _: FormState, form: FormData): Promise<FormState> {

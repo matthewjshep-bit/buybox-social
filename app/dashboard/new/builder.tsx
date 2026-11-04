@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Search } from "lucide-react";
+import { Check, Plus, Search, X } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
@@ -9,6 +9,7 @@ import type { Listing } from "@/lib/listings/types";
 import { addHomesToShare, createShare } from "../actions";
 
 const MAX_LISTINGS = 3;
+const MAX_PEOPLE = 6;
 
 const inputClass =
   "w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30";
@@ -27,7 +28,8 @@ export function ShareBuilder({
   const [query, setQuery] = useState(initialQuery);
   // Kept here rather than in the URL, so picks survive a new search.
   const [picked, setPicked] = useState<Listing[]>([]);
-  const [clientName, setClientName] = useState("");
+  // Everyone the homes are for. Each gets their own link.
+  const [people, setPeople] = useState([""]);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -63,7 +65,7 @@ export function ShareBuilder({
       const listingKeys = picked.map((l) => l.ListingKey);
       const result = addTo
         ? await addHomesToShare(addTo.shareId, listingKeys)
-        : await createShare({ listingKeys, clientName, note });
+        : await createShare({ listingKeys, people, note });
       if (result?.error) setError(result.error);
     });
   };
@@ -129,18 +131,48 @@ export function ShareBuilder({
       <div className="mt-6 flex flex-col gap-4 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
         {!addTo && (
           <>
-            <div>
-              <label htmlFor="clientName" className="text-sm font-medium">
-                Client&apos;s first name (optional)
-              </label>
-              <input
-                id="clientName"
-                maxLength={60}
-                value={clientName}
-                onChange={(event) => setClientName(event.target.value)}
-                className={cn(inputClass, "mt-1")}
-              />
-            </div>
+            <fieldset>
+              <legend className="text-sm font-medium">Who&apos;s it for?</legend>
+              <p className="text-sm text-stone-600">
+                Each person gets their own link, so you can see what each of them likes.
+              </p>
+              <div className="mt-2 flex flex-col gap-2">
+                {people.map((person, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input
+                      aria-label={`Person ${i + 1}'s first name`}
+                      maxLength={40}
+                      value={person}
+                      autoComplete="off"
+                      placeholder={i === 0 ? "First name" : "Another person's first name"}
+                      onChange={(event) =>
+                        setPeople((current) => current.map((p, j) => (j === i ? event.target.value : p)))
+                      }
+                      className={inputClass}
+                    />
+                    {people.length > 1 && (
+                      <button
+                        type="button"
+                        aria-label={`Remove person ${i + 1}`}
+                        onClick={() => setPeople((current) => current.filter((_, j) => j !== i))}
+                        className="flex size-11 shrink-0 items-center justify-center rounded-xl text-stone-600 hover:bg-stone-100"
+                      >
+                        <X aria-hidden size={18} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {people.length < MAX_PEOPLE && (
+                <button
+                  type="button"
+                  onClick={() => setPeople((current) => [...current, ""])}
+                  className="mt-2 flex min-h-11 items-center gap-1.5 text-sm font-semibold text-brand"
+                >
+                  <Plus aria-hidden size={16} /> Add another person
+                </button>
+              )}
+            </fieldset>
             <div>
               <label htmlFor="note" className="text-sm font-medium">
                 Personal note (optional)

@@ -94,7 +94,7 @@ export function ProfileForm(props: {
 
       <div>
         <label htmlFor="brokerage" className="text-sm font-medium">
-          Brokerage
+          Company (brokerage)
         </label>
         <input
           id="brokerage"
@@ -102,8 +102,12 @@ export function ProfileForm(props: {
           maxLength={80}
           autoComplete="organization"
           defaultValue={props.brokerage}
+          aria-describedby="brokerage-hint"
           className={inputClass}
         />
+        <p id="brokerage-hint" className="mt-1 text-sm text-stone-600">
+          Optional. A brokerage, team or company, if you work with one.
+        </p>
       </div>
 
       <fieldset>

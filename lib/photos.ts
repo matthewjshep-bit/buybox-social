@@ -25,7 +25,7 @@ const ROOM_ASPECTS: [RegExp, Aspect][] = [
 ];
 const FEATURE_ASPECTS: [RegExp, Aspect][] = [
   [/light|window/i, "light"],
-  [/lawn|landscap|garden|deck|patio|courtyard|meadow|trees|evergreen|fence/i, "yard"],
+  [/lawn|landscap|garden|deck|patio|courtyard|meadow|tree|evergreen|fence|flower/i, "yard"],
 ];
 
 export function aspectOfTag(photo: ListingMedia, tag: string): Aspect | null {

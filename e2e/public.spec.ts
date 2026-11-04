@@ -13,14 +13,13 @@ test("public pages show activity, never private words, and private threads share
   // A private client thread: a private comment, a like with a photo like, and
   // a comment the client chooses to share anonymously.
   const agent = await signInAgent(browser, "pat@example.com", "Pat Agent");
-  const { url } = await createShare(agent, ["2205 Brackenfield"]);
+  const { urls } = await createShare(agent, ["2205 Brackenfield"], ["Riley", "Quinn"]);
   const client = await (await browser.newContext()).newPage();
-  await client.goto(url);
+  await client.goto(urls.Riley);
   const clientHome = homeIn(client, BRACKENFIELD);
   let chat = await openComments(client, clientHome);
   await chat.getByLabel("Add a comment").fill(SECRET);
   await chat.getByRole("button", { name: "Post comment" }).click();
-  await joinAs(client, "Riley");
   await expect(chat.getByText(SECRET)).toBeVisible();
   // Sharing publicly is only offered once you like the home.
   await expect(chat.getByLabel(/share this anonymously/)).toHaveCount(0);
@@ -37,12 +36,11 @@ test("public pages show activity, never private words, and private threads share
   await expect(chat.getByText("Shared anonymously on the public page")).toBeVisible();
   await client.keyboard.press("Escape");
 
-  // A second person on the link passes on the yard. That stays private.
+  // A second person on the package passes on the yard, from their own link. That stays private.
   const quinn = await (await browser.newContext()).newPage();
-  await quinn.goto(url);
+  await quinn.goto(urls.Quinn);
   const quinnMore = await openMore(quinn, homeIn(quinn, BRACKENFIELD));
   await quinnMore.getByRole("button", { name: "Not for me" }).click();
-  await joinAs(quinn, "Quinn");
   const quinnWhy = quinnMore.getByRole("group", { name: "What made you pass?" });
   await quinnWhy.getByRole("button", { name: "Yard" }).click();
   await expect(quinnWhy.getByRole("button", { name: "Yard" })).toHaveAttribute("aria-pressed", "true");

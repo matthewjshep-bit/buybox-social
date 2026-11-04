@@ -34,6 +34,7 @@ export function ReelFeed({
   infinite = false,
   embedded = false,
   agentName,
+  canInvite = true,
 }: {
   initial: FeedPost[];
   // Public pages, or an agent's private link.
@@ -52,6 +53,8 @@ export function ReelFeed({
   // Inside a pop-out rather than filling the screen.
   embedded?: boolean;
   agentName?: string;
+  // On an agent's link: whether its share button invites others onto it.
+  canInvite?: boolean;
 }) {
   // The order is fixed when the page opens, so a background refresh never
   // reshuffles the homes under your thumb. Agent links follow the page, which
@@ -94,6 +97,7 @@ export function ReelFeed({
         end={end}
         embedded={embedded}
         agentName={agentName}
+        canInvite={canInvite}
         hasMore={hasMore}
         loading={loading}
         onNearEnd={async () => {
@@ -117,6 +121,7 @@ function Feed({
   end,
   embedded,
   agentName,
+  canInvite,
   hasMore,
   loading,
   onNearEnd,
@@ -128,6 +133,7 @@ function Feed({
   end?: ReactNode;
   embedded: boolean;
   agentName?: string;
+  canInvite: boolean;
   hasMore: boolean;
   loading: boolean;
   onNearEnd: () => void;
@@ -256,7 +262,7 @@ function Feed({
               onDoubleTapLike={() => reactions.like(key)}
               onComments={() => setSheet({ kind: "comments", key })}
               onMore={() => setSheet({ kind: "more", key })}
-              onShare={() => share(post)}
+              onShare={mode === "share" && !canInvite ? undefined : () => share(post)}
             />
           );
         })}
@@ -359,7 +365,7 @@ function Panel({
   onDoubleTapLike: () => void;
   onComments: () => void;
   onMore: () => void;
-  onShare: () => void;
+  onShare?: () => void;
 }) {
   const { listing } = post;
   const [photo, setPhoto] = useState(0);
@@ -522,7 +528,7 @@ function Rail({
   mode: "public" | "share";
   onLike: () => void;
   onComments: () => void;
-  onShare: () => void;
+  onShare?: () => void;
   onMore: () => void;
 }) {
   return (
@@ -551,9 +557,15 @@ function Rail({
       >
         <MessageCircle aria-hidden size={28} className="drop-shadow" />
       </RailButton>
-      <RailButton name={mode === "share" ? "Invite someone" : "Share"} label={mode === "share" ? "Invite" : "Share"} onClick={onShare}>
-        {mode === "share" ? <Send aria-hidden size={26} /> : <Share2 aria-hidden size={26} className="drop-shadow" />}
-      </RailButton>
+      {onShare && (
+        <RailButton
+          name={mode === "share" ? "Invite someone" : "Share"}
+          label={mode === "share" ? "Invite" : "Share"}
+          onClick={onShare}
+        >
+          {mode === "share" ? <Send aria-hidden size={26} /> : <Share2 aria-hidden size={26} className="drop-shadow" />}
+        </RailButton>
+      )}
       <RailButton name="More options" label="More" onClick={onMore}>
         <MoreHorizontal aria-hidden size={28} />
       </RailButton>
