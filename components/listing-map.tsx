@@ -2,9 +2,8 @@
 
 import "maplibre-gl/dist/maplibre-gl.css";
 import { getVersion, setWorkerUrl } from "maplibre-gl";
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import Map, { Marker, NavigationControl, Popup, type MapRef } from "react-map-gl/maplibre";
+import Map, { Marker, NavigationControl, type MapRef } from "react-map-gl/maplibre";
 import { cn, formatPrice } from "@/lib/format";
 
 export type MapHome = {
@@ -13,10 +12,6 @@ export type MapHome = {
   longitude: number;
   price: number;
   address: string;
-  city: string;
-  photo: string | undefined;
-  beds: number;
-  baths: number;
 };
 
 // Free OpenStreetMap-based tiles from OpenFreeMap: no API key and no per-view billing.
@@ -48,28 +43,40 @@ const WASHINGTON: [[number, number], [number, number]] = [
   [-116.9, 49.0],
 ];
 
+// Every home in the search as a pin. The one showing beside the map is
+// highlighted, and the map follows it when it's out of view.
 export default function ListingMap({
   homes,
   activeKey,
-  selectedKey,
+  hoveredKey,
   onHover,
   onSelect,
 }: {
   homes: MapHome[];
+  // The home showing beside the map.
   activeKey: string | null;
-  selectedKey: string | null;
+  hoveredKey: string | null;
   onHover: (key: string | null) => void;
-  onSelect: (key: string | null) => void;
+  onSelect: (key: string) => void;
 }) {
   const map = useRef<MapRef>(null);
   const [zoom, setZoom] = useState(0);
   const bounds = useMemo(() => (homes.length ? boundsOf(homes) : WASHINGTON), [homes]);
-  const selected = homes.find((h) => h.key === selectedKey);
 
   // Re-frame the map whenever the results change.
   useEffect(() => {
     map.current?.fitBounds(bounds, { padding: 60, maxZoom: 13, duration: 400 });
   }, [bounds]);
+
+  // Keep the home showing beside the map in view.
+  const active = homes.find((h) => h.key === activeKey);
+  useEffect(() => {
+    const current = map.current;
+    if (!current || !active) return;
+    if (!current.getBounds().contains([active.longitude, active.latitude])) {
+      current.easeTo({ center: [active.longitude, active.latitude], duration: 500 });
+    }
+  }, [active]);
 
   return (
     <Map
@@ -78,26 +85,26 @@ export default function ListingMap({
       mapStyle={MAP_STYLE}
       style={{ width: "100%", height: "100%" }}
       attributionControl={{ compact: true }}
-      onClick={() => onSelect(null)}
       onZoom={(event) => setZoom(event.viewState.zoom)}
       onLoad={(event) => setZoom(event.target.getZoom())}
     >
       <NavigationControl position="top-right" showCompass={false} />
       {homes.map((home) => {
-        const active = home.key === activeKey || home.key === selectedKey;
-        const asDot = zoom < PRICE_ZOOM && !active;
+        const showing = home.key === activeKey;
+        const lit = showing || home.key === hoveredKey;
+        const asDot = zoom < PRICE_ZOOM && !lit;
         return (
           <Marker
             key={home.key}
             longitude={home.longitude}
             latitude={home.latitude}
             anchor="bottom"
-            style={{ zIndex: active ? 2 : 1 }}
+            style={{ zIndex: showing ? 3 : lit ? 2 : 1 }}
           >
             <button
               type="button"
               aria-label={`${home.address}, ${formatPrice(home.price)}`}
-              aria-pressed={home.key === selectedKey}
+              aria-pressed={showing}
               onMouseEnter={() => onHover(home.key)}
               onMouseLeave={() => onHover(null)}
               onClick={(event) => {
@@ -110,7 +117,7 @@ export default function ListingMap({
                 asDot
                   ? "flex size-6 items-center justify-center hover:scale-125"
                   : "rounded-full px-2.5 py-1 text-xs font-bold tabular-nums shadow-md ring-1",
-                !asDot && (active ? "scale-110 bg-brand text-white ring-white" : "bg-white text-stone-900 ring-stone-300"),
+                !asDot && (lit ? "scale-110 bg-brand text-white ring-white" : "bg-white text-stone-900 ring-stone-300"),
               )}
             >
               {asDot ? (
@@ -122,37 +129,6 @@ export default function ListingMap({
           </Marker>
         );
       })}
-      {selected && (
-        <Popup
-          longitude={selected.longitude}
-          latitude={selected.latitude}
-          anchor="top"
-          offset={10}
-          closeButton={false}
-          closeOnClick={false}
-          maxWidth="260px"
-        >
-          <Link
-            href={`/homes/${encodeURIComponent(selected.key)}`}
-            scroll={false}
-            className="block w-56 overflow-hidden rounded-lg"
-          >
-            {selected.photo && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={selected.photo} alt="" className="aspect-[4/3] w-full object-cover" />
-            )}
-            <span className="block px-1 pt-2 font-display text-lg font-semibold text-stone-900">
-              {formatPrice(selected.price)}
-            </span>
-            <span className="block px-1 text-sm text-stone-700">
-              {selected.beds} bd · {selected.baths} ba
-            </span>
-            <span className="block truncate px-1 pb-1 text-sm text-stone-900">
-              {selected.address}, {selected.city}
-            </span>
-          </Link>
-        </Popup>
-      )}
     </Map>
   );
 }

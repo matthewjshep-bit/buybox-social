@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Heart } from "lucide-react";
+import { Check } from "lucide-react";
 import { useState } from "react";
 import { useThread } from "@/components/listing-thread";
 import { cn } from "@/lib/format";
@@ -68,11 +68,6 @@ export function useReactions(server: Record<string, ReactionState>) {
   };
 }
 
-export function useReaction(listingKey: string, mine: ReactionState) {
-  const { states, choose } = useReactions({ [listingKey]: mine });
-  return { state: states[listingKey], choose: (sentiment: Sentiment) => choose(listingKey, sentiment) };
-}
-
 // The specifics for a like or a pass: after a like, the things photos can't
 // show; after a pass, everything.
 export function AspectChips({ state, onToggle }: { state: ReactionState; onToggle: (aspect: Aspect) => void }) {
@@ -109,36 +104,5 @@ export function AspectChips({ state, onToggle }: { state: ReactionState; onToggl
         })}
       </div>
     </div>
-  );
-}
-
-// A heart on a home's card in a list (the map's results).
-export function HeartButton({
-  listingKey,
-  mine,
-  label,
-  className,
-}: {
-  listingKey: string;
-  mine: ReactionState;
-  label: string;
-  className?: string;
-}) {
-  const { state, choose } = useReaction(listingKey, mine);
-  const liked = state.reaction === "like";
-  return (
-    <button
-      type="button"
-      aria-pressed={liked}
-      aria-label={`Like ${label}`}
-      onClick={() => choose("like")}
-      className={cn(
-        "flex size-11 items-center justify-center rounded-full bg-white/95 shadow-md transition-transform active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100",
-        liked ? "text-rose-600" : "text-stone-800 hover:text-rose-600",
-        className,
-      )}
-    >
-      <Heart aria-hidden size={20} strokeWidth={2.25} className={cn(liked && "fill-current")} />
-    </button>
   );
 }

@@ -1,8 +1,22 @@
 "use client";
 
-import { ArrowUp, Heart, MessageCircle, MoreHorizontal, Send, Share2, Sparkles, ThumbsDown, User } from "lucide-react";
+import {
+  ArrowUp,
+  Bath,
+  Bed,
+  Heart,
+  MapPin,
+  MessageCircle,
+  MoreHorizontal,
+  Ruler,
+  Send,
+  Share2,
+  Sparkles,
+  ThumbsDown,
+  User,
+} from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { loadReel, recordView, reloadReelHome } from "@/app/homes/actions";
 import { AspectSummary } from "@/components/aspect-summary";
 import { AspectChips, useReactions } from "@/components/like-pass";
@@ -35,6 +49,8 @@ export function ReelFeed({
   embedded = false,
   agentName,
   canInvite = true,
+  focus,
+  onActiveChange,
 }: {
   initial: FeedPost[];
   // Public pages, or an agent's private link.
@@ -55,6 +71,11 @@ export function ReelFeed({
   agentName?: string;
   // On an agent's link: whether its share button invites others onto it.
   canInvite?: boolean;
+  // Brings a home into view: the map's pins pick a home this way. `n` counts
+  // picks, so picking the same home again still moves to it.
+  focus?: { key: string; n: number } | null;
+  // Tells the page which home is showing, as you scroll.
+  onActiveChange?: (listingKey: string | null) => void;
 }) {
   // The order is fixed when the page opens, so a background refresh never
   // reshuffles the homes under your thumb. Agent links follow the page, which
@@ -98,6 +119,8 @@ export function ReelFeed({
         embedded={embedded}
         agentName={agentName}
         canInvite={canInvite}
+        focus={focus}
+        onActiveChange={onActiveChange}
         hasMore={hasMore}
         loading={loading}
         onNearEnd={async () => {
@@ -122,6 +145,8 @@ function Feed({
   embedded,
   agentName,
   canInvite,
+  focus,
+  onActiveChange,
   hasMore,
   loading,
   onNearEnd,
@@ -134,6 +159,8 @@ function Feed({
   embedded: boolean;
   agentName?: string;
   canInvite: boolean;
+  focus?: { key: string; n: number } | null;
+  onActiveChange?: (listingKey: string | null) => void;
   hasMore: boolean;
   loading: boolean;
   onNearEnd: () => void;
@@ -180,12 +207,33 @@ function Feed({
     return () => clearTimeout(timer);
   }, [activePost]);
 
-  const goTo = (index: number) => {
+  const goTo = (index: number, instant = false) => {
     const root = scroller.current;
     if (!root) return;
     const target = Math.max(0, Math.min(panelCount - 1, index));
-    root.scrollTo({ top: target * root.clientHeight, behavior: reducedMotion() ? "auto" : "smooth" });
+    root.scrollTo({ top: target * root.clientHeight, behavior: instant || reducedMotion() ? "auto" : "smooth" });
   };
+
+  // Tell the page which home is showing.
+  const activeKey = activePost?.listing.ListingKey ?? null;
+  const report = useRef(onActiveChange);
+  useLayoutEffect(() => {
+    report.current = onActiveChange;
+  });
+  useEffect(() => {
+    report.current?.(activeKey);
+  }, [activeKey]);
+
+  // Go to a home picked elsewhere (a pin on the map). The first pick, from the
+  // page's address, jumps straight there.
+  useEffect(() => {
+    if (!focus) return;
+    const index = posts.findIndex((post) => post.listing.ListingKey === focus.key);
+    if (index === -1) return;
+    goTo(offset + index, focus.n === 0);
+    // Only a new pick should move the feed, not new posts arriving.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus]);
 
   // ↑ and ↓ move between homes, unless you're typing or a sheet is open.
   useEffect(() => {
@@ -447,26 +495,44 @@ function Panel({
         />
 
         <div className="pointer-events-auto absolute inset-x-0 bottom-0 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pr-20 [text-shadow:0_1px_3px_rgb(0_0_0/0.45)] sm:px-6 sm:pr-24">
-          <ActivityLine headline={post.headline} trending={post.buzz.trending} onOpen={onComments} />
+          <div className="max-w-2xl">
+            <ActivityLine headline={post.headline} trending={post.buzz.trending} onOpen={onComments} />
 
-          <p className="mt-1 flex flex-wrap items-baseline gap-x-3">
-            <span className="font-display text-3xl font-semibold tabular-nums sm:text-4xl">
+            {/* Price first and on its own; the facts and the address each get a line. */}
+            <p className="mt-3 font-display text-4xl font-semibold leading-none tabular-nums sm:text-[2.75rem]">
               {formatPrice(listing.ListPrice)}
-            </span>
-            <span className="text-[15px] font-medium">
-              {listing.BedroomsTotal} bd · {listing.BathroomsTotalInteger} ba ·{" "}
-              {listing.LivingArea.toLocaleString("en-US")} sq ft
-            </span>
-          </p>
-          <h2 className="text-[15px] font-semibold leading-snug">
-            {listing.UnparsedAddress}, {listing.City}
-          </h2>
-          <Description listing={post.listing} reasons={post.reasons} />
-          {error && (
-            <p role="alert" className="mt-1 text-sm font-semibold text-rose-200">
-              {error}
             </p>
-          )}
+            <p className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1 text-[15px] font-medium">
+              <span className="flex items-center gap-1.5">
+                <Bed aria-hidden size={17} className="opacity-80" />
+                {listing.BedroomsTotal} {listing.BedroomsTotal === 1 ? "bed" : "beds"}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Bath aria-hidden size={17} className="opacity-80" />
+                {listing.BathroomsTotalInteger} {listing.BathroomsTotalInteger === 1 ? "bath" : "baths"}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Ruler aria-hidden size={17} className="opacity-80" />
+                {listing.LivingArea.toLocaleString("en-US")} sq ft
+              </span>
+            </p>
+            <h2 className="mt-1.5 text-[15px] font-semibold leading-snug">
+              <Link
+                href={`/search?home=${encodeURIComponent(listing.ListingKey)}`}
+                className="inline-flex min-h-9 items-center gap-1.5 underline-offset-4 hover:underline"
+              >
+                <MapPin aria-hidden size={16} className="shrink-0" />
+                {listing.UnparsedAddress}, {listing.City}
+                <span className="sr-only"> (see it on the map)</span>
+              </Link>
+            </h2>
+            <Description listing={post.listing} reasons={post.reasons} />
+            {error && (
+              <p role="alert" className="mt-1 text-sm font-semibold text-rose-200">
+                {error}
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </article>
@@ -631,9 +697,9 @@ function ActivityLine({
 function Description({ listing, reasons }: { listing: FeedPost["listing"]; reasons: string[] }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="mt-1 text-sm leading-snug text-white/90">
+    <div className="mt-1.5 text-sm leading-relaxed text-white/85">
       {reasons.length > 0 && (
-        <p className="flex flex-wrap items-center gap-1 font-semibold text-white">
+        <p className="mb-1 flex flex-wrap items-center gap-1 font-semibold text-white">
           <Sparkles aria-hidden size={13} />
           For you: {reasons.join(" · ")}
         </p>
@@ -653,7 +719,7 @@ function Description({ listing, reasons }: { listing: FeedPost["listing"]; reaso
           {open ? "less" : "more"}
         </button>
       )}
-      <p className="mt-0.5 text-xs text-white/75">
+      <p className="mt-1.5 text-xs text-white/70">
         {listing.ListAgentFullName && `Listed by ${listing.ListAgentFullName}`}
         {listing.ListOfficeName && ` · ${listing.ListOfficeName}`}
         {isSampleListing(listing) && " · Sample listing"}

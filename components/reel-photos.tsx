@@ -195,7 +195,7 @@ function PhotoFrame({ photo, children }: { photo: ListingMedia; children: ReactN
   const height = `min(${room}, 100cqw / ${ratio})`;
   return (
     <div
-      className="absolute [--photo-bottom:15rem] [--photo-top:4.5rem] lg:[--photo-bottom:12.5rem] lg:[--photo-top:4rem]"
+      className="absolute [--photo-bottom:17.5rem] [--photo-top:4.5rem] lg:[--photo-bottom:18.5rem] lg:[--photo-top:4rem]"
       style={{
         width,
         height,

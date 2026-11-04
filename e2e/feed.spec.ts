@@ -33,7 +33,9 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   const post = homeIn(buyer, "96 Fernhollow Ln");
   await expect(post).toContainText("A buyer liked the evergreens");
   await expect(post).toContainText("$839,000");
-  await expect(post).toContainText("3 bd · 2 ba · 2,120 sq ft");
+  await expect(post).toContainText("3 beds");
+  await expect(post).toContainText("2 baths");
+  await expect(post).toContainText("2,120 sq ft");
   await expect(post.getByRole("button", { name: "Like 96 Fernhollow Ln, 1 like" })).toHaveAttribute("aria-pressed", "false");
   // The heart sits on the evergreens themselves, in the photo.
   await post.scrollIntoViewIfNeeded();

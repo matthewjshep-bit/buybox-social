@@ -1,10 +1,11 @@
-import { expect, test } from "@playwright/test";
-import { joinAs } from "./helpers";
+import { expect, test, type Page } from "@playwright/test";
+import { heartOf, homeIn, joinAs } from "./helpers";
 
-const card = (page: import("@playwright/test").Page, address: string) =>
-  page.getByRole("listitem").filter({ has: page.getByRole("link", { name: new RegExp(address) }) });
+const pins = (page: Page) => page.getByRole("button", { name: /\$\d[\d,]*$/ });
+// Pins can sit on top of each other when zoomed out; this picks one by name.
+const tapPin = (page: Page, name: string) => page.getByRole("button", { name }).dispatchEvent("click");
 
-test("map-and-list search with filters, pins, sorting and the pop-out", async ({ browser }) => {
+test("the map beside one home at a time: filters, pins and the home pane follow each other", async ({ browser }) => {
   const page = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -16,18 +17,20 @@ test("map-and-list search with filters, pins, sorting and the pop-out", async ({
   await page.goto("/search");
   await expect(page.getByRole("heading", { name: "Washington homes for sale" })).toBeVisible();
   await expect(page.getByText("13 homes")).toBeVisible();
-  // The map draws, with a pin for every home.
+  // The map draws, with a pin for every home, and the home pane beside it.
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
   await page.waitForTimeout(1500);
-  await expect(page.getByRole("button", { name: /\$\d[\d,]*$/ })).toHaveCount(13);
+  await expect(pins(page)).toHaveCount(13);
+  await expect(page.getByRole("article").first()).toBeInViewport();
+  await expect(page.getByRole("button", { name: /\$\d[\d,]*$/, pressed: true })).toHaveCount(1);
 
-  // Each filter narrows the list and the map, and lands in the URL.
+  // Each filter narrows the homes and the map, and lands in the URL.
   await page.getByLabel("Bedrooms").selectOption("5");
   await expect(page).toHaveURL(/beds=5/);
   await expect(page.getByText("2 homes")).toBeVisible();
-  await expect(card(page, "2205 Brackenfield")).toBeVisible();
-  await expect(card(page, "24611 SE Foxglove")).toBeVisible();
-  await expect(page.getByRole("button", { name: /\$\d[\d,]*$/ })).toHaveCount(2);
+  await expect(homeIn(page, "2205 Brackenfield Ct NW")).toBeAttached();
+  await expect(homeIn(page, "24611 SE Foxglove Pl")).toBeAttached();
+  await expect(pins(page)).toHaveCount(2);
 
   await page.getByLabel("Bedrooms").selectOption("");
   await page.getByLabel("Maximum price").selectOption("800000");
@@ -36,7 +39,7 @@ test("map-and-list search with filters, pins, sorting and the pop-out", async ({
   await page.getByLabel("Maximum price").selectOption("");
   await page.getByLabel("Home type").selectOption("townhouse");
   await expect(page.getByText("1 home", { exact: true })).toBeVisible();
-  await expect(card(page, "3518 Wexford")).toBeVisible();
+  await expect(homeIn(page, "3518 Wexford Ave N")).toBeAttached();
 
   await page.getByLabel("Home type").selectOption("");
   await page.getByLabel("City, ZIP or address").fill("Seattle");
@@ -47,43 +50,49 @@ test("map-and-list search with filters, pins, sorting and the pop-out", async ({
 
   // Sorting by price puts the cheapest first.
   await page.goto("/search?sort=price-asc");
-  await expect(page.getByRole("listitem").first()).toContainText("$465,000");
+  await expect(page.getByRole("article").first()).toContainText("$465,000");
   await page.getByRole("combobox", { name: "Sort:" }).selectOption("price-desc");
-  await expect(page.getByRole("listitem").first()).toContainText("$2,450,000");
+  await expect(page.getByRole("article").first()).toContainText("$2,450,000");
 
-  // Clicking a pin opens a preview on the map and highlights its card.
-  await page.getByRole("button", { name: "4127 Larkmoor Ave NE, $985,000" }).click();
-  await expect(page.getByRole("button", { name: "4127 Larkmoor Ave NE, $985,000" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  const popup = page.locator(".maplibregl-popup");
-  await expect(popup).toContainText("4127 Larkmoor Ave NE, Seattle");
+  // Picking a pin brings that home up beside the map, and lights its pin.
+  const larkmoorPin = page.getByRole("button", { name: "4127 Larkmoor Ave NE, $985,000" });
+  await tapPin(page, "4127 Larkmoor Ave NE, $985,000");
+  await expect(homeIn(page, "4127 Larkmoor Ave NE")).toBeInViewport({ ratio: 0.9 });
+  await expect(larkmoorPin).toHaveAttribute("aria-pressed", "true");
 
-  // Opening a card shows the pop-out over the search, and Escape returns to it.
-  await card(page, "1880 Tamsen Ridge").getByRole("link").click();
-  await expect(page).toHaveURL(/\/homes\/SAMPLE-1002$/);
-  const dialog = page.getByRole("dialog", { name: "Home details" });
-  await expect(dialog.getByText("Maya Chen")).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(dialog).toHaveCount(0);
-  await expect(page).toHaveURL(/\/search\?sort=price-desc$/);
+  // Scrolling to the next home moves the lit pin along (once the glide to the picked home ends).
+  await page.waitForTimeout(800);
+  await page.locator("[data-reel]").evaluate((reel) => reel.scrollBy({ top: reel.clientHeight }));
+  await expect(larkmoorPin).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("button", { name: /\$\d[\d,]*$/, pressed: true })).toHaveCount(1);
 
-  // The thumbs-up likes a home straight from the card (asking a signed-out visitor for a name).
-  const heart = page.getByRole("button", { name: "Like 10421 Halvard Way NE" });
-  await heart.click();
+  // The heart works right here (asking a signed-out visitor for a name).
+  await tapPin(page, "10421 Halvard Way NE, $1,349,000");
+  const halvard = homeIn(page, "10421 Halvard Way NE");
+  await expect(halvard).toBeInViewport({ ratio: 0.9 });
+  await heartOf(halvard).click();
   await joinAs(page, "Remy");
-  await expect(heart).toHaveAttribute("aria-pressed", "true");
+  await expect(heartOf(halvard)).toHaveAttribute("aria-pressed", "true");
   await page.reload();
-  await expect(page.getByRole("button", { name: "Like 10421 Halvard Way NE" })).toHaveAttribute("aria-pressed", "true");
+  await expect(heartOf(homeIn(page, "10421 Halvard Way NE"))).toHaveAttribute("aria-pressed", "true");
 
   // "Liked by buyers" keeps only homes with likes.
   await page.getByLabel("Liked by buyers").check();
   await expect(page).toHaveURL(/liked=1/);
-  await expect(card(page, "10421 Halvard Way")).toBeVisible();
-  for (const item of await page.getByRole("listitem").all()) {
-    await expect(item).toContainText(/\d+ likes?/);
+  await expect(homeIn(page, "10421 Halvard Way NE")).toBeAttached();
+  for (const home of await page.getByRole("article").all()) {
+    await expect(heartOf(home)).toHaveAccessibleName(/\d+ likes?$/);
   }
+
+  // A home's address opens it here, beside the map.
+  await page.goto("/homes/SAMPLE-1006");
+  await page.getByRole("link", { name: /2205 Brackenfield Ct NW, Issaquah/ }).click();
+  await expect(page).toHaveURL(/\/search\?home=SAMPLE-1006$/);
+  await expect(homeIn(page, "2205 Brackenfield Ct NW")).toBeInViewport({ ratio: 0.9 });
+  await expect(page.getByRole("button", { name: "2205 Brackenfield Ct NW, $1,089,000" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 
   // No matches says so and offers a way out.
   await page.goto("/search?q=Spokane");
@@ -93,11 +102,15 @@ test("map-and-list search with filters, pins, sorting and the pop-out", async ({
   expect(pageErrors).toEqual([]);
 });
 
-test("on a phone the map is one tap away", async ({ page }) => {
+test("on a phone, homes and the map are a tap apart, and a pin opens its home", async ({ page }) => {
   await page.goto("/search");
   await expect(page.locator(".maplibregl-canvas")).toBeHidden();
-  await page.getByRole("button", { name: "Map" }).click();
+  await expect(page.getByRole("article").first()).toBeVisible();
+  await page.getByRole("button", { name: "Map", exact: true }).click();
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
-  await page.getByRole("button", { name: "List" }).click();
-  await expect(page.getByText("13 homes")).toBeVisible();
+  await page.waitForTimeout(1000);
+  await tapPin(page, "4127 Larkmoor Ave NE, $985,000");
+  await expect(page.locator(".maplibregl-canvas")).toBeHidden();
+  await expect(homeIn(page, "4127 Larkmoor Ave NE")).toBeInViewport({ ratio: 0.9 });
+  await expect(page.getByRole("button", { name: "Map", exact: true })).toBeVisible();
 });
