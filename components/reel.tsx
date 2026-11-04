@@ -297,7 +297,9 @@ function Feed({
     <div
       ref={frame}
       className={cn(
-        "overflow-hidden bg-stone-950 text-white",
+        // Its width, not the window's, decides the layout of each home.
+        "overflow-hidden bg-stone-950 text-white @container",
+        header ? "[--chrome-top:4rem]" : "[--chrome-top:0.75rem]",
         embedded ? "relative h-full w-full" : "fixed inset-0 z-30",
       )}
     >
@@ -497,7 +499,10 @@ function Panel({
       data-panel={index}
       data-home={listing.ListingKey}
       aria-label={listing.UnparsedAddress}
-      className="relative h-full snap-start snap-always overflow-hidden bg-stone-950"
+      // The photo sits between the words at the top left and those at the
+      // bottom: when narrow, right under the top ones, leaving the buttons
+      // room below it; when wide, centred.
+      className="relative h-full snap-start snap-always overflow-hidden bg-stone-950 [--photo-align:0] [--photo-bottom:14.5rem] [--photo-top:calc(var(--chrome-top,4rem)_+_6.75rem)] @5xl:[--photo-align:0.5] @5xl:[--photo-top:calc(var(--chrome-top,4rem)_+_7.25rem)]"
     >
       {loaded && (
         <ReelPhotos
@@ -527,69 +532,84 @@ function Panel({
           }
         />
       )}
-      {/* Shade at the bottom keeps the caption readable over any photo. */}
+      {/* Shades keep the words readable over any photo, top and bottom. */}
       <div
         aria-hidden
         className={cn(
-          "pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-linear-to-t from-black/85 via-black/40 to-transparent transition-opacity duration-300",
+          "pointer-events-none absolute inset-x-0 top-0 h-56 bg-linear-to-b from-black/55 via-black/20 to-transparent transition-opacity duration-300",
+          squeezed && "opacity-0",
+        )}
+      />
+      <div
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute inset-x-0 bottom-0 h-2/5 bg-linear-to-t from-black/85 via-black/40 to-transparent transition-opacity duration-300",
           squeezed && "opacity-0",
         )}
       />
 
-      {/* The caption and buttons step aside while its comments are open. */}
+      {/* The words and buttons step aside while its comments are open. Only
+          their links and buttons take a touch: a swipe that starts on the
+          words, where a thumb usually is, turns the photos. */}
       <div
         className={cn(
-          "pointer-events-none absolute inset-0 mx-auto max-w-5xl transition-opacity duration-300",
+          "pointer-events-none absolute inset-0 transition-opacity duration-300 [&_a]:pointer-events-auto [&_button]:pointer-events-auto",
           squeezed && "opacity-0",
         )}
       >
-        <Rail
-          address={listing.UnparsedAddress}
-          things={things}
-          liked={liked}
-          likes={likes}
-          comments={comments}
-          mode={mode}
-          onLike={onLike}
-          onComments={onComments}
-          onShare={onShare}
-          onMore={onMore}
-        />
+        {/* Top left: what it costs, what it is, and where. */}
+        <div className="absolute left-4 right-24 top-[calc(env(safe-area-inset-top)_+_var(--chrome-top,4rem)_+_0.25rem)] [text-shadow:0_1px_3px_rgb(0_0_0/0.45)] sm:left-6 @5xl:left-[max(1.5rem,calc((100%_-_72rem)_/_2_+_1.5rem))]">
+          <p className="font-display text-3xl font-semibold leading-none tabular-nums @5xl:text-4xl">
+            {formatPrice(listing.ListPrice)}
+          </p>
+          <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium">
+            <span className="flex items-center gap-1.5">
+              <Bed aria-hidden size={16} className="opacity-80" />
+              {listing.BedroomsTotal} {listing.BedroomsTotal === 1 ? "bed" : "beds"}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Bath aria-hidden size={16} className="opacity-80" />
+              {listing.BathroomsTotalInteger} {listing.BathroomsTotalInteger === 1 ? "bath" : "baths"}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Ruler aria-hidden size={16} className="opacity-80" />
+              {listing.LivingArea.toLocaleString("en-US")} sq ft
+            </span>
+          </p>
+          <h2 className="text-sm font-semibold leading-snug">
+            <Link
+              href={`/search?home=${encodeURIComponent(listing.ListingKey)}`}
+              className="inline-flex min-h-8 items-center gap-1.5 underline-offset-4 hover:underline"
+            >
+              <MapPin aria-hidden size={15} className="shrink-0" />
+              {listing.UnparsedAddress}, {listing.City}
+              <span className="sr-only"> (see it on the map)</span>
+            </Link>
+          </h2>
+        </div>
 
-        {/* Only the caption's links and buttons take a touch: a swipe that
-            starts on its text, where a thumb usually is, turns the photos. */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 [&_a]:pointer-events-auto [&_button]:pointer-events-auto">
-          <div className="max-w-2xl pr-16 [text-shadow:0_1px_3px_rgb(0_0_0/0.45)] sm:pr-20">
+        <div className="relative mx-auto h-full max-w-5xl">
+          <Rail
+            address={listing.UnparsedAddress}
+            things={things}
+            liked={liked}
+            likes={likes}
+            comments={comments}
+            mode={mode}
+            onLike={onLike}
+            onComments={onComments}
+            onShare={onShare}
+            onMore={onMore}
+          />
+        </div>
+
+        {/* Bottom and off the edge: who's talking, the description, and the
+            comment bar right under it. Centred when the feed is wide; narrower
+            (a phone, or the pane beside the map), the words sit beside the
+            buttons, like a reel. */}
+        <div className="absolute inset-x-0 bottom-0 flex flex-col px-4 pb-[max(1.5rem,calc(env(safe-area-inset-bottom)_+_0.75rem))] sm:px-6 @5xl:items-center">
+          <div className="w-full pr-20 [text-shadow:0_1px_3px_rgb(0_0_0/0.45)] sm:pr-24 @5xl:max-w-xl @5xl:pr-0 @5xl:text-center">
             <ActivityLine headline={post.headline} trending={post.buzz.trending} onOpen={onComments} />
-
-            {/* Price first and on its own; the facts and the address each get a line. */}
-            <p className="mt-3 font-display text-4xl font-semibold leading-none tabular-nums sm:text-[2.75rem]">
-              {formatPrice(listing.ListPrice)}
-            </p>
-            <p className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1 text-[15px] font-medium">
-              <span className="flex items-center gap-1.5">
-                <Bed aria-hidden size={17} className="opacity-80" />
-                {listing.BedroomsTotal} {listing.BedroomsTotal === 1 ? "bed" : "beds"}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Bath aria-hidden size={17} className="opacity-80" />
-                {listing.BathroomsTotalInteger} {listing.BathroomsTotalInteger === 1 ? "bath" : "baths"}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Ruler aria-hidden size={17} className="opacity-80" />
-                {listing.LivingArea.toLocaleString("en-US")} sq ft
-              </span>
-            </p>
-            <h2 className="mt-1.5 text-[15px] font-semibold leading-snug">
-              <Link
-                href={`/search?home=${encodeURIComponent(listing.ListingKey)}`}
-                className="inline-flex min-h-9 items-center gap-1.5 underline-offset-4 hover:underline"
-              >
-                <MapPin aria-hidden size={16} className="shrink-0" />
-                {listing.UnparsedAddress}, {listing.City}
-                <span className="sr-only"> (see it on the map)</span>
-              </Link>
-            </h2>
             <Description listing={post.listing} reasons={post.reasons} />
             {error && (
               <p role="alert" className="mt-1 text-sm font-semibold text-rose-200">
@@ -597,11 +617,10 @@ function Panel({
               </p>
             )}
           </div>
-          {/* Right under the description, like a reel: tap and type. */}
           <button
             type="button"
             onClick={onCompose}
-            className="mt-2.5 flex h-11 w-full max-w-2xl items-center gap-3 rounded-full border border-white/15 bg-white/10 pl-4 pr-3 text-left text-[15px] text-white/75 backdrop-blur-md transition-colors hover:bg-white/15"
+            className="mt-3 flex h-11 w-full items-center gap-3 rounded-full @5xl:max-w-xl border border-white/15 bg-white/10 pl-5 pr-3 text-left text-[15px] text-white/75 backdrop-blur-md transition-colors hover:bg-white/15"
           >
             <span className="min-w-0 flex-1 truncate">Add a comment…</span>
             <Send aria-hidden size={18} className="shrink-0 opacity-70" />
@@ -671,7 +690,7 @@ function Rail({
   onMore: () => void;
 }) {
   return (
-    <div className="pointer-events-auto absolute bottom-[max(12rem,calc(env(safe-area-inset-bottom)+11.25rem))] right-2 z-10 flex flex-col items-center gap-4 sm:right-4">
+    <div className="pointer-events-auto absolute bottom-[max(5rem,calc(env(safe-area-inset-bottom)_+_4.25rem))] right-2 z-10 flex flex-col items-center gap-4 sm:right-4">
       <LikeWithList things={things}>
         <RailButton
           name={`Like ${address}${likes ? `, ${likes} ${likes === 1 ? "like" : "likes"}` : ""}`}
@@ -736,7 +755,7 @@ function ActivityLine({
   if (!headline && !trending) return null;
   const named = headline && "name" in headline;
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-x-2 @5xl:justify-center">
       {headline && (
         <button type="button" onClick={onOpen} className="flex min-h-9 items-center gap-2 text-left text-sm">
           <span
@@ -770,9 +789,9 @@ function ActivityLine({
 function Description({ listing, reasons }: { listing: FeedPost["listing"]; reasons: string[] }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="mt-1.5 text-sm leading-relaxed text-white/85">
+    <div className="mt-1 text-sm leading-relaxed text-white/85">
       {reasons.length > 0 && (
-        <p className="mb-1 flex flex-wrap items-center gap-1 font-semibold text-white">
+        <p className="mb-1 flex flex-wrap items-center gap-1 font-semibold text-white @5xl:justify-center">
           <Sparkles aria-hidden size={13} />
           For you: {reasons.join(" · ")}
         </p>

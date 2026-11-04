@@ -8,6 +8,14 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNo
 import { cn } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
 
+// The space the photo fits in, between `--photo-top` and `--photo-bottom`
+// (in units of the slide, or the carousel, it's measured in).
+const TOP = "var(--photo-top, 4.5rem)";
+const BOTTOM = "var(--photo-bottom, 14.5rem)";
+const ROOM = `(100cqh - ${TOP} - ${BOTTOM})`;
+// Where in that space it sits: 0 at the top, 0.5 in the middle.
+const ALIGN = "var(--photo-align, 0.5)";
+
 const isVideo = (photo: ListingMedia) =>
   photo.MediaCategory === "Video" || /\.(mp4|webm|mov)(\?|$)/i.test(photo.MediaURL);
 
@@ -90,6 +98,16 @@ export function ReelPhotos({
     }
   };
 
+  // Where the photo on screen sits, for the dots and arrows over it.
+  const shown = media[index];
+  const ratio = shown?.ImageWidth && shown?.ImageHeight ? shown.ImageWidth / shown.ImageHeight : null;
+  const height = ratio ? `min(${ROOM}, 100cqw / ${ratio})` : ROOM;
+  const photoTop = `(${TOP} + (${ROOM} - ${height}) * ${ALIGN})`;
+  const middle = `calc(${photoTop} + ${height} / 2)`;
+  const photoBottom = `calc(${photoTop} + ${height})`;
+  // The arrows sit just inside the photo's edges.
+  const edge = `calc((100cqw - ${ratio ? `min(100cqw, ${ROOM} * ${ratio})` : "100cqw"}) / 2 + 0.75rem)`;
+
   return (
     <div
       role="group"
@@ -97,10 +115,10 @@ export function ReelPhotos({
       aria-label={`Photos of ${address}`}
       onPointerDownCapture={() => setTouched(true)}
       data-squeezed={squeezed || undefined}
-      // The photo fits between the header and the caption (and its comment
-      // bar), so neither covers it; with the comments open, above them.
+      // The photo fits between `--photo-top` and `--photo-bottom`, set by the
+      // page around it so nothing covers it; with the comments open, above them.
       className={cn(
-        "group/carousel absolute inset-0 [--photo-bottom:21rem] [--photo-top:4.5rem] lg:[--photo-bottom:22rem] lg:[--photo-top:4rem]",
+        "group/carousel absolute inset-0 [container-type:size]",
         "data-squeezed:[--photo-bottom:calc(72cqh_+_1rem)] data-squeezed:[--photo-top:calc(env(safe-area-inset-top)_+_0.75rem)]",
       )}
     >
@@ -167,7 +185,9 @@ export function ReelPhotos({
         <>
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-x-0 top-[calc(env(safe-area-inset-top)+4rem)] flex justify-center gap-1.5 transition-opacity duration-300 group-data-squeezed/carousel:opacity-0"
+            // Along the bottom of the photo itself.
+            style={{ top: `calc(${photoBottom} - 1.1rem)` }}
+            className="pointer-events-none absolute inset-x-0 flex justify-center gap-1.5 transition-opacity duration-300 group-data-squeezed/carousel:opacity-0"
           >
             {media.map((photo, i) => (
               <span
@@ -187,7 +207,8 @@ export function ReelPhotos({
             aria-label="Previous photo"
             disabled={index === 0}
             onClick={() => embla?.scrollPrev()}
-            className="absolute left-2 top-[30%] z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm disabled:hidden lg:left-6 lg:top-1/2 lg:size-12"
+            style={{ top: middle, left: edge }}
+            className="absolute z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm disabled:hidden lg:size-11"
           >
             <ChevronLeft aria-hidden size={22} />
           </button>
@@ -196,7 +217,8 @@ export function ReelPhotos({
             aria-label="Next photo"
             disabled={index === media.length - 1}
             onClick={() => embla?.scrollNext()}
-            className="absolute right-2 top-[30%] z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm disabled:hidden lg:right-24 lg:top-1/2 lg:size-12"
+            style={{ top: middle, right: edge }}
+            className="absolute z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm disabled:hidden lg:size-11"
           >
             <ChevronRight aria-hidden size={22} />
           </button>
@@ -231,14 +253,13 @@ function ReelVideo({ src, playing, label }: { src: string; playing: boolean; lab
 
 // A box exactly the size and place of the photo as shown (whole, letterboxed
 // over its blurred copy), so anything inside can point at a spot in the photo.
-// It fits between `--photo-top` and `--photo-bottom`, set on the carousel.
+// It fits between `--photo-top` and `--photo-bottom`, set by the page around it.
 // Photos without a known size simply fill the slide.
 function PhotoFrame({ photo, children }: { photo: ListingMedia; children: ReactNode }) {
   if (!photo.ImageWidth || !photo.ImageHeight) return <div className="absolute inset-0">{children}</div>;
   const ratio = photo.ImageWidth / photo.ImageHeight;
-  const room = "(100cqh - var(--photo-top) - var(--photo-bottom))";
-  const width = `min(100cqw, ${room} * ${ratio})`;
-  const height = `min(${room}, 100cqw / ${ratio})`;
+  const width = `min(100cqw, ${ROOM} * ${ratio})`;
+  const height = `min(${ROOM}, 100cqw / ${ratio})`;
   return (
     <div
       className="absolute transition-[width,height,left,top] duration-300 ease-out motion-reduce:transition-none"
@@ -246,7 +267,7 @@ function PhotoFrame({ photo, children }: { photo: ListingMedia; children: ReactN
         width,
         height,
         left: `calc((100cqw - ${width}) / 2)`,
-        top: `calc(var(--photo-top) + (${room} - ${height}) / 2)`,
+        top: `calc(${TOP} + (${ROOM} - ${height}) * ${ALIGN})`,
       }}
     >
       {children}
