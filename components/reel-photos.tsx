@@ -1,6 +1,7 @@
 "use client";
 
 import useEmblaCarousel from "embla-carousel-react";
+import { WheelGesturesPlugin } from "embla-carousel-wheel-gestures";
 import { ChevronLeft, ChevronRight, Heart } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
@@ -10,9 +11,10 @@ import type { ListingMedia } from "@/lib/listings/types";
 const isVideo = (photo: ListingMedia) =>
   photo.MediaCategory === "Video" || /\.(mp4|webm|mov)(\?|$)/i.test(photo.MediaURL);
 
-// A home's photos (and videos) filling the screen, swiped sideways. Listing
-// photos are landscape, so each shows whole over a blurred copy of itself
-// rather than cropped to a sliver. Double-tap likes, with a heart.
+// A home's photos (and videos) filling the screen, swiped sideways: by touch,
+// by dragging, or with two fingers on a trackpad. Listing photos are
+// landscape, so each shows whole over a blurred copy of itself rather than
+// cropped to a sliver. Double-tap likes, with a heart.
 export function ReelPhotos({
   media,
   address,
@@ -21,6 +23,8 @@ export function ReelPhotos({
   onIndexChange,
   onDoubleTap,
   spots,
+  peek,
+  overlay,
 }: {
   media: ListingMedia[];
   address: string;
@@ -31,9 +35,20 @@ export function ReelPhotos({
   onDoubleTap?: (photo: ListingMedia) => void;
   // Drawn over the photo itself, positioned in fractions of it (like-able spots).
   spots?: (photo: ListingMedia) => ReactNode;
+  // Slide a little and back, to show there are more photos (until touched).
+  peek?: boolean;
+  // Drawn over the photos; `--photo-top` and `--photo-bottom` say where they sit.
+  overlay?: ReactNode;
 }) {
-  const [emblaRef, embla] = useEmblaCarousel();
+  // Each carousel needs its own plugin; a sideways trackpad swipe turns the
+  // photos, while an up-and-down one still scrolls between homes.
+  const [plugins] = useState(() => [WheelGesturesPlugin()]);
+  const [emblaRef, embla] = useEmblaCarousel({}, plugins);
+  const [touched, setTouched] = useState(false);
   const [index, setIndex] = useState(0);
+  // The photo that has finished sliding into place: its spots show then, not
+  // while it's still moving.
+  const [settled, setSettled] = useState(0);
   const lastTap = useRef<{ slide: number; at: number } | null>(null);
   const [burst, setBurst] = useState<{ slide: number; at: number } | null>(null);
 
@@ -51,6 +66,15 @@ export function ReelPhotos({
     };
   }, [embla, onSelect]);
 
+  useEffect(() => {
+    if (!embla) return;
+    const onSettle = () => setSettled(embla.selectedScrollSnap());
+    embla.on("settle", onSettle);
+    return () => {
+      embla.off("settle", onSettle);
+    };
+  }, [embla]);
+
   const tap = (event: MouseEvent, photo: ListingMedia, slide: number) => {
     if (!onDoubleTap || (event.target as HTMLElement).closest("button, a, video")) return;
     const now = event.timeStamp;
@@ -64,9 +88,21 @@ export function ReelPhotos({
   };
 
   return (
-    <div role="group" aria-roledescription="carousel" aria-label={`Photos of ${address}`} className="absolute inset-0">
+    <div
+      role="group"
+      aria-roledescription="carousel"
+      aria-label={`Photos of ${address}`}
+      onPointerDownCapture={() => setTouched(true)}
+      // The photo fits between the header and the caption, so neither covers it.
+      className="absolute inset-0 [--photo-bottom:17.5rem] [--photo-top:4.5rem] lg:[--photo-bottom:18.5rem] lg:[--photo-top:4rem]"
+    >
       <div ref={emblaRef} className="h-full overflow-hidden">
-        <div className="flex h-full touch-pan-y">
+        <div
+          className={cn(
+            "flex h-full touch-pan-y",
+            peek && !touched && "animate-[peek_2.6s_ease-in-out_0.4s_2] motion-reduce:animate-none",
+          )}
+        >
           {media.map((photo, i) => (
             <div
               key={photo.MediaURL}
@@ -100,8 +136,9 @@ export function ReelPhotos({
                       active && i === index && "animate-[ken-burns_9s_ease-out_forwards] motion-reduce:animate-none",
                     )}
                   />
-                  {/* Only the photo on screen: a spot on another can't be reached by accident. */}
-                  {i === index && spots?.(photo)}
+                  {/* Only the photo on screen, once it's in place: a spot on another
+                      can't be reached by accident. */}
+                  {i === index && i === settled && spots?.(photo)}
                 </PhotoFrame>
               )}
               {burst?.slide === i && (
@@ -117,6 +154,7 @@ export function ReelPhotos({
           ))}
         </div>
       </div>
+      {overlay}
       {media.length > 1 && (
         <>
           <div
@@ -185,7 +223,7 @@ function ReelVideo({ src, playing, label }: { src: string; playing: boolean; lab
 
 // A box exactly the size and place of the photo as shown (whole, letterboxed
 // over its blurred copy), so anything inside can point at a spot in the photo.
-// It fits between the header and the caption, so neither covers the photo.
+// It fits between `--photo-top` and `--photo-bottom`, set on the carousel.
 // Photos without a known size simply fill the slide.
 function PhotoFrame({ photo, children }: { photo: ListingMedia; children: ReactNode }) {
   if (!photo.ImageWidth || !photo.ImageHeight) return <div className="absolute inset-0">{children}</div>;
@@ -195,7 +233,7 @@ function PhotoFrame({ photo, children }: { photo: ListingMedia; children: ReactN
   const height = `min(${room}, 100cqw / ${ratio})`;
   return (
     <div
-      className="absolute [--photo-bottom:17.5rem] [--photo-top:4.5rem] lg:[--photo-bottom:18.5rem] lg:[--photo-top:4rem]"
+      className="absolute"
       style={{
         width,
         height,

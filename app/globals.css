@@ -105,6 +105,62 @@ a {
   }
 }
 
+/* First time on an agent's link: the nudges fade in and their arrows lean
+   the way to swipe. */
+@keyframes nudge-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes nudge-right {
+  0%,
+  100% {
+    transform: none;
+  }
+  50% {
+    transform: translateX(4px);
+  }
+}
+
+@keyframes nudge-up {
+  0%,
+  100% {
+    transform: none;
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes nudge-down {
+  0%,
+  100% {
+    transform: none;
+  }
+  50% {
+    transform: translateY(4px);
+  }
+}
+
+/* The photos slide a little, as if pulled, then settle back: there are more.
+   `translate` adds to the carousel's own transform rather than replacing it. */
+@keyframes peek {
+  0%,
+  55%,
+  100% {
+    translate: 0;
+  }
+  25% {
+    translate: -12% 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

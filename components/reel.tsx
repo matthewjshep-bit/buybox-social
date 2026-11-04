@@ -24,6 +24,7 @@ import { CommentComposer, NameGate, Timeline, type ThreadActions } from "@/compo
 import { usePhotoLikes } from "@/components/photo-likes";
 import { ReelPhotos } from "@/components/reel-photos";
 import { Sheet } from "@/components/sheet";
+import { NudgeHint, useNudges, type Nudge } from "@/components/walkthrough";
 import type { FeedPost, Headline } from "@/lib/feed";
 import { cn, formatPrice, timeAgo } from "@/lib/format";
 import { isSampleListing, type ListingMedia } from "@/lib/listings/types";
@@ -224,6 +225,14 @@ function Feed({
     report.current?.(activeKey);
   }, [activeKey]);
 
+  // On an agent's link, the first time: how to see more photos, then more homes.
+  const nudges = useNudges({
+    enabled: mode === "share" && !embedded && !sheet,
+    home: activeKey,
+    photoCount: activePost?.listing.Media.length ?? 0,
+    hasNext: active - offset < posts.length - 1,
+  });
+
   // Go to a home picked elsewhere (a pin on the map). The first pick, from the
   // page's address, jumps straight there.
   useEffect(() => {
@@ -303,6 +312,8 @@ function Feed({
               mode={mode}
               active={active === offset + i}
               near={Math.abs(active - (offset + i)) <= 1}
+              nudge={active === offset + i ? nudges.showing : null}
+              onSwipe={active === offset + i ? nudges.onSwipe : undefined}
               state={state}
               base={reactions.base[key] ?? NO_REACTION}
               error={reactions.errors[key]}
@@ -391,6 +402,8 @@ function Panel({
   mode,
   active,
   near,
+  nudge,
+  onSwipe,
   state,
   base,
   error,
@@ -406,6 +419,9 @@ function Panel({
   active: boolean;
   // Close enough to load its photos.
   near: boolean;
+  nudge: Nudge | null;
+  // Moved on to another photo.
+  onSwipe?: () => void;
   state: ReactionState;
   base: ReactionState;
   error?: string;
@@ -458,8 +474,13 @@ function Panel({
           address={listing.UnparsedAddress}
           active={active}
           priority={index <= 1}
-          onIndexChange={setPhoto}
+          onIndexChange={(next) => {
+            setPhoto(next);
+            onSwipe?.();
+          }}
           onDoubleTap={likeWhatsShown}
+          peek={nudge === "photos"}
+          overlay={nudge && <NudgeHint nudge={nudge} />}
           spots={(shown) =>
             photos.enabled &&
             (shown.Spots ?? []).map((spot) => (
@@ -494,7 +515,9 @@ function Panel({
           onMore={onMore}
         />
 
-        <div className="pointer-events-auto absolute inset-x-0 bottom-0 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pr-20 [text-shadow:0_1px_3px_rgb(0_0_0/0.45)] sm:px-6 sm:pr-24">
+        {/* Only the caption's links and buttons take a touch: a swipe that
+            starts on its text, where a thumb usually is, turns the photos. */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pr-20 [text-shadow:0_1px_3px_rgb(0_0_0/0.45)] sm:px-6 sm:pr-24 [&_a]:pointer-events-auto [&_button]:pointer-events-auto">
           <div className="max-w-2xl">
             <ActivityLine headline={post.headline} trending={post.buzz.trending} onOpen={onComments} />
 
