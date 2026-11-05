@@ -1,6 +1,6 @@
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
-import { aspectOfTag, mediaKeyOf } from "./photos";
+import { aspectOfTag, isPointTag, mediaKeyOf, tagNameIn } from "./photos";
 import { NO_REACTION, type AspectCounts, type ReactionState } from "./reactions";
 
 // Someone's public page: what they've liked, passed on and said, in public.
@@ -61,10 +61,12 @@ export async function getProfile(visitorId: string) {
   const passes: AspectCounts = {};
   for (const like of photoLikes) {
     const entry = home(like.data, like.at);
+    // A spot reads as the thing it's on ("the front door").
+    like.tag = tagNameIn(like.data, like.media_key, like.tag);
     entry.tags.push(like.tag);
     const photo = like.data.Media.find((m) => mediaKeyOf(m) === like.media_key);
     if (photo) entry.cover = photo.MediaURL;
-    loved.set(like.tag, (loved.get(like.tag) ?? 0) + 1);
+    if (!isPointTag(like.tag)) loved.set(like.tag, (loved.get(like.tag) ?? 0) + 1);
   }
   for (const entry of homes.values()) {
     const aspects = new Set(entry.state.liked);

@@ -1,7 +1,7 @@
 // Runs after the other specs (alphabetically last) because it likes a lot of
 // homes, which would throw off their counts.
 import { expect, test } from "@playwright/test";
-import { heartOf, homeIn, openComments, openMore, pin, scrollToEnd, signUpBuyer } from "./helpers";
+import { heartOf, homeIn, likeInPhoto, openComments, openMore, scrollToEnd, signUpBuyer } from "./helpers";
 
 test("the feed learns your taste from what you like and pass on", async ({ browser }) => {
   test.setTimeout(90_000);
@@ -48,11 +48,7 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   await cleo.goto("/homes/SAMPLE-1012");
   const cleoHome = homeIn(cleo, FOXGLOVE);
   await heartOf(cleoHome).click();
-  await pin(cleoHome, /^Like the three-car garage/).click();
-  await expect(pin(cleoHome, /^Like the three-car garage/)).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await likeInPhoto(cleoHome, "the three-car garage");
   const cleoChat = await openComments(cleo, cleoHome);
   await cleoChat.getByLabel("Add a comment").fill("Love the cul-de-sac.");
   await cleoChat.getByRole("button", { name: "Post", exact: true }).click();
@@ -90,7 +86,7 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   await expect(eliHome.getByText("Trending")).toBeVisible();
   // Liking just something in a photo counts toward the home's likes too.
   await expect(eliHome.getByRole("button", { name: `Like ${FOXGLOVE}, 2 likes` })).toBeVisible();
-  await pin(eliHome, /^Like the stone and shingle/).click();
+  await likeInPhoto(eliHome, "the stone and shingle");
   await expect(eliHome.getByRole("button", { name: `Like ${FOXGLOVE}, 3 likes` })).toHaveAttribute(
     "aria-pressed",
     "false",

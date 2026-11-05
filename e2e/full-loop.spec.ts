@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import { createShare, heartOf, homeIn, openComments, openMore, photoList, pin, signInAgent } from "./helpers";
+import { createShare, heartOf, homeIn, likeInPhoto, openComments, openMore, photoList, pick, signInAgent } from "./helpers";
 
 test("one package, a link for each person: they react, the agent compares and replies", async ({ browser }) => {
   test.setTimeout(60_000);
@@ -36,8 +36,7 @@ test("one package, a link for each person: they react, the agent compares and re
   await house.getByRole("button", { name: "Next photo" }).click();
   // The kitchen itself, from the list on the heart; the counters, from their spot in the photo.
   await (await photoList(house)).getByRole("button", { name: /^Like the kitchen(,|$)/ }).click();
-  await pin(house, /^Like the marble counters/).click();
-  await expect(pin(house, /^Like the marble counters/)).toHaveAttribute("aria-pressed", "true");
+  await likeInPhoto(house, "the marble counters");
 
   const jamieChat = await openComments(jamie, house);
   await jamieChat.getByLabel("Add a comment").fill("That porch is perfect.");
@@ -108,7 +107,7 @@ test("one package, a link for each person: they react, the agent compares and re
   await samHouse.getByRole("button", { name: "Next photo" }).click();
   await samHouse.getByRole("button", { name: "Next photo" }).click();
   await (await photoList(samHouse)).getByRole("button", { name: /^Like the kitchen(,|$)/ }).click();
-  await expect(pin(samHouse, /^Like the marble counters/)).toBeVisible();
+  await pick(samHouse, "the marble counters");
 
   // The agent sees them side by side: where they agree, and where they don't.
   await agent.reload();

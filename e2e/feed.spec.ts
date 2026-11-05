@@ -1,5 +1,18 @@
 import { expect, test, type Page } from "@playwright/test";
-import { commentIn, createShare, heartOf, homeIn, openComments, openMore, photoList, pin, scrollToEnd, signInAgent, signUpBuyer } from "./helpers";
+import {
+  commentIn,
+  createShare,
+  heartOf,
+  homeIn,
+  likeInPhoto,
+  openComments,
+  openMore,
+  photoList,
+  pick,
+  scrollToEnd,
+  signInAgent,
+  signUpBuyer,
+} from "./helpers";
 
 async function expectLogoGoesHome(page: Page) {
   const logo = page.getByRole("link", { name: "BuyBox Social" });
@@ -19,8 +32,7 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   const clientHome = homeIn(client, "96 Fernhollow Ln");
   await heartOf(clientHome).click();
   await expect(heartOf(clientHome)).toHaveAttribute("aria-pressed", "true");
-  await pin(clientHome, /^Like the evergreens/).click();
-  await expect(pin(clientHome, /^Like the evergreens/)).toHaveAttribute("aria-pressed", "true");
+  await likeInPhoto(clientHome, "the evergreens");
 
   // That agent's feed names their own client, and says what they liked.
   await agent.goto("/");
@@ -37,9 +49,11 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await expect(post).toContainText("2 baths");
   await expect(post).toContainText("2,120 sq ft");
   await expect(post.getByRole("button", { name: "Like 96 Fernhollow Ln, 1 like" })).toHaveAttribute("aria-pressed", "false");
-  // The heart sits on the evergreens themselves, in the photo.
+  // The like is on the evergreens themselves, in the photo.
   await post.scrollIntoViewIfNeeded();
-  await expect(pin(post, "Like the evergreens, 1 like")).toBeVisible();
+  const evergreens = await pick(post, "the evergreens");
+  await expect(evergreens.getByRole("button", { name: "Like the evergreens, 1 like" })).toBeVisible();
+  await evergreens.getByRole("button", { name: "Close" }).click();
   // No more Hinge-style Pass and Like buttons.
   await expect(buyer.getByRole("button", { name: /^(Pass|Dislike)$/ })).toHaveCount(0);
   await expect(buyer.getByText("Toby")).toHaveCount(0);
@@ -120,11 +134,12 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await buyer.goto("/picks");
   await expect(buyer).toHaveURL(/localhost:\d+\/$/);
 
-  // Signed out, it's the same feed, with a way to sign up and a page for agents.
+  // Signed out, it opens on what this is and a way to sign up, then homes,
+  // and there's a page for agents.
   const anon = await (await browser.newContext()).newPage();
   await anon.goto("/");
-  await expect(anon.getByRole("heading", { level: 1, name: "Homes for you" })).toBeAttached();
-  await expect(anon.getByRole("article").first()).toBeVisible();
+  await expect(anon.getByRole("heading", { level: 1 })).toHaveText("Every home for sale, one swipe at a time.");
+  await expect(anon.getByRole("article").first()).toBeAttached();
   await expect(anon.getByRole("link", { name: "Sign up", exact: true })).toBeVisible();
   await anon.goto("/for-agents");
   await expect(anon.getByRole("heading", { level: 1 })).toHaveText("Know what your clients think of every home.");

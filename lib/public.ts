@@ -190,7 +190,9 @@ export async function getPublicIdentity(account: Account | null, deviceToken: st
   if (account?.role) {
     const [visitor] = await sql<{ id: string; first_name: string }[]>`
       select id, first_name from visitors where account_id = ${account.id}`;
-    return { visitor: visitor ?? null, name: firstName(account) };
+    // No name yet (they signed in with just an email): asked the first time
+    // they like or say something.
+    return { visitor: visitor ?? null, name: account.full_name.trim() ? firstName(account) : null };
   }
   const visitor = await getVisitor(deviceToken);
   return { visitor, name: visitor?.first_name ?? null };

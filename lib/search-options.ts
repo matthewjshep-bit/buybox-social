@@ -54,3 +54,14 @@ export function parseFilters(params: Params): SearchFilters {
     sort: sort in SORTS ? (sort as Sort) : "reactions",
   };
 }
+
+// Filters as they go in a link ("beds=3&maxPrice=1000000"), defaults left out.
+export function filtersQuery(filters: SearchFilters) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value === null || value === "" || value === false) continue;
+    if (key === "sort" && value === "reactions") continue;
+    params.set(key, value === true ? "1" : String(value));
+  }
+  return params.toString();
+}

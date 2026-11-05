@@ -1,8 +1,8 @@
-import { Bell, Home, LayoutDashboard, LogOut, Map as MapIcon } from "lucide-react";
+import { Bell, Home, LayoutDashboard, LogOut, Map as MapIcon, Shield } from "lucide-react";
 import Link from "next/link";
 import { signOut } from "@/app/login/actions";
 import { countUnreadActivity } from "@/lib/activity";
-import { firstName, getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, isAdmin } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
 import { cn } from "@/lib/format";
 import { getPublicIdentity } from "@/lib/public";
@@ -13,7 +13,10 @@ import { getPublicIdentity } from "@/lib/public";
 export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
   const [user, device] = await Promise.all([getCurrentUser(), readDevice()]);
   const { visitor } = await getPublicIdentity(user?.role ? user : null, device);
-  const unread = visitor ? await countUnreadActivity(visitor.id) : 0;
+  const [unread, admin] = await Promise.all([
+    visitor ? countUnreadActivity(visitor.id) : 0,
+    isAdmin(user),
+  ]);
   const navItem = cn(
     "flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-2.5",
     overlay ? "hover:bg-white/15 [text-shadow:0_1px_3px_rgb(0_0_0/0.5)]" : "hover:bg-stone-100",
@@ -58,6 +61,12 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
               )}
             </Link>
           )}
+          {admin && (
+            <Link href="/admin" className={navItem}>
+              <Shield aria-hidden size={18} className="md:hidden" />
+              <span className="sr-only md:not-sr-only">Admin</span>
+            </Link>
+          )}
           {user?.role ? (
             <>
               {user.role === "agent" && (
@@ -74,7 +83,7 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
                   overlay ? "bg-white/25" : "bg-stone-200",
                 )}
               >
-                {firstName(user)[0]?.toUpperCase()}
+                {(user.full_name.trim() || user.email)[0]?.toUpperCase()}
               </Link>
               <form action={signOut}>
                 <button type="submit" className={navItem}>

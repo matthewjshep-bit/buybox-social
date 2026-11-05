@@ -66,23 +66,44 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await expect(larkmoorPin).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByRole("button", { name: /\$\d[\d,]*$/, pressed: true })).toHaveCount(1);
 
-  // The heart works right here (asking a signed-out visitor for a name).
+  // Beside the map, a home is just a look: nothing to like, say or tap on it.
+  await page.goto("/search?beds=4");
+  const found = Number((await page.getByText(/^\d+ homes?$/).textContent())!.split(" ")[0]);
+  await page.waitForTimeout(1500);
   await tapPin(page, "10421 Halvard Way NE, $1,349,000");
   const halvard = homeIn(page, "10421 Halvard Way NE");
   await expect(halvard).toBeInViewport({ ratio: 0.9 });
-  await heartOf(halvard).click();
+  await expect(heartOf(halvard)).toHaveCount(0);
+  await expect(halvard.getByRole("button", { name: "Add a comment…" })).toHaveCount(0);
+  await expect(halvard.getByRole("button", { name: "Next photo" })).toHaveCount(0);
+
+  // Tapping it opens it full screen, with this search's homes to scroll through.
+  await halvard.getByRole("group", { name: /^Photos of/ }).click();
+  await expect(page).toHaveURL(/\/homes\?beds=4&home=SAMPLE-1005$/);
+  const full = homeIn(page, "10421 Halvard Way NE");
+  await expect(full).toBeInViewport({ ratio: 0.9 });
+  // Here it's the whole thing: the heart works (asking a signed-out visitor for a name).
+  await heartOf(full).click();
   await joinAs(page, "Remy");
-  await expect(heartOf(halvard)).toHaveAttribute("aria-pressed", "true");
-  await page.reload();
-  await expect(heartOf(homeIn(page, "10421 Halvard Way NE"))).toHaveAttribute("aria-pressed", "true");
+  await expect(heartOf(full)).toHaveAttribute("aria-pressed", "true");
+  await expect(async () => {
+    await page.evaluate(() => {
+      const reel = document.querySelector<HTMLElement>("[data-reel]")!;
+      reel.scrollTo({ top: reel.scrollHeight });
+    });
+    await expect(page.getByRole("heading", { name: "That's every home in this search" })).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 20_000 });
+  await expect(page.getByRole("article")).toHaveCount(found);
+
+  // Back to the map as it was.
+  await page.getByRole("link", { name: "Back to map" }).click();
+  await expect(page).toHaveURL(/\/search\?beds=4&home=SAMPLE-1005$/);
+  await expect(homeIn(page, "10421 Halvard Way NE")).toBeInViewport({ ratio: 0.9 });
 
   // "Liked by buyers" keeps only homes with likes.
   await page.getByLabel("Liked by buyers").check();
   await expect(page).toHaveURL(/liked=1/);
   await expect(homeIn(page, "10421 Halvard Way NE")).toBeAttached();
-  for (const home of await page.getByRole("article").all()) {
-    await expect(heartOf(home)).toHaveAccessibleName(/\d+ likes?$/);
-  }
 
   // A home's address opens it here, beside the map.
   await page.goto("/homes/SAMPLE-1006");
@@ -113,4 +134,8 @@ test("on a phone, homes and the map are a tap apart, and a pin opens its home", 
   await expect(page.locator(".maplibregl-canvas")).toBeHidden();
   await expect(homeIn(page, "4127 Larkmoor Ave NE")).toBeInViewport({ ratio: 0.9 });
   await expect(page.getByRole("button", { name: "Map", exact: true })).toBeVisible();
+  // A tap opens it full screen.
+  await homeIn(page, "4127 Larkmoor Ave NE").getByRole("button", { name: /^Open full screen/ }).click();
+  await expect(page).toHaveURL(/\/homes\?home=SAMPLE-1001$/);
+  await expect(homeIn(page, "4127 Larkmoor Ave NE")).toBeInViewport({ ratio: 0.9 });
 });

@@ -62,6 +62,7 @@ Then send yourself a link by text to check the preview image.
 |---|---|
 | `app/s/[token]/` | The client page, its actions, and the link preview image |
 | `app/dashboard/` | Agent screens: shares, new share, profile |
+| `app/admin/`, `lib/admin.ts` | The admin: leads, people, homes and comments |
 | `lib/listings/` | The listing source. Swap this to go live |
 | `lib/shares.ts` | Reads for shares and their threads |
 | `supabase/migrations/` | Database schema |
@@ -69,6 +70,12 @@ Then send yourself a link by text to check the preview image.
 | `e2e/` | Full-loop and security tests |
 
 **Security model:** the browser never talks to the database. Every query runs on the server and is scoped to a share token or the signed-in agent. Row-level security is on with no policies, so Supabase's public keys can't read or write anything. Anyone holding a share link can read and join that thread, so treat links like private invitations.
+
+## The admin
+
+`/admin` is for running the site: leads to follow up (with call, text and email buttons), everyone who's signed up, every home and how people are taking to it, and every public comment, with the way to take one down. People export to CSV for a spreadsheet or CRM.
+
+The owner, `SUPER_ADMIN_EMAIL` in `lib/auth.ts`, is always an admin, and is the only one who can add or remove other admins (Admins, in the admin's menu). Admins they add see everything else. Anyone else sees "not found". Locally, sign in with the owner's email to open it. Private chats between buyers and their agents show as counts there, never their words. For anything the admin doesn't cover, Supabase's Table Editor has the raw tables.
 
 ## Going live with real listings
 

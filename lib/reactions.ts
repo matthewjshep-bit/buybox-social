@@ -79,21 +79,29 @@ const likedThings = (liked: Aspect[], photoTags: string[]) => {
 // "liked the marble counters" (from a photo). The negative choice is called
 // Pass everywhere, so it's worded that way.
 export function describeReaction({ reaction, liked, disliked }: ReactionState, photoTags: string[] = []): string {
-  const likes = likedThings(liked, photoTags);
+  // Spots that aren't named things ("@42,61") are counted, not listed.
+  const spots = photoTags.filter((tag) => tag.startsWith("@")).length;
+  const named = likedThings(
+    liked,
+    photoTags.filter((tag) => !tag.startsWith("@")),
+  );
+  const spotText = spots === 0 ? null : spots === 1 ? "a spot in a photo" : `${spots} spots in the photos`;
+  const hasLikes = named.length > 0 || spotText !== null;
+  const likes = [named.length ? listOf(named) : null, spotText].filter(Boolean).join(" and ");
   const dislikes = disliked.map(aspectLabel) as string[];
   if (reaction === "like") {
-    if (likes.length && dislikes.length) return `liked ${listOf(likes)} but not ${listOf(dislikes)}`;
-    if (likes.length) return `liked ${listOf(likes)}`;
+    if (hasLikes && dislikes.length) return `liked ${likes} but not ${listOf(dislikes)}`;
+    if (hasLikes) return `liked ${likes}`;
     if (dislikes.length) return `liked this, but not ${listOf(dislikes)}`;
     return "liked this";
   }
   if (reaction === "dislike") {
-    if (dislikes.length && likes.length) return `passed, didn't like ${listOf(dislikes)} but liked ${listOf(likes)}`;
+    if (dislikes.length && hasLikes) return `passed, didn't like ${listOf(dislikes)} but liked ${likes}`;
     if (dislikes.length) return `passed, didn't like ${listOf(dislikes)}`;
-    if (likes.length) return `passed, but liked ${listOf(likes)}`;
+    if (hasLikes) return `passed, but liked ${likes}`;
     return "passed on this";
   }
-  if (likes.length) return `liked ${listOf(likes)}`;
+  if (hasLikes) return `liked ${likes}`;
   return "reacted";
 }
 

@@ -10,7 +10,7 @@ import type { MapHome } from "@/components/listing-map";
 import { ReelFeed } from "@/components/reel";
 import type { FeedPost } from "@/lib/feed";
 import { cn, formatPrice } from "@/lib/format";
-import { HOME_TYPES, SORTS, type SearchFilters } from "@/lib/search-options";
+import { filtersQuery, HOME_TYPES, SORTS, type SearchFilters } from "@/lib/search-options";
 
 // The map draws with WebGL in the browser, so it never renders on the server.
 const ListingMap = dynamic(() => import("@/components/listing-map"), {
@@ -24,9 +24,10 @@ const MAX_PRICES = [600_000, 800_000, 1_000_000, 1_500_000, 2_000_000, 3_000_000
 const pill =
   "h-11 shrink-0 rounded-full border border-stone-300 bg-white px-4 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand";
 
-// The map on the left; on the right, one home at a time in the same panel as
-// the feed. Picking a pin brings that home up; scrolling the homes moves the
-// map along with them. On phones, one or the other, a tap apart.
+// The map on the left; on the right, a look at one home at a time. Picking a
+// pin brings that home up; scrolling the homes moves the map along with them;
+// tapping one opens it full screen, with the rest of the search after it. On
+// phones, the map and the homes are a tap apart.
 export function SearchView({
   filters,
   count: total,
@@ -66,7 +67,7 @@ export function SearchView({
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(next)) {
       if (value === null || value === "" || value === false) continue;
-      if (key === "sort" && value === "talked") continue;
+      if (key === "sort" && value === "reactions") continue;
       params.set(key, value === true ? "1" : String(value));
     }
     const query = params.toString();
@@ -271,6 +272,12 @@ export function SearchView({
               prompt={prompt}
               focus={focus}
               onActiveChange={setActiveKey}
+              // Just a look here: a tap opens it full screen, with the rest of
+              // this search to scroll through.
+              onOpen={(key) => {
+                const query = filtersQuery(latest.current);
+                router.push(`/homes?${query ? `${query}&` : ""}home=${encodeURIComponent(key)}`);
+              }}
               end={
                 <div className="max-w-sm">
                   <h2 className="font-display text-2xl">That&apos;s every home in this search</h2>

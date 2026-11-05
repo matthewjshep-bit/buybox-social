@@ -1,6 +1,6 @@
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
-import { aspectOfTag, photoTags } from "./photos";
+import { aspectOfTag, isPointTag, photoTags } from "./photos";
 import { aspectLabel, type Aspect, type ReactionState } from "./reactions";
 
 // How the people on one package compare: what each likes, where they agree,
@@ -43,7 +43,7 @@ export function comparePeople(people: PackagePerson[], thread: Thread, listings:
       person,
       liked: reactions.filter((r) => r.state.reaction === "like").length,
       passed: reactions.filter((r) => r.state.reaction === "dislike").length,
-      likes: uniq([...photoLikes.map((l) => l.tag), ...reactions.flatMap((r) => r.state.liked.map(aspectLabel))]),
+      likes: uniq([...photoLikes.map((l) => l.tag).filter((tag) => !isPointTag(tag)), ...reactions.flatMap((r) => r.state.liked.map(aspectLabel))]),
       passes: uniq(reactions.flatMap((r) => r.state.disliked.map(aspectLabel))),
     };
   });
@@ -70,7 +70,8 @@ export function comparePeople(people: PackagePerson[], thread: Thread, listings:
         )?.state;
         const tags = thread.photoLikes
           .filter((l) => l.participantId === person.id && l.listingKey === listing.ListingKey)
-          .map((l) => l.tag);
+          .map((l) => l.tag)
+          .filter((tag) => !isPointTag(tag));
         return [
           person.id,
           {
@@ -113,7 +114,7 @@ export async function suggestHomes(
       const prices = likedHomes.map((l) => l.ListPrice);
       return {
         person,
-        tags: new Set(photoLikes.map((l) => key(l.tag))),
+        tags: new Set(photoLikes.filter((l) => !isPointTag(l.tag)).map((l) => key(l.tag))),
         aspects: new Set([
           ...photoLikes.map((l) => l.aspect).filter((a): a is Aspect => Boolean(a)),
           ...reactions.flatMap((r) => r.state.liked),

@@ -1,6 +1,8 @@
 import { Heart, MessageCircle, Send } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { becomeAgent } from "@/app/login/actions";
+import { getCurrentUser } from "@/lib/auth";
 
 export const metadata = {
   title: "For agents · BuyBox Social",
@@ -21,7 +23,9 @@ const STEPS = [
   },
 ];
 
-export default function ForAgentsPage() {
+export default async function ForAgentsPage() {
+  const user = await getCurrentUser();
+  const start = "inline-block rounded-xl bg-brand px-6 py-3.5 font-semibold text-white";
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
       <section className="grid items-center gap-8 md:grid-cols-2">
@@ -35,9 +39,22 @@ export default function ForAgentsPage() {
             out, and you see it all in one place, across every home you&apos;ve sent.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            <Link href="/login" className="inline-block rounded-xl bg-brand px-6 py-3.5 font-semibold text-white">
-              Start free
-            </Link>
+            {!user ? (
+              <Link href="/login?as=agent" className={start}>
+                Start free
+              </Link>
+            ) : user.role === "agent" ? (
+              <Link href="/dashboard" className={start}>
+                Go to your dashboard
+              </Link>
+            ) : (
+              // Signed in as a buyer: one tap to an agent's account.
+              <form action={becomeAgent}>
+                <button type="submit" className={start}>
+                  Set up my agent account
+                </button>
+              </form>
+            )}
             <Link href="/" className="inline-block rounded-xl border border-stone-300 bg-white px-6 py-3.5 font-semibold">
               See it as a buyer
             </Link>

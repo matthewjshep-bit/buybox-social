@@ -9,13 +9,16 @@ import {
   fail,
   MAX_COMMENTS_PER_MINUTE,
   nameSchema,
+  checkAnchor,
   photoLikeSchema,
   reactionSchema,
   readDevice,
   type ActionResult,
 } from "@/lib/engagement";
-import { photoTags, aspectOfTag } from "@/lib/photos";
-import { getReel, type FeedPost } from "@/lib/feed";
+import { aspectOfTag, isTagIn, thingOf } from "@/lib/photos";
+import { getReel, REEL_PAGE, type FeedPost } from "@/lib/feed";
+import { searchHomes } from "@/lib/search";
+import { parseFilters } from "@/lib/search-options";
 import { ensureAccountVisitor, getListingPhoto, getPublicIdentity, getVisitor } from "@/lib/public";
 import { getTaste } from "@/lib/taste";
 import { z } from "zod";
@@ -34,6 +37,14 @@ export async function recordView(listingKey: string): Promise<void> {
 export async function joinPublic(firstName: string): Promise<ActionResult> {
   const name = nameSchema.safeParse(firstName);
   if (!name.success) return fail("Please enter your first name.");
+  // Signed in without a name yet: it's their account's name from now on.
+  const account = await getCurrentUser();
+  if (account?.role) {
+    await sql`update accounts set full_name = ${name.data} where id = ${account.id} and full_name = ''`;
+    await ensureAccountVisitor({ ...account, full_name: account.full_name || name.data });
+    refresh();
+    return { ok: true };
+  }
   const device = await ensureDevice();
   await sql`
     insert into visitors (device_token, first_name) values (${device}, ${name.data})
@@ -92,11 +103,11 @@ async function savePhotoLike(listingKey: string, mediaKey: string, tag: string, 
   const visitor = await resolveVisitor(listingKey);
   if (!visitor) return fail("Please add your name first.");
   const photo = await getListingPhoto(listingKey, mediaKey);
-  if (!photo || !photoTags(photo).includes(tag)) return fail("That photo isn't there anymore.");
+  if (!photo || !isTagIn(photo, tag)) return fail("That photo isn't there anymore.");
   if (liked) {
     await sql`
       insert into public_photo_likes (listing_key, visitor_id, media_key, tag, aspect)
-      values (${listingKey}, ${visitor.id}, ${mediaKey}, ${tag}, ${aspectOfTag(photo, tag)})
+      values (${listingKey}, ${visitor.id}, ${mediaKey}, ${tag}, ${aspectOfTag(photo, thingOf(photo, tag) ?? tag)})
       on conflict do nothing`;
   } else {
     await sql`
@@ -123,11 +134,19 @@ export async function likePhotoInStream(
   return savePhotoLike(listingKey, mediaKey, tag, liked);
 }
 
-async function saveComment(listingKey: string, body: string, parentId: string | null): Promise<ActionResult> {
+async function saveComment(
+  listingKey: string,
+  body: string,
+  parentId: string | null,
+  // A spot in a photo it's about, if any. Replies are about their comment's.
+  spot: unknown = null,
+): Promise<ActionResult> {
   const parsed = commentSchema.safeParse(body);
   if (!parsed.success) return fail("Comments can be up to 1,000 characters.");
   const visitor = await resolveVisitor(listingKey);
   if (!visitor) return fail("Please add your name first.");
+  const anchor = parentId === null ? await checkAnchor(listingKey, spot) : null;
+  if (anchor === false) return fail("That photo isn't there anymore.");
 
   // Replies go one level deep, on a comment about the same home.
   if (parentId !== null) {
@@ -143,8 +162,9 @@ async function saveComment(listingKey: string, body: string, parentId: string | 
   if (count >= MAX_COMMENTS_PER_MINUTE) return fail("Slow down a little, then try again.");
 
   await sql`
-    insert into public_comments (listing_key, visitor_id, body, parent_id)
-    values (${listingKey}, ${visitor.id}, ${parsed.data}, ${parentId}::uuid)`;
+    insert into public_comments (listing_key, visitor_id, body, parent_id, media_key, spot)
+    values (${listingKey}, ${visitor.id}, ${parsed.data}, ${parentId}::uuid,
+      ${anchor?.mediaKey ?? null}, ${anchor?.tag ?? null})`;
   return { ok: true };
 }
 
@@ -154,8 +174,9 @@ export async function addPublicComment(
   // Only private share links can share comments publicly; here it's ignored.
   _sharePublicly?: boolean,
   parentId: string | null = null,
+  spot: unknown = null,
 ): Promise<ActionResult> {
-  const result = await saveComment(listingKey, body, parentId);
+  const result = await saveComment(listingKey, body, parentId, spot);
   if (result.ok) refresh();
   return result;
 }
@@ -191,8 +212,9 @@ export async function commentInReel(
   body: string,
   _sharePublicly?: boolean,
   parentId: string | null = null,
+  spot: unknown = null,
 ): Promise<ActionResult> {
-  return saveComment(listingKey, body, parentId);
+  return saveComment(listingKey, body, parentId, spot);
 }
 
 export async function likeCommentInReel(commentId: string, liked: boolean): Promise<ActionResult> {
@@ -231,4 +253,19 @@ export async function markActivitySeen(): Promise<void> {
   const visitor = account?.role ? await ensureAccountVisitor(account) : await getVisitor(await readDevice());
   if (!visitor) return;
   await sql`update visitors set activity_seen_at = now() where id = ${visitor.id}`;
+}
+
+// The next few homes a map search found, after the ones already shown, in the
+// search's own order: the full-screen feed opened from the map.
+export async function loadSearchReel(query: string, shown: string[]): Promise<FeedPost[]> {
+  const exclude = keyList.safeParse(shown);
+  if (typeof query !== "string" || query.length > 1000 || !exclude.success) return [];
+  const filters = parseFilters(Object.fromEntries(new URLSearchParams(query)));
+  const { viewer, device, taste } = await reelViewer();
+  const skip = new Set(exclude.data);
+  const next = (await searchHomes(filters, null))
+    .map((result) => result.listing.ListingKey)
+    .filter((key) => !skip.has(key))
+    .slice(0, REEL_PAGE);
+  return next.length ? getReel(viewer, device, taste, { only: next, limit: next.length }) : [];
 }

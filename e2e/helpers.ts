@@ -3,18 +3,18 @@ import { expect, type Browser, type Locator, type Page } from "@playwright/test"
 const PNG_1PX =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAEBgIApD5fRAAAAABJRU5ErkJggg==";
 
+// An agent signs up the way agents do: "Start free" on the For agents page,
+// then their name and brand.
 export async function signInAgent(browser: Browser, email: string, name: string) {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto("/login");
+  await page.goto("/for-agents");
+  await page.getByRole("link", { name: "Start free" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Start free as an agent");
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Continue" }).click();
-  await page.waitForURL("**/welcome");
-  await page.getByRole("radio", { name: /I send homes to clients/ }).check();
-  await page.getByLabel("Your name").fill(name);
-  await page.getByRole("button", { name: "Continue" }).click();
   await page.waitForURL("**/dashboard/profile");
-  await expect(page.getByLabel("Full name")).toHaveValue(name);
+  await page.getByLabel("Full name").fill(name);
   await page.getByLabel("Company (brokerage)").fill("Harbor & Pine Realty");
   await page.getByRole("button", { name: "Merlot" }).click();
   await page.getByLabel("Your photo").setInputFiles({
@@ -46,16 +46,18 @@ export async function createShare(page: Page, addresses: string[], people: strin
   return { url: urls[people[0]], urls, dashboardUrl: page.url() };
 }
 
-export async function signUpBuyer(browser: Browser, email: string, name: string) {
+// A buyer signs up the way buyers do: the form on the home page. Locally
+// there's no email to open, so they're signed straight in, to the feed.
+export async function signUpBuyer(browser: Browser, email: string, name: string, phone = "206-555-0100") {
   const page = await (await browser.newContext()).newPage();
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(email);
-  await page.getByRole("button", { name: "Continue" }).click();
-  await page.waitForURL("**/welcome");
-  await page.getByRole("radio", { name: /I'm buying a home/ }).check();
-  await page.getByLabel("Your name").fill(name);
-  await page.getByRole("button", { name: "Continue" }).click();
-  await page.waitForURL((url) => url.pathname === "/");
+  await page.goto("/");
+  const form = page.getByRole("form", { name: "Sign up" }).first();
+  await form.getByLabel("Name").fill(name);
+  await form.getByLabel("Phone").fill(phone);
+  await form.getByLabel("Email").fill(email);
+  await form.getByRole("button", { name: "Sign up free" }).click();
+  await expect(page.getByRole("link", { name: "Your profile" })).toBeVisible();
+  await expect(page.getByRole("form", { name: "Sign up" })).toHaveCount(0);
   return page;
 }
 
@@ -106,9 +108,32 @@ export async function joinAs(page: Page, firstName: string) {
   await expect(field).toBeHidden();
 }
 
-// A heart pinned to something in a home's photo ("the floating staircase").
-export const pin = (home: Locator, name: RegExp | string) =>
-  home.getByRole("group", { name: /^Photos of/ }).getByRole("button", { name });
+// Picks something in the photo on screen ("the floating staircase") the way a
+// keyboard does, which opens the same card a tap on it opens. Returns the card.
+export async function pick(home: Locator, thing: string) {
+  // What's on a photo shows once its home is on screen.
+  await home.scrollIntoViewIfNeeded();
+  await expect(home).toBeInViewport({ ratio: 0.9 });
+  await home.getByRole("button", { name: `Select ${thing}` }).press("Enter");
+  const card = home.getByRole("group", { name: new RegExp(`^${thing.replace(/^the /, "")}$`, "i") });
+  await expect(card).toBeVisible();
+  return card;
+}
+
+// Likes something in the photo on screen, from its card.
+export async function likeInPhoto(home: Locator, thing: string) {
+  const card = await pick(home, thing);
+  const like = card.getByRole("button", { name: new RegExp(`^Like ${thing}(,|$)`) });
+  await like.click();
+  await expect(like).toHaveAttribute("aria-pressed", "true");
+  return card;
+}
+
+// Taps a spot on the photo on screen, at fractions of its width and height.
+export async function tapPhoto(home: Locator, photoName: string, x: number, y: number) {
+  const box = (await home.getByRole("img", { name: photoName }).boundingBox())!;
+  await home.page().mouse.click(box.x + box.width * x, box.y + box.height * y);
+}
 
 // The list that slides out of a home's heart: everything in the photo on
 // screen. Opened the phone way, by pressing and holding the heart.

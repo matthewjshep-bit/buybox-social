@@ -4,6 +4,7 @@ import { refresh } from "next/cache";
 import { after } from "next/server";
 import { sql } from "@/lib/db";
 import {
+  checkAnchor,
   commentSchema,
   ensureDevice,
   fail,
@@ -20,7 +21,7 @@ import {
   getShareByToken,
   shareHasListing,
 } from "@/lib/shares";
-import { aspectOfTag, photoTags } from "@/lib/photos";
+import { aspectOfTag, isTagIn, thingOf } from "@/lib/photos";
 import { getListingPhoto } from "@/lib/public";
 import { describeReaction, type ReactionState } from "@/lib/reactions";
 
@@ -118,11 +119,17 @@ export async function addComment(
   listingKey: string,
   body: string,
   sharePublicly = false,
+  // Links don't have replies; the slot is kept so the page calls both alike.
+  _parentId?: unknown,
+  // A spot in a photo it's about, if any.
+  spot: unknown = null,
 ): Promise<ActionResult> {
   const parsed = commentSchema.safeParse(body);
   if (!parsed.success) return fail("Comments can be up to 1,000 characters.");
   const actor = await resolveActor(token, listingKey);
   if (!actor) return fail("Please add your name first.");
+  const anchor = await checkAnchor(listingKey, spot);
+  if (anchor === false) return fail("That photo isn't there anymore.");
   // A comment goes public only when its author asks, and only once they like
   // the home, so shared quotes never warn other buyers off it.
   const shared = sharePublicly === true && (await likesHome(actor.participant.id, listingKey));
@@ -134,8 +141,9 @@ export async function addComment(
   if (count >= MAX_COMMENTS_PER_MINUTE) return fail("Slow down a little, then try again.");
 
   await sql`
-    insert into comments (share_id, listing_key, participant_id, body, shared_publicly)
-    values (${actor.share.id}, ${listingKey}, ${actor.participant.id}, ${parsed.data}, ${shared})`;
+    insert into comments (share_id, listing_key, participant_id, body, shared_publicly, media_key, spot)
+    values (${actor.share.id}, ${listingKey}, ${actor.participant.id}, ${parsed.data}, ${shared},
+      ${anchor?.mediaKey ?? null}, ${anchor?.tag ?? null})`;
   after(async () => {
     const address = await listingLabel(listingKey);
     await notifyAgent(actor.share.id, `${actor.participant.first_name} commented on ${address}`);
@@ -185,11 +193,11 @@ export async function likePhotoInShare(
   const actor = await resolveActor(token, listingKey);
   if (!actor) return fail("Please add your name first.");
   const photo = await getListingPhoto(listingKey, mediaKey);
-  if (!photo || !photoTags(photo).includes(tag)) return fail("That photo isn't there anymore.");
+  if (!photo || !isTagIn(photo, tag)) return fail("That photo isn't there anymore.");
   if (liked) {
     await sql`
       insert into photo_likes (share_id, listing_key, participant_id, media_key, tag, aspect)
-      values (${actor.share.id}, ${listingKey}, ${actor.participant.id}, ${mediaKey}, ${tag}, ${aspectOfTag(photo, tag)})
+      values (${actor.share.id}, ${listingKey}, ${actor.participant.id}, ${mediaKey}, ${tag}, ${aspectOfTag(photo, thingOf(photo, tag) ?? tag)})
       on conflict do nothing`;
   } else {
     await sql`

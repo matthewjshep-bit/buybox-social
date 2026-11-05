@@ -1,5 +1,6 @@
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
+import { claimAgentIntent } from "@/lib/auth";
 import { appUrl } from "@/lib/format";
 import { createSupabase, supabaseConfigured } from "@/lib/supabase/server";
 
@@ -14,12 +15,17 @@ export async function GET(request: NextRequest) {
 
   if (supabaseConfigured) {
     const supabase = await createSupabase();
-    const { error } = tokenHash && type
+    const { data, error } = tokenHash && type
       ? await supabase.auth.verifyOtp({ token_hash: tokenHash, type })
       : code
         ? await supabase.auth.exchangeCodeForSession(code)
-        : { error: new Error("missing sign-in parameters") };
-    if (!error) return NextResponse.redirect(new URL("/", appUrl()));
+        : { data: null, error: new Error("missing sign-in parameters") };
+    if (!error) {
+      // Signed up through "For agents": straight to their dashboard.
+      const email = data?.user?.email?.toLowerCase();
+      const agent = email ? await claimAgentIntent(email) : false;
+      return NextResponse.redirect(new URL(agent ? "/dashboard" : "/", appUrl()));
+    }
     console.error("[auth] callback failed", error.message);
   }
   return NextResponse.redirect(new URL("/login?error=link", appUrl()));

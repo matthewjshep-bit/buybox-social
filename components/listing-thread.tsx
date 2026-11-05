@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, Globe, Heart, Lock, ThumbsDown, ThumbsUp, User } from "lucide-react";
+import { ArrowUp, Globe, Heart, Lock, MapPin, ThumbsDown, ThumbsUp, User } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -28,6 +28,8 @@ export type ThreadActions = {
     body: string,
     sharePublicly: boolean,
     parentId?: string | null,
+    // The spot in a photo it's about: tap the front door, say something about it.
+    spot?: SpotRef | null,
   ) => Promise<ActionResult>;
   // Private threads only: an author shares or un-shares their own comment.
   setSharing?: (commentId: string, shared: boolean) => Promise<ActionResult>;
@@ -36,6 +38,12 @@ export type ThreadActions = {
   // Liking something in a photo ("the kitchen").
   likePhoto?: (listingKey: string, mediaKey: string, tag: string, liked: boolean) => Promise<ActionResult>;
 };
+
+// A spot in one of a home's photos: a named thing ("Front door") or a place ("@42,61").
+export type SpotRef = { mediaKey: string; tag: string };
+
+// How a list of comments names a spot, and takes you to it on the photo.
+export type SpotLinks = { name: (spot: SpotRef) => string; show: (spot: SpotRef) => void };
 
 type ThreadValue = { actions: ThreadActions; ensureName: () => Promise<boolean> };
 const ThreadContext = createContext<ThreadValue | null>(null);
@@ -155,6 +163,8 @@ export function Timeline({
   items,
   canShare = false,
   onReply,
+  spots,
+  empty,
 }: {
   listingKey: string;
   items: TimelineItem[];
@@ -162,14 +172,20 @@ export function Timeline({
   canShare?: boolean;
   // Reply points the comment box below at that comment.
   onReply?: (target: ReplyTarget) => void;
+  // Comments about a spot in a photo say which, and take you there.
+  spots?: SpotLinks;
+  // What to say when there's nothing yet.
+  empty?: ReactNode;
 }) {
   const top = items.filter((item) => item.kind === "reaction" || !item.parentId);
   if (top.length === 0) {
     return (
-      <div className="flex flex-col items-center px-6 py-12 text-center">
-        <p className="text-lg font-semibold">No comments yet</p>
-        <p className="mt-1 text-sm text-stone-600">Start the conversation.</p>
-      </div>
+      empty ?? (
+        <div className="flex flex-col items-center px-6 py-12 text-center">
+          <p className="text-lg font-semibold">No comments yet</p>
+          <p className="mt-1 text-sm text-stone-600">Start the conversation.</p>
+        </div>
+      )
     );
   }
   return (
@@ -185,6 +201,7 @@ export function Timeline({
             )}
             canShare={canShare}
             onReply={onReply}
+            spots={spots}
           />
         ) : (
           <ReactionItem key={item.id} item={item} />
@@ -291,12 +308,14 @@ function CommentItem({
   replies = [],
   canShare,
   onReply,
+  spots,
 }: {
   listingKey: string;
   comment: TimelineComment;
   replies?: TimelineComment[];
   canShare: boolean;
   onReply?: (target: ReplyTarget) => void;
+  spots?: SpotLinks;
 }) {
   const { actions } = useThread();
   const [pending, startTransition] = useTransition();
@@ -328,6 +347,18 @@ function CommentItem({
             · <When at={comment.at} />
           </span>
         </p>
+        {comment.spot && spots && (
+          <button
+            type="button"
+            onClick={() => spots.show(comment.spot!)}
+            className="mt-0.5 inline-flex min-h-7 items-center gap-1 rounded-full bg-stone-100 px-2 text-[12px] font-semibold text-stone-700 hover:bg-stone-200"
+          >
+            <MapPin aria-hidden size={12} />
+            <span className="sr-only">About </span>
+            {spots.name(comment.spot)}
+            <span className="sr-only">: show it on the photo</span>
+          </button>
+        )}
         <p className="mt-0.5 whitespace-pre-line break-words text-[15px] leading-snug">{comment.body}</p>
         <div className="flex flex-wrap items-center gap-x-4 text-[13px] font-semibold text-stone-500">
           {likeable && !reply && onReply && (
@@ -433,12 +464,22 @@ export function CommentComposer({
   replyTo = null,
   onCancelReply,
   onPosted,
+  spot = null,
+  placeholder,
+  compact = false,
+  autoFocus = false,
 }: {
   listingKey: string;
   canShare?: boolean;
   replyTo?: ReplyTarget | null;
   onCancelReply?: () => void;
   onPosted?: () => void;
+  // The spot in a photo the comment is about.
+  spot?: SpotRef | null;
+  placeholder?: string;
+  // Just the box: no emoji row, no sharing (the card on a photo).
+  compact?: boolean;
+  autoFocus?: boolean;
 }) {
   const { actions, ensureName } = useThread();
   const [body, setBody] = useState("");
@@ -459,8 +500,9 @@ export function CommentComposer({
       const result = await actions.comment(
         listingKey,
         body,
-        canShare && !replyTo && sharePublicly,
+        canShare && !compact && !replyTo && sharePublicly,
         replyTo?.id ?? null,
+        replyTo ? null : spot,
       );
       if (result.ok) {
         setBody("");
@@ -496,7 +538,7 @@ export function CommentComposer({
             Cancel<span className="sr-only"> reply</span>
           </button>
         </p>
-      ) : (
+      ) : compact ? null : (
         <div className="flex justify-between px-1 pb-1">
           {QUICK.map((emoji) => (
             <button
@@ -515,7 +557,7 @@ export function CommentComposer({
       )}
       <div className="flex items-end gap-2 rounded-3xl bg-stone-100 py-1 pl-4 pr-1 focus-within:ring-2 focus-within:ring-brand/50">
         <label htmlFor={inputId} className="sr-only">
-          {who ? `Reply to ${who}` : "Add a comment"}
+          {who ? `Reply to ${who}` : (placeholder?.replace(/…$/, "") ?? "Add a comment")}
         </label>
         <textarea
           ref={field}
@@ -533,7 +575,8 @@ export function CommentComposer({
           maxLength={1000}
           rows={1}
           enterKeyHint="send"
-          placeholder={who ? `Reply to ${who}…` : "Add a comment…"}
+          autoFocus={autoFocus}
+          placeholder={who ? `Reply to ${who}…` : (placeholder ?? "Add a comment…")}
           className="max-h-28 min-h-10 min-w-0 flex-1 resize-none bg-transparent py-2 text-base leading-6 outline-none [field-sizing:content] placeholder:text-stone-500"
         />
         <button
@@ -545,7 +588,7 @@ export function CommentComposer({
           <ArrowUp aria-hidden size={18} strokeWidth={2.5} className={cn(pending && "animate-pulse")} />
         </button>
       </div>
-      {canShare && !replyTo && (
+      {canShare && !compact && !replyTo && (
         <label className="mt-1.5 flex min-h-9 cursor-pointer items-center gap-2.5 px-2 text-[13px] text-stone-700">
           <input
             type="checkbox"

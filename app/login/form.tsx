@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { requestSignIn, type LoginState } from "./actions";
 
-export function LoginForm({ devMode }: { devMode: boolean }) {
+export function LoginForm({ devMode, asAgent = false }: { devMode: boolean; asAgent?: boolean }) {
   const [state, action, pending] = useActionState<LoginState, FormData>(requestSignIn, {});
 
   if (state.sent) {
@@ -16,6 +16,7 @@ export function LoginForm({ devMode }: { devMode: boolean }) {
 
   return (
     <form action={action} className="mt-6">
+      {asAgent && <input type="hidden" name="as" value="agent" />}
       <label htmlFor="email" className="text-sm font-medium">
         Email
       </label>

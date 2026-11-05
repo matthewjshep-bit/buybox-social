@@ -31,7 +31,8 @@ export function Sheet({
   footer?: ReactNode;
   anchor?: RefObject<HTMLElement | null>;
   // A fixed height, the same however much is in it (comments), rather than
-  // only as tall as its contents.
+  // only as tall as its contents. It leaves the top of the screen to the home
+  // it's over, which stays as it was underneath.
   tall?: boolean;
   className?: string;
 }) {
@@ -54,8 +55,8 @@ export function Sheet({
       el.style.left = `${box.left + (box.width - width) / 2}px`;
       el.style.width = `${width}px`;
       el.style.bottom = `${Math.max(0, innerHeight - box.bottom)}px`;
-      el.style.height = tall ? `${Math.round(box.height * 0.72)}px` : "";
-      el.style.maxHeight = `${Math.round(box.height * (tall ? 0.72 : 0.8))}px`;
+      el.style.height = tall ? `${Math.round(box.height * 0.6)}px` : "";
+      el.style.maxHeight = `${Math.round(box.height * (tall ? 0.6 : 0.8))}px`;
     };
     place();
     if (!el.open) el.showModal();

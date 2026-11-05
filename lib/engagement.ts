@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { z } from "zod";
+import { isTagIn } from "./photos";
+import { getListingPhoto } from "./public";
 import { ASPECT_IDS, type Aspect } from "./reactions";
 
 // Shared by private share threads and public listing pages.
@@ -57,3 +59,17 @@ export const photoLikeSchema = z.object({
   tag: z.string().min(1).max(60),
   liked: z.boolean(),
 });
+
+// A comment about one spot in one photo, as sent from the page.
+const anchorSchema = z.object({ mediaKey: z.string().min(1).max(500), tag: z.string().min(1).max(60) });
+export type SpotAnchor = z.infer<typeof anchorSchema>;
+
+// The anchor, if it names a real photo of this home and a spot in it. `false`
+// when one was sent but doesn't hold up; null when there wasn't one.
+export async function checkAnchor(listingKey: string, anchor: unknown): Promise<SpotAnchor | null | false> {
+  if (anchor === null || anchor === undefined) return null;
+  const parsed = anchorSchema.safeParse(anchor);
+  if (!parsed.success) return false;
+  const photo = await getListingPhoto(listingKey, parsed.data.mediaKey);
+  return photo && isTagIn(photo, parsed.data.tag) ? parsed.data : false;
+}

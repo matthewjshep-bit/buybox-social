@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 import { sql } from "./db";
 import { createSupabase, supabaseConfigured } from "./supabase/server";
@@ -40,28 +40,77 @@ async function getAuthUser(): Promise<{ id: string; email: string } | null> {
 export const firstName = (account: Pick<Account, "full_name">) =>
   account.full_name.trim().split(/\s+/)[0] || "Someone";
 
-// The signed-in person, if any. Their account row is created on first sign-in;
-// `role` stays null until they finish sign-up at /welcome.
+// The signed-in person, if any. Their account is made on their first sign-in,
+// as whatever they signed up as: an agent if they came in through "For
+// agents", otherwise a buyer, named from the home page's form if they used it.
 export const getCurrentUser = cache(async (): Promise<Account | null> => {
   const user = await getAuthUser();
   if (!user) return null;
   const [existing] = await sql<Account[]>`
     select id, email, full_name, role, brokerage, photo_data_url, brand_color
     from accounts where auth_user_id = ${user.id}`;
-  if (existing) return existing;
+  if (existing?.role) return existing;
+  const [intent] = await sql<{ role: Role }[]>`
+    delete from account_intents where email = ${user.email} returning role`;
+  const [signup] = await sql<{ full_name: string; phone: string }[]>`
+    select full_name, phone from signups where email = ${user.email}`;
   const [created] = await sql<Account[]>`
-    insert into accounts (auth_user_id, email)
-    values (${user.id}, ${user.email})
-    on conflict (auth_user_id) do update set email = excluded.email
+    insert into accounts (auth_user_id, email, role, full_name, phone)
+    values (${user.id}, ${user.email}, ${intent?.role ?? "buyer"}, ${signup?.full_name ?? ""}, ${signup?.phone ?? ""})
+    on conflict (auth_user_id) do update set
+      email = excluded.email,
+      role = coalesce(accounts.role, excluded.role),
+      full_name = coalesce(nullif(accounts.full_name, ''), excluded.full_name),
+      phone = coalesce(nullif(accounts.phone, ''), excluded.phone)
     returning id, email, full_name, role, brokerage, photo_data_url, brand_color`;
   return created;
 });
 
+// Called once someone has signed in (opening the link proves the email is
+// theirs): whether they came in through "For agents". An account that's
+// already there becomes an agent's now; a new one is made as one.
+export async function claimAgentIntent(email: string) {
+  const [intent] = await sql<{ role: Role }[]>`select role from account_intents where email = ${email}`;
+  if (intent?.role !== "agent") return false;
+  const updated = await sql`update accounts set role = 'agent' where email = ${email} returning id`;
+  if (updated.length) await sql`delete from account_intents where email = ${email}`;
+  return true;
+}
+
 export async function requireUser(): Promise<Account & { role: Role }> {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  if (!user.role) redirect("/welcome");
-  return user as Account & { role: Role };
+  return { ...user, role: user.role ?? "buyer" };
+}
+
+// The site's owner: always an admin, and the only one who can add or remove
+// other admins. Signing in proves they own the inbox, so it's safe to name here.
+export const SUPER_ADMIN_EMAIL = "matt@shepflips.com";
+
+export const isSuperAdmin = (account: Pick<Account, "email"> | null) =>
+  account?.email.toLowerCase() === SUPER_ADMIN_EMAIL;
+
+// Who can open /admin: the owner, and anyone the owner has added.
+export const isAdmin = cache(async (account: Pick<Account, "email"> | null) => {
+  if (!account) return false;
+  if (isSuperAdmin(account)) return true;
+  const [row] = await sql`select 1 from admins where email = ${account.email.toLowerCase()}`;
+  return Boolean(row);
+});
+
+// Signed out goes to sign in; anyone else signed in sees "not found", so the
+// admin pages don't show they exist.
+export async function requireAdmin(): Promise<Account & { superAdmin: boolean }> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  if (!(await isAdmin(user))) notFound();
+  return { ...user, superAdmin: isSuperAdmin(user) };
+}
+
+export async function requireSuperAdmin(): Promise<Account> {
+  const user = await requireAdmin();
+  if (!user.superAdmin) notFound();
+  return user;
 }
 
 export async function requireAgent(): Promise<Agent> {

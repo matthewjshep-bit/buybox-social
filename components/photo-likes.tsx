@@ -37,11 +37,19 @@ export function usePhotoLikes(listingKey: string, likes: PhotoLikes) {
     if (!result.ok) flip(!liked);
   };
 
+  // Every tag anyone has liked in this photo, yours just now included.
+  const likedTags = (photo: ListingMedia) => {
+    const prefix = likeId(mediaKeyOf(photo), "");
+    const ids = new Set([...Object.keys(likes.counts), ...mine]);
+    return [...ids].filter((id) => id.startsWith(prefix)).map((id) => id.slice(prefix.length));
+  };
+
   return {
     enabled: Boolean(actions.likePhoto),
     isLiked,
     count,
     set,
+    likedTags,
     // Whether you'd liked anything in the photos when the page loaded, and now.
     hadAny: base.length > 0,
     hasAny: mine.size > 0,

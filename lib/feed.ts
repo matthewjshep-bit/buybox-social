@@ -9,7 +9,7 @@ import {
   type Buzz,
   type TotalsRow,
 } from "./public";
-import { NO_PHOTO_LIKES, type PhotoLikes } from "./photos";
+import { NO_PHOTO_LIKES, tagNameIn, type PhotoLikes } from "./photos";
 import { NO_REACTION, publicSideOf, type ReactionState } from "./reactions";
 import { matchTaste, type Taste } from "./taste";
 import { getPublicPhotoLikes, getPublicTimelines, type TimelineItem } from "./timeline";
@@ -54,6 +54,7 @@ type Row = { data: Listing } & TotalsRow & {
   h_state: ReactionState;
   h_name: string | null;
   h_tag: string | null;
+  h_media: string | null;
   h_source: "public" | "client" | "private" | "self" | null;
   h_at: Date | null;
 };
@@ -75,28 +76,28 @@ export async function getReel(
 
   const [rows, mine] = await Promise.all([
     sql<Row[]>`
-      select l.data, t.*, h.kind as h_kind, h.name as h_name, h.source as h_source, h.at as h_at, h.tag as h_tag,
+      select l.data, t.*, h.kind as h_kind, h.name as h_name, h.source as h_source, h.at as h_at, h.tag as h_tag, h.media as h_media,
         json_build_object('reaction', h.reaction, 'liked', h.liked, 'disliked', h.disliked) as h_state
       from listings l
       cross join lateral (${totalsForListing()}) t
       left join lateral (
         select * from (
           select 'react' as kind, r.reaction, r.liked, r.disliked, vi.first_name as name,
-            'public' as source, r.updated_at as at, null::text as tag
+            'public' as source, r.updated_at as at, null::text as tag, null::text as media
           from public_reactions r join visitors vi on vi.id = r.visitor_id
           where r.listing_key = l.listing_key
           union all
-          select 'comment', null, '{}'::text[], '{}'::text[], vi.first_name, 'public', c.created_at, null
+          select 'comment', null, '{}'::text[], '{}'::text[], vi.first_name, 'public', c.created_at, null, null
           from public_comments c join visitors vi on vi.id = c.visitor_id
           where c.listing_key = l.listing_key
           union all
-          select 'photo', null, '{}'::text[], '{}'::text[], vi.first_name, 'public', pl.created_at, pl.tag
+          select 'photo', null, '{}'::text[], '{}'::text[], vi.first_name, 'public', pl.created_at, pl.tag, pl.media_key
           from public_photo_likes pl join visitors vi on vi.id = pl.visitor_id
           where pl.listing_key = l.listing_key
           union all
           select 'photo', null, '{}'::text[], '{}'::text[],
             case when s.agent_id = ${agentId}::uuid then p.first_name end,
-            case when s.agent_id = ${agentId}::uuid then 'client' else 'private' end, pl.created_at, pl.tag
+            case when s.agent_id = ${agentId}::uuid then 'client' else 'private' end, pl.created_at, pl.tag, pl.media_key
           from photo_likes pl
           join participants p on p.id = pl.participant_id
           join shares s on s.id = pl.share_id
@@ -104,7 +105,7 @@ export async function getReel(
           union all
           select 'react', r.reaction, r.liked, r.disliked,
             case when s.agent_id = ${agentId}::uuid then p.first_name end,
-            case when s.agent_id = ${agentId}::uuid then 'client' else 'private' end, r.updated_at, null
+            case when s.agent_id = ${agentId}::uuid then 'client' else 'private' end, r.updated_at, null, null
           from reactions r
           join participants p on p.id = r.participant_id
           join shares s on s.id = r.share_id
@@ -113,14 +114,14 @@ export async function getReel(
           union all
           select 'comment', null, '{}'::text[], '{}'::text[],
             case when s.agent_id = ${agentId}::uuid then p.first_name end,
-            case when s.agent_id = ${agentId}::uuid then 'client' else 'private' end, c.created_at, null
+            case when s.agent_id = ${agentId}::uuid then 'client' else 'private' end, c.created_at, null, null
           from comments c
           join participants p on p.id = c.participant_id
           join shares s on s.id = c.share_id
           where c.listing_key = l.listing_key
           union all
           select 'sent', null, '{}'::text[], '{}'::text[], null,
-            case when s.agent_id = ${agentId}::uuid then 'self' else 'private' end, s.created_at, null
+            case when s.agent_id = ${agentId}::uuid then 'self' else 'private' end, s.created_at, null, null
           from share_listings sl join shares s on s.id = sl.share_id
           where sl.listing_key = l.listing_key
         ) events
@@ -222,9 +223,11 @@ function toHeadline(row: Row): Headline | null {
   if (row.h_kind === "sent") return { kind: "sent", who: row.h_source === "self" ? "you" : "anonymous", at };
   const named = (row.h_source === "public" || row.h_source === "client") && row.h_name;
   if (row.h_kind === "photo") {
+    // A spot reads as the thing it's on ("the front door").
+    const tag = tagNameIn(row.data, row.h_media ?? "", row.h_tag!);
     return named
-      ? { kind: "photo", who: row.h_source as "public" | "client", name: row.h_name!, tag: row.h_tag!, at }
-      : { kind: "photo", who: "anonymous", tag: row.h_tag!, at };
+      ? { kind: "photo", who: row.h_source as "public" | "client", name: row.h_name!, tag, at }
+      : { kind: "photo", who: "anonymous", tag, at };
   }
   if (row.h_kind === "comment") {
     return named

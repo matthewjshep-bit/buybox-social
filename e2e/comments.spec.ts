@@ -21,7 +21,10 @@ test("comments rise from the comment bar under the description, like a reel", as
   expect(barBox.y).toBeGreaterThan(listedBy.y);
   expect(barBox.y + barBox.height).toBeGreaterThan(height - 40);
 
-  // Tapping it raises the comments from the bottom, ready to type.
+  // Tapping it raises the comments from the bottom, ready to type, over the
+  // photo, which stays just as it was.
+  const photo = home.getByRole("img", { name: "Brick-front home with a wide lawn" });
+  const photoBefore = (await photo.boundingBox())!;
   await bar.click();
   const sheet = page.getByRole("dialog", { name: "Comments" });
   await expect(sheet).toBeVisible();
@@ -29,11 +32,12 @@ test("comments rise from the comment bar under the description, like a reel", as
   await expect(field).toBeFocused();
   await expect.poll(async () => Math.round((await sheet.boundingBox())!.y + (await sheet.boundingBox())!.height)).toBe(height);
   const sheetTop = (await sheet.boundingBox())!.y;
-  expect(sheetTop).toBeGreaterThan(height * 0.2);
-  expect(sheetTop).toBeLessThan(height * 0.35);
-  // The photo glides up into the space above them.
-  const photo = home.getByRole("img", { name: "Brick-front home with a wide lawn" });
-  await expect.poll(async () => (await photo.boundingBox())!.y + (await photo.boundingBox())!.height).toBeLessThanOrEqual(sheetTop);
+  expect(sheetTop).toBeGreaterThan(height * 0.35);
+  expect(sheetTop).toBeLessThan(height * 0.45);
+  const photoAfter = (await photo.boundingBox())!;
+  expect(Math.abs(photoAfter.y - photoBefore.y)).toBeLessThan(2);
+  expect(Math.abs(photoAfter.height - photoBefore.height)).toBeLessThan(2);
+  expect(photoAfter.y + photoAfter.height).toBeGreaterThan(sheetTop);
 
   // A quick emoji, then Enter posts it.
   await sheet.getByRole("button", { name: "🔥" }).click();
@@ -60,7 +64,7 @@ test("comments rise from the comment bar under the description, like a reel", as
   await sheet.getByRole("button", { name: "View 1 reply" }).click();
   await expect(replies).toBeVisible();
 
-  // Dragging the handle down closes it, and the photo settles back.
+  // Dragging the handle down closes it.
   const title = (await sheet.getByRole("heading", { name: "2 comments" }).boundingBox())!;
   await page.mouse.move(title.x + title.width / 2, title.y + title.height / 2);
   await page.mouse.down();
@@ -79,7 +83,43 @@ test("comments rise from the comment bar under the description, like a reel", as
   expect(pageErrors).toEqual([]);
 });
 
-test("on a desktop, comments rise from the bottom too, over the home, and over its pane beside the map", async ({
+test("on a desktop, the photo fills the screen's height with the words over it; press and hold to see it alone", async ({
+  browser,
+}) => {
+  const page = await (await browser.newContext(DESKTOP)).newPage();
+  await page.goto("/homes/SAMPLE-1006");
+  const home = homeIn(page, BRACKENFIELD);
+  await expect(home).toBeInViewport({ ratio: 0.9 });
+
+  // The whole photo, as tall as the screen.
+  const photo = home.getByRole("img", { name: "Brick-front home with a wide lawn" });
+  await expect.poll(async () => (await photo.boundingBox())!.height).toBeGreaterThan(890);
+  const box = (await photo.boundingBox())!;
+  expect(box.width).toBeLessThan(1440);
+
+  // The description sits over it, in a column in the middle, read from the left.
+  const description = home.getByText(/^Traditional brick-front home/);
+  await expect(description).toHaveCSS("text-align", "start");
+  const bar = (await home.getByRole("button", { name: "Add a comment…" }).boundingBox())!;
+  expect(Math.abs(bar.x + bar.width / 2 - 720)).toBeLessThan(2);
+  expect(Math.abs((await description.boundingBox())!.x - bar.x)).toBeLessThan(2);
+
+  // Pressing and holding the photo clears everything off it; letting go
+  // brings it back, without opening anything where it was pressed.
+  const price = home.getByText("$1,089,000");
+  await page.mouse.move(720, 240);
+  await page.mouse.down();
+  await expect(price).toBeHidden();
+  await expect(home.getByRole("button", { name: /^Comments/ })).toBeHidden();
+  await expect(page.getByRole("link", { name: "BuyBox Social" })).toBeHidden();
+  await page.mouse.up();
+  await expect(price).toBeVisible();
+  await expect(page.getByRole("link", { name: "BuyBox Social" })).toBeVisible();
+  await page.waitForTimeout(500);
+  await expect(home.getByRole("button", { name: "Close" })).toHaveCount(0);
+});
+
+test("on a desktop, comments rise from the bottom too, centred over the home", async ({
   browser,
 }) => {
   const page = await (await browser.newContext(DESKTOP)).newPage();
@@ -95,15 +135,4 @@ test("on a desktop, comments rise from the bottom too, over the home, and over i
   expect(box.width).toBeLessThanOrEqual(672);
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
-
-  // Beside the map, they rise over the home's pane, not the map.
-  await page.goto("/search?home=SAMPLE-1006");
-  const pane = page.getByRole("region", { name: "Homes" });
-  const paneBox = (await pane.boundingBox())!;
-  await homeIn(page, BRACKENFIELD).getByRole("button", { name: "Add a comment…" }).click();
-  await expect(sheet).toBeVisible();
-  await expect(sheet.getByLabel("Add a comment")).toBeFocused();
-  const inPane = (await sheet.boundingBox())!;
-  expect(inPane.x).toBeGreaterThanOrEqual(paneBox.x - 1);
-  expect(inPane.x + inPane.width).toBeLessThanOrEqual(paneBox.x + paneBox.width + 1);
 });

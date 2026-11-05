@@ -4,52 +4,123 @@ import useEmblaCarousel from "embla-carousel-react";
 import { WheelGesturesPlugin } from "embla-carousel-wheel-gestures";
 import { ChevronLeft, ChevronRight, Heart } from "lucide-react";
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { cn } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
 
-// The space the photo fits in, between `--photo-top` and `--photo-bottom`
-// (in units of the slide, or the carousel, it's measured in).
+// The clear space between the words at the top and those at the bottom, set by
+// the page as `--photo-top` and `--photo-bottom` (in units of the slide, or the
+// carousel, it's measured in).
 const TOP = "var(--photo-top, 4.5rem)";
 const BOTTOM = "var(--photo-bottom, 14.5rem)";
-const ROOM = `(100cqh - ${TOP} - ${BOTTOM})`;
+const CLEAR = `(100cqh - ${TOP} - ${BOTTOM})`;
 // Where in that space it sits: 0 at the top, 0.5 in the middle.
 const ALIGN = "var(--photo-align, 0.5)";
+
+const ratioOf = (photo: ListingMedia | undefined) =>
+  photo?.ImageWidth && photo?.ImageHeight ? photo.ImageWidth / photo.ImageHeight : null;
+
+// Where a photo goes: as big as it can be, whole, never cropped. It sits in the
+// clear space when it fits there (a landscape photo on a phone), and grows past
+// it, under the words, when there's room to show more of it (a wide screen), as
+// far as the whole height of the screen. Measured against the nearest box with
+// `container-type: size`.
+function placement(photo: ListingMedia | undefined) {
+  const ratio = ratioOf(photo);
+  const width = ratio ? `min(100cqw, 100cqh * ${ratio})` : "100cqw";
+  const height = ratio ? `min(100cqh, 100cqw / ${ratio})` : "100cqh";
+  const top = `clamp(0px, ${TOP} + (${CLEAR} - ${height}) * ${ALIGN}, 100cqh - ${height})`;
+  return { width, height, top, left: `(100cqw - ${width}) / 2` };
+}
+
+// Along the bottom of the photo, or of the clear space when the photo goes on
+// under the words: where the dots go, and anything that sits with them.
+export const photoFoot = (photo: ListingMedia | undefined) => {
+  const place = placement(photo);
+  return `min(${place.top} + ${place.height}, 100cqh - ${BOTTOM})`;
+};
+
+// A box exactly the size and place of the photo as shown (whole, letterboxed
+// over its blurred copy), so anything inside can point at a spot in the photo
+// in fractions of it. Inside the carousel, or in a layer of the same size over
+// it (with `container-type: size`) to draw over the words on top.
+export function PhotoBox({ photo, children, className }: { photo: ListingMedia | undefined; children?: ReactNode; className?: string }) {
+  const place = placement(photo);
+  return (
+    <div
+      data-photo-frame
+      className={cn("absolute", className)}
+      style={{ width: place.width, height: place.height, left: `calc(${place.left})`, top: place.top }}
+    >
+      {children}
+    </div>
+  );
+}
+
+// The words and buttons over a photo (marked with this): nothing on the photo
+// shows under them, and a tap on them isn't a tap on the photo. Within this
+// many pixels of them counts, so a heart is drawn whole or not at all.
+export const KEEP_CLEAR = "data-keep-clear";
+export const CLEAR_MARGIN = 14;
+
+export type Box = { left: number; top: number; right: number; bottom: number };
+
+export const keepClearOf = (root: Element) => [...root.querySelectorAll(`[${KEEP_CLEAR}]`)];
+
+export const isNear = (box: Box, x: number, y: number, margin = CLEAR_MARGIN) =>
+  x >= box.left - margin && x <= box.right + margin && y >= box.top - margin && y <= box.bottom + margin;
 
 const isVideo = (photo: ListingMedia) =>
   photo.MediaCategory === "Video" || /\.(mp4|webm|mov)(\?|$)/i.test(photo.MediaURL);
 
+// How long a press lasts before it counts as holding, and how soon a second
+// tap has to follow the first to make a double-tap.
+const HOLD_MS = 380;
+const DOUBLE_TAP_MS = 300;
+
 // A home's photos (and videos) filling the screen, swiped sideways: by touch,
 // by dragging, or with two fingers on a trackpad. Listing photos are
 // landscape, so each shows whole over a blurred copy of itself rather than
-// cropped to a sliver. Double-tap likes, with a heart.
+// cropped to a sliver. A tap says where on the photo it landed; a double-tap
+// likes it, with a heart; pressing and holding shows it alone.
 export function ReelPhotos({
   media,
   address,
   active,
   priority,
   onIndexChange,
+  onSettle,
   onDoubleTap,
-  spots,
+  onTap,
+  onHold,
+  show,
   peek,
-  squeezed = false,
   overlay,
+  controls = true,
 }: {
   media: ListingMedia[];
   address: string;
-  // On screen now: the photo drifts and videos play.
+  // On screen now: videos play.
   active: boolean;
   priority?: boolean;
   onIndexChange?: (index: number) => void;
+  // The photo has finished sliding into place.
+  onSettle?: (index: number) => void;
   onDoubleTap?: (photo: ListingMedia) => void;
-  // Drawn over the photo itself, positioned in fractions of it (like-able spots).
-  spots?: (photo: ListingMedia) => ReactNode;
+  // One tap, once it's clear it isn't the first of two: where on the photo,
+  // in fractions of it (null for the space around it), and the photo's size
+  // on screen.
+  onTap?: (photo: ListingMedia, point: { x: number; y: number } | null, size: { width: number; height: number } | null) => void;
+  // Pressed and held (true), then let go (false).
+  onHold?: (holding: boolean) => void;
+  // Brings a photo into view. `n` counts requests, so the same photo again still moves.
+  show?: { index: number; n: number } | null;
   // Slide a little and back, to show there are more photos (until touched).
   peek?: boolean;
-  // The comments are open: the photo glides up into the space above them.
-  squeezed?: boolean;
-  // Drawn over the photos; `--photo-top` and `--photo-bottom` say where they sit.
+  // Drawn over the photos; `--photo-top` and `--photo-bottom` say where the clear space is.
   overlay?: ReactNode;
+  // The arrows to the previous and next photo (a swipe still turns them).
+  controls?: boolean;
 }) {
   // Each carousel needs its own plugin; a sideways trackpad swipe turns the
   // photos, while an up-and-down one still scrolls between homes.
@@ -57,9 +128,6 @@ export function ReelPhotos({
   const [emblaRef, embla] = useEmblaCarousel({}, plugins);
   const [touched, setTouched] = useState(false);
   const [index, setIndex] = useState(0);
-  // The photo that has finished sliding into place: its spots show then, not
-  // while it's still moving.
-  const [settled, setSettled] = useState(0);
   const lastTap = useRef<{ slide: number; at: number } | null>(null);
   const [burst, setBurst] = useState<{ slide: number; at: number } | null>(null);
 
@@ -77,36 +145,97 @@ export function ReelPhotos({
     };
   }, [embla, onSelect]);
 
+  const settle = useRef(onSettle);
+  useEffect(() => {
+    settle.current = onSettle;
+  });
   useEffect(() => {
     if (!embla) return;
-    const onSettle = () => setSettled(embla.selectedScrollSnap());
-    embla.on("settle", onSettle);
+    const onSettled = () => settle.current?.(embla.selectedScrollSnap());
+    embla.on("settle", onSettled);
     return () => {
-      embla.off("settle", onSettle);
+      embla.off("settle", onSettled);
     };
   }, [embla]);
 
-  const tap = (event: MouseEvent, photo: ListingMedia, slide: number) => {
-    if (!onDoubleTap || (event.target as HTMLElement).closest("button, a, video")) return;
+  useEffect(() => {
+    if (embla && show) embla.scrollTo(show.index, true);
+    // Only a new request should move the photos.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [embla, show?.n]);
+
+  // A single tap waits to see whether a second follows.
+  const single = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Pressing and holding: the timer, where it started, and whether it got there.
+  const hold = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
+  const held = useRef(false);
+  useEffect(
+    () => () => {
+      clearTimeout(single.current ?? undefined);
+      clearTimeout(hold.current?.timer);
+    },
+    [],
+  );
+
+  const press = (event: PointerEvent) => {
+    if (!onHold || !event.isPrimary || (event.target as HTMLElement).closest("button, a, video")) return;
+    held.current = false;
+    clearTimeout(hold.current?.timer);
+    hold.current = {
+      x: event.clientX,
+      y: event.clientY,
+      timer: setTimeout(() => {
+        held.current = true;
+        onHold(true);
+      }, HOLD_MS),
+    };
+  };
+  const release = () => {
+    clearTimeout(hold.current?.timer);
+    hold.current = null;
+    if (held.current) onHold?.(false);
+  };
+  const move = (event: PointerEvent) => {
+    // Moving is a swipe, not a hold.
+    if (hold.current && Math.hypot(event.clientX - hold.current.x, event.clientY - hold.current.y) > 10) release();
+  };
+
+  const tap = (event: MouseEvent<HTMLElement>, photo: ListingMedia, slide: number) => {
+    // Letting go of a hold isn't a tap.
+    if (held.current) {
+      held.current = false;
+      return;
+    }
+    if ((event.target as HTMLElement).closest("button, a, video")) return;
+    clearTimeout(single.current ?? undefined);
     const now = event.timeStamp;
-    if (lastTap.current?.slide === slide && now - lastTap.current.at < 350) {
+    if (onDoubleTap && lastTap.current?.slide === slide && now - lastTap.current.at < DOUBLE_TAP_MS) {
       lastTap.current = null;
       setBurst({ slide, at: now });
       onDoubleTap(photo);
-    } else {
-      lastTap.current = { slide, at: now };
+      return;
     }
+    lastTap.current = { slide, at: now };
+    if (!onTap) return;
+    const frame = event.currentTarget.querySelector("[data-photo-frame]")?.getBoundingClientRect();
+    const x = frame ? (event.clientX - frame.left) / frame.width : NaN;
+    const y = frame ? (event.clientY - frame.top) / frame.height : NaN;
+    // On the words over the photo is on the words: like a tap off the photo.
+    const panel = event.currentTarget.closest("article");
+    const onWords =
+      panel && keepClearOf(panel).some((el) => isNear(el.getBoundingClientRect(), event.clientX, event.clientY));
+    const point = x >= 0 && x <= 1 && y >= 0 && y <= 1 && !onWords ? { x, y } : null;
+    const size = frame ? { width: frame.width, height: frame.height } : null;
+    single.current = setTimeout(() => onTap(photo, point, size), onDoubleTap ? DOUBLE_TAP_MS : 0);
   };
 
   // Where the photo on screen sits, for the dots and arrows over it.
   const shown = media[index];
-  const ratio = shown?.ImageWidth && shown?.ImageHeight ? shown.ImageWidth / shown.ImageHeight : null;
-  const height = ratio ? `min(${ROOM}, 100cqw / ${ratio})` : ROOM;
-  const photoTop = `(${TOP} + (${ROOM} - ${height}) * ${ALIGN})`;
-  const middle = `calc(${photoTop} + ${height} / 2)`;
-  const photoBottom = `calc(${photoTop} + ${height})`;
+  const place = placement(shown);
+  const middle = `calc(${place.top} + ${place.height} / 2)`;
+  const dots = `calc(${photoFoot(shown)} - 1.1rem)`;
   // The arrows sit just inside the photo's edges.
-  const edge = `calc((100cqw - ${ratio ? `min(100cqw, ${ROOM} * ${ratio})` : "100cqw"}) / 2 + 0.75rem)`;
+  const edge = `calc(${place.left} + 0.75rem)`;
 
   return (
     <div
@@ -114,13 +243,9 @@ export function ReelPhotos({
       aria-roledescription="carousel"
       aria-label={`Photos of ${address}`}
       onPointerDownCapture={() => setTouched(true)}
-      data-squeezed={squeezed || undefined}
-      // The photo fits between `--photo-top` and `--photo-bottom`, set by the
-      // page around it so nothing covers it; with the comments open, above them.
-      className={cn(
-        "group/carousel absolute inset-0 [container-type:size]",
-        "data-squeezed:[--photo-bottom:calc(72cqh_+_1rem)] data-squeezed:[--photo-top:calc(env(safe-area-inset-top)_+_0.75rem)]",
-      )}
+      // A press and hold shows the photo alone, not the browser's menu for it.
+      onContextMenu={(event) => onHold && event.preventDefault()}
+      className="group/carousel absolute inset-0 [container-type:size]"
     >
       <div ref={emblaRef} className="h-full overflow-hidden">
         <div
@@ -133,7 +258,12 @@ export function ReelPhotos({
             <div
               key={photo.MediaURL}
               onClick={(event) => tap(event, photo, i)}
-              className="group/photo relative h-full w-full shrink-0 select-none overflow-hidden [container-type:size]"
+              onPointerDown={press}
+              onPointerMove={move}
+              onPointerUp={release}
+              onPointerCancel={release}
+              onPointerLeave={release}
+              className="group/photo relative h-full w-full shrink-0 cursor-pointer select-none overflow-hidden [container-type:size] [-webkit-touch-callout:none]"
             >
               {/* The same photo, blurred, fills the space around it. */}
               {!isVideo(photo) && (
@@ -148,24 +278,31 @@ export function ReelPhotos({
               )}
               {isVideo(photo) ? (
                 <ReelVideo src={photo.MediaURL} playing={active && i === index} label={photo.ShortDescription} />
-              ) : (
-                <PhotoFrame photo={photo}>
+              ) : photo.ImageWidth && photo.ImageHeight ? (
+                <PhotoBox photo={photo}>
                   <Image
-                    key={active && i === index ? "on" : "off"}
                     src={photo.MediaURL}
                     alt={photo.ShortDescription ?? `${address}, photo ${i + 1}`}
                     fill
                     priority={priority && i === 0}
                     sizes="100vw"
-                    className={cn(
-                      "object-contain object-[50%_38%] lg:object-center",
-                      active && i === index && "animate-[ken-burns_9s_ease-out_forwards] motion-reduce:animate-none",
-                    )}
+                    draggable={false}
+                    className="object-contain"
                   />
-                  {/* Only the photo on screen, once it's in place: a spot on another
-                      can't be reached by accident. */}
-                  {i === index && i === settled && spots?.(photo)}
-                </PhotoFrame>
+                </PhotoBox>
+              ) : (
+                // Without a known size, it fills the slide.
+                <div data-photo-frame className="absolute inset-0">
+                  <Image
+                    src={photo.MediaURL}
+                    alt={photo.ShortDescription ?? `${address}, photo ${i + 1}`}
+                    fill
+                    priority={priority && i === 0}
+                    sizes="100vw"
+                    draggable={false}
+                    className="object-contain"
+                  />
+                </div>
               )}
               {burst?.slide === i && (
                 <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -185,9 +322,8 @@ export function ReelPhotos({
         <>
           <div
             aria-hidden
-            // Along the bottom of the photo itself.
-            style={{ top: `calc(${photoBottom} - 1.1rem)` }}
-            className="pointer-events-none absolute inset-x-0 flex justify-center gap-1.5 transition-opacity duration-300 group-data-squeezed/carousel:opacity-0"
+            style={{ top: dots }}
+            className="pointer-events-none absolute inset-x-0 flex justify-center gap-1.5"
           >
             {media.map((photo, i) => (
               <span
@@ -202,26 +338,30 @@ export function ReelPhotos({
           <p className="sr-only" aria-live="polite">
             Photo {index + 1} of {media.length}
           </p>
-          <button
-            type="button"
-            aria-label="Previous photo"
-            disabled={index === 0}
-            onClick={() => embla?.scrollPrev()}
-            style={{ top: middle, left: edge }}
-            className="absolute z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm disabled:hidden lg:size-11"
-          >
-            <ChevronLeft aria-hidden size={22} />
-          </button>
-          <button
-            type="button"
-            aria-label="Next photo"
-            disabled={index === media.length - 1}
-            onClick={() => embla?.scrollNext()}
-            style={{ top: middle, right: edge }}
-            className="absolute z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm disabled:hidden lg:size-11"
-          >
-            <ChevronRight aria-hidden size={22} />
-          </button>
+          {controls && (
+            <>
+              <button
+                type="button"
+                aria-label="Previous photo"
+                disabled={index === 0}
+                onClick={() => embla?.scrollPrev()}
+                style={{ top: middle, left: edge }}
+                className="absolute z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm disabled:hidden lg:size-11"
+              >
+                <ChevronLeft aria-hidden size={22} />
+              </button>
+              <button
+                type="button"
+                aria-label="Next photo"
+                disabled={index === media.length - 1}
+                onClick={() => embla?.scrollNext()}
+                style={{ top: middle, right: edge }}
+                className="absolute z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm disabled:hidden lg:size-11"
+              >
+                <ChevronRight aria-hidden size={22} />
+              </button>
+            </>
+          )}
         </>
       )}
     </div>
@@ -248,29 +388,5 @@ function ReelVideo({ src, playing, label }: { src: string; playing: boolean; lab
       preload="metadata"
       className="absolute inset-0 h-full w-full object-contain"
     />
-  );
-}
-
-// A box exactly the size and place of the photo as shown (whole, letterboxed
-// over its blurred copy), so anything inside can point at a spot in the photo.
-// It fits between `--photo-top` and `--photo-bottom`, set by the page around it.
-// Photos without a known size simply fill the slide.
-function PhotoFrame({ photo, children }: { photo: ListingMedia; children: ReactNode }) {
-  if (!photo.ImageWidth || !photo.ImageHeight) return <div className="absolute inset-0">{children}</div>;
-  const ratio = photo.ImageWidth / photo.ImageHeight;
-  const width = `min(100cqw, ${ROOM} * ${ratio})`;
-  const height = `min(${ROOM}, 100cqw / ${ratio})`;
-  return (
-    <div
-      className="absolute transition-[width,height,left,top] duration-300 ease-out motion-reduce:transition-none"
-      style={{
-        width,
-        height,
-        left: `calc((100cqw - ${width}) / 2)`,
-        top: `calc(${TOP} + (${ROOM} - ${height}) * ${ALIGN})`,
-      }}
-    >
-      {children}
-    </div>
   );
 }

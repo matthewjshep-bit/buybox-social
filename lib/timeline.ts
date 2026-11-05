@@ -1,6 +1,6 @@
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
-import { likeId, mediaKeyOf, type PhotoLikes } from "./photos";
+import { likeId, mediaKeyOf, tagNameIn, type PhotoLikes } from "./photos";
 import { NO_REACTION, publicSideOf, type ReactionState } from "./reactions";
 
 // Everything said and done about a home, as one list of who did what, oldest
@@ -24,6 +24,8 @@ export type TimelineComment = {
   fromPrivateChat?: boolean;
   // Their public profile, on public pages.
   profileId?: string;
+  // The spot in a photo it's about ("the front door"), if it's about one.
+  spot?: { mediaKey: string; tag: string };
 };
 
 export type TimelineReaction = {
@@ -79,13 +81,17 @@ function reactionItems(
     person(r.who, r.name, r.at).state = { reaction: r.reaction, liked: r.liked, disliked: r.disliked };
   }
   for (const p of photos.filter((p) => p.listing_key === listing.ListingKey).sort((a, b) => +a.at - +b.at)) {
-    person(p.who, p.name, p.at).photos.push({ tag: p.tag, mediaUrl: url(p.media_key) });
+    // A spot reads as the thing it's on ("the front door").
+    person(p.who, p.name, p.at).photos.push({ tag: tagNameIn(listing, p.media_key, p.tag), mediaUrl: url(p.media_key) });
   }
   // Keyed by position, so no one's internal id reaches the page.
   return [...people.values()].map((item, index) => ({ ...item, id: `reaction-${index}` }));
 }
 
 const byTime = (a: TimelineItem, b: TimelineItem) => a.at.localeCompare(b.at);
+
+const spotOf = (c: { media_key: string | null; spot: string | null }) =>
+  c.media_key && c.spot ? { spot: { mediaKey: c.media_key, tag: c.spot } } : {};
 
 // Public pages. Private activity shows without names, and only its likes: a
 // private pass never reaches strangers. Private comments show only when their
@@ -108,16 +114,19 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
         parent_id: string | null;
         likes: number;
         liked_by_me: boolean;
+        media_key: string | null;
+        spot: string | null;
       }[]
     >`
       select c.id, c.listing_key, c.visitor_id, v.first_name, c.body, c.created_at, c.parent_id,
+        c.media_key, c.spot,
         (select count(*)::int from public_comment_likes cl where cl.comment_id = c.id) as likes,
         exists (select 1 from public_comment_likes cl
           where cl.comment_id = c.id and cl.visitor_id = ${visitorId}::uuid) as liked_by_me
       from public_comments c join visitors v on v.id = c.visitor_id
       where c.listing_key in ${sql(keys)}`,
-    sql<{ id: string; listing_key: string; body: string; created_at: Date }[]>`
-      select id, listing_key, body, created_at from comments
+    sql<{ id: string; listing_key: string; body: string; created_at: Date; media_key: string | null; spot: string | null }[]>`
+      select id, listing_key, body, created_at, media_key, spot from comments
       where shared_publicly and listing_key in ${sql(keys)}`,
     sql<ReactionRow[]>`
       select r.listing_key, 'v:' || r.visitor_id as who, v.first_name as name,
@@ -160,6 +169,7 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
             likes: c.likes,
             likedByMe: c.liked_by_me,
             profileId: c.visitor_id,
+            ...spotOf(c),
           }),
         ),
       ...shared
@@ -177,6 +187,7 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
             likes: 0,
             likedByMe: false,
             fromPrivateChat: true,
+            ...spotOf(c),
           }),
         ),
       ...reactionItems(listing, [...publicReactions, ...privateLikes], [...publicPhotos, ...privatePhotos], {
@@ -208,10 +219,12 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
         body: string;
         created_at: Date;
         shared_publicly: boolean;
+        media_key: string | null;
+        spot: string | null;
       }[]
     >`
       select c.id, c.listing_key, c.participant_id, p.first_name, a.full_name as agent_name,
-        c.body, c.created_at, c.shared_publicly
+        c.body, c.created_at, c.shared_publicly, c.media_key, c.spot
       from comments c
       left join participants p on p.id = c.participant_id
       left join accounts a on a.id = c.agent_id
@@ -246,6 +259,7 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
             likes: 0,
             likedByMe: false,
             sharedPublicly: c.shared_publicly,
+            ...spotOf(c),
           }),
         ),
       ...reactionItems(listing, reactions, photos, { me, anonymous: () => false }),
