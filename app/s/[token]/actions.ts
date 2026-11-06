@@ -152,6 +152,34 @@ export async function addComment(
   return { ok: true };
 }
 
+const ASK_TO_SEE = "Can we see it in person?";
+
+export type AskResult = { ok: true; already: boolean } | { ok: false; error: string };
+
+// "Ask to see it", from the Contact sheet: says so under the home, as that
+// person, and tells the agent at once rather than in the next batched email.
+// Once a day per person per home; asking again says it's already asked.
+export async function askToSee(token: string, listingKey: string): Promise<AskResult> {
+  if (typeof listingKey !== "string" || listingKey.length > 100) return { ok: false, error: "We couldn't find that home." };
+  const actor = await resolveActor(token, listingKey);
+  if (!actor) return { ok: false, error: "Please add your name first." };
+  const inserted = await sql`
+    insert into comments (share_id, listing_key, participant_id, body)
+    select ${actor.share.id}, ${listingKey}, ${actor.participant.id}, ${ASK_TO_SEE}
+    where not exists (
+      select 1 from comments
+      where participant_id = ${actor.participant.id} and listing_key = ${listingKey}
+        and body = ${ASK_TO_SEE} and created_at > now() - interval '24 hours')
+    returning id`;
+  if (inserted.length === 0) return { ok: true, already: true };
+  after(async () => {
+    const address = await listingLabel(listingKey);
+    await notifyAgent(actor.share.id, `${actor.participant.first_name} asked to see ${address}`, { now: true });
+  });
+  refresh();
+  return { ok: true, already: false };
+}
+
 // Lets an author take back a comment they shared publicly, or share it after all.
 export async function setCommentSharing(
   token: string,

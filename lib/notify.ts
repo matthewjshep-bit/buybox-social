@@ -17,14 +17,16 @@ async function sendEmail(to: string, subject: string, text: string) {
 }
 
 // At most one email per share every 10 minutes, so a busy thread can't flood the
-// agent's inbox. The dashboard always has the full activity.
-export async function notifyAgent(shareId: string, summary: string) {
+// agent's inbox. The dashboard always has the full activity. Something the agent
+// should act on straight away (a client asking to see a home) goes out `now`,
+// and still counts as the latest email.
+export async function notifyAgent(shareId: string, summary: string, { now = false }: { now?: boolean } = {}) {
   try {
     const [row] = await sql<{ email: string }[]>`
       update shares s set last_notified_at = now()
       from accounts a
       where s.id = ${shareId} and a.id = s.agent_id
-        and (s.last_notified_at is null or s.last_notified_at < now() - interval '10 minutes')
+        and (${now} or s.last_notified_at is null or s.last_notified_at < now() - interval '10 minutes')
       returning a.email`;
     if (!row) return;
     const link = `${appUrl()}/dashboard/shares/${shareId}`;

@@ -3,8 +3,9 @@
 import { Check } from "lucide-react";
 import { useActionState, useState } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
+import { formatPhone, phoneDigits } from "@/components/agent-card";
 import { BRAND_COLORS, cn } from "@/lib/format";
-import { saveProfile, type FormState } from "../actions";
+import { saveProfile, type ContactField, type ProfileState } from "../actions";
 
 const PHOTO_SIZE = 256;
 
@@ -38,12 +39,25 @@ export function ProfileForm(props: {
   brokerage: string;
   brandColor: string;
   photo: string | null;
+  // Digits, or empty.
+  contactPhone: string;
+  contactEmail: string;
+  // The phone they gave when they signed up, offered but never filled in for them.
+  suggestedPhone: string;
 }) {
-  const [state, action, pending] = useActionState<FormState, FormData>(saveProfile, {});
+  const [state, action, pending] = useActionState<ProfileState, FormData>(saveProfile, {});
   const [photo, setPhoto] = useState(props.photo);
   const [color, setColor] = useState(props.brandColor);
   const [fullName, setFullName] = useState(props.fullName);
+  const [phone, setPhone] = useState(formatPhone(props.contactPhone));
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const suggested = phoneDigits(props.suggestedPhone);
+  const suggestion = !phone && suggested.length >= 10 && suggested.length <= 15 ? formatPhone(suggested) : null;
+  // A mistake in one of the contact fields shows under that field.
+  const invalid = (field: ContactField) =>
+    state.field === field
+      ? { "aria-invalid": true as const, "aria-describedby": `${field}-error contact-hint` }
+      : { "aria-describedby": "contact-hint" };
 
   return (
     <form action={action} className="mt-6 flex flex-col gap-5">
@@ -101,12 +115,68 @@ export function ProfileForm(props: {
           name="brokerage"
           maxLength={80}
           autoComplete="organization"
-          defaultValue={props.brokerage}
+          defaultValue={state.values?.brokerage ?? props.brokerage}
           aria-describedby="brokerage-hint"
           className={inputClass}
         />
         <p id="brokerage-hint" className="mt-1 text-sm text-stone-600">
           Optional. A brokerage, team or company, if you work with one.
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="contactPhone" className="text-sm font-medium">
+          Phone for clients (optional)
+        </label>
+        <input
+          id="contactPhone"
+          name="contactPhone"
+          type="tel"
+          inputMode="tel"
+          maxLength={30}
+          autoComplete="tel"
+          value={phone}
+          onChange={(event) => setPhone(event.target.value)}
+          {...invalid("contactPhone")}
+          className={cn(inputClass, "aria-invalid:border-red-600")}
+        />
+        {suggestion && (
+          <button
+            type="button"
+            onClick={() => setPhone(suggestion)}
+            className="mt-1 min-h-11 rounded-full px-1 text-sm font-semibold text-brand underline-offset-2 hover:underline"
+          >
+            Use {suggestion}
+          </button>
+        )}
+        {state.field === "contactPhone" && (
+          <p id="contactPhone-error" role="alert" className="mt-1 text-sm text-red-700">
+            {state.error}
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label htmlFor="contactEmail" className="text-sm font-medium">
+          Email for clients (optional)
+        </label>
+        <input
+          id="contactEmail"
+          name="contactEmail"
+          type="email"
+          maxLength={254}
+          autoComplete="email"
+          defaultValue={state.values?.contactEmail ?? props.contactEmail}
+          {...invalid("contactEmail")}
+          className={cn(inputClass, "aria-invalid:border-red-600")}
+        />
+        {state.field === "contactEmail" && (
+          <p id="contactEmail-error" role="alert" className="mt-1 text-sm text-red-700">
+            {state.error}
+          </p>
+        )}
+        <p id="contact-hint" className="mt-1 text-sm text-stone-600">
+          Shown on your links so clients can text, call or email you.
         </p>
       </div>
 
@@ -132,7 +202,7 @@ export function ProfileForm(props: {
         </div>
       </fieldset>
 
-      {state.error && (
+      {state.error && !state.field && (
         <p role="alert" className="text-sm text-red-700">
           {state.error}
         </p>

@@ -20,8 +20,10 @@ test("one package, a link for each person: they react, the agent compares and re
   await expect(jamie.getByRole("heading", { level: 1 })).toHaveText(
     "Jamie, I picked these 2 homes for you",
   );
-  await expect(jamie.getByText("Alex Rivera", { exact: true })).toBeVisible();
-  await expect(jamie.getByText("Harbor & Pine Realty")).toBeVisible();
+  // The agent is named on the welcome screen (and in the header over every screen).
+  const welcome = jamie.getByRole("region", { name: "Welcome" });
+  await expect(welcome.getByText("Alex Rivera", { exact: true })).toBeVisible();
+  await expect(welcome.getByText("Harbor & Pine Realty")).toBeVisible();
   await expect(jamie.getByText(/Sample listings, fictional and not for sale/)).toBeVisible();
 
   const house = homeIn(jamie, "4127 Larkmoor Ave NE");

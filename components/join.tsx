@@ -47,8 +47,19 @@ export function JoinGate({ photo, devMode }: { photo?: ListingMedia; devMode: bo
   );
 }
 
-// A home's photo behind the words, dark enough to read them over.
-function Backdrop({ photo, priority, blurred }: { photo?: ListingMedia; priority?: boolean; blurred?: boolean }) {
+// A home's photo behind the words, dark enough to read them over. Tinted, it
+// takes on the brand colour (an agent's, on their links).
+export function Backdrop({
+  photo,
+  priority,
+  blurred,
+  tinted,
+}: {
+  photo?: ListingMedia;
+  priority?: boolean;
+  blurred?: boolean;
+  tinted?: boolean;
+}) {
   return (
     <div aria-hidden className="absolute inset-0 overflow-hidden bg-brand">
       {photo && (
@@ -64,9 +75,15 @@ function Backdrop({ photo, priority, blurred }: { photo?: ListingMedia; priority
       <div
         className={cn(
           "absolute inset-0",
-          blurred ? "bg-black/60" : "bg-linear-to-b from-black/65 via-black/45 to-black/80 md:bg-linear-to-r md:from-black/75 md:via-black/45 md:to-black/30",
+          tinted
+            ? "bg-brand/70"
+            : blurred
+              ? "bg-black/60"
+              : "bg-linear-to-b from-black/65 via-black/45 to-black/80 md:bg-linear-to-r md:from-black/75 md:via-black/45 md:to-black/30",
         )}
       />
+      {/* Words sit low on a tinted photo: a little more shade there keeps them readable. */}
+      {tinted && <div className="absolute inset-x-0 bottom-0 h-2/3 bg-linear-to-t from-black/45 to-transparent" />}
     </div>
   );
 }
@@ -82,9 +99,17 @@ function SeeHomes() {
       }}
       className="relative mx-auto mb-[max(0.75rem,env(safe-area-inset-bottom))] flex min-h-11 shrink-0 items-center gap-2 rounded-full px-4 font-semibold hover:bg-white/10"
     >
-      {/* Phones swipe up; a mouse or trackpad scrolls down. */}
-      <ArrowUp aria-hidden size={20} className="animate-bounce motion-reduce:animate-none pointer-fine:hidden" />
-      <ChevronDown aria-hidden size={20} className="hidden animate-bounce motion-reduce:animate-none pointer-fine:block" />
+      {/* Phones swipe up; a mouse or trackpad scrolls down. It bounces three times, then rests. */}
+      <ArrowUp
+        aria-hidden
+        size={20}
+        className="animate-bounce [animation-iteration-count:3] motion-reduce:animate-none pointer-fine:hidden"
+      />
+      <ChevronDown
+        aria-hidden
+        size={20}
+        className="hidden animate-bounce [animation-iteration-count:3] motion-reduce:animate-none pointer-fine:block"
+      />
       <span className="pointer-fine:hidden">Swipe up to see homes</span>
       <span className="hidden pointer-fine:inline">Scroll to see homes</span>
     </button>

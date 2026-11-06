@@ -6,11 +6,17 @@ import type { Aspect, ReactionState } from "./reactions";
 
 export type CommentTag = "like" | "dislike";
 
+// What a link shows of its agent. The contact fields are only what the agent
+// chose to show clients, never their login email or sign-up phone.
 export type ShareAgent = {
   full_name: string;
   brokerage: string;
   photo_data_url: string | null;
   brand_color: string;
+  // Digits only, or empty.
+  contact_phone: string;
+  // Empty unless the agent set one.
+  contact_email: string;
 };
 
 export type Share = {
@@ -50,7 +56,7 @@ export async function getShareByToken(token: string) {
   if (!isShareToken(token)) return null;
   const [row] = await sql<(Share & ShareAgent & { person_id: string | null; person_name: string | null })[]>`
     select s.id, s.token, s.agent_id, s.client_name, s.note,
-           a.full_name, a.brokerage, a.photo_data_url, a.brand_color,
+           a.full_name, a.brokerage, a.photo_data_url, a.brand_color, a.contact_phone, a.contact_email,
            p.id as person_id, p.first_name as person_name
     from shares s
     join accounts a on a.id = s.agent_id
@@ -58,10 +64,20 @@ export async function getShareByToken(token: string) {
     where s.token = ${token} or s.id = (select share_id from participants where token = ${token})
     limit 1`;
   if (!row) return null;
-  const { full_name, brokerage, photo_data_url, brand_color, person_id, person_name, ...share } = row;
+  const {
+    full_name,
+    brokerage,
+    photo_data_url,
+    brand_color,
+    contact_phone,
+    contact_email,
+    person_id,
+    person_name,
+    ...share
+  } = row;
   return {
     share: share as Share,
-    agent: { full_name, brokerage, photo_data_url, brand_color } as ShareAgent,
+    agent: { full_name, brokerage, photo_data_url, brand_color, contact_phone, contact_email } as ShareAgent,
     // Set when the link is someone's own.
     person: person_id ? { id: person_id, first_name: person_name! } : null,
   };

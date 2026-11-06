@@ -77,6 +77,24 @@ test("an agent's link nudges a first-timer: swipe for photos, then on to the nex
   expect(pageErrors).toEqual([]);
 });
 
+test("a link with one home opens on it, and the photo nudge shows there", async ({ browser }) => {
+  const agent = await signInAgent(browser, "nell-one@example.com", "Nell Agent");
+  const { url } = await createShare(agent, ["96 Fernhollow"], ["Ivy"]);
+
+  const page = await (await browser.newContext()).newPage();
+  await page.goto(url);
+  // No welcome screen to get past.
+  await expect(page.getByRole("region", { name: "Welcome" })).toHaveCount(0);
+  const home = homeIn(page, "96 Fernhollow Ln");
+  await expect(home).toBeInViewport({ ratio: 0.9 });
+  await expect(home.getByText("Swipe for more photos")).toBeVisible();
+  // There's no next home to point to.
+  await home.getByRole("button", { name: "Next photo" }).click();
+  await expect(home.getByText("Swipe for more photos")).toBeHidden();
+  await page.waitForTimeout(2500);
+  await expect(nudge(page)).toHaveCount(0);
+});
+
 test("on a desktop, a sideways trackpad swipe turns the photos and an up-and-down one moves between homes", async ({
   browser,
 }) => {

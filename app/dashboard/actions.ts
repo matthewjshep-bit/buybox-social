@@ -10,6 +10,14 @@ import { invitePerson, newShareToken } from "@/lib/shares";
 
 export type FormState = { error?: string };
 
+// The fields an agent can get wrong on their profile, and what they typed, so a
+// mistake says which one and nothing has to be typed again.
+export type ContactField = "contactPhone" | "contactEmail";
+export type ProfileState = FormState & {
+  field?: ContactField;
+  values?: { brokerage: string; contactPhone: string; contactEmail: string };
+};
+
 const PHOTO_PATTERN = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/;
 
 const profileSchema = z.object({
@@ -22,21 +30,47 @@ const profileSchema = z.object({
     .refine((value) => value === "" || PHOTO_PATTERN.test(value)),
 });
 
-export async function saveProfile(_: FormState, form: FormData): Promise<FormState> {
+// A phone for clients: empty, or a real number with its area code. Kept as
+// digits only, so the text and call links on a link are built from nothing else.
+const contactPhoneSchema = z
+  .string()
+  .max(30)
+  .regex(/^[\d\s().+-]*$/)
+  .transform((value) => value.replace(/\D/g, ""))
+  .refine((digits) => digits === "" || (digits.length >= 10 && digits.length <= 15));
+
+const contactEmailSchema = z.union([z.literal(""), z.email().max(254)]);
+
+export async function saveProfile(_: ProfileState, form: FormData): Promise<ProfileState> {
   const agent = await requireAgent();
+  const values = {
+    brokerage: String(form.get("brokerage") ?? ""),
+    contactPhone: String(form.get("contactPhone") ?? "").trim(),
+    contactEmail: String(form.get("contactEmail") ?? "").trim().toLowerCase(),
+  };
   const parsed = profileSchema.safeParse({
     fullName: form.get("fullName"),
-    brokerage: form.get("brokerage") ?? "",
+    brokerage: values.brokerage,
     brandColor: form.get("brandColor"),
     photo: form.get("photo") ?? "",
   });
-  if (!parsed.success) return { error: "Please add your name and choose a color." };
+  if (!parsed.success) return { error: "Please add your name and choose a color.", values };
+  const phone = contactPhoneSchema.safeParse(values.contactPhone);
+  if (!phone.success) {
+    return { error: "Please enter a phone number with the area code, or leave it empty.", field: "contactPhone", values };
+  }
+  const email = contactEmailSchema.safeParse(values.contactEmail);
+  if (!email.success) {
+    return { error: "Please enter a valid email address, or leave it empty.", field: "contactEmail", values };
+  }
   await sql`
     update accounts set
       full_name = ${parsed.data.fullName},
       brokerage = ${parsed.data.brokerage},
       brand_color = ${parsed.data.brandColor},
-      photo_data_url = ${parsed.data.photo || null}
+      photo_data_url = ${parsed.data.photo || null},
+      contact_phone = ${phone.data},
+      contact_email = ${email.data}
     where id = ${agent.id}`;
   redirect("/dashboard");
 }
@@ -61,7 +95,10 @@ export async function createShare(input: {
   if (!parsed.success) return { error: "Pick between 1 and 3 homes." };
   const keys = [...new Set(parsed.data.listingKeys)];
 
-  const found = await sql`select listing_key from listings where listing_key in ${sql(keys)}`;
+  // Only homes still for sale, the same as adding homes to a link later.
+  const found = await sql`
+    select listing_key from listings
+    where listing_key in ${sql(keys)} and standard_status = 'Active'`;
   if (found.length !== keys.length) return { error: "One of those homes is no longer available." };
 
   const people = [...new Set(parsed.data.people.filter(Boolean))];
