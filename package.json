@@ -9,6 +9,7 @@
     "lint": "eslint",
     "db:local": "mkdir -p .data && pglite-server --db=.data/pg --port=54329",
     "db:setup": "node --env-file-if-exists=.env.local --import tsx scripts/db-setup.ts",
+    "db:demo": "node --env-file-if-exists=.env.local --import tsx scripts/seed-demo.ts",
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
     "postinstall": "node scripts/copy-map-worker.mjs"
