@@ -1,41 +1,77 @@
-import { Heart, Home, MessageCircle, ThumbsDown, X, type LucideIcon } from "lucide-react";
+import { Heart, Home, Lock, MessageCircle, ThumbsDown, X, type LucideIcon } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { CSSProperties, ReactNode } from "react";
+import { after } from "next/server";
+import { cache, type CSSProperties, type ReactNode } from "react";
 import { ProfileFeed } from "@/components/profile-feed";
 import { ProfileHeader } from "@/components/profile-header";
+import { TasteControls } from "@/components/taste-controls";
+import { TasteStoryCard } from "@/components/taste-story-card";
 import { getCurrentUser } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
 import { cn } from "@/lib/format";
 import {
   getProfileFeed,
   getProfilePerson,
+  getProfileRows,
   getProfileSummary,
   isProfileShow,
   isTopicSide,
   parseAbout,
   parseBefore,
   PROFILE_FILTERS,
+  type ProfilePerson,
   type ProfileShow,
-  type TasteChip,
   type TopicSide,
 } from "@/lib/profile";
 import { getPublicIdentity } from "@/lib/public";
+import { readStory, refreshStory, shownStory, storyOf, storyWriting, type TasteStory } from "@/lib/taste-story";
 
 type Props = {
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
+// Who's looking: their own visitor row, if they have one. Once per request,
+// for the page and its metadata alike.
+const viewer = cache(async () => {
+  const [account, device] = await Promise.all([getCurrentUser(), readDevice()]);
+  const { visitor } = await getPublicIdentity(account?.role ? account : null, device);
+  return visitor;
+});
+
+// What their page says about their taste, from everything public they've
+// done (read with the feed's first page), less anything they've switched off.
+const tasteOf = cache(async (person: ProfilePerson, mine: boolean) =>
+  storyOf(await getProfileRows(person.id, mine), { hidden: person.tasteHidden, hidePasses: person.hidePasses }),
+);
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   const person = id.length > 64 ? null : await getProfilePerson(id);
   if (!person) return { title: "Not found · BuyBox Social" };
+  const visitor = await viewer();
+  const story = await tasteOf(person, visitor?.id === person.id);
   return {
     title: `${person.name} · BuyBox Social`,
-    description: `What ${person.name} likes in homes, on BuyBox Social.`,
+    // The headline is from what everyone can see, whoever is looking.
+    description: story.headline ?? `What ${person.name} likes in homes, on BuyBox Social.`,
   };
+}
+
+// The words to show, from the database (never the model): the model's, if
+// it wrote some that still hold, else the template. If it should write them
+// again, that starts once the page has gone out. Only this page ever asks.
+async function storyNow(personId: string, story: TasteStory) {
+  try {
+    const shown = shownStory(await readStory(personId), story);
+    if (shown?.refresh) after(() => refreshStory(personId, story));
+    return shown;
+  } catch (error) {
+    console.error("[taste] couldn't read the taste summary", error);
+    return shownStory(null, story, false);
+  }
 }
 
 // Someone's page, Facebook-style: who they are and what they keep liking,
@@ -47,18 +83,25 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   const person = await getProfilePerson(id);
   if (!person) notFound();
   const query = await searchParams;
-  const show: ProfileShow = isProfileShow(query.show) ? query.show : "all";
   const before = parseBefore(query.before);
-  const [account, device] = await Promise.all([getCurrentUser(), readDevice()]);
-  const { visitor } = await getPublicIdentity(account?.role ? account : null, device);
+  const visitor = await viewer();
   const isMe = visitor?.id === person.id;
-  const summary = await getProfileSummary(person.id, isMe);
+  // What they pass on is theirs to keep from everyone else.
+  const passes = isMe || !person.hidePasses;
+  const show: ProfileShow = isProfileShow(query.show) ? query.show : "all";
+  // Their passes, asked for by someone they keep them from.
+  const keptPrivate = show === "passed" && !passes;
+  const summary = await getProfileSummary(person.id, isMe, passes);
   // Only a specific, or a thing they've done something with, can be a topic.
-  const asked = parseAbout(query.about);
-  const label = asked ? summary.topics.get(asked.toLowerCase()) : undefined;
-  const about = label ? asked : null;
-  const side: TopicSide | null = about && isTopicSide(query.side) ? query.side : null;
-  const feed = await getProfileFeed(person.id, { show, about, side, before, mine: isMe });
+  const topic = parseAbout(query.about);
+  const label = topic ? summary.topics.get(topic.toLowerCase()) : undefined;
+  const about = label ? topic : null;
+  const side: TopicSide | null =
+    about && isTopicSide(query.side) && (passes || query.side === "like") ? query.side : null;
+  const feed = keptPrivate
+    ? { cards: [], earlier: null }
+    : await getProfileFeed(person.id, { show, about, side, before, mine: isMe, passes });
+  const story = await tasteOf(person, isMe);
 
   // The same page with other filters; paging starts over.
   const href = (next: { show?: ProfileShow; about?: string | null; side?: TopicSide; before?: string | null }) => {
@@ -75,9 +118,17 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   };
 
   const nothingYet = summary.counts.homes === 0 && feed.cards.length === 0 && !before;
-  const tasteTitle = isMe ? "Your taste" : `${person.name}'s taste`;
   const chipHref = (key: string, side: TopicSide) => href({ about: key, side });
   const current = about ? { key: about.toLowerCase(), side } : null;
+  // Everyone else sees only what they've kept on; they see it all, marked.
+  const loves = isMe ? story.loves : story.loves.filter((chip) => !chip.hidden);
+  const passChips = isMe ? story.passes : passes ? story.passes.filter((chip) => !chip.hidden) : [];
+  const showTaste =
+    loves.length > 0 ||
+    passChips.length > 0 ||
+    Boolean(story.headline || story.template) ||
+    (isMe && summary.counts.homes > 0);
+  const filters = (Object.keys(PROFILE_FILTERS) as ProfileShow[]).filter((key) => key !== "passed" || passes);
 
   return (
     <main
@@ -94,13 +145,32 @@ export default async function ProfilePage({ params, searchParams }: Props) {
           homes={summary.counts.homes}
           counts={summary.counts}
           cover={summary.cover}
+          showPassed={passes}
         />
-        {(summary.taste.loves.length > 0 || summary.taste.passes.length > 0) && (
-          <section aria-label={tasteTitle} className="rounded-2xl bg-white p-4 ring-1 ring-stone-200">
-            <h2 className="text-[13px] font-semibold text-stone-600">{tasteTitle}</h2>
-            <TasteRow side="like" chips={summary.taste.loves} current={current} href={chipHref} />
-            <TasteRow side="pass" chips={summary.taste.passes} current={current} href={chipHref} />
-          </section>
+        {showTaste && (
+          <TasteStoryCard
+            name={person.name}
+            isMe={isMe}
+            headline={story.headline}
+            enough={story.enough}
+            loves={loves}
+            passes={passChips}
+            passesPrivate={isMe && person.hidePasses}
+            shown={storyWriting() && story.template ? storyNow(person.id, story) : shownStory(null, story, false)}
+            template={shownStory(null, story, false)}
+            counts={{
+              likes: summary.counts.liked,
+              passes: person.hidePasses ? 0 : summary.counts.passed,
+              comments: summary.counts.comments,
+            }}
+            current={current}
+            chipHref={chipHref}
+            controls={
+              isMe && (story.loves.length > 0 || story.passes.length > 0) ? (
+                <TasteControls loves={story.loves} passes={story.passes} hidePasses={person.hidePasses} />
+              ) : undefined
+            }
+          />
         )}
       </div>
 
@@ -135,7 +205,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
             >
               {/* One row, even on the narrowest phones. */}
               <ul className="-m-1 flex gap-1.5 overflow-x-auto p-1 [scrollbar-width:none] min-[400px]:gap-2">
-                {(Object.keys(PROFILE_FILTERS) as ProfileShow[]).map((key) => (
+                {filters.map((key) => (
                   <li key={key} className="shrink-0">
                     <Link
                       href={href({ show: key })}
@@ -166,7 +236,9 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                 </div>
               )}
             </nav>
-            {feed.cards.length > 0 || feed.earlier ? (
+            {keptPrivate ? (
+              <EmptyState icon={Lock} title={`${person.name} keeps passes private.`} />
+            ) : feed.cards.length > 0 || feed.earlier ? (
               <ProfileFeed
                 cards={feed.cards}
                 name={person.name}
@@ -192,51 +264,6 @@ export default async function ProfilePage({ params, searchParams }: Props) {
         )}
       </div>
     </main>
-  );
-}
-
-// "Loves Covered porch 3 · Kitchen 5", each one showing just those cards.
-function TasteRow({
-  side,
-  chips,
-  current,
-  href,
-}: {
-  side: TopicSide;
-  chips: TasteChip[];
-  current: { key: string; side: TopicSide | null } | null;
-  href: (key: string, side: TopicSide) => string;
-}) {
-  if (chips.length === 0) return null;
-  const like = side === "like";
-  const Icon = like ? Heart : ThumbsDown;
-  const title = like ? "Loves" : "Passes on";
-  return (
-    <div role="group" aria-label={title} className="mt-2 flex flex-wrap items-center gap-1.5">
-      <span
-        aria-hidden
-        className={cn("mr-1 flex items-center gap-1 text-[13px] font-semibold", like ? "text-rose-800" : "text-amber-800")}
-      >
-        <Icon size={14} className={like ? "fill-current" : undefined} />
-        {title}
-      </span>
-      {chips.map((chip) => (
-        <Link
-          key={chip.key}
-          href={href(chip.key, side)}
-          aria-label={`${title} ${chip.label}, ${chip.homes} ${chip.homes === 1 ? "home" : "homes"}`}
-          aria-current={current?.key === chip.key.toLowerCase() && current.side === side ? "true" : undefined}
-          className={cn(
-            "relative inline-block rounded-full px-3 py-2 text-[13px] font-semibold leading-5 ring-1 before:absolute before:inset-x-0 before:-inset-y-1",
-            like
-              ? "bg-rose-50 text-rose-900 ring-rose-200 hover:bg-rose-100 aria-[current]:ring-2 aria-[current]:ring-rose-700"
-              : "bg-amber-50 text-amber-900 ring-amber-200 hover:bg-amber-100 aria-[current]:ring-2 aria-[current]:ring-amber-700",
-          )}
-        >
-          {chip.label} <span className="tabular-nums">{chip.homes}</span>
-        </Link>
-      ))}
-    </div>
   );
 }
 

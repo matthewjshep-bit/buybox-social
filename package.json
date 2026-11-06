@@ -15,6 +15,7 @@
     "postinstall": "node scripts/copy-map-worker.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.118.0",
     "clsx": "^2.1.1",

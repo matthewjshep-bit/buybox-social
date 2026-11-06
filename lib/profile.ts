@@ -86,8 +86,6 @@ export type ProfileCard = {
   passes: string[];
 };
 
-export type TasteChip = { key: string; label: string; homes: number };
-
 const DAY = new Intl.DateTimeFormat("en-CA", {
   timeZone: PROFILE_TIME_ZONE,
   year: "numeric",
@@ -174,15 +172,15 @@ export function spotName(listing: Listing, spot: { mediaKey: string; tag: string
   return index >= 0 ? `a spot in photo ${index + 1}` : "a spot in a photo";
 }
 
-const isVideo = (photo: ListingMedia) =>
+export const isVideo = (photo: ListingMedia) =>
   photo.MediaCategory === "Video" || /\.(mp4|webm|mov)(\?|$)/i.test(photo.MediaURL);
 
 // "Sam", "Sam and Ana", "Sam, Ana and Lee"
 const names = (list: string[]) => (list.length <= 1 ? (list[0] ?? "") : `${list.slice(0, -1).join(", ")} and ${list.at(-1)}`);
 
-type ReactionRow = ReactionState & { listing_key: string; at: Date };
-type SpotRow = { listing_key: string; media_key: string; tag: string; aspect?: Aspect | null; at: Date };
-type CommentRow = {
+export type ReactionRow = ReactionState & { listing_key: string; at: Date };
+export type SpotRow = { listing_key: string; media_key: string; tag: string; aspect?: Aspect | null; at: Date };
+export type CommentRow = {
   id: string;
   listing_key: string;
   body: string;
@@ -211,6 +209,8 @@ export type ProfileRows = {
   // Homes they did more with later on the day a page starts from: that day's
   // card for each was on the page before.
   later: Set<string>;
+  // The same, leaving out passes, for a page that keeps them private.
+  laterKept?: Set<string>;
 };
 
 // How far past `before` a page looks for more that same day (no day is longer
@@ -266,25 +266,28 @@ const loadRows = cache(async (visitorId: string, before: string | null, mine: bo
           order by cl.created_at desc
           limit ${PROFILE_ROW_LIMIT}`
       : Promise.resolve([] as CommentLikeRow[]),
-    // The first thing they did on each home at or after `before`, that day or the next.
+    // The first thing they did on each home at or after `before`, that day or
+    // the next, and the first that wasn't a pass.
     until && end
-      ? sql<{ listing_key: string; at: Date }[]>`
-          select listing_key, min(at) as at from (
-            select listing_key, updated_at as at from public_reactions
+      ? sql<{ listing_key: string; at: Date; kept_at: Date | null }[]>`
+          select listing_key, min(at) as at, min(at) filter (where not pass) as kept_at from (
+            select listing_key, updated_at as at, reaction = 'dislike' as pass from public_reactions
               where visitor_id = ${visitorId} and updated_at >= ${until} and updated_at < ${end}
             union all
-            select listing_key, created_at from public_photo_likes
+            select listing_key, created_at, exists (select 1 from public_reactions r
+                where r.visitor_id = ${visitorId} and r.listing_key = pl.listing_key and r.reaction = 'dislike')
+              from public_photo_likes pl
               where visitor_id = ${visitorId} and created_at >= ${until} and created_at < ${end}
             union all
-            select listing_key, created_at from public_photo_dislikes
+            select listing_key, created_at, true from public_photo_dislikes
               where visitor_id = ${visitorId} and created_at >= ${until} and created_at < ${end}
             union all
-            select listing_key, created_at from public_comments
+            select listing_key, created_at, false from public_comments
               where visitor_id = ${visitorId} and created_at >= ${until} and created_at < ${end}
             ${
               mine
                 ? sql`union all
-                    select c.listing_key, cl.created_at from public_comment_likes cl
+                    select c.listing_key, cl.created_at, false from public_comment_likes cl
                     join public_comments c on c.id = cl.comment_id
                     where cl.visitor_id = ${visitorId} and c.visitor_id <> ${visitorId}
                       and cl.created_at >= ${until} and cl.created_at < ${end}`
@@ -292,7 +295,7 @@ const loadRows = cache(async (visitorId: string, before: string | null, mine: bo
             }
           ) t
           group by listing_key`
-      : Promise.resolve([] as { listing_key: string; at: Date }[]),
+      : Promise.resolve([] as { listing_key: string; at: Date; kept_at: Date | null }[]),
   ]);
 
   // Each home once, its photos in order, its status from the column, and
@@ -332,22 +335,57 @@ const loadRows = cache(async (visitorId: string, before: string | null, mine: bo
     standing,
     floor: floors.length ? new Date(Math.max(...floors)) : null,
     later: new Set(after.filter((row) => dayOf(row.at) === day).map((row) => row.listing_key)),
+    laterKept: new Set(
+      after.filter((row) => row.kept_at && dayOf(row.kept_at) === day).map((row) => row.listing_key),
+    ),
   };
 });
 
-// The person behind a profile: only their first name and when they joined.
+// Their rows as someone else sees them when they keep passes private: no
+// passes, nothing they did on a home they passed on (a like there would give
+// the pass away), no spots or facts they didn't like, and nothing said against
+// a home they liked. Comments stay: they're words, not passes.
+// (Where the read stopped short stays as it was: at worst a page ends a little sooner.)
+export function withoutPasses(rows: ProfileRows): ProfileRows {
+  return {
+    ...rows,
+    reactions: rows.reactions.filter((r) => r.reaction !== "dislike").map((r) => ({ ...r, disliked: [] })),
+    likes: rows.likes.filter((row) => rows.standing.get(row.listing_key) !== "dislike"),
+    dislikes: [],
+    standing: new Map([...rows.standing].filter(([, sentiment]) => sentiment !== "dislike")),
+    later: rows.laterKept ?? rows.later,
+  };
+}
+
+// Everything public they've done, newest first, for what their page says
+// about them overall (their taste). Read once per page, with the feed's first page.
+export const getProfileRows = (visitorId: string, mine: boolean) => loadRows(visitorId, null, mine);
+
+// The person behind a profile: only their first name, when they joined, and
+// what they keep off their page.
 export const getProfilePerson = cache(async (visitorId: string) => {
-  const [visitor] = await sql<{ id: string; first_name: string; created_at: Date }[]>`
-    select id, first_name, created_at from visitors where id::text = ${visitorId}`;
-  return visitor ? { id: visitor.id, name: visitor.first_name, since: visitor.created_at.toISOString() } : null;
+  const [visitor] = await sql<
+    { id: string; first_name: string; created_at: Date; hide_passes: boolean; taste_hidden: unknown }[]
+  >`
+    select id, first_name, created_at, hide_passes, taste_hidden from visitors where id::text = ${visitorId}`;
+  if (!visitor) return null;
+  const hidden = Array.isArray(visitor.taste_hidden) ? visitor.taste_hidden : [];
+  return {
+    id: visitor.id,
+    name: visitor.first_name,
+    since: visitor.created_at.toISOString(),
+    hidePasses: visitor.hide_passes,
+    // Lower-case keys of the things their taste says that they've switched off.
+    tasteHidden: hidden.filter((key): key is string => typeof key === "string").map((key) => key.toLowerCase()),
+  };
 });
 
 export type ProfilePerson = NonNullable<Awaited<ReturnType<typeof getProfilePerson>>>;
 
-const photoOf = (listing: Listing, mediaKey: string) => listing.Media.find((m) => mediaKeyOf(m) === mediaKey);
+export const photoOf = (listing: Listing, mediaKey: string) => listing.Media.find((m) => mediaKeyOf(m) === mediaKey);
 
 // The specific a liked or disliked spot or fact counts toward.
-const aspectOf = (listing: Listing, row: SpotRow): Aspect | null => {
+export const aspectOf = (listing: Listing, row: SpotRow): Aspect | null => {
   if (row.aspect !== undefined) return row.aspect;
   if (row.media_key === FACTS) return aspectOfFact(row.tag);
   const photo = photoOf(listing, row.media_key);
@@ -355,7 +393,7 @@ const aspectOf = (listing: Listing, row: SpotRow): Aspect | null => {
 };
 
 // The known thing a spot is on ("Front door"), if any. Facts aren't things.
-const thingAt = (listing: Listing, mediaKey: string, tag: string) =>
+export const thingAt = (listing: Listing, mediaKey: string, tag: string) =>
   mediaKey === FACTS ? null : thingOf(photoOf(listing, mediaKey), tag);
 
 // Named things a sentence lists on one side before "and 2 more".
@@ -638,10 +676,11 @@ export function parseAbout(value: unknown) {
   return about && about.length <= 60 ? about : null;
 }
 
-// A page of someone's feed, newest first.
+// A page of someone's feed, newest first. `passes: false` leaves out what
+// they passed on, for someone else's view when they keep that private.
 export const getProfileFeed = (
   visitorId: string,
-  options: Partial<FeedFilters> & { before?: string | null; mine?: boolean } = {},
+  options: Partial<FeedFilters> & { before?: string | null; mine?: boolean; passes?: boolean } = {},
 ) =>
   loadFeed(
     visitorId,
@@ -650,6 +689,7 @@ export const getProfileFeed = (
     options.side ?? null,
     options.before ?? null,
     options.mine ?? false,
+    options.passes ?? true,
   );
 
 // A filter can pass over everything one read holds, so a page reads further
@@ -662,10 +702,12 @@ const loadFeed = cache(
     side: TopicSide | null,
     before: string | null,
     mine: boolean,
+    passes: boolean,
   ) => {
     let from = before;
     for (let read = 0; read < 4; read++) {
-      const page = feedPage(await loadRows(visitorId, from, mine), { show, about, side }, from);
+      const rows = await loadRows(visitorId, from, mine);
+      const page = feedPage(passes ? rows : withoutPasses(rows), { show, about, side }, from);
       if (page.cards.length > 0 || !page.earlier) return page;
       from = page.earlier;
     }
@@ -674,9 +716,9 @@ const loadFeed = cache(
 );
 
 // What a person's page says about them overall: counts, how many homes, a
-// photo for the band at the top, what they keep liking and passing on, and
-// the topics `?about=` may name.
-export const getProfileSummary = cache(async (visitorId: string, mine: boolean) => {
+// photo for the band at the top, and the topics `?about=` may name. Without
+// `passes`, as someone else sees it when they keep passes private.
+export const getProfileSummary = cache(async (visitorId: string, mine: boolean, passes = true) => {
   const [[counts], rows] = await Promise.all([
     sql<{ liked: number; passed: number; comments: number; homes: number }[]>`
       select
@@ -691,12 +733,20 @@ export const getProfileSummary = cache(async (visitorId: string, mine: boolean) 
         (select count(*)::int from public_comments where visitor_id = ${visitorId}) as comments,
         (select count(*)::int from (
           select listing_key from public_reactions where visitor_id = ${visitorId}
-          union select listing_key from public_photo_likes where visitor_id = ${visitorId}
-          union select listing_key from public_photo_dislikes where visitor_id = ${visitorId}
+            ${passes ? sql`` : sql`and reaction = 'like'`}
+          union select listing_key from public_photo_likes pl where visitor_id = ${visitorId}
+            ${
+              passes
+                ? sql``
+                : sql`and not exists (select 1 from public_reactions r
+                    where r.visitor_id = ${visitorId} and r.listing_key = pl.listing_key and r.reaction = 'dislike')`
+            }
+          ${passes ? sql`union select listing_key from public_photo_dislikes where visitor_id = ${visitorId}` : sql``}
           union select listing_key from public_comments where visitor_id = ${visitorId}) h) as homes`,
     loadRows(visitorId, null, mine),
   ]);
-  return { counts, cover: coverOf(rows), taste: tasteOf(rows), topics: topicsOf(rows) };
+  const seen = passes ? rows : withoutPasses(rows);
+  return { counts: passes ? counts : { ...counts, passed: 0 }, cover: coverOf(seen), topics: topicsOf(seen) };
 });
 
 // The photo they liked the most spots in (the newest, on a tie).
@@ -728,46 +778,4 @@ function topicsOf(rows: ProfileRows) {
   for (const row of [...rows.likes, ...rows.dislikes]) add(row.listing_key, row.media_key, row.tag);
   for (const c of rows.comments) add(c.listing_key, c.media_key, c.spot);
   return topics;
-}
-
-// What they keep liking and passing on, by the number of homes. A thing or
-// specific goes on whichever side has more homes, never both. Facts are never
-// things, and price and location are left out of what they love. (P2 replaces
-// this with the taste story.)
-function tasteOf(rows: ProfileRows) {
-  // By name, so the specific "Natural light" and the thing "Natural light" are one.
-  const tally = new Map<string, { key: string; label: string; liked: Set<string>; passed: Set<string> }>();
-  const count = (label: string, side: "liked" | "passed", home: string, aspect?: Aspect) => {
-    const entry = tally.get(label.toLowerCase()) ?? { key: label, label, liked: new Set(), passed: new Set() };
-    if (aspect) entry.key = aspect;
-    entry[side].add(home);
-    tally.set(label.toLowerCase(), entry);
-  };
-  for (const r of rows.reactions) {
-    for (const id of r.liked) count(aspectLabel(id), "liked", r.listing_key, id);
-    for (const id of r.disliked) count(aspectLabel(id), "passed", r.listing_key, id);
-  }
-  for (const [list, side] of [
-    [rows.likes, "liked"],
-    [rows.dislikes, "passed"],
-  ] as const) {
-    for (const row of list) {
-      const listing = rows.listings.get(row.listing_key);
-      if (!listing) continue;
-      const aspect = aspectOf(listing, row);
-      if (aspect) count(aspectLabel(aspect), side, row.listing_key, aspect);
-      const thing = thingAt(listing, row.media_key, row.tag);
-      if (thing && !isPointTag(thing)) count(thing, side, row.listing_key);
-    }
-  }
-  const all = [...tally.values()].map((e) => ({ ...e, liked: e.liked.size, passed: e.passed.size }));
-  const top = (side: "liked" | "passed", skip: string[]) => {
-    const other = side === "liked" ? "passed" : "liked";
-    return all
-      .filter((e) => e[side] > e[other] && !skip.includes(e.key))
-      .sort((a, b) => b[side] - a[side] || a.label.localeCompare(b.label))
-      .slice(0, 3)
-      .map((e): TasteChip => ({ key: e.key, label: e.label, homes: e[side] }));
-  };
-  return { loves: top("liked", ["price", "location"]), passes: top("passed", []) };
 }
