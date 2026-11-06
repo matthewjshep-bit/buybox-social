@@ -1,10 +1,10 @@
-import { Heart, Lock, MapPin, MessageCircle, ThumbsDown } from "lucide-react";
+import { Heart, Lock, MapPin, MessageCircle, Tag, ThumbsDown } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { MoreText } from "@/app/people/[id]/client";
-import { cn, formatPrice, timeAgo } from "@/lib/format";
-import { dayHeading, type PinKind, type ProfileCard } from "@/lib/profile";
+import { cn, formatPrice } from "@/lib/format";
+import { cardTime, dayHeading, type PinKind, type ProfileCard } from "@/lib/profile";
 
 // Everything someone has done, Facebook-style: one card per home per day,
 // under "Today", "Yesterday" and so on. Each card shows the photo with the
@@ -63,14 +63,15 @@ function Card({ card, name, isMe }: { card: ProfileCard; name: string; isMe: boo
   const { home, photo } = card;
   const href = `/homes/${encodeURIComponent(home.key)}${photo ? `?photo=${photo.index}` : ""}`;
   // A day when all they did was like someone's comment: a small card, no photo.
-  const quiet = !card.liked && !card.passed && !card.commented;
+  const { quiet } = card;
   return (
     <li className="relative overflow-hidden rounded-2xl bg-white ring-1 ring-stone-200">
-      {/* The whole card opens the home. Links and buttons in it sit above this. */}
+      {/* The whole card opens the home. Links and buttons in it sit above this.
+          Its focus ring is drawn inside, where the card's rounded edge can't cut it off. */}
       <Link
         href={href}
         aria-label={`${home.address}: ${card.sentence}`}
-        className="absolute inset-0 z-10 rounded-2xl focus-visible:outline-offset-[-3px]"
+        className="absolute inset-0 z-10 scroll-mt-[var(--filters)] rounded-2xl focus-visible:outline-offset-[-3px]!"
       />
       <div className="flex items-start gap-3 p-4 pb-3">
         <Avatar name={name} />
@@ -79,7 +80,7 @@ function Card({ card, name, isMe }: { card: ProfileCard; name: string; isMe: boo
           {" "}
           <span className="whitespace-nowrap text-[13px] text-stone-600">
             {"· "}
-            <time dateTime={card.at}>{timeAgo(card.at)}</time>
+            <time dateTime={card.at}>{cardTime(card.at)}</time>
           </span>
         </p>
       </div>
@@ -133,12 +134,13 @@ function Card({ card, name, isMe }: { card: ProfileCard; name: string; isMe: boo
             <li key={comment.id} className="rounded-2xl bg-stone-50 p-3">
               {comment.spot && (
                 <span className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[13px] font-semibold text-stone-700 ring-1 ring-stone-200">
-                  <MapPin aria-hidden size={12} />
-                  {comment.spot}
+                  {comment.spot.fact ? <Tag aria-hidden size={12} /> : <MapPin aria-hidden size={12} />}
+                  {comment.spot.name}
                 </span>
               )}
-              <MoreText className="text-[15px] leading-snug text-ink">{comment.body}</MoreText>
-              <CommentMeta comment={comment} />
+              <MoreText className="text-[15px] leading-snug text-ink" meta={commentMeta(comment)}>
+                {comment.body}
+              </MoreText>
             </li>
           ))}
         </ul>
@@ -152,7 +154,7 @@ function Card({ card, name, isMe }: { card: ProfileCard; name: string; isMe: boo
           </p>
           <ul className="mt-0.5 flex flex-col gap-0.5">
             {card.likedComments.map((like, i) => (
-              <li key={i} className="truncate text-[13px] text-stone-700">
+              <li key={i} className="line-clamp-2 break-words text-[13px] text-stone-700">
                 {quiet ? `${like.author}: ` : `You liked ${like.author}'s comment, `}
                 &ldquo;{like.body}&rdquo;
               </li>
@@ -165,15 +167,17 @@ function Card({ card, name, isMe }: { card: ProfileCard; name: string; isMe: boo
   );
 }
 
-function CommentMeta({ comment }: { comment: ProfileCard["comments"][number] }) {
+// "Replied to Sam · 3 likes · 2 replies", or nothing.
+function commentMeta(comment: ProfileCard["comments"][number]) {
   const parts: ReactNode[] = [];
   if (comment.replyTo) {
     parts.push(
       <span key="reply">
         Replied to{" "}
+        {/* A full-size target, though it reads as a word. */}
         <Link
           href={`/people/${comment.replyTo.profileId}`}
-          className="relative z-20 font-semibold text-ink underline-offset-2 hover:underline"
+          className="relative z-20 scroll-mt-[var(--filters)] font-semibold text-ink underline-offset-2 before:absolute before:-inset-x-2 before:-inset-y-[15px] hover:underline"
         >
           {comment.replyTo.name}
         </Link>
@@ -183,16 +187,12 @@ function CommentMeta({ comment }: { comment: ProfileCard["comments"][number] }) 
   if (comment.likes > 0) parts.push(`${comment.likes} ${comment.likes === 1 ? "like" : "likes"}`);
   if (comment.replies > 0) parts.push(`${comment.replies} ${comment.replies === 1 ? "reply" : "replies"}`);
   if (parts.length === 0) return null;
-  return (
-    <p className="mt-1 text-[13px] text-stone-600">
-      {parts.map((part, i) => (
-        <span key={i}>
-          {i > 0 && " · "}
-          {part}
-        </span>
-      ))}
-    </p>
-  );
+  return parts.map((part, i) => (
+    <span key={i}>
+      {i > 0 && " · "}
+      {part}
+    </span>
+  ));
 }
 
 // The photo at its own shape, so each spot lands where it was picked: dots for

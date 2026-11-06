@@ -28,8 +28,9 @@ export function ProfileHeader({
       <div aria-hidden className="relative h-[120px] overflow-hidden bg-stone-200">
         {cover && (
           <>
-            <Image src={cover} alt="" fill sizes="96px" className="scale-125 object-cover blur-2xl" />
-            <span className="absolute inset-0 bg-black/40" />
+            {/* Soft enough to sit behind the name, clear enough to read as a home. */}
+            <Image src={cover} alt="" fill sizes="(min-width: 1024px) 360px, 600px" className="scale-110 object-cover blur-sm" />
+            <span className="absolute inset-0 bg-black/15" />
           </>
         )}
       </div>
@@ -47,18 +48,21 @@ export function ProfileHeader({
           Looking since {sinceLabel(since)}
           {homes > 0 && ` · ${homes} ${homes === 1 ? "home" : "homes"}`}
         </p>
-        <p className="mt-2 text-[15px] text-stone-700">
-          <strong className="font-semibold text-ink tabular-nums">{counts.liked}</strong> liked
-          {showPassed && (
-            <>
-              {" · "}
-              <strong className="font-semibold text-ink tabular-nums">{counts.passed}</strong> passed
-            </>
-          )}
-          {" · "}
-          <strong className="font-semibold text-ink tabular-nums">{counts.comments}</strong>{" "}
-          {counts.comments === 1 ? "comment" : "comments"}
-        </p>
+        {/* Nothing yet says itself below; three zeros here would only repeat it. */}
+        {counts.liked + (showPassed ? counts.passed : 0) + counts.comments > 0 && (
+          <p className="mt-2 text-[15px] text-stone-700">
+            <strong className="font-semibold text-ink tabular-nums">{counts.liked}</strong> liked
+            {showPassed && (
+              <>
+                {" · "}
+                <strong className="font-semibold text-ink tabular-nums">{counts.passed}</strong> passed
+              </>
+            )}
+            {" · "}
+            <strong className="font-semibold text-ink tabular-nums">{counts.comments}</strong>{" "}
+            {counts.comments === 1 ? "comment" : "comments"}
+          </p>
+        )}
         {isMe && (
           <>
             <p className="mt-3 flex gap-1.5 text-[13px] leading-snug text-stone-600">
