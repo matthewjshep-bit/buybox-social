@@ -78,30 +78,40 @@ const likedThings = (liked: Aspect[], photoTags: string[]) => {
 // "liked the kitchen and vibe", "passed on this", "passed, didn't like the yard",
 // "liked the marble counters" (from a photo). The negative choice is called
 // Pass everywhere, so it's worded that way.
-export function describeReaction({ reaction, liked, disliked }: ReactionState, photoTags: string[] = []): string {
-  // Spots that aren't named things ("@42,61") are counted, not listed.
-  const spots = photoTags.filter((tag) => tag.startsWith("@")).length;
-  const named = likedThings(
-    liked,
-    photoTags.filter((tag) => !tag.startsWith("@")),
-  );
-  const spotText = spots === 0 ? null : spots === 1 ? "a spot in a photo" : `${spots} spots in the photos`;
-  const hasLikes = named.length > 0 || spotText !== null;
-  const likes = [named.length ? listOf(named) : null, spotText].filter(Boolean).join(" and ");
-  const dislikes = disliked.map(aspectLabel) as string[];
+export function describeReaction(
+  { reaction, liked, disliked }: ReactionState,
+  photoTags: string[] = [],
+  // Things not liked in the photos, or facts: "the price".
+  photoDislikes: string[] = [],
+): string {
+  // Specifics and named things listed; spots that aren't named things
+  // ("@42,61") counted. Null when there are none.
+  const things = (aspects: Aspect[], tags: string[]) => {
+    const spots = tags.filter((tag) => tag.startsWith("@")).length;
+    const named = likedThings(
+      aspects,
+      tags.filter((tag) => !tag.startsWith("@")),
+    );
+    const spotText = spots === 0 ? null : spots === 1 ? "a spot in a photo" : `${spots} spots in the photos`;
+    return [named.length ? listOf(named) : null, spotText].filter(Boolean).join(" and ") || null;
+  };
+  const likes = things(liked, photoTags);
+  const dislikes = things(disliked, photoDislikes);
   if (reaction === "like") {
-    if (hasLikes && dislikes.length) return `liked ${likes} but not ${listOf(dislikes)}`;
-    if (hasLikes) return `liked ${likes}`;
-    if (dislikes.length) return `liked this, but not ${listOf(dislikes)}`;
+    if (likes && dislikes) return `liked ${likes} but not ${dislikes}`;
+    if (likes) return `liked ${likes}`;
+    if (dislikes) return `liked this, but not ${dislikes}`;
     return "liked this";
   }
   if (reaction === "dislike") {
-    if (dislikes.length && hasLikes) return `passed, didn't like ${listOf(dislikes)} but liked ${likes}`;
-    if (dislikes.length) return `passed, didn't like ${listOf(dislikes)}`;
-    if (hasLikes) return `passed, but liked ${likes}`;
+    if (dislikes && likes) return `passed, didn't like ${dislikes} but liked ${likes}`;
+    if (dislikes) return `passed, didn't like ${dislikes}`;
+    if (likes) return `passed, but liked ${likes}`;
     return "passed on this";
   }
-  if (hasLikes) return `liked ${likes}`;
+  if (likes && dislikes) return `liked ${likes} but not ${dislikes}`;
+  if (likes) return `liked ${likes}`;
+  if (dislikes) return `didn't like ${dislikes}`;
   return "reacted";
 }
 

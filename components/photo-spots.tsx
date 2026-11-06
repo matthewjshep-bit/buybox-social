@@ -1,17 +1,36 @@
 "use client";
 
-import { Heart, MessageCircle, X } from "lucide-react";
-import { useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type RefObject } from "react";
+import { Heart, MessageCircle, ThumbsDown, X } from "lucide-react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { CommentComposer, type SpotRef } from "@/components/listing-thread";
 import type { usePhotoLikes } from "@/components/photo-likes";
 import { isNear, keepClearOf, PhotoBox, photoFoot, type Box } from "@/components/reel-photos";
 import { cn } from "@/lib/format";
 import type { Listing, ListingMedia } from "@/lib/listings/types";
-import { mediaKeyOf, photoTags, spotLabel, spotPhrase, tagPhrase, tagPosition, thingOf, type PhotoSpot } from "@/lib/photos";
+import {
+  FACTS,
+  mediaKeyOf,
+  photoTags,
+  spotLabel,
+  spotPhrase,
+  tagPhrase,
+  tagPosition,
+  thingOf,
+  type PhotoSpot,
+} from "@/lib/photos";
 import type { TimelineComment, TimelineItem } from "@/lib/timeline";
 
-// Tap anywhere on a photo to like or comment on that spot: the front door, the
-// view from the deck. A ring marks where you tapped and a card opens beside it.
+// Tap anywhere on a photo to like, dislike or comment on that spot: the front
+// door, the view from the deck. A ring marks where you tapped and a card opens
+// beside it. (The same card opens on the home's facts: the price, the beds.)
 // What people liked and talked about stays marked where they did, small and
 // quiet, so the photo still comes first; what they said opens out beside each
 // spot when you ask to see it (or open the comments).
@@ -20,10 +39,11 @@ import type { TimelineComment, TimelineItem } from "@/lib/timeline";
 // card takes focus.
 export type PickedSpot = PhotoSpot & { keyboard?: boolean };
 
-type Photos = ReturnType<typeof usePhotoLikes>;
+export type Photos = ReturnType<typeof usePhotoLikes>;
 
-// "the front door"; "a spot in photo 3"
+// "the front door"; "a spot in photo 3"; "the price"
 export function spotName(listing: Listing, spot: SpotRef) {
+  if (spot.mediaKey === FACTS) return tagPhrase(spot.tag);
   const index = listing.Media.findIndex((m) => mediaKeyOf(m) === spot.mediaKey);
   const thing = thingOf(listing.Media[index], spot.tag);
   if (thing) return tagPhrase(thing);
@@ -48,7 +68,7 @@ const subscribe = (onChange: () => void) => {
   query.addEventListener("change", onChange);
   return () => query.removeEventListener("change", onChange);
 };
-const useFinePointer = () =>
+export const useFinePointer = () =>
   useSyncExternalStore(
     subscribe,
     () => matchMedia(FINE).matches,
@@ -61,7 +81,9 @@ type Pin = {
   y: number;
   comments: TimelineComment[];
   likes: number;
-  liked: boolean;
+  dislikes: number;
+  // Yours.
+  reaction: "like" | "dislike" | null;
 };
 
 // Everything said and liked about spots in this photo, one pin per spot.
@@ -71,7 +93,7 @@ function pinsOf(photo: ListingMedia, items: TimelineItem[], photos: Photos): Pin
   const pin = (tag: string) => {
     const at = tagPosition(photo, tag);
     if (!at) return null;
-    const existing = pins.get(tag) ?? { tag, ...at, comments: [], likes: 0, liked: false };
+    const existing = pins.get(tag) ?? { tag, ...at, comments: [], likes: 0, dislikes: 0, reaction: null };
     pins.set(tag, existing);
     return existing;
   };
@@ -79,12 +101,10 @@ function pinsOf(photo: ListingMedia, items: TimelineItem[], photos: Photos): Pin
     if (item.kind === "comment" && !item.parentId && item.spot?.mediaKey === mediaKey) pin(item.spot.tag)?.comments.push(item);
   }
   for (const tag of photos.likedTags(photo)) {
-    const count = photos.count(photo, tag);
-    const found = count > 0 ? pin(tag) : null;
-    if (found) {
-      found.likes = count;
-      found.liked = photos.isLiked(photo, tag);
-    }
+    const likes = photos.count(photo, tag);
+    const dislikes = photos.dislikes(photo, tag);
+    const found = likes + dislikes > 0 ? pin(tag) : null;
+    if (found) Object.assign(found, { likes, dislikes, reaction: photos.reactionOf(photo, tag) });
   }
   return [...pins.values()];
 }
@@ -94,12 +114,20 @@ function pinsOf(photo: ListingMedia, items: TimelineItem[], photos: Photos): Pin
 const away = (x: number, y: number, gap: string) =>
   `${x < 0.3 ? "-1.25rem" : x > 0.7 ? "calc(-100% + 1.25rem)" : "-50%"} ${y < 0.42 ? gap : `calc(-100% - ${gap})`}`;
 
-// The same, for something placed by fractions of the photo.
-const side = (x: number, y: number): CSSProperties => ({
-  left: `${x * 100}%`,
-  top: `${y * 100}%`,
-  translate: away(x, y, "1.4rem"),
-});
+// A card's width: its own, or the screen's, less a margin.
+const CARD = "min(19rem, 100cqw - 1.5rem)";
+
+// Where a card about a spot goes: beside it, opening the same way as above,
+// but never past the photo's edges, however near one the spot is.
+const side = (x: number, y: number): CSSProperties => {
+  const at = `${x * 100}%`;
+  const want = x < 0.3 ? `${at} - 1.25rem` : x > 0.7 ? `${at} - ${CARD} + 1.25rem` : `${at} - ${CARD} / 2`;
+  return {
+    left: `clamp(0.75rem, ${want}, 100% - ${CARD} - 0.75rem)`,
+    top: `${y * 100}%`,
+    translate: `0 ${y < 0.42 ? "1.4rem" : "calc(-100% - 1.4rem)"}`,
+  };
+};
 
 // The photo, and the words and buttons over it, in the layer's own terms. Kept
 // up to date as they change: the description opening, the window turning.
@@ -250,9 +278,12 @@ export function SpotLayer({
   );
 }
 
-// A spot as people left it: a heart exactly where it was placed (or, if it's
-// only been talked about, who said something), always; the latest comment
-// beside it when the comments are showing.
+// "1 like", "2 dislikes"
+const counted = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
+
+// A spot as people left it: a heart exactly where it was placed (a thumbs-down
+// if it's only been disliked; who said something, if only talked about),
+// always; the latest comment beside it when the comments are showing.
 function SpotPin({
   pin,
   label,
@@ -268,13 +299,14 @@ function SpotPin({
   const said = latest
     ? `${latest.name}: ${latest.body}${pin.comments.length > 1 ? `, and ${pin.comments.length - 1} more` : ""}`
     : null;
-  const likes = pin.likes > 0 ? `${pin.likes} ${pin.likes === 1 ? "like" : "likes"}` : null;
+  const likes = pin.likes > 0 ? counted(pin.likes, "like") : null;
+  const dislikes = pin.dislikes > 0 ? counted(pin.dislikes, "dislike") : null;
   return (
     <div style={{ left: `${pin.x * 100}%`, top: `${pin.y * 100}%` }} className="absolute size-0">
       <button
         type="button"
         onClick={onOpen}
-        aria-label={`${label}: ${[said, likes].filter(Boolean).join(", ")}`}
+        aria-label={`${label}: ${[said, likes, dislikes].filter(Boolean).join(", ")}`}
         // A fingertip to tap; a small frosted dot to see, taking on the photo's
         // colours behind it.
         className="group pointer-events-auto absolute flex size-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center animate-[nudge-in_250ms_ease-out_both]"
@@ -286,8 +318,13 @@ function SpotPin({
           {pin.likes > 0 ? (
             <>
               {/* Yours, faintly rose; everyone else's, white. */}
-              <Heart size={10} strokeWidth={0} className={pin.liked ? "fill-rose-400" : "fill-white/90"} />
+              <Heart size={10} strokeWidth={0} className={pin.reaction === "like" ? "fill-rose-400" : "fill-white/90"} />
               {pin.likes > 1 && <span className="tabular-nums">{pin.likes}</span>}
+            </>
+          ) : pin.dislikes > 0 ? (
+            <>
+              <ThumbsDown size={10} className={pin.reaction === "dislike" ? "text-amber-300" : "text-white/90"} />
+              {pin.dislikes > 1 && <span className="tabular-nums">{pin.dislikes}</span>}
             </>
           ) : (
             // Only talked about: who said something.
@@ -348,10 +385,6 @@ function SpotCard({
   onComment: () => void;
   onPosted: () => void;
 }) {
-  const liked = photos.isLiked(photo, spot.tag);
-  const likes = photos.count(photo, spot.tag);
-  const phrase = spotPhrase(photo, spot.tag);
-  const label = spotLabel(photo, spot.tag);
   return (
     <>
       <span
@@ -360,82 +393,180 @@ function SpotCard({
         className="pointer-events-none absolute size-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-white/20 shadow-[0_0_0_2px_rgb(0_0_0/0.25),0_4px_12px_rgb(0_0_0/0.35)] animate-[nudge-in_200ms_ease-out_both]"
       />
       {!ringOnly && (
-        <div
-          role="group"
-          aria-label={label}
-          data-spot-card
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.stopPropagation();
-              onClose();
-            }
-          }}
+        <ReactCard
+          listingKey={listingKey}
+          where={photo}
+          spot={{ mediaKey: spot.mediaKey, tag: spot.tag }}
+          label={spotLabel(photo, spot.tag)}
+          phrase={spotPhrase(photo, spot.tag)}
+          comments={comments}
+          photos={photos}
+          inline={inline}
+          keyboard={spot.keyboard}
+          onClose={onClose}
+          onComment={onComment}
+          onPosted={onPosted}
           style={side(spot.x, spot.y)}
-          className="pointer-events-auto absolute w-[min(19rem,calc(100cqw-1.5rem))] rounded-2xl bg-white p-3 text-ink shadow-[0_12px_40px_rgb(0_0_0/0.35)] animate-[nudge-in_200ms_ease-out_both]"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <p className="truncate pl-1 text-[15px] font-semibold">{label}</p>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="-mr-1 flex size-8 shrink-0 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-ink"
-            >
-              <X aria-hidden size={16} />
-            </button>
-          </div>
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              autoFocus={spot.keyboard}
-              aria-pressed={liked}
-              aria-label={`Like ${phrase}${likes > 0 ? `, ${likes} ${likes === 1 ? "like" : "likes"}` : ""}`}
-              disabled={!photos.enabled}
-              onClick={() => photos.set(photo, spot.tag, !liked)}
-              className={cn(
-                "flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl text-sm font-semibold ring-1 transition-colors",
-                liked ? "bg-rose-50 text-rose-700 ring-rose-200" : "ring-stone-300 hover:bg-stone-50",
-              )}
-            >
-              <Heart aria-hidden size={16} className={cn(liked && "fill-rose-500 text-rose-500")} />
-              {liked ? "Liked" : "Like"}
-              {likes > 0 && <span className="tabular-nums text-stone-500">{likes}</span>}
-            </button>
-            {!inline && (
-              <button
-                type="button"
-                onClick={onComment}
-                className="flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl text-sm font-semibold ring-1 ring-stone-300 hover:bg-stone-50"
-              >
-                <MessageCircle aria-hidden size={16} />
-                Comment
-                {comments.length > 0 && <span className="tabular-nums text-stone-500">{comments.length}</span>}
-              </button>
-            )}
-          </div>
-          {inline && (
-            <div className="mt-2">
-              {comments.length > 0 && (
-                <ul aria-label={`Comments on ${phrase}`} className="mb-2 flex max-h-40 flex-col gap-2 overflow-y-auto px-1">
-                  {comments.map((comment) => (
-                    <li key={comment.id} className="text-sm leading-snug">
-                      <span className="font-semibold">{comment.name}</span> {comment.body}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <CommentComposer
-                listingKey={listingKey}
-                spot={{ mediaKey: spot.mediaKey, tag: spot.tag }}
-                placeholder={`Comment on ${phrase}…`}
-                compact
-                autoFocus={!spot.keyboard}
-                onPosted={onPosted}
-              />
-            </div>
-          )}
-        </div>
+        />
       )}
     </>
+  );
+}
+
+// A card to like, dislike or say something about one thing: a spot in a photo,
+// or one of the home's facts. What's been said and the box to say more come
+// first; Like, and a smaller Dislike, last, nearest where you tapped (the card
+// opens above it, unless that's off the top).
+export function ReactCard({
+  listingKey,
+  where,
+  spot,
+  label,
+  phrase,
+  comments,
+  photos,
+  inline,
+  keyboard = false,
+  onClose,
+  onComment,
+  onPosted,
+  extra,
+  style,
+  className,
+}: {
+  listingKey: string;
+  // The photo it's in, or what stands in for one (the facts).
+  where: ListingMedia | string;
+  spot: SpotRef;
+  // "Front door"; and in a sentence, "the front door".
+  label: string;
+  phrase: string;
+  comments: TimelineComment[];
+  photos: Photos;
+  // Type the comment right here (a mouse or trackpad), rather than in a sheet.
+  inline: boolean;
+  // Opened by keyboard: Like takes focus.
+  keyboard?: boolean;
+  onClose: () => void;
+  // Comment in the sheet below (touchscreens).
+  onComment: () => void;
+  onPosted: () => void;
+  // Anything else this thing offers (the address: the map).
+  extra?: ReactNode;
+  style?: CSSProperties;
+  className?: string;
+}) {
+  const reaction = photos.reactionOf(where, spot.tag);
+  const likes = photos.count(where, spot.tag);
+  const dislikes = photos.dislikes(where, spot.tag);
+  const choose = (value: "like" | "dislike") => photos.set(where, spot.tag, reaction === value ? null : value);
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      data-spot-card
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onClose();
+        }
+      }}
+      style={style}
+      className={cn(
+        "pointer-events-auto absolute w-[min(19rem,calc(100cqw-1.5rem))] rounded-2xl bg-white p-3 text-ink shadow-[0_12px_40px_rgb(0_0_0/0.35)] [text-shadow:none] animate-[nudge-in_200ms_ease-out_both]",
+        className,
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p className="truncate pl-1 text-[15px] font-semibold">{label}</p>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="-mr-1 flex size-8 shrink-0 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-ink"
+        >
+          <X aria-hidden size={16} />
+        </button>
+      </div>
+
+      <div className="mt-2">
+        {inline ? (
+          <>
+            {comments.length > 0 && (
+              <ul aria-label={`Comments on ${phrase}`} className="mb-2 flex max-h-40 flex-col gap-2 overflow-y-auto px-1">
+                {comments.map((comment) => (
+                  <li key={comment.id} className="text-sm leading-snug">
+                    <span className="font-semibold">{comment.name}</span> {comment.body}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <CommentComposer
+              listingKey={listingKey}
+              spot={spot}
+              placeholder={`Comment on ${phrase}…`}
+              compact
+              autoFocus={!keyboard}
+              onPosted={onPosted}
+            />
+          </>
+        ) : (
+          // Looks like the box it opens: the keyboard would cover the photo
+          // here, so it's typed in a sheet below.
+          <button
+            type="button"
+            onClick={onComment}
+            className="flex min-h-10 w-full items-center gap-2 rounded-full bg-stone-100 pl-4 pr-3 text-left text-sm text-stone-500 hover:bg-stone-200"
+          >
+            <span className="min-w-0 flex-1 truncate">Comment on {phrase}…</span>
+            {comments.length > 0 && (
+              <span className="flex shrink-0 items-center gap-1 font-semibold tabular-nums text-stone-700">
+                <MessageCircle aria-hidden size={14} />
+                {comments.length}
+                <span className="sr-only"> {comments.length === 1 ? "comment" : "comments"} so far</span>
+              </span>
+            )}
+          </button>
+        )}
+      </div>
+
+      {extra}
+
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          autoFocus={keyboard}
+          aria-pressed={reaction === "like"}
+          aria-label={`Like ${phrase}${likes > 0 ? `, ${counted(likes, "like")}` : ""}`}
+          disabled={!photos.enabled}
+          onClick={() => choose("like")}
+          className={cn(
+            "flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl text-sm font-semibold ring-1 transition-colors",
+            reaction === "like" ? "bg-rose-50 text-rose-700 ring-rose-200" : "ring-stone-300 hover:bg-stone-50",
+          )}
+        >
+          <Heart aria-hidden size={16} className={cn(reaction === "like" && "fill-rose-500 text-rose-500")} />
+          {reaction === "like" ? "Liked" : "Like"}
+          {likes > 0 && <span className="tabular-nums text-stone-500">{likes}</span>}
+        </button>
+        <button
+          type="button"
+          aria-pressed={reaction === "dislike"}
+          aria-label={`Dislike ${phrase}${dislikes > 0 ? `, ${counted(dislikes, "dislike")}` : ""}`}
+          title="Dislike"
+          disabled={!photos.enabled}
+          onClick={() => choose("dislike")}
+          className={cn(
+            "flex min-h-10 min-w-10 items-center justify-center gap-1 rounded-xl px-2.5 text-[13px] font-semibold ring-1 transition-colors",
+            reaction === "dislike"
+              ? "bg-amber-50 text-amber-800 ring-amber-200"
+              : "text-stone-500 ring-stone-200 hover:bg-stone-50 hover:text-stone-700",
+          )}
+        >
+          <ThumbsDown aria-hidden size={15} className={cn(reaction === "dislike" && "fill-amber-200")} />
+          {dislikes > 0 && <span className="tabular-nums">{dislikes}</span>}
+        </button>
+      </div>
+    </div>
   );
 }

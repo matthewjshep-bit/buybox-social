@@ -137,7 +137,23 @@ export async function getThread(shareId: string) {
     join listings l on l.listing_key = pl.listing_key
     where pl.share_id = ${shareId}
     order by pl.created_at`;
+  const photoDislikes = await sql<
+    { listing_key: string; participant_id: string; first_name: string; tag: string; media_key: string; data: Listing }[]
+  >`
+    select pd.listing_key, pd.participant_id, p.first_name, pd.tag, pd.media_key, l.data
+    from photo_dislikes pd
+    join participants p on p.id = pd.participant_id
+    join listings l on l.listing_key = pd.listing_key
+    where pd.share_id = ${shareId}
+    order by pd.created_at`;
   return {
+    // What each person didn't like, in the photos or the facts ("Price").
+    photoDislikes: photoDislikes.map((l) => ({
+      listingKey: l.listing_key,
+      participantId: l.participant_id,
+      name: l.first_name,
+      tag: tagNameIn(l.data, l.media_key, l.tag),
+    })),
     // What each person liked in the photos.
     photoLikes: photoLikes.map((l) => ({
       listingKey: l.listing_key,

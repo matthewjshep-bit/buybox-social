@@ -108,6 +108,17 @@ export async function joinAs(page: Page, firstName: string) {
   await expect(field).toBeHidden();
 }
 
+// Waits for a card that just popped in to come to rest. Clicking one of its
+// buttons mid-animation can make Playwright scroll it into place, and in a
+// feed that snaps from home to home, that lands on the next home.
+export const settle = (card: Locator) =>
+  card.evaluate((el) =>
+    Promise.race([
+      Promise.all(el.getAnimations().map((animation) => animation.finished)),
+      new Promise((done) => setTimeout(done, 1000)),
+    ]),
+  );
+
 // Picks something in the photo on screen ("the floating staircase") the way a
 // keyboard does, which opens the same card a tap on it opens. Returns the card.
 export async function pick(home: Locator, thing: string) {
@@ -117,6 +128,7 @@ export async function pick(home: Locator, thing: string) {
   await home.getByRole("button", { name: `Select ${thing}` }).press("Enter");
   const card = home.getByRole("group", { name: new RegExp(`^${thing.replace(/^the /, "")}$`, "i") });
   await expect(card).toBeVisible();
+  await settle(card);
   return card;
 }
 

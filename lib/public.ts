@@ -1,8 +1,8 @@
 import { firstName, type Account } from "./auth";
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
-import { mediaKeyOf, NO_PHOTO_LIKES } from "./photos";
-import { NO_REACTION, TRENDING_MIN_THIS_WEEK, type AspectCounts, type ReactionState } from "./reactions";
+import { aspectOfFact, aspectOfTag, FACTS, isFactTag, isTagIn, mediaKeyOf, NO_PHOTO_LIKES, thingOf } from "./photos";
+import { NO_REACTION, TRENDING_MIN_THIS_WEEK, type Aspect, type AspectCounts, type ReactionState } from "./reactions";
 import { getPublicPhotoLikes, getPublicTimelines } from "./timeline";
 
 export type Totals = { likes: number; dislikes: number; comments: number };
@@ -172,9 +172,19 @@ export async function getPublicListing(listingKey: string, visitorId: string | n
 }
 
 // One photo of a listing, to check a photo like against what's really in it.
-export async function getListingPhoto(listingKey: string, mediaKey: string) {
+// What a like, dislike or comment is about, if it's really on this home: a thing
+// or spot in one of its photos, or one of its facts ("the price"). With the
+// broad specific a like on it counts toward.
+export async function findSpot(
+  listingKey: string,
+  mediaKey: string,
+  tag: string,
+): Promise<{ aspect: Aspect | null } | null> {
   const [row] = await sql<{ data: Listing }[]>`select data from listings where listing_key = ${listingKey}`;
-  return row?.data.Media.find((photo) => mediaKeyOf(photo) === mediaKey) ?? null;
+  if (!row) return null;
+  if (mediaKey === FACTS) return isFactTag(tag) ? { aspect: aspectOfFact(tag) } : null;
+  const photo = row.data.Media.find((m) => mediaKeyOf(m) === mediaKey);
+  return photo && isTagIn(photo, tag) ? { aspect: aspectOfTag(photo, thingOf(photo, tag) ?? tag) } : null;
 }
 
 export async function getVisitor(deviceToken: string | undefined) {

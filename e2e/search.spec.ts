@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { heartOf, homeIn, joinAs } from "./helpers";
+import { heartOf, homeIn, joinAs, settle } from "./helpers";
 
 const pins = (page: Page) => page.getByRole("button", { name: /\$\d[\d,]*$/ });
 // Pins can sit on top of each other when zoomed out; this picks one by name.
@@ -76,6 +76,7 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await expect(heartOf(halvard)).toHaveCount(0);
   await expect(halvard.getByRole("button", { name: "Add a comment…" })).toHaveCount(0);
   await expect(halvard.getByRole("button", { name: "Next photo" })).toHaveCount(0);
+  await expect(halvard.getByRole("button", { name: /^\$1,349,000/ })).toHaveCount(0);
 
   // Tapping it opens it full screen, with this search's homes to scroll through.
   await halvard.getByRole("group", { name: /^Photos of/ }).click();
@@ -105,9 +106,13 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await expect(page).toHaveURL(/liked=1/);
   await expect(homeIn(page, "10421 Halvard Way NE")).toBeAttached();
 
-  // A home's address opens it here, beside the map.
+  // A home's address, like its price, can be liked or talked about, and it
+  // opens the home here, beside the map.
   await page.goto("/homes/SAMPLE-1006");
-  await page.getByRole("link", { name: /2205 Brackenfield Ct NW, Issaquah/ }).click();
+  await page.getByRole("button", { name: /^2205 Brackenfield Ct NW, Issaquah/ }).click();
+  const address = page.getByRole("group", { name: "Address" });
+  await settle(address);
+  await address.getByRole("link", { name: "See it on the map" }).click();
   await expect(page).toHaveURL(/\/search\?home=SAMPLE-1006$/);
   await expect(homeIn(page, "2205 Brackenfield Ct NW")).toBeInViewport({ ratio: 0.9 });
   await expect(page.getByRole("button", { name: "2205 Brackenfield Ct NW, $1,089,000" })).toHaveAttribute(

@@ -9,8 +9,23 @@ export const mediaKeyOf = (photo: ListingMedia) => photo.MediaKey ?? photo.Media
 export const photoTags = (photo: ListingMedia) =>
   [photo.ImageOf, ...(photo.Features ?? [])].filter((tag): tag is string => Boolean(tag));
 
-// One like: a tag on a photo.
+// One like (or dislike): a tag on a photo.
 export const likeId = (mediaKey: string, tag: string) => `${mediaKey}\u0000${tag}`;
+
+// Liking a thing, not liking it, or neither.
+export type SpotReaction = "like" | "dislike" | null;
+
+// A home's facts can be liked, disliked and talked about just like what's in
+// its photos: "the price", "the square footage". They go by this in place of a
+// photo's media key.
+export const FACTS = "facts";
+export const FACT_TAGS = ["Price", "Bedrooms", "Bathrooms", "Square footage", "Address"] as const;
+export type FactTag = (typeof FACT_TAGS)[number];
+export const isFactTag = (tag: string): tag is FactTag => (FACT_TAGS as readonly string[]).includes(tag);
+
+// The broad specific a liked fact counts toward, for taste and totals.
+export const aspectOfFact = (tag: string): Aspect | null =>
+  tag === "Price" ? "price" : tag === "Address" ? "location" : null;
 
 // A spot tapped on a photo is named by exactly where it is: "@62.3,68.1", in
 // percent across and down, to a tenth. Its heart stays right there. Likes and
@@ -106,10 +121,12 @@ export function aspectOfTag(photo: ListingMedia, tag: string): Aspect | null {
   return match(ROOM_ASPECTS, photo.ImageOf);
 }
 
-// Counts per photo and tag, and which ones you've liked.
+// Counts per photo and tag, and which ones you've liked; the same for dislikes.
 export type PhotoLikes = {
   counts: Record<string, number>; // by likeId
   mine: string[]; // likeIds
+  dislikes: Record<string, number>;
+  mineDisliked: string[];
 };
 
-export const NO_PHOTO_LIKES: PhotoLikes = { counts: {}, mine: [] };
+export const NO_PHOTO_LIKES: PhotoLikes = { counts: {}, mine: [], dislikes: {}, mineDisliked: [] };

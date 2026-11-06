@@ -21,8 +21,8 @@ import {
   getShareByToken,
   shareHasListing,
 } from "@/lib/shares";
-import { aspectOfTag, isTagIn, thingOf } from "@/lib/photos";
-import { getListingPhoto } from "@/lib/public";
+import type { SpotReaction } from "@/lib/photos";
+import { findSpot } from "@/lib/public";
 import { describeReaction, type ReactionState } from "@/lib/reactions";
 
 const MAX_PARTICIPANTS = 25;
@@ -179,32 +179,39 @@ export async function setCommentSharing(
   return { ok: true };
 }
 
-// Liking something in a photo on an agent's link. Private to the link, like
-// everything else said there.
+// Liking (or not) something in a photo, or one of the facts, on an agent's
+// link. Private to the link, like everything else said there.
 export async function likePhotoInShare(
   token: string,
   listingKey: string,
   mediaKey: string,
   tag: string,
-  liked: boolean,
+  reaction: SpotReaction,
 ): Promise<ActionResult> {
-  const input = photoLikeSchema.safeParse({ listingKey, mediaKey, tag, liked });
-  if (!input.success) return fail("We couldn't save that like.");
+  const input = photoLikeSchema.safeParse({ listingKey, mediaKey, tag, reaction });
+  if (!input.success) return fail("We couldn't save that.");
   const actor = await resolveActor(token, listingKey);
   if (!actor) return fail("Please add your name first.");
-  const photo = await getListingPhoto(listingKey, mediaKey);
-  if (!photo || !isTagIn(photo, tag)) return fail("That photo isn't there anymore.");
-  if (liked) {
-    await sql`
-      insert into photo_likes (share_id, listing_key, participant_id, media_key, tag, aspect)
-      values (${actor.share.id}, ${listingKey}, ${actor.participant.id}, ${mediaKey}, ${tag}, ${aspectOfTag(photo, thingOf(photo, tag) ?? tag)})
-      on conflict do nothing`;
-  } else {
-    await sql`
-      delete from photo_likes
-      where participant_id = ${actor.participant.id} and listing_key = ${listingKey}
-        and media_key = ${mediaKey} and tag = ${tag}`;
-  }
+  const spot = await findSpot(listingKey, mediaKey, tag);
+  if (!spot) return fail("That photo isn't there anymore.");
+  const where = sql`participant_id = ${actor.participant.id} and listing_key = ${listingKey}
+    and media_key = ${mediaKey} and tag = ${tag}`;
+  // A like replaces a dislike, and the other way around.
+  await sql.begin(async (tx) => {
+    if (reaction !== "like") await tx`delete from photo_likes where ${where}`;
+    if (reaction !== "dislike") await tx`delete from photo_dislikes where ${where}`;
+    if (reaction === "like") {
+      await tx`
+        insert into photo_likes (share_id, listing_key, participant_id, media_key, tag, aspect)
+        values (${actor.share.id}, ${listingKey}, ${actor.participant.id}, ${mediaKey}, ${tag}, ${spot.aspect})
+        on conflict do nothing`;
+    } else if (reaction === "dislike") {
+      await tx`
+        insert into photo_dislikes (share_id, listing_key, participant_id, media_key, tag)
+        values (${actor.share.id}, ${listingKey}, ${actor.participant.id}, ${mediaKey}, ${tag})
+        on conflict do nothing`;
+    }
+  });
   refresh();
   return { ok: true };
 }

@@ -242,7 +242,8 @@ function toHeadline(row: Row): Headline | null {
 // For an agent's link, where there's no feed query: the latest thing in the
 // home's own thread.
 export function headlineFromTimeline(items: TimelineItem[]): Headline | null {
-  const last = items.at(-1);
+  // Not something someone didn't like: a caption leads with the good news.
+  const last = items.findLast((item) => item.kind === "comment" || item.state.reaction || item.photos.length);
   if (!last) return null;
   if (last.kind === "comment") return { kind: "comment", who: "public", name: last.name, at: last.at };
   if (!last.state.reaction && last.photos.length) {

@@ -15,6 +15,7 @@ import {
 } from "react";
 import type { ActionResult } from "@/lib/engagement";
 import { cn, timeAgo } from "@/lib/format";
+import type { SpotReaction } from "@/lib/photos";
 import { describeReaction, type ReactionState } from "@/lib/reactions";
 import type { TimelineComment, TimelineItem, TimelineReaction } from "@/lib/timeline";
 
@@ -35,8 +36,8 @@ export type ThreadActions = {
   setSharing?: (commentId: string, shared: boolean) => Promise<ActionResult>;
   // Public threads only: liking a comment, which also turns on replies.
   likeComment?: (commentId: string, liked: boolean) => Promise<ActionResult>;
-  // Liking something in a photo ("the kitchen").
-  likePhoto?: (listingKey: string, mediaKey: string, tag: string, liked: boolean) => Promise<ActionResult>;
+  // Liking, or not, something in a photo ("the kitchen") or a fact ("the price").
+  likePhoto?: (listingKey: string, mediaKey: string, tag: string, reaction: SpotReaction) => Promise<ActionResult>;
 };
 
 // A spot in one of a home's photos: a named thing ("Front door") or a place ("@42,61").
@@ -266,7 +267,9 @@ function When({ at }: { at: string }) {
 
 // "Morgan liked the marble counters" with a thumbnail of the photo.
 function ReactionItem({ item }: { item: TimelineReaction }) {
-  const passed = item.state.reaction === "dislike";
+  // Passed on it, or only said what they didn't like.
+  const passed =
+    item.state.reaction === "dislike" || (!item.state.reaction && !item.photos.length && item.photoDislikes.length > 0);
   const badge = passed ? (
     <ThumbsDown size={10} className="text-amber-800" />
   ) : item.state.reaction === "like" ? (
@@ -284,6 +287,7 @@ function ReactionItem({ item }: { item: TimelineReaction }) {
         {describeReaction(
           item.state,
           item.photos.map((photo) => photo.tag),
+          item.photoDislikes.map((photo) => photo.tag),
         )}
         <span className="text-[13px] text-stone-500">
           {" "}
@@ -356,7 +360,7 @@ function CommentItem({
             <MapPin aria-hidden size={12} />
             <span className="sr-only">About </span>
             {spots.name(comment.spot)}
-            <span className="sr-only">: show it on the photo</span>
+            <span className="sr-only">: show it</span>
           </button>
         )}
         <p className="mt-0.5 whitespace-pre-line break-words text-[15px] leading-snug">{comment.body}</p>

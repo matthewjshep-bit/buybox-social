@@ -346,15 +346,22 @@ function HomePanel({
   listing: Listings[number];
   thread: Thread;
 }) {
-  // One line per person: their reaction plus what they liked in the photos.
-  const lines = new Map<string, { name: string; state: ReactionState; tags: string[] }>();
+  // One line per person: their reaction plus what they liked, and didn't, in
+  // the photos and the facts.
+  const lines = new Map<string, { name: string; state: ReactionState; tags: string[]; notTags: string[] }>();
+  const lineOf = (participantId: string, name: string) => {
+    const line = lines.get(participantId) ?? { name, state: NO_REACTION, tags: [], notTags: [] };
+    lines.set(participantId, line);
+    return line;
+  };
   for (const r of thread.reactions.filter((r) => r.listingKey === listing.ListingKey)) {
-    lines.set(r.participantId, { name: r.name, state: r.state, tags: [] });
+    lineOf(r.participantId, r.name).state = r.state;
   }
   for (const like of thread.photoLikes.filter((l) => l.listingKey === listing.ListingKey)) {
-    const line = lines.get(like.participantId) ?? { name: like.name, state: NO_REACTION, tags: [] };
-    line.tags.push(like.tag);
-    lines.set(like.participantId, line);
+    lineOf(like.participantId, like.name).tags.push(like.tag);
+  }
+  for (const dislike of thread.photoDislikes.filter((l) => l.listingKey === listing.ListingKey)) {
+    lineOf(dislike.participantId, dislike.name).notTags.push(dislike.tag);
   }
   const reactions = [...lines].map(([participantId, line]) => ({ participantId, ...line }));
   const comments = thread.comments.filter((c) => c.listingKey === listing.ListingKey);
@@ -391,7 +398,7 @@ function HomePanel({
       {reactions.length > 0 ? (
         <ul className="mt-3 flex flex-col gap-1.5 text-sm">
           {reactions.map((r) => {
-            const passed = r.state.reaction === "dislike";
+            const passed = r.state.reaction === "dislike" || (!r.state.reaction && !r.tags.length && r.notTags.length > 0);
             const Icon = passed ? ThumbsDown : r.state.reaction ? ThumbsUp : Heart;
             return (
               <li key={r.participantId} className="flex items-start gap-2">
@@ -404,7 +411,7 @@ function HomePanel({
                   )}
                 />
                 <span>
-                  <span className="font-semibold">{r.name}</span> {describeReaction(r.state, r.tags)}
+                  <span className="font-semibold">{r.name}</span> {describeReaction(r.state, r.tags, r.notTags)}
                 </span>
               </li>
             );

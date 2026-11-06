@@ -52,7 +52,7 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   // The like is on the evergreens themselves, in the photo.
   await post.scrollIntoViewIfNeeded();
   const evergreens = await pick(post, "the evergreens");
-  await expect(evergreens.getByRole("button", { name: "Like the evergreens, 1 like" })).toBeVisible();
+  await expect(evergreens.getByRole("button", { name: "Like the evergreens, 1 like", exact: true })).toBeVisible();
   await evergreens.getByRole("button", { name: "Close" }).click();
   // No more Hinge-style Pass and Like buttons.
   await expect(buyer.getByRole("button", { name: /^(Pass|Dislike)$/ })).toHaveCount(0);

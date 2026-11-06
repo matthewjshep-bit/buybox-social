@@ -15,11 +15,11 @@ import {
   readDevice,
   type ActionResult,
 } from "@/lib/engagement";
-import { aspectOfTag, isTagIn, thingOf } from "@/lib/photos";
+import type { SpotReaction } from "@/lib/photos";
 import { getReel, REEL_PAGE, type FeedPost } from "@/lib/feed";
 import { searchHomes } from "@/lib/search";
 import { parseFilters } from "@/lib/search-options";
-import { ensureAccountVisitor, getListingPhoto, getPublicIdentity, getVisitor } from "@/lib/public";
+import { ensureAccountVisitor, findSpot, getPublicIdentity, getVisitor } from "@/lib/public";
 import { getTaste } from "@/lib/taste";
 import { z } from "zod";
 import type { ReactionState } from "@/lib/reactions";
@@ -97,29 +97,47 @@ export async function reactInStream(listingKey: string, input: ReactionState): P
   return saveReaction(listingKey, input);
 }
 
-async function savePhotoLike(listingKey: string, mediaKey: string, tag: string, liked: boolean): Promise<ActionResult> {
-  const input = photoLikeSchema.safeParse({ listingKey, mediaKey, tag, liked });
-  if (!input.success) return fail("We couldn't save that like.");
+async function savePhotoLike(
+  listingKey: string,
+  mediaKey: string,
+  tag: string,
+  reaction: SpotReaction,
+): Promise<ActionResult> {
+  const input = photoLikeSchema.safeParse({ listingKey, mediaKey, tag, reaction });
+  if (!input.success) return fail("We couldn't save that.");
   const visitor = await resolveVisitor(listingKey);
   if (!visitor) return fail("Please add your name first.");
-  const photo = await getListingPhoto(listingKey, mediaKey);
-  if (!photo || !isTagIn(photo, tag)) return fail("That photo isn't there anymore.");
-  if (liked) {
-    await sql`
-      insert into public_photo_likes (listing_key, visitor_id, media_key, tag, aspect)
-      values (${listingKey}, ${visitor.id}, ${mediaKey}, ${tag}, ${aspectOfTag(photo, thingOf(photo, tag) ?? tag)})
-      on conflict do nothing`;
-  } else {
-    await sql`
-      delete from public_photo_likes
-      where listing_key = ${listingKey} and visitor_id = ${visitor.id} and media_key = ${mediaKey} and tag = ${tag}`;
-  }
+  const spot = await findSpot(listingKey, mediaKey, tag);
+  if (!spot) return fail("That photo isn't there anymore.");
+  const where = sql`listing_key = ${listingKey} and visitor_id = ${visitor.id} and media_key = ${mediaKey} and tag = ${tag}`;
+  // A like replaces a dislike, and the other way around.
+  await sql.begin(async (tx) => {
+    if (reaction !== "like") await tx`delete from public_photo_likes where ${where}`;
+    if (reaction !== "dislike") await tx`delete from public_photo_dislikes where ${where}`;
+    if (reaction === "like") {
+      await tx`
+        insert into public_photo_likes (listing_key, visitor_id, media_key, tag, aspect)
+        values (${listingKey}, ${visitor.id}, ${mediaKey}, ${tag}, ${spot.aspect})
+        on conflict do nothing`;
+    } else if (reaction === "dislike") {
+      await tx`
+        insert into public_photo_dislikes (listing_key, visitor_id, media_key, tag)
+        values (${listingKey}, ${visitor.id}, ${mediaKey}, ${tag})
+        on conflict do nothing`;
+    }
+  });
   return { ok: true };
 }
 
-// Liking something in a photo: "the kitchen", "the marble counters".
-export async function likePhoto(listingKey: string, mediaKey: string, tag: string, liked: boolean): Promise<ActionResult> {
-  const result = await savePhotoLike(listingKey, mediaKey, tag, liked);
+// Liking (or not) something in a photo, "the kitchen", or one of the facts,
+// "the price".
+export async function likePhoto(
+  listingKey: string,
+  mediaKey: string,
+  tag: string,
+  reaction: SpotReaction,
+): Promise<ActionResult> {
+  const result = await savePhotoLike(listingKey, mediaKey, tag, reaction);
   if (result.ok) refresh();
   return result;
 }
@@ -129,9 +147,9 @@ export async function likePhotoInStream(
   listingKey: string,
   mediaKey: string,
   tag: string,
-  liked: boolean,
+  reaction: SpotReaction,
 ): Promise<ActionResult> {
-  return savePhotoLike(listingKey, mediaKey, tag, liked);
+  return savePhotoLike(listingKey, mediaKey, tag, reaction);
 }
 
 async function saveComment(

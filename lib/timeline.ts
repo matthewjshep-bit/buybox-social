@@ -35,8 +35,10 @@ export type TimelineReaction = {
   at: string;
   mine: boolean;
   state: ReactionState;
-  // Things liked in the photos, in the order they were liked.
+  // Things liked in the photos (and the facts: "Price"), in the order they
+  // were liked; and those they didn't like.
   photos: { tag: string; mediaUrl: string | null }[];
+  photoDislikes: { tag: string; mediaUrl: string | null }[];
   // On a public page: from someone's private chat with their agent, so no name.
   fromPrivateChat?: boolean;
   // Their public profile, on public pages.
@@ -51,11 +53,12 @@ export const ANONYMOUS_BUYER = "A buyer";
 type ReactionRow = ReactionState & { listing_key: string; who: string; name: string | null; at: Date };
 type PhotoRow = { listing_key: string; who: string; name: string | null; media_key: string; tag: string; at: Date };
 
-// One line per person: their overall reaction plus their photo likes.
+// One line per person: their overall reaction plus their photo likes and dislikes.
 function reactionItems(
   listing: Listing,
   reactions: ReactionRow[],
   photos: PhotoRow[],
+  dislikes: PhotoRow[],
   options: { me: string | null; anonymous: (who: string) => boolean; profiles?: boolean },
 ): TimelineReaction[] {
   const url = (mediaKey: string) => listing.Media.find((m) => mediaKeyOf(m) === mediaKey)?.MediaURL ?? null;
@@ -70,6 +73,7 @@ function reactionItems(
       mine: who === options.me,
       state: NO_REACTION,
       photos: [],
+      photoDislikes: [],
       ...(anonymous && { fromPrivateChat: true }),
       ...(options.profiles && who.startsWith("v:") && { profileId: who.slice(2) }),
     };
@@ -80,10 +84,12 @@ function reactionItems(
   for (const r of reactions.filter((r) => r.listing_key === listing.ListingKey)) {
     person(r.who, r.name, r.at).state = { reaction: r.reaction, liked: r.liked, disliked: r.disliked };
   }
-  for (const p of photos.filter((p) => p.listing_key === listing.ListingKey).sort((a, b) => +a.at - +b.at)) {
-    // A spot reads as the thing it's on ("the front door").
-    person(p.who, p.name, p.at).photos.push({ tag: tagNameIn(listing, p.media_key, p.tag), mediaUrl: url(p.media_key) });
-  }
+  const mine = (rows: PhotoRow[]) =>
+    rows.filter((p) => p.listing_key === listing.ListingKey).sort((a, b) => +a.at - +b.at);
+  // A spot reads as the thing it's on ("the front door").
+  const named = (p: PhotoRow) => ({ tag: tagNameIn(listing, p.media_key, p.tag), mediaUrl: url(p.media_key) });
+  for (const p of mine(photos)) person(p.who, p.name, p.at).photos.push(named(p));
+  for (const p of mine(dislikes)) person(p.who, p.name, p.at).photoDislikes.push(named(p));
   // Keyed by position, so no one's internal id reaches the page.
   return [...people.values()].map((item, index) => ({ ...item, id: `reaction-${index}` }));
 }
@@ -102,7 +108,7 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
   const keys = listings.map((l) => l.ListingKey);
   const me = visitorId ? `v:${visitorId}` : null;
 
-  const [comments, shared, publicReactions, privateReactions, publicPhotos, privatePhotos] = await Promise.all([
+  const [comments, shared, publicReactions, privateReactions, publicPhotos, privatePhotos, publicDislikes] = await Promise.all([
     sql<
       {
         id: string;
@@ -146,6 +152,12 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
     sql<PhotoRow[]>`
       select listing_key, 'p:' || participant_id as who, null as name, media_key, tag, created_at as at
       from photo_likes where listing_key in ${sql(keys)}`,
+    // Dislikes on agents' links stay there, like a private pass.
+    sql<PhotoRow[]>`
+      select pd.listing_key, 'v:' || pd.visitor_id as who, v.first_name as name,
+        pd.media_key, pd.tag, pd.created_at as at
+      from public_photo_dislikes pd join visitors v on v.id = pd.visitor_id
+      where pd.listing_key in ${sql(keys)}`,
   ]);
 
   // Private reactions only ever show their likes.
@@ -190,7 +202,7 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
             ...spotOf(c),
           }),
         ),
-      ...reactionItems(listing, [...publicReactions, ...privateLikes], [...publicPhotos, ...privatePhotos], {
+      ...reactionItems(listing, [...publicReactions, ...privateLikes], [...publicPhotos, ...privatePhotos], publicDislikes, {
         me,
         anonymous: (who) => who.startsWith("p:"),
         profiles: true,
@@ -208,7 +220,7 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
   if (listings.length === 0) return timelines;
   const me = participantId ? `p:${participantId}` : null;
 
-  const [comments, reactions, photos] = await Promise.all([
+  const [comments, reactions, photos, dislikes] = await Promise.all([
     sql<
       {
         id: string;
@@ -239,6 +251,11 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
         pl.media_key, pl.tag, pl.created_at as at
       from photo_likes pl join participants p on p.id = pl.participant_id
       where pl.share_id = ${shareId}`,
+    sql<PhotoRow[]>`
+      select pd.listing_key, 'p:' || pd.participant_id as who, p.first_name as name,
+        pd.media_key, pd.tag, pd.created_at as at
+      from photo_dislikes pd join participants p on p.id = pd.participant_id
+      where pd.share_id = ${shareId}`,
   ]);
 
   for (const listing of listings) {
@@ -262,46 +279,56 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
             ...spotOf(c),
           }),
         ),
-      ...reactionItems(listing, reactions, photos, { me, anonymous: () => false }),
+      ...reactionItems(listing, reactions, photos, dislikes, { me, anonymous: () => false }),
     ];
     timelines.set(key, items.sort(byTime));
   }
   return timelines;
 }
 
-// Photo like counts and your own, for public pages: everyone's, with private
-// likes counted but never named.
+type CountRow = { listing_key: string; media_key: string; tag: string; n: number; mine: boolean; disliked: boolean };
+
+// Photo like and dislike counts and your own, for public pages: everyone's
+// likes, with private ones counted but never named; dislikes only from public
+// pages, since one on an agent's link is private.
 export async function getPublicPhotoLikes(keys: string[], visitorId: string | null) {
-  const result = new Map<string, PhotoLikes>();
-  if (keys.length === 0) return result;
-  const rows = await sql<{ listing_key: string; media_key: string; tag: string; n: number; mine: boolean }[]>`
-    select listing_key, media_key, tag, count(*)::int as n, bool_or(mine) as mine from (
-      select listing_key, media_key, tag, visitor_id = ${visitorId}::uuid as mine
+  if (keys.length === 0) return new Map<string, PhotoLikes>();
+  const rows = await sql<CountRow[]>`
+    select listing_key, media_key, tag, disliked, count(*)::int as n, bool_or(mine) as mine from (
+      select listing_key, media_key, tag, false as disliked, visitor_id = ${visitorId}::uuid as mine
       from public_photo_likes where listing_key in ${sql(keys)}
       union all
-      select listing_key, media_key, tag, false from photo_likes where listing_key in ${sql(keys)}) x
-    group by listing_key, media_key, tag`;
+      select listing_key, media_key, tag, false, false from photo_likes where listing_key in ${sql(keys)}
+      union all
+      select listing_key, media_key, tag, true, visitor_id = ${visitorId}::uuid
+      from public_photo_dislikes where listing_key in ${sql(keys)}) x
+    group by listing_key, media_key, tag, disliked`;
   return collect(keys, rows);
 }
 
-// On an agent's link: only the likes of people on that link.
+// On an agent's link: only the likes and dislikes of people on that link.
 export async function getSharePhotoLikes(shareId: string, keys: string[], participantId: string | null) {
   if (keys.length === 0) return new Map<string, PhotoLikes>();
-  const rows = await sql<{ listing_key: string; media_key: string; tag: string; n: number; mine: boolean }[]>`
-    select listing_key, media_key, tag, count(*)::int as n,
-      bool_or(participant_id = ${participantId}::uuid) as mine
-    from photo_likes where share_id = ${shareId}
-    group by listing_key, media_key, tag`;
+  const rows = await sql<CountRow[]>`
+    select listing_key, media_key, tag, disliked, count(*)::int as n,
+      bool_or(participant_id = ${participantId}::uuid) as mine from (
+      select listing_key, media_key, tag, false as disliked, participant_id
+      from photo_likes where share_id = ${shareId}
+      union all
+      select listing_key, media_key, tag, true, participant_id
+      from photo_dislikes where share_id = ${shareId}) x
+    group by listing_key, media_key, tag, disliked`;
   return collect(keys, rows);
 }
 
-function collect(keys: string[], rows: { listing_key: string; media_key: string; tag: string; n: number; mine: boolean }[]) {
-  const result = new Map<string, PhotoLikes>(keys.map((key) => [key, { counts: {}, mine: [] }]));
+function collect(keys: string[], rows: CountRow[]) {
+  const empty = (): PhotoLikes => ({ counts: {}, mine: [], dislikes: {}, mineDisliked: [] });
+  const result = new Map<string, PhotoLikes>(keys.map((key) => [key, empty()]));
   for (const row of rows) {
-    const likes = result.get(row.listing_key) ?? { counts: {}, mine: [] };
+    const likes = result.get(row.listing_key) ?? empty();
     const id = likeId(row.media_key, row.tag);
-    likes.counts[id] = row.n;
-    if (row.mine) likes.mine.push(id);
+    (row.disliked ? likes.dislikes : likes.counts)[id] = row.n;
+    if (row.mine) (row.disliked ? likes.mineDisliked : likes.mine).push(id);
     result.set(row.listing_key, likes);
   }
   return result;
