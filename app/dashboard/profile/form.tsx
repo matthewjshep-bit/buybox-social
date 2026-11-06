@@ -1,9 +1,9 @@
 "use client";
 
 import { Check } from "lucide-react";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
-import { formatPhone, phoneDigits } from "@/components/agent-card";
+import { formatPhone, isContactPhone, phoneDigits } from "@/lib/contact";
 import { BRAND_COLORS, cn } from "@/lib/format";
 import { saveProfile, type ContactField, type ProfileState } from "../actions";
 
@@ -52,7 +52,15 @@ export function ProfileForm(props: {
   const [phone, setPhone] = useState(formatPhone(props.contactPhone));
   const [photoError, setPhotoError] = useState<string | null>(null);
   const suggested = phoneDigits(props.suggestedPhone);
-  const suggestion = !phone && suggested.length >= 10 && suggested.length <= 15 ? formatPhone(suggested) : null;
+  const suggestion = !phone && isContactPhone(suggested) ? formatPhone(suggested) : null;
+  const phoneField = useRef<HTMLInputElement>(null);
+  const form = useRef<HTMLFormElement>(null);
+  // After a save that didn't go through, the cursor goes to what needs fixing,
+  // rather than being lost with the Save button while it was busy.
+  useEffect(() => {
+    if (!state.error) return;
+    form.current?.querySelector<HTMLInputElement>(`#${state.field ?? "fullName"}`)?.focus();
+  }, [state]);
   // A mistake in one of the contact fields shows under that field.
   const invalid = (field: ContactField) =>
     state.field === field
@@ -60,13 +68,13 @@ export function ProfileForm(props: {
       : { "aria-describedby": "contact-hint" };
 
   return (
-    <form action={action} className="mt-6 flex flex-col gap-5">
+    <form ref={form} action={action} className="mt-6 flex flex-col gap-5">
       <input type="hidden" name="photo" value={photo ?? ""} />
       <input type="hidden" name="brandColor" value={color} />
 
       <div className="flex items-center gap-4 rounded-2xl p-4 text-white" style={{ background: color }}>
         <AgentAvatar agent={{ full_name: fullName, photo_data_url: photo }} size={64} className="ring-2 ring-white/70" />
-        <div>
+        <div className="min-w-0 flex-1">
           <label htmlFor="photo-file" className="block text-sm font-semibold">
             Your photo
           </label>
@@ -129,6 +137,7 @@ export function ProfileForm(props: {
           Phone for clients (optional)
         </label>
         <input
+          ref={phoneField}
           id="contactPhone"
           name="contactPhone"
           type="tel"
@@ -143,7 +152,11 @@ export function ProfileForm(props: {
         {suggestion && (
           <button
             type="button"
-            onClick={() => setPhone(suggestion)}
+            onClick={() => {
+              setPhone(suggestion);
+              // The button goes once it's used; the cursor carries on in the field.
+              phoneField.current?.focus();
+            }}
             className="mt-1 min-h-11 rounded-full px-1 text-sm font-semibold text-brand underline-offset-2 hover:underline"
           >
             Use {suggestion}

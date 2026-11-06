@@ -4,6 +4,7 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireAgent } from "@/lib/auth";
+import { isContactPhone, phoneDigits } from "@/lib/contact";
 import { sql } from "@/lib/db";
 import { BRAND_COLORS } from "@/lib/format";
 import { invitePerson, newShareToken } from "@/lib/shares";
@@ -36,8 +37,8 @@ const contactPhoneSchema = z
   .string()
   .max(30)
   .regex(/^[\d\s().+-]*$/)
-  .transform((value) => value.replace(/\D/g, ""))
-  .refine((digits) => digits === "" || (digits.length >= 10 && digits.length <= 15));
+  .transform(phoneDigits)
+  .refine((digits) => digits === "" || isContactPhone(digits));
 
 const contactEmailSchema = z.union([z.literal(""), z.email().max(254)]);
 

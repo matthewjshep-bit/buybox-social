@@ -161,20 +161,33 @@ export type AskResult = { ok: true; already: boolean } | { ok: false; error: str
 // Once a day per person per home; asking again says it's already asked.
 export async function askToSee(token: string, listingKey: string): Promise<AskResult> {
   if (typeof listingKey !== "string" || listingKey.length > 100) return { ok: false, error: "We couldn't find that home." };
-  const actor = await resolveActor(token, listingKey);
-  if (!actor) return { ok: false, error: "Please add your name first." };
-  const inserted = await sql`
-    insert into comments (share_id, listing_key, participant_id, body)
-    select ${actor.share.id}, ${listingKey}, ${actor.participant.id}, ${ASK_TO_SEE}
-    where not exists (
-      select 1 from comments
-      where participant_id = ${actor.participant.id} and listing_key = ${listingKey}
-        and body = ${ASK_TO_SEE} and created_at > now() - interval '24 hours')
-    returning id`;
-  if (inserted.length === 0) return { ok: true, already: true };
+  const found = await getShareByToken(token);
+  if (!found) return { ok: false, error: "This link is no longer available." };
+  // The agent may have taken the home off the link while the sheet was open.
+  if (!(await shareHasListing(found.share.id, listingKey))) {
+    return { ok: false, error: "That home isn't on this link anymore." };
+  }
+  const participant = await personOn(found);
+  if (!participant) return { ok: false, error: "Please add your name first." };
+  // The ask's own record says whether they've asked today, not the words of a
+  // comment. Claiming it is a single step, so two taps at once ask only once.
+  const asked = await sql.begin(async (tx) => {
+    const [fresh] = await tx`
+      insert into share_asks (participant_id, listing_key, share_id)
+      values (${participant.id}, ${listingKey}, ${found.share.id})
+      on conflict (participant_id, listing_key) do update set asked_at = now(), share_id = excluded.share_id
+      where share_asks.asked_at < now() - interval '24 hours'
+      returning asked_at`;
+    if (!fresh) return false;
+    await tx`
+      insert into comments (share_id, listing_key, participant_id, body)
+      values (${found.share.id}, ${listingKey}, ${participant.id}, ${ASK_TO_SEE})`;
+    return true;
+  });
+  if (!asked) return { ok: true, already: true };
   after(async () => {
     const address = await listingLabel(listingKey);
-    await notifyAgent(actor.share.id, `${actor.participant.first_name} asked to see ${address}`, { now: true });
+    await notifyAgent(found.share.id, `${participant.first_name} asked to see ${address}`, { now: true });
   });
   refresh();
   return { ok: true, already: false };

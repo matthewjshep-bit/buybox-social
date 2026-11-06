@@ -69,13 +69,16 @@ test("an agent's phone and email for clients: checked, kept as digits, and never
   await expect(contact.getByRole("button", { name: "Ask to see it" })).toBeVisible();
 });
 
-test("a home that's no longer for sale can't go on a new link", async ({ browser }) => {
+test("a home that's gone from the listings can't go on a new link, and nothing is made", async ({ browser }) => {
   const agent = await signInAgent(browser, "gone-agent@example.com", "Gale Agent");
   await agent.goto("/dashboard/new");
   await agent.getByRole("button", { name: /812 N Corbel/ }).click();
   await agent.getByLabel("Person 1's first name").fill("Zuri");
-  // The home goes off the market between picking it and creating the link: the
-  // server is asked for a home that isn't for sale.
+  // The home goes between picking it and creating the link. Every sample home is
+  // for sale and a test can't reach the database to mark one sold, so this asks
+  // for a key that isn't listed: it checks the refusal and that no link is made.
+  // The "for sale" (Active) check itself is read in createShare until C1 adds a
+  // sold sample to point this at.
   await agent.route("**/dashboard/new", async (route) => {
     const body = route.request().postData();
     if (route.request().method() !== "POST" || !body?.includes("SAMPLE-1003")) return route.continue();

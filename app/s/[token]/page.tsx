@@ -56,7 +56,7 @@ export default async function SharePage({ params }: Props) {
   } for you`;
   // Who else can open this link. Someone's own link opens as them, so it's theirs alone.
   const whoCanSee = person
-    ? `This link is just for you, ${person.first_name}. Ask ${agentName} if someone else should see ${count === 1 ? "it" : "these"}.`
+    ? `This link is just for you, ${person.first_name}. Ask ${agentName} if someone else should see ${count > 1 ? "these" : "it"}.`
     : "Anyone with this link can see and join this conversation.";
 
   // Each home as a post in the feed, from this link's own conversation only.
@@ -91,8 +91,8 @@ export default async function SharePage({ params }: Props) {
         initial={posts}
         agent={agent}
         note={share.note}
-        // One home opens straight on it, so the greeting goes with the header.
-        heading={count === 1 ? greeting : count === 0 ? "There are no homes on this link right now" : undefined}
+        // One home opens straight on it, so the greeting and note go under the header.
+        caption={count === 1 ? { heading: greeting, note: share.note } : undefined}
         whoCanSee={whoCanSee}
         askToSee={askToSee.bind(null, token)}
         agentName={agentName}

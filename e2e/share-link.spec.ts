@@ -41,6 +41,9 @@ test("one home: the link opens on it, in the agent's space, with a way to text, 
   await expect(home).toBeInViewport({ ratio: 0.9 });
   await expect(page.getByRole("region", { name: "Welcome" })).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Owen, I picked this home for you");
+  // The greeting and the start of the note show over the home; the whole note is in Contact.
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.getByRole("banner").getByText("This one has the yard you mentioned.")).toBeVisible();
 
   // The agent's header, not the site's.
   const header = page.getByRole("banner");
@@ -125,11 +128,19 @@ test("ask to see it: a first name, then the ask under the home and an email to t
   await contact.getByRole("button", { name: "Ask to see it" }).click();
   await joinAs(eli, "Eli");
   await expect(contact.getByRole("status")).toHaveText("Sent. Priya will get back to you.");
+  // Said where the tap was, with the cursor still there.
+  await expect(contact.getByRole("status")).toBeInViewport();
+  const done = contact.getByRole("button", { name: "Asked to see it" });
+  await expect(done).toBeFocused();
+  await expect(done).toHaveAttribute("aria-disabled", "true");
   // Straight away, though another email went out a moment ago.
   await expect.poll(() => emailsTo("ask-agent@example.com").length).toBe(2);
   expect(emailsTo("ask-agent@example.com")[1]).toContain("Eli asked to see 812 N Corbel St");
 
   // Asking again the same day asks nothing new.
+  await eli.keyboard.press("Escape");
+  await expect(contact).toBeHidden();
+  await eli.getByRole("banner").getByRole("button", { name: "Contact" }).click();
   await contact.getByRole("button", { name: "Ask to see it" }).click();
   await expect(contact.getByRole("status")).toHaveText("Already asked. Priya will be in touch.");
   await eli.keyboard.press("Escape");
@@ -162,6 +173,42 @@ test("several homes open on a word from the agent over the first one's photo, wi
   const first = homeIn(nina, "10421 Halvard Way NE");
   await expect(first).toBeInViewport({ ratio: 0.9 });
   await expect(first).toBeFocused();
+
+  // Contact before any home is on screen: no home to ask about yet, so the way to them.
+  await nina.goto(urls.Nina);
+  await expect(welcome).toBeInViewport();
+  await nina.getByRole("banner").getByRole("button", { name: "Contact" }).click();
+  const contact = nina.getByRole("dialog", { name: "Contact Jordan Rivera" });
+  await expect(contact.getByRole("button", { name: "Ask to see it" })).toHaveCount(0);
+  await expect(contact).toContainText("Add a comment under any home. Jordan sees every one.");
+  await contact.getByRole("button", { name: "See the 3 homes" }).click();
+  await expect(contact).toBeHidden();
+  await expect(first).toBeInViewport({ ratio: 0.9 });
+  await expect(first).toBeFocused();
+
+  // A tap on the home peeking up from the bottom goes there too.
+  await nina.goto(urls.Nina);
+  await expect(welcome).toBeInViewport();
+  await welcome.locator("button[aria-hidden]").click();
+  await expect(first).toBeInViewport({ ratio: 0.9 });
+});
+
+test("a link whose homes were all taken off says so, with a way to reach the agent", async ({ browser }) => {
+  const agent = await signInAgent(browser, "empty-agent@example.com", "Jordan Rivera");
+  const { url } = await createShare(agent, ["1880 Tamsen"], ["Ruth"]);
+  await agent.getByRole("button", { name: /^Remove 1880 Tamsen/ }).click();
+  await expect(agent.getByRole("region", { name: "Removed from their link" })).toBeVisible();
+
+  const page = await (await browser.newContext()).newPage();
+  await page.goto(url);
+  const heading = page.getByRole("heading", { level: 1 });
+  await expect(heading).toHaveText("There are no homes on this link right now");
+  await expect(heading).toBeVisible();
+  await expect(page.getByText("Ask Jordan Rivera to send you more.")).toBeVisible();
+  await page.getByRole("button", { name: "Contact Jordan" }).click();
+  await expect(page.getByRole("dialog", { name: "Contact Jordan Rivera" })).toContainText(
+    "This link is just for you, Ruth. Ask Jordan Rivera if someone else should see it.",
+  );
 });
 
 test("a link that isn't there says so, with a way home", async ({ page }) => {

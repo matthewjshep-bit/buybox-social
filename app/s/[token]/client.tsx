@@ -1,32 +1,49 @@
 "use client";
 
-import { ArrowDown, Check, Share2 } from "lucide-react";
+import { ArrowDown, Check, Phone, Share2 } from "lucide-react";
 import Image from "next/image";
-import { useState, type ComponentProps } from "react";
+import { createContext, useContext, useState, type ComponentProps } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
-import { ShareHeader } from "@/components/agent-card";
+import { agentFirstName, focusOnDark, ShareHeader } from "@/components/agent-card";
 import { Backdrop } from "@/components/join";
 import { ReelFeed } from "@/components/reel";
+import { cn } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
 import type { ShareAgent } from "@/lib/shares";
 import type { AskResult } from "./actions";
 
 type ReelProps = ComponentProps<typeof ReelFeed>;
 
+// Down to the first home, and focus with it: from the welcome screen, or from
+// Contact before any home has been seen. A link's page has the one feed.
+function goToFirstHome() {
+  const reel = document.querySelector<HTMLElement>("[data-reel]");
+  const first = reel?.querySelector<HTMLElement>('[data-panel="1"]');
+  if (!reel || !first) return;
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Each screen is the feed's height; the first home is the second screen.
+  reel.scrollTo({ top: reel.clientHeight, behavior: still ? "auto" : "smooth" });
+  if (!first.hasAttribute("tabindex")) first.setAttribute("tabindex", "-1");
+  first.focus({ preventScroll: true });
+}
+
+// Contact, from anywhere on the link (the end screen of an empty one).
+const ContactAgent = createContext<{ open: () => void; first: string }>({ open: () => {}, first: "your agent" });
+
 // The agent's link: the homes, under the agent's own header. The header knows
 // which home is on screen, so "Contact" can be about that one.
 export function ShareReel({
   agent,
   note,
-  heading,
+  caption,
   whoCanSee,
   askToSee,
   ...reel
 }: Omit<ReelProps, "mode" | "header" | "onActiveChange"> & {
   agent: ShareAgent;
   note: string;
-  // The greeting, when no welcome screen carries it.
-  heading?: string;
+  // The greeting and note, when no welcome screen carries them (one home).
+  caption?: { heading: string; note: string };
   whoCanSee: string;
   askToSee: (listingKey: string) => Promise<AskResult>;
 }) {
@@ -34,26 +51,41 @@ export function ShareReel({
   // The home on screen, or the last one seen (from the end screen). Before any,
   // on a link of one home, that home.
   const [seen, setSeen] = useState<string | null>(homes.length === 1 ? homes[0].ListingKey : null);
+  // A link of one home opens on it; one with several, on the welcome screen.
+  const [onHome, setOnHome] = useState(!reel.intro && homes.length > 0);
+  const [contact, setContact] = useState(false);
   const home = homes.find((listing) => listing.ListingKey === seen);
 
   return (
-    <ReelFeed
-      {...reel}
-      mode="share"
-      onActiveChange={(key) => {
-        if (key) setSeen(key);
-      }}
-      header={
-        <ShareHeader
-          agent={agent}
-          note={note}
-          home={home ? { listingKey: home.ListingKey, address: home.UnparsedAddress } : null}
-          whoCanSee={whoCanSee}
-          onAsk={askToSee}
-          heading={heading}
-        />
-      }
-    />
+    <ContactAgent.Provider value={{ open: () => setContact(true), first: agentFirstName(agent.full_name) }}>
+      <ReelFeed
+        {...reel}
+        mode="share"
+        onActiveChange={(key) => {
+          setOnHome(Boolean(key));
+          if (key) setSeen(key);
+        }}
+        header={
+          <ShareHeader
+            agent={agent}
+            note={note}
+            home={home ? { listingKey: home.ListingKey, address: home.UnparsedAddress } : null}
+            homesCount={homes.length}
+            whoCanSee={whoCanSee}
+            onAsk={askToSee}
+            onSeeHomes={() => {
+              setContact(false);
+              // Once the sheet has closed and given focus back.
+              requestAnimationFrame(goToFirstHome);
+            }}
+            caption={caption}
+            showCaption={onHome}
+            open={contact}
+            onOpenChange={setContact}
+          />
+        }
+      />
+    </ContactAgent.Provider>
   );
 }
 
@@ -107,12 +139,17 @@ export function ShareWelcome({
         </div>
       </div>
       {photo && (
-        <div
+        // A tap on the first home, peeking up, goes to it. The button above
+        // does the same for keyboards and screen readers.
+        <button
+          type="button"
           aria-hidden
-          className="relative mx-auto h-24 w-full max-w-2xl shrink-0 overflow-hidden rounded-t-3xl shadow-[0_-8px_30px_rgb(0_0_0/0.35)] sm:w-[calc(100%-5rem)] [@media(max-height:44rem)]:h-16"
+          tabIndex={-1}
+          onClick={goToFirstHome}
+          className="relative mx-auto block h-24 w-full max-w-2xl shrink-0 overflow-hidden rounded-t-3xl shadow-[0_-8px_30px_rgb(0_0_0/0.35)] sm:w-[calc(100%-5rem)] [@media(max-height:44rem)]:h-16"
         >
           <Image src={photo.MediaURL} alt="" fill sizes="(min-width: 768px) 672px, 100vw" className="object-cover" />
-        </div>
+        </button>
       )}
     </div>
   );
@@ -132,10 +169,10 @@ export function ShareEnd({
   personal: boolean;
   token: string;
 }) {
-  if (count === 0) return <p className="relative text-white/85">Ask {agentName} to send you more.</p>;
+  if (count === 0) return <EmptyLink agentName={agentName} />;
   return (
     <div className="w-full max-w-md">
-      <h2 className="font-display text-3xl">
+      <h2 className="text-balance font-display text-3xl">
         {count === 1 ? `That's the home ${agentName} picked` : "That's every home"}
       </h2>
       <p className="mt-2 text-white/85">
@@ -171,17 +208,11 @@ function SeeHomes({ count }: { count: number }) {
     <div className="mt-8 inline-flex flex-col items-center gap-1.5 [@media(max-height:44rem)]:mt-6">
       <button
         type="button"
-        onClick={(event) => {
-          const reel = event.currentTarget.closest<HTMLElement>("[data-reel]");
-          const first = reel?.querySelector<HTMLElement>('[data-panel="1"]');
-          if (!reel || !first) return;
-          const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-          // Each screen is the feed's height; the first home is the second screen.
-          reel.scrollTo({ top: reel.clientHeight, behavior: still ? "auto" : "smooth" });
-          if (!first.hasAttribute("tabindex")) first.setAttribute("tabindex", "-1");
-          first.focus({ preventScroll: true });
-        }}
-        className="flex min-h-12 items-center gap-2 rounded-full bg-white px-6 font-semibold text-ink shadow-lg hover:bg-stone-100"
+        onClick={goToFirstHome}
+        className={cn(
+          "flex min-h-12 items-center gap-2 rounded-full bg-white px-6 font-semibold text-ink shadow-lg hover:bg-stone-100",
+          focusOnDark,
+        )}
       >
         <ArrowDown aria-hidden size={18} />
         {`See the ${count} homes`}
@@ -190,6 +221,29 @@ function SeeHomes({ count }: { count: number }) {
         <span className="pointer-fine:hidden">or swipe up</span>
         <span className="hidden pointer-fine:inline">or scroll</span>
       </p>
+    </div>
+  );
+}
+
+// Every home has been taken off the link: says so, and how to reach the agent.
+function EmptyLink({ agentName }: { agentName: string }) {
+  const contact = useContext(ContactAgent);
+  return (
+    <div className="relative flex w-full max-w-md flex-col items-center">
+      <h1 className="text-balance font-display text-3xl">There are no homes on this link right now</h1>
+      <p className="mt-2 text-white/85">Ask {agentName} to send you more.</p>
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        onClick={contact.open}
+        className={cn(
+          "mt-6 flex min-h-12 items-center gap-2 rounded-full bg-white px-6 font-semibold text-ink hover:bg-stone-100",
+          focusOnDark,
+        )}
+      >
+        <Phone aria-hidden size={18} />
+        Contact {contact.first}
+      </button>
     </div>
   );
 }
