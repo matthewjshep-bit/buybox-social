@@ -104,16 +104,16 @@ export function NudgeHint({ nudge }: { nudge: Nudge }) {
         {nudge === "photos" ? (
           <>
             Swipe for more photos
-            <ChevronRight size={18} strokeWidth={2.5} className="animate-[nudge-right_1.4s_ease-in-out_infinite]" />
+            <ChevronRight size={18} strokeWidth={2.5} className="animate-[nudge-right_1.4s_ease-in-out_3]" />
           </>
         ) : (
           <>
             {/* Phones swipe up; a mouse or trackpad scrolls down. */}
-            <ArrowUp size={16} strokeWidth={2.5} className="animate-[nudge-up_1.4s_ease-in-out_infinite] pointer-fine:hidden" />
+            <ArrowUp size={16} strokeWidth={2.5} className="animate-[nudge-up_1.4s_ease-in-out_3] pointer-fine:hidden" />
             <ChevronDown
               size={18}
               strokeWidth={2.5}
-              className="hidden animate-[nudge-down_1.4s_ease-in-out_infinite] pointer-fine:block"
+              className="hidden animate-[nudge-down_1.4s_ease-in-out_3] pointer-fine:block"
             />
             <span className="pointer-fine:hidden">Swipe up for the next home</span>
             <span className="hidden pointer-fine:inline">Scroll for the next home</span>

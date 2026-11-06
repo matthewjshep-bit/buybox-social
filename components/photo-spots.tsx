@@ -8,11 +8,12 @@ import {
   useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
+  type Ref,
   type RefObject,
 } from "react";
 import { CommentComposer, type SpotRef } from "@/components/listing-thread";
 import type { usePhotoLikes } from "@/components/photo-likes";
-import { isNear, keepClearOf, PhotoBox, photoFoot, type Box } from "@/components/reel-photos";
+import { CLEAR_MARGIN, isNear, keepClearOf, PhotoBox, photoFoot, photoPlace, type Box } from "@/components/reel-photos";
 import { cn } from "@/lib/format";
 import type { Listing, ListingMedia } from "@/lib/listings/types";
 import {
@@ -86,6 +87,16 @@ type Pin = {
   reaction: "like" | "dislike" | null;
 };
 
+// Yours: you liked or disliked it, or said something there.
+const isMine = (pin: Pin) => pin.reaction !== null || pin.comments.some((comment) => comment.mine);
+const newest = (pin: Pin) => pin.comments.reduce((at, comment) => (comment.at > at ? comment.at : at), "");
+
+// At most this many spots show on a photo, the most liked (then the newest)
+// first, so a popular photo stays a photo; yours always show.
+const MOST_PINS = 5;
+// Spots closer than this, in pixels, gather into one count to tap.
+const CLUSTER_PX = 32;
+
 // Everything said and liked about spots in this photo, one pin per spot.
 function pinsOf(photo: ListingMedia, items: TimelineItem[], photos: Photos): Pin[] {
   const mediaKey = mediaKeyOf(photo);
@@ -132,7 +143,7 @@ const side = (x: number, y: number): CSSProperties => {
 // The photo, and the words and buttons over it, in the layer's own terms. Kept
 // up to date as they change: the description opening, the window turning.
 function useWordsOver(layer: RefObject<HTMLDivElement | null>, photoKey: string | undefined) {
-  const [shape, setShape] = useState<{ photo: Box; words: Box[] } | null>(null);
+  const [shape, setShape] = useState<{ photo: Box; words: Box[]; toggle: Box | null } | null>(null);
   useLayoutEffect(() => {
     const el = layer.current;
     const root = el?.parentElement;
@@ -147,15 +158,19 @@ function useWordsOver(layer: RefObject<HTMLDivElement | null>, photoKey: string 
         right: box.right - at.left,
         bottom: box.bottom - at.top,
       });
+      const toggle = el.querySelector("[data-pins-toggle]");
       setShape({
         photo: near(frame.getBoundingClientRect()),
         words: keepClearOf(root).map((word) => near(word.getBoundingClientRect())),
+        toggle: toggle && near(toggle.getBoundingClientRect()),
       });
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     for (const word of keepClearOf(root)) observer.observe(word);
+    const frame = el.querySelector("[data-photo-frame]");
+    if (frame) observer.observe(frame);
     return () => observer.disconnect();
   }, [layer, photoKey]);
   return shape;
@@ -193,40 +208,86 @@ export function SpotLayer({
 }) {
   const fine = useFinePointer();
   const layer = useRef<HTMLDivElement>(null);
+  const head = useRef<HTMLSpanElement>(null);
   const shape = useWordsOver(layer, photo?.ImageWidth && photo.ImageHeight ? mediaKeyOf(photo) : undefined);
+  // Gathered spots someone asked to see one by one, on this photo.
+  const [spread, setSpread] = useState<{ mediaKey: string; tags: string[] } | null>(null);
   if (!photo || !photo.ImageWidth || !photo.ImageHeight) return null;
   const mediaKey = mediaKeyOf(photo);
   const pins = pinsOf(photo, items, photos);
+  // Where a point in the photo is on screen, in the layer's own terms.
+  const onScreen = (at: { x: number; y: number }) => {
+    const box = shape!.photo;
+    return { x: box.left + at.x * (box.right - box.left), y: box.top + at.y * (box.bottom - box.top) };
+  };
   // A spot under the words isn't drawn there: it would muddle them. (Until it's
-  // measured, nothing is.)
-  const clearOfWords = (pin: Pin) => {
+  // measured, nothing is.) `margin`: how far clear of them it has to be.
+  const clearOfWords = (at: { x: number; y: number }, margin = CLEAR_MARGIN) => {
     if (!shape) return false;
-    const { photo: box, words } = shape;
-    const x = box.left + pin.x * (box.right - box.left);
-    const y = box.top + pin.y * (box.bottom - box.top);
-    return !words.some((word) => isNear(word, x, y));
+    const { x, y } = onScreen(at);
+    return !shape.words.some((word) => isNear(word, x, y, margin));
   };
   const comments = pins.reduce((n, p) => n + p.comments.length, 0);
   const open = picked?.mediaKey === mediaKey ? picked : null;
   const things = (photo.Spots ?? []).filter((spot) => photoTags(photo).includes(spot.tag));
+  const spreadHere = spread?.mediaKey === mediaKey ? spread.tags : [];
+  // The comments toggle steps aside too, while the description is open over it.
+  const toggleCovered = Boolean(
+    shape?.toggle &&
+      shape.words.some(
+        (word) =>
+          word.left < shape.toggle!.right &&
+          word.right > shape.toggle!.left &&
+          word.top < shape.toggle!.bottom &&
+          word.bottom > shape.toggle!.top,
+      ),
+  );
+  const loose = (pin: Pin) => isMine(pin) || spreadHere.includes(pin.tag);
+
+  const ranked = [...pins].sort((a, b) => b.likes - a.likes || newest(b).localeCompare(newest(a)));
+  const shown = ranked.filter(
+    (pin, i) =>
+      (i < MOST_PINS || isMine(pin) || (pinsShown && pin.comments.length > 0)) && pin.tag !== open?.tag && clearOfWords(pin),
+  );
+  // Spots right beside each other gather into one count, so none hides another.
+  const groups: Pin[][] = [];
+  for (const pin of shown) {
+    const at = onScreen(pin);
+    const near = loose(pin)
+      ? undefined
+      : groups.find((group) => {
+          if (loose(group[0])) return false;
+          const other = onScreen(group[0]);
+          return Math.hypot(other.x - at.x, other.y - at.y) < CLUSTER_PX;
+        });
+    if (near) near.push(pin);
+    else groups.push([pin]);
+  }
+  const place = photoPlace(photo);
 
   return (
     // Over the words and buttons, so a card is never under the description;
-    // only what's drawn here takes a touch.
-    <div ref={layer} className="pointer-events-none absolute inset-0 z-20 [container-type:size]">
+    // only what's drawn here takes a touch. With a card open, over the header
+    // too, so it can always be closed.
+    <div ref={layer} className={cn("pointer-events-none absolute inset-0 [container-type:size]", open ? "z-40" : "z-20")}>
+      {/* Where the header ends: no card goes above it. */}
+      <span ref={head} aria-hidden className="absolute top-(--photo-top) size-0" />
       {/* Hearts are always where they were left; what was said opens out
           beside each spot when asked for. */}
       {comments > 0 && !open && (
         <button
           type="button"
+          data-pins-toggle
           aria-pressed={pinsShown}
+          aria-label={`${pinsShown ? "Hide" : "Show"} the comments on this photo, ${comments} ${comments === 1 ? "comment" : "comments"}`}
           onClick={onTogglePins}
-          style={{ top: `calc(${photoFoot(photo)} - 2.7rem)` }}
-          className="pointer-events-auto absolute left-1/2 flex h-8 -translate-x-1/2 items-center gap-1 rounded-full bg-black/45 px-3 text-[13px] font-semibold text-white backdrop-blur-md hover:bg-black/60 aria-pressed:bg-white aria-pressed:text-ink"
+          // A fingertip tall; a small pill to see, at the photo's bottom left.
+          style={{ top: `calc(${photoFoot(photo)} - 2.875rem)`, left: `calc(${place.left} + 0.5rem)` }}
+          className={cn("group pointer-events-auto absolute flex h-11 items-center", toggleCovered && "invisible")}
         >
-          <span className="sr-only">{pinsShown ? "Hide" : "Show"} the comments on this photo:</span>
-          <MessageCircle aria-hidden size={14} /> {comments}
-          <span className="sr-only">{comments === 1 ? "comment" : "comments"}</span>
+          <span className="flex h-8 items-center gap-1 rounded-full bg-black/45 px-3 text-[13px] font-semibold text-white backdrop-blur-md group-hover:bg-black/60 group-aria-pressed:bg-white group-aria-pressed:text-ink">
+            <MessageCircle aria-hidden size={14} /> {comments}
+          </span>
         </button>
       )}
 
@@ -246,17 +307,23 @@ export function SpotLayer({
           </button>
         ))}
 
-        {pins
-          .filter((pin) => pin.tag !== open?.tag && clearOfWords(pin))
-          .map((pin) => (
+        {groups.map((group) =>
+          group.length === 1 ? (
             <SpotPin
-              key={pin.tag}
-              pin={pin}
-              label={thingOf(photo, pin.tag) ?? "A spot"}
+              key={group[0].tag}
+              pin={group[0]}
+              label={thingOf(photo, group[0].tag) ?? "A spot"}
               expanded={pinsShown}
-              onOpen={() => onPick({ mediaKey, tag: pin.tag, x: pin.x, y: pin.y })}
+              onOpen={() => onPick({ mediaKey, tag: group[0].tag, x: group[0].x, y: group[0].y })}
             />
-          ))}
+          ) : (
+            <SpotCluster
+              key={group.map((pin) => pin.tag).join()}
+              pins={group}
+              onSpread={() => setSpread({ mediaKey, tags: [...spreadHere, ...group.map((pin) => pin.tag)] })}
+            />
+          ),
+        )}
 
         {open && (
           <SpotCard
@@ -264,6 +331,7 @@ export function SpotLayer({
             listingKey={listingKey}
             photo={photo}
             spot={open}
+            head={head}
             comments={pins.find((p) => p.tag === open.tag)?.comments ?? []}
             photos={photos}
             inline={fine}
@@ -274,6 +342,29 @@ export function SpotLayer({
           />
         )}
       </PhotoBox>
+    </div>
+  );
+}
+
+// Several spots right beside each other, as one count: tap it to see each.
+function SpotCluster({ pins, onSpread }: { pins: Pin[]; onSpread: () => void }) {
+  const x = pins.reduce((sum, pin) => sum + pin.x, 0) / pins.length;
+  const y = pins.reduce((sum, pin) => sum + pin.y, 0) / pins.length;
+  return (
+    <div style={{ left: `${x * 100}%`, top: `${y * 100}%` }} className="absolute size-0">
+      <button
+        type="button"
+        onClick={onSpread}
+        aria-label={`${pins.length} spots here. Show them`}
+        className="group pointer-events-auto absolute flex size-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center animate-[nudge-in_250ms_ease-out_both]"
+      >
+        <span
+          aria-hidden
+          className="flex h-6 min-w-6 items-center justify-center rounded-full bg-black/45 px-1.5 text-[12px] font-semibold tabular-nums text-white ring-1 ring-white/50 backdrop-blur-sm transition-colors group-hover:bg-black/60"
+        >
+          {pins.length}
+        </span>
+      </button>
     </div>
   );
 }
@@ -309,7 +400,7 @@ function SpotPin({
         aria-label={`${label}: ${[said, likes, dislikes].filter(Boolean).join(", ")}`}
         // A fingertip to tap; a small frosted dot to see, taking on the photo's
         // colours behind it.
-        className="group pointer-events-auto absolute flex size-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center animate-[nudge-in_250ms_ease-out_both]"
+        className="group pointer-events-auto absolute flex size-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center animate-[nudge-in_250ms_ease-out_both]"
       >
         <span
           aria-hidden
@@ -365,6 +456,7 @@ function SpotCard({
   listingKey,
   photo,
   spot,
+  head,
   comments,
   photos,
   inline,
@@ -376,6 +468,8 @@ function SpotCard({
   listingKey: string;
   photo: ListingMedia;
   spot: PickedSpot;
+  // Marks where the header ends.
+  head: RefObject<HTMLElement | null>;
   comments: TimelineComment[];
   photos: Photos;
   // Type the comment right here (a mouse or trackpad), rather than below.
@@ -385,6 +479,37 @@ function SpotCard({
   onComment: () => void;
   onPosted: () => void;
 }) {
+  // The card opens above the spot, or below it near the top; either way it
+  // stays on screen, clear of the header, so it can always be closed.
+  const card = useRef<HTMLDivElement>(null);
+  const [top, setTop] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = card.current;
+    const frame = el?.parentElement;
+    const layer = frame?.parentElement;
+    if (!el || !frame || !layer || !head.current) return;
+    const place = () => {
+      const box = frame.getBoundingClientRect();
+      const height = el.offsetHeight;
+      const at = box.top + spot.y * box.height;
+      const highest = head.current!.getBoundingClientRect().top + 8;
+      const lowest = layer.getBoundingClientRect().bottom - 8;
+      const gap = 22;
+      const above = at - gap - height;
+      const below = at + gap;
+      let y = spot.y < 0.42 ? below : above;
+      if (y === above && above < highest) y = below;
+      else if (y === below && below + height > lowest && above >= highest) y = above;
+      y = Math.max(highest, Math.min(y, lowest - height));
+      setTop(Math.round(y - box.top));
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(el);
+    observer.observe(layer);
+    return () => observer.disconnect();
+  }, [spot.y, head, ringOnly]);
+
   return (
     <>
       <span
@@ -406,7 +531,8 @@ function SpotCard({
           onClose={onClose}
           onComment={onComment}
           onPosted={onPosted}
-          style={side(spot.x, spot.y)}
+          ref={card}
+          style={top === null ? side(spot.x, spot.y) : { ...side(spot.x, spot.y), top, translate: "none" }}
         />
       )}
     </>
@@ -433,6 +559,7 @@ export function ReactCard({
   extra,
   style,
   className,
+  ref,
 }: {
   listingKey: string;
   // The photo it's in, or what stands in for one (the facts).
@@ -455,6 +582,7 @@ export function ReactCard({
   extra?: ReactNode;
   style?: CSSProperties;
   className?: string;
+  ref?: Ref<HTMLDivElement>;
 }) {
   const reaction = photos.reactionOf(where, spot.tag);
   const likes = photos.count(where, spot.tag);
@@ -462,9 +590,11 @@ export function ReactCard({
   const choose = (value: "like" | "dislike") => photos.set(where, spot.tag, reaction === value ? null : value);
   return (
     <div
+      ref={ref}
       role="group"
       aria-label={label}
       data-spot-card
+      data-light
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.stopPropagation();
@@ -483,7 +613,7 @@ export function ReactCard({
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="-mr-1 flex size-8 shrink-0 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-ink"
+          className="-my-1.5 -mr-2 flex size-11 shrink-0 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-ink"
         >
           <X aria-hidden size={16} />
         </button>

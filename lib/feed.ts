@@ -26,8 +26,9 @@ export type Headline =
   | { kind: "react"; who: "anonymous"; state: ReactionState; at: string }
   | { kind: "comment"; who: "public" | "client"; name: string; at: string }
   | { kind: "comment"; who: "anonymous"; at: string }
-  | { kind: "photo"; who: "public" | "client"; name: string; tag: string; at: string }
-  | { kind: "photo"; who: "anonymous"; tag: string; at: string }
+  // `mediaKey`: the photo it's in, when known.
+  | { kind: "photo"; who: "public" | "client"; name: string; tag: string; at: string; mediaKey?: string }
+  | { kind: "photo"; who: "anonymous"; tag: string; at: string; mediaKey?: string }
   | { kind: "sent"; who: "you" | "anonymous"; at: string };
 
 
@@ -47,6 +48,11 @@ export type FeedPost = {
   buzz: Buzz;
   // Why this home fits the viewer's taste, if it does.
   reasons: string[];
+  // On an agent's one-home link: their greeting and note, in place of the description.
+  greeting?: string;
+  note?: string;
+  // Everyone on an agent's link, by first name.
+  members?: string[];
 };
 
 type Row = { data: Listing } & TotalsRow & {
@@ -225,9 +231,10 @@ function toHeadline(row: Row): Headline | null {
   if (row.h_kind === "photo") {
     // A spot reads as the thing it's on ("the front door").
     const tag = tagNameIn(row.data, row.h_media ?? "", row.h_tag!);
+    const mediaKey = row.h_media ?? undefined;
     return named
-      ? { kind: "photo", who: row.h_source as "public" | "client", name: row.h_name!, tag, at }
-      : { kind: "photo", who: "anonymous", tag, at };
+      ? { kind: "photo", who: row.h_source as "public" | "client", name: row.h_name!, tag, at, mediaKey }
+      : { kind: "photo", who: "anonymous", tag, at, mediaKey };
   }
   if (row.h_kind === "comment") {
     return named

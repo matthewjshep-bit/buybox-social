@@ -37,7 +37,16 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
   await expect(taste).toContainText("From 4 reactions: liked 3, passed 1.");
   await expect(taste.getByText("Vibe 1")).toBeVisible();
   await expect(taste.getByText("Exterior 1")).toBeVisible();
-  await expect(pia.getByText(/^For you:/).first()).toBeAttached();
+  // Homes that match it say why, under More.
+  let fits = false;
+  for (let i = 0; i < (await homes.count()) && !fits; i++) {
+    const more = await openMore(pia, homes.nth(i));
+    fits = (await more.getByText(/^For you:/).count()) > 0;
+    if (fits) await expect(more.getByText(/^For you:/)).toBeVisible();
+    await pia.keyboard.press("Escape");
+    await expect(more).toBeHidden();
+  }
+  expect(fits).toBe(true);
   expect(pageErrors).toEqual([]);
 });
 
@@ -78,6 +87,18 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   await heartOf(devHome).click();
   await expect(heartOf(devHome)).toHaveAttribute("aria-pressed", "true");
 
+  // Someone else likes it too, and the front door and the lawn. (Trending
+  // takes several people, and a place among the busiest homes this week, which
+  // the other tests have made busy.)
+  const fay = await signUpBuyer(browser, "fay@example.com", "Fay Lin");
+  await fay.goto("/homes/SAMPLE-1012");
+  const fayHome = homeIn(fay, FOXGLOVE);
+  await heartOf(fayHome).click();
+  await expect(heartOf(fayHome)).toHaveAttribute("aria-pressed", "true");
+  const door = await likeInPhoto(fayHome, "the front door");
+  await door.getByRole("button", { name: "Close" }).click();
+  await likeInPhoto(fayHome, "the front lawn");
+
   // A third person comments on the home Cleo liked.
   const eli = await signUpBuyer(browser, "eli@example.com", "Eli Moss");
   await eli.goto("/homes/SAMPLE-1012");
@@ -85,9 +106,9 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   // Real activity this week makes it trending.
   await expect(eliHome.getByText("Trending")).toBeVisible();
   // Liking just something in a photo counts toward the home's likes too.
-  await expect(eliHome.getByRole("button", { name: `Like ${FOXGLOVE}, 2 likes` })).toBeVisible();
+  await expect(eliHome.getByRole("button", { name: `Like ${FOXGLOVE}, 3 likes` })).toBeVisible();
   await likeInPhoto(eliHome, "the stone and shingle");
-  await expect(eliHome.getByRole("button", { name: `Like ${FOXGLOVE}, 3 likes` })).toHaveAttribute(
+  await expect(eliHome.getByRole("button", { name: `Like ${FOXGLOVE}, 4 likes` })).toHaveAttribute(
     "aria-pressed",
     "false",
   );

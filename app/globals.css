@@ -7,6 +7,32 @@
   --color-ink: var(--ink);
   --font-sans: var(--font-body);
   --font-display: var(--font-heading);
+  /* The dark ground the reel's photos and words sit on. */
+  --color-night: #0c0a09;
+}
+
+/* The full-screen reel's own size decides its layout. Short (a phone on its
+   side): the words go back over the photo. Under 700px tall: the buttons down
+   the side get a little smaller. */
+@custom-variant short (@container reel (height < 520px));
+@custom-variant compact (@container reel (height < 700px));
+
+/* A small control still takes a fingertip: its touch area grows to 44px
+   around it, without moving anything. */
+/* Layers over the reel: the header z-30, a card about a spot z-40, a toast
+   z-50. Sheets open in the browser's top layer, over all of them. */
+
+@utility hit-44 {
+  position: relative;
+  &::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
 }
 
 :root {
@@ -33,8 +59,20 @@ a {
 }
 
 :focus-visible {
-  outline: 2px solid var(--brand);
+  outline: 2px solid var(--ring, var(--brand));
   outline-offset: 2px;
+}
+
+/* On the reel, focus is white with a dark halo, so it shows on any photo.
+   Inside light things over it (cards, sheets, forms), the brand ring. */
+[data-dark-ground] {
+  --ring: white;
+}
+[data-dark-ground] :focus-visible:not(:is(dialog, [data-light], .bg-white) *) {
+  box-shadow: 0 0 0 4px rgb(0 0 0 / 0.55);
+}
+[data-dark-ground] :is(dialog, [data-light], .bg-white) :focus-visible {
+  outline-color: var(--brand);
 }
 
 /* Places focus is moved to (a card, the end of the stream), not controls: no ring. */
@@ -120,6 +158,54 @@ a {
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+/* The activity line above the price: the old line lifts away as the next
+   rises into its place. */
+@keyframes ticker-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes ticker-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Who did something, appearing on the photo where they did it. */
+@keyframes pin-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* A ring that spreads from that spot and fades, to catch the eye. */
+@keyframes spot-ripple {
+  from {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(2.2);
   }
 }
 

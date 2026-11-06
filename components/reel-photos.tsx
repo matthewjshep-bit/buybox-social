@@ -8,44 +8,55 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent, type Pointer
 import { cn } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
 
-// The clear space between the words at the top and those at the bottom, set by
-// the page as `--photo-top` and `--photo-bottom` (in units of the slide, or the
-// carousel, it's measured in).
+// The clear space between the header at the top and the words at the bottom,
+// set by the page as `--photo-top` and `--photo-bottom` (in units of the slide,
+// or the carousel, it's measured in), less anything down the right-hand side
+// (`--photo-right`).
 const TOP = "var(--photo-top, 4.5rem)";
 const BOTTOM = "var(--photo-bottom, 14.5rem)";
+const RIGHT = "var(--photo-right, 0px)";
 const CLEAR = `(100cqh - ${TOP} - ${BOTTOM})`;
-// Where in that space it sits: 0 at the top, 0.5 in the middle.
+// Where in that space it sits: 0 at the top, 0.5 in the middle, 1 on the words.
 const ALIGN = "var(--photo-align, 0.5)";
+// 1: the photo stays inside the clear space (a phone, the words below it).
+// 0: it grows on under the words, as far as the whole height (the words over it).
+const FIT = "var(--photo-fit, 0)";
+const MAX_HEIGHT = `(${CLEAR} + (100cqh - ${CLEAR}) * (1 - ${FIT}))`;
 
 const ratioOf = (photo: ListingMedia | undefined) =>
   photo?.ImageWidth && photo?.ImageHeight ? photo.ImageWidth / photo.ImageHeight : null;
 
-// Where a photo goes: as big as it can be, whole, never cropped. It sits in the
-// clear space when it fits there (a landscape photo on a phone), and grows past
-// it, under the words, when there's room to show more of it (a wide screen), as
-// far as the whole height of the screen. Measured against the nearest box with
-// `container-type: size`.
-function placement(photo: ListingMedia | undefined) {
+// Where a photo goes: as big as it can be, whole, never cropped. On a phone it
+// sits in the clear space, right on top of the words, and never under the
+// header. With the words over it (a wide screen, a phone on its side), it
+// grows past the clear space, under the words, when there's room to show more
+// of it. Measured against the nearest box with `container-type: size`.
+export function photoPlace(photo: ListingMedia | undefined) {
   const ratio = ratioOf(photo);
-  const width = ratio ? `min(100cqw, 100cqh * ${ratio})` : "100cqw";
-  const height = ratio ? `min(100cqh, 100cqw / ${ratio})` : "100cqh";
+  const room = `(100cqw - ${RIGHT})`;
+  const width = ratio ? `min(${room}, ${MAX_HEIGHT} * ${ratio})` : room;
+  const height = ratio ? `min(${MAX_HEIGHT}, ${room} / ${ratio})` : "100cqh";
   const top = `clamp(0px, ${TOP} + (${CLEAR} - ${height}) * ${ALIGN}, 100cqh - ${height})`;
-  return { width, height, top, left: `(100cqw - ${width}) / 2` };
+  return { width, height, top, left: `(${room} - ${width}) / 2` };
 }
 
 // Along the bottom of the photo, or of the clear space when the photo goes on
-// under the words: where the dots go, and anything that sits with them.
+// under the words: where anything that sits at its foot goes.
 export const photoFoot = (photo: ListingMedia | undefined) => {
-  const place = placement(photo);
+  const place = photoPlace(photo);
   return `min(${place.top} + ${place.height}, 100cqh - ${BOTTOM})`;
 };
+
+// Its top edge, or the header's foot when the photo runs on under the header:
+// where anything pinned to the top of the photo goes.
+export const photoHead = (photo: ListingMedia | undefined) => `max(${photoPlace(photo).top}, ${TOP})`;
 
 // A box exactly the size and place of the photo as shown (whole, letterboxed
 // over its blurred copy), so anything inside can point at a spot in the photo
 // in fractions of it. Inside the carousel, or in a layer of the same size over
 // it (with `container-type: size`) to draw over the words on top.
 export function PhotoBox({ photo, children, className }: { photo: ListingMedia | undefined; children?: ReactNode; className?: string }) {
-  const place = placement(photo);
+  const place = photoPlace(photo);
   return (
     <div
       data-photo-frame
@@ -97,6 +108,9 @@ export function ReelPhotos({
   peek,
   overlay,
   controls = true,
+  chrome = true,
+  start = 0,
+  counter,
 }: {
   media: ListingMedia[];
   address: string;
@@ -121,13 +135,20 @@ export function ReelPhotos({
   overlay?: ReactNode;
   // The arrows to the previous and next photo (a swipe still turns them).
   controls?: boolean;
+  // The room label and the arrows over the photo; off to see the photo alone.
+  chrome?: boolean;
+  // The photo to open on, the first time.
+  start?: number;
+  // Which home of several this is ("Home 1 of 3"), at the photo's top right.
+  counter?: string;
 }) {
   // Each carousel needs its own plugin; a sideways trackpad swipe turns the
   // photos, while an up-and-down one still scrolls between homes.
   const [plugins] = useState(() => [WheelGesturesPlugin()]);
-  const [emblaRef, embla] = useEmblaCarousel({}, plugins);
+  const [first] = useState(() => Math.max(0, Math.min(media.length - 1, start)));
+  const [emblaRef, embla] = useEmblaCarousel({ startIndex: first }, plugins);
   const [touched, setTouched] = useState(false);
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(first);
   const lastTap = useRef<{ slide: number; at: number } | null>(null);
   const [burst, setBurst] = useState<{ slide: number; at: number } | null>(null);
 
@@ -229,13 +250,17 @@ export function ReelPhotos({
     single.current = setTimeout(() => onTap(photo, point, size), onDoubleTap ? DOUBLE_TAP_MS : 0);
   };
 
-  // Where the photo on screen sits, for the dots and arrows over it.
+  // Where the photo on screen sits, for the labels and arrows on it.
   const shown = media[index];
-  const place = placement(shown);
+  const place = photoPlace(shown);
   const middle = `calc(${place.top} + ${place.height} / 2)`;
-  const dots = `calc(${photoFoot(shown)} - 1.1rem)`;
-  // The arrows sit just inside the photo's edges.
-  const edge = `calc(${place.left} + 0.75rem)`;
+  const head = `calc(${photoHead(shown)} + 0.5rem)`;
+  // The arrows and labels sit just inside the photo's edges.
+  const edge = `calc(${place.left} + 0.5rem)`;
+  const farEdge = `calc(100cqw - (${place.left}) - ${place.width} + 0.5rem)`;
+  // "Kitchen · 3 of 12": what the photo shows, and where it is among them.
+  const room = [shown?.ImageOf, media.length > 1 ? `${index + 1} of ${media.length}` : null].filter(Boolean).join(" · ");
+  const glass = "rounded-full bg-black/50 text-white backdrop-blur-md";
 
   return (
     <div
@@ -265,16 +290,16 @@ export function ReelPhotos({
               onPointerLeave={release}
               className="group/photo relative h-full w-full shrink-0 cursor-pointer select-none overflow-hidden [container-type:size] [-webkit-touch-callout:none]"
             >
-              {/* The same photo, blurred, fills the space around it. */}
+              {/* The same photo, blurred and dimmed, fills the space around it:
+                  on a phone, only between the header and the words. */}
               {!isVideo(photo) && (
-                <Image
-                  src={photo.MediaURL}
-                  alt=""
+                <div
                   aria-hidden
-                  fill
-                  sizes="96px"
-                  className="scale-125 object-cover opacity-70 blur-2xl"
-                />
+                  className="absolute inset-x-0 top-(--backdrop-top,0px) bottom-(--backdrop-bottom,0px) overflow-hidden"
+                >
+                  <Image src={photo.MediaURL} alt="" fill sizes="96px" className="scale-125 object-cover opacity-70 blur-2xl" />
+                  <div className="absolute inset-0 bg-[rgb(0_0_0/var(--backdrop-shade,0))]" />
+                </div>
               )}
               {isVideo(photo) ? (
                 <ReelVideo src={photo.MediaURL} playing={active && i === index} label={photo.ShortDescription} />
@@ -318,23 +343,36 @@ export function ReelPhotos({
         </div>
       </div>
       {overlay}
+      {/* Labels on the photo, in place of dots (which run off the screen
+          with 30 photos): the room, and which photo of how many. The live
+          line below says it for screen readers. Not on a phone on its side,
+          where the words leave no room above them. */}
+      <div
+        aria-hidden
+        className={cn(
+          "pointer-events-none transition-[opacity,visibility] duration-300 short:hidden",
+          !chrome && "invisible opacity-0",
+        )}
+      >
+        {room && (
+          <p
+            style={{ top: head, left: edge }}
+            className={cn(glass, "absolute flex h-7 max-w-[60cqw] items-center px-2.5 text-[13px] font-semibold")}
+          >
+            <span className="min-w-0 truncate">{room}</span>
+          </p>
+        )}
+        {counter && (
+          <p
+            style={{ top: head, right: farEdge }}
+            className={cn(glass, "absolute flex h-7 items-center px-2.5 text-[13px] font-semibold tabular-nums")}
+          >
+            {counter}
+          </p>
+        )}
+      </div>
       {media.length > 1 && (
         <>
-          <div
-            aria-hidden
-            style={{ top: dots }}
-            className="pointer-events-none absolute inset-x-0 flex justify-center gap-1.5"
-          >
-            {media.map((photo, i) => (
-              <span
-                key={photo.MediaURL}
-                className={cn(
-                  "h-1 rounded-full bg-white shadow transition-all",
-                  i === index ? "w-5 opacity-100" : "w-1.5 opacity-60",
-                )}
-              />
-            ))}
-          </div>
           <p className="sr-only" aria-live="polite">
             Photo {index + 1} of {media.length}
           </p>
@@ -346,19 +384,25 @@ export function ReelPhotos({
                 disabled={index === 0}
                 onClick={() => embla?.scrollPrev()}
                 style={{ top: middle, left: edge }}
-                className="absolute z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm disabled:hidden lg:size-11"
+                className={cn(
+                  "absolute z-10 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-md transition-[opacity,visibility] duration-300 disabled:hidden",
+                  !chrome && "invisible opacity-0",
+                )}
               >
-                <ChevronLeft aria-hidden size={22} />
+                <ChevronLeft aria-hidden size={24} />
               </button>
               <button
                 type="button"
                 aria-label="Next photo"
                 disabled={index === media.length - 1}
                 onClick={() => embla?.scrollNext()}
-                style={{ top: middle, right: edge }}
-                className="absolute z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm disabled:hidden lg:size-11"
+                style={{ top: middle, right: farEdge }}
+                className={cn(
+                  "absolute z-10 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-md transition-[opacity,visibility] duration-300 disabled:hidden",
+                  !chrome && "invisible opacity-0",
+                )}
               >
-                <ChevronRight aria-hidden size={22} />
+                <ChevronRight aria-hidden size={24} />
               </button>
             </>
           )}

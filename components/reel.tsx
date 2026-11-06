@@ -2,16 +2,21 @@
 
 import {
   ArrowUp,
+  Ellipsis,
+  Eye,
+  Flame,
+  Hand,
   Heart,
+  ImageIcon,
   MapPin,
   Maximize2,
   MessageCircle,
-  MoreHorizontal,
   Send,
   Share2,
   Sparkles,
   ThumbsDown,
   User,
+  UserPlus,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -47,7 +52,7 @@ import {
   type Photos,
   type PickedSpot,
 } from "@/components/photo-spots";
-import { ReelPhotos } from "@/components/reel-photos";
+import { photoFoot, ReelPhotos } from "@/components/reel-photos";
 import { Sheet } from "@/components/sheet";
 import { NudgeHint, useNudges, type Nudge } from "@/components/walkthrough";
 import type { FeedPost, Headline } from "@/lib/feed";
@@ -67,11 +72,41 @@ import type { TimelineComment, TimelineItem } from "@/lib/timeline";
 import { describeReaction, NO_REACTION, type Aspect, type ReactionState } from "@/lib/reactions";
 
 // The feed: one home per screen, scrolled up like a reel, for as long as you
-// keep going. Photos fill the screen; the price, the facts, who's talking and
-// the description sit together at the bottom, read top to bottom, with the
-// buttons down the right-hand side.
+// keep going. On a phone the whole photo sits right on top of a block of words
+// on the dark ground (who's talking, the price, the facts, the description,
+// the comment bar), always the same height, so the photo never jumps from home
+// to home and nothing is written over it; the buttons run down the right.
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// A home, as the rail's Send hands it to the page.
+export type SendHome = {
+  listingKey: string;
+  address: string;
+  city: string;
+  price: number;
+  beds: number | null;
+  baths: number | null;
+  sqft: number | null;
+};
+
+const sendHomeOf = ({ listing }: FeedPost): SendHome => ({
+  listingKey: listing.ListingKey,
+  address: listing.UnparsedAddress,
+  city: listing.City,
+  price: listing.ListPrice,
+  beds: listing.BedroomsTotal ?? null,
+  baths: listing.BathroomsTotalInteger ?? null,
+  sqft: listing.LivingArea ?? null,
+});
+
+// What the rail's fourth button does: share the page, invite someone onto an
+// agent's link, or (an agent, on a home for sale) send it to a client.
+type ShareKind = "share" | "invite" | "send";
+
+// "8", "1,204", "10.2K"
+const countLabel = (n: number) =>
+  n < 10_000 ? n.toLocaleString("en-US") : new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 
 export function ReelFeed({
   initial,
@@ -90,6 +125,9 @@ export function ReelFeed({
   onActiveChange,
   loadMore,
   onOpen,
+  onSend,
+  initialPhoto,
+  onPhotoSeen,
 }: {
   initial: FeedPost[];
   // Public pages, or an agent's private link.
@@ -121,6 +159,13 @@ export function ReelFeed({
   // Just a look at each home (beside the map): a tap anywhere opens it here,
   // and nothing on it can be liked, said or tapped.
   onOpen?: (listingKey: string) => void;
+  // Signed-in agents on public pages: the rail's share button sends this home.
+  // Called first thing in the tap, with nothing awaited before it.
+  onSend?: (home: SendHome) => void;
+  // The photo (from 0) the first home opens on.
+  initialPhoto?: number;
+  // A photo has settled on screen.
+  onPhotoSeen?: (listingKey: string, index: number) => void;
 }) {
   // The order is fixed when the page opens, so a background refresh never
   // reshuffles the homes under your thumb. Agent links follow the page, which
@@ -163,6 +208,9 @@ export function ReelFeed({
         end={end}
         embedded={embedded}
         onOpen={onOpen}
+        onSend={onSend}
+        initialPhoto={initialPhoto}
+        onPhotoSeen={onPhotoSeen}
         agentName={agentName}
         canInvite={canInvite}
         focus={focus}
@@ -190,6 +238,9 @@ function Feed({
   end,
   embedded,
   onOpen,
+  onSend,
+  initialPhoto,
+  onPhotoSeen,
   agentName,
   canInvite,
   focus,
@@ -205,6 +256,9 @@ function Feed({
   end?: ReactNode;
   embedded: boolean;
   onOpen?: (listingKey: string) => void;
+  onSend?: (home: SendHome) => void;
+  initialPhoto?: number;
+  onPhotoSeen?: (listingKey: string, index: number) => void;
   agentName?: string;
   canInvite: boolean;
   focus?: { key: string; n: number } | null;
@@ -224,6 +278,10 @@ function Feed({
   // whole, until you let go.
   const [clear, setClear] = useState<number | null>(null);
   if (clear !== null && clear !== active) setClear(null);
+  // "Show the photo only", from More: nothing but the photo on this home,
+  // until you move on to another.
+  const [bare, setBare] = useState<number | null>(null);
+  if (bare !== null && bare !== active) setBare(null);
   // A spot to go to, from a comment about it. `n` counts requests.
   const [goToSpot, setGoToSpot] = useState<{ key: string; spot: SpotRef; n: number } | null>(null);
   // Homes whose photos show what people said and liked where they said it.
@@ -338,7 +396,12 @@ function Feed({
     setTimeout(() => setToast(null), 2200);
   };
 
+  const isForSale = (post: FeedPost) => post.listing.StandardStatus === "Active";
+  const shareKind = (post: FeedPost): ShareKind | null =>
+    mode === "share" ? (canInvite ? "invite" : null) : onSend && isForSale(post) ? "send" : "share";
+
   const share = async (post: FeedPost) => {
+    if (onSend && mode === "public" && isForSale(post)) return onSend(sendHomeOf(post));
     const url =
       mode === "share" ? window.location.href : `${window.location.origin}/homes/${encodeURIComponent(post.listing.ListingKey)}`;
     const title = `${post.listing.UnparsedAddress} · ${formatPrice(post.listing.ListPrice)}`;
@@ -359,10 +422,14 @@ function Feed({
   return (
     <div
       ref={frame}
+      data-dark-ground
       className={cn(
-        // Its width, not the window's, decides the layout of each home.
-        "overflow-hidden bg-stone-950 text-white @container",
-        header ? "[--chrome-top:4rem]" : "[--chrome-top:0.75rem]",
+        // Its size, not the window's, decides the layout of each home.
+        "overflow-hidden bg-night text-white @container-size/reel",
+        // The photo starts just under the header, never beneath it.
+        header
+          ? "[--chrome-top:4rem] [--photo-top:calc(56px+env(safe-area-inset-top)+4px)]"
+          : "[--chrome-top:0.75rem] [--photo-top:0.5rem]",
         embedded ? "relative h-full w-full" : "fixed inset-0 z-30",
       )}
     >
@@ -380,12 +447,17 @@ function Feed({
         {posts.map((post, i) => {
           const key = post.listing.ListingKey;
           const state = reactions.states[key] ?? NO_REACTION;
+          const kind = shareKind(post);
           return (
             <Panel
               key={key}
               index={offset + i}
               post={post}
               mode={mode}
+              agentName={agentName}
+              start={i === 0 ? initialPhoto : undefined}
+              onPhotoSeen={onPhotoSeen}
+              counter={mode === "share" && posts.length > 1 ? `Home ${i + 1} of ${posts.length}` : undefined}
               active={active === offset + i}
               near={Math.abs(active - (offset + i)) <= 1}
               nudge={active === offset + i ? nudges.showing : null}
@@ -401,12 +473,15 @@ function Feed({
               covered={sheet?.kind === "comments" && sheet.key === key}
               clear={clear === offset + i}
               onHoldPhoto={(holding) => setClear(holding ? offset + i : null)}
+              bare={bare === offset + i}
+              onShowEverything={() => setBare(null)}
               pinsShown={pinned.has(key) || (sheet?.kind === "comments" && sheet.key === key)}
               onPins={(on) => pin(key, on)}
               goToSpot={goToSpot?.key === key ? goToSpot : null}
               onOpen={onOpen && (() => onOpen(key))}
               onMore={() => setSheet({ kind: "more", key })}
-              onShare={mode === "share" && !canInvite ? undefined : () => share(post)}
+              shareAs={kind}
+              onShare={kind ? () => share(post) : undefined}
             />
           );
         })}
@@ -446,25 +521,23 @@ function Feed({
         // Out of the way while a photo is cleared to be seen whole.
         <div
           className={cn(
-            "absolute inset-x-0 top-0 z-20 transition-[opacity,visibility] duration-300",
-            clear === active && "invisible opacity-0",
+            "absolute inset-x-0 top-0 z-30 transition-[opacity,visibility] duration-300",
+            (clear === active || bare === active) && "invisible opacity-0",
           )}
         >
           {header}
         </div>
       )}
+      {/* Which home of the link's few this is: on the photo, and said here. */}
       {mode === "share" && posts.length > 1 && active >= offset && active < offset + posts.length && (
-        <p
-          aria-live="polite"
-          className="absolute right-4 top-[calc(env(safe-area-inset-top)+4rem)] z-20 rounded-full bg-black/45 px-2.5 py-1 text-xs font-semibold tabular-nums backdrop-blur-sm"
-        >
-          {active - offset + 1} of {posts.length}
+        <p aria-live="polite" className="sr-only">
+          Home {active - offset + 1} of {posts.length}
         </p>
       )}
       {toast && (
         <p
           role="status"
-          className="absolute bottom-24 left-1/2 z-40 -translate-x-1/2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-ink shadow-lg"
+          className="absolute bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-ink shadow-lg"
         >
           {toast}
         </p>
@@ -500,6 +573,10 @@ function Feed({
           setSheet(null);
           goTo(active + 1);
         }}
+        onPhotoOnly={() => {
+          setSheet(null);
+          if (sheetPost) setBare(offset + posts.indexOf(sheetPost));
+        }}
         onClose={() => setSheet(null)}
       />
     </div>
@@ -510,6 +587,10 @@ function Panel({
   index,
   post,
   mode,
+  agentName,
+  start,
+  onPhotoSeen,
+  counter,
   active,
   near,
   nudge,
@@ -525,16 +606,25 @@ function Panel({
   covered,
   clear,
   onHoldPhoto,
+  bare,
+  onShowEverything,
   pinsShown,
   onPins,
   goToSpot,
   onOpen,
   onMore,
+  shareAs,
   onShare,
 }: {
   index: number;
   post: FeedPost;
   mode: "public" | "share";
+  agentName?: string;
+  // The photo to open on.
+  start?: number;
+  onPhotoSeen?: (listingKey: string, index: number) => void;
+  // "Home 1 of 3", on an agent's link with several.
+  counter?: string;
   active: boolean;
   // Close enough to load its photos.
   near: boolean;
@@ -556,6 +646,9 @@ function Panel({
   // Nothing over the photo, to see it whole.
   clear: boolean;
   onHoldPhoto: (holding: boolean) => void;
+  // Just the photo, until "Show everything" or another home.
+  bare: boolean;
+  onShowEverything: () => void;
   // What people said and liked shows on the photos, where they said it.
   pinsShown: boolean;
   onPins: (on: boolean) => void;
@@ -564,13 +657,15 @@ function Panel({
   // Just a look (beside the map): a tap anywhere opens the home full screen.
   onOpen?: () => void;
   onMore: () => void;
+  shareAs: ShareKind | null;
   onShare?: () => void;
 }) {
   const { listing } = post;
-  const [photo, setPhoto] = useState(0);
+  const [first] = useState(() => Math.max(0, Math.min(listing.Media.length - 1, start ?? 0)));
+  const [photo, setPhoto] = useState(first);
   // The photo that has finished sliding into place: what's drawn over it
   // shows then, not while it's moving.
-  const [settled, setSettled] = useState(0);
+  const [settled, setSettled] = useState(first);
   // The spot whose card is open: on the photo on screen, or one of the facts.
   const [picked, setPicked] = useState<PickedSpot | null>(null);
   const current = listing.Media[photo];
@@ -603,11 +698,20 @@ function Panel({
       setPicked({ ...goToSpot.spot, ...at });
     }
   }
+  // Tell the page which photos have been seen, as each settles on screen.
+  const seen = useRef(onPhotoSeen);
+  useLayoutEffect(() => {
+    seen.current = onPhotoSeen;
+  });
+  useEffect(() => {
+    if (active) seen.current?.(listing.ListingKey, settled);
+  }, [active, settled, listing.ListingKey]);
   // The whole description, rather than two lines.
   const [more, setMore] = useState(false);
-  // How tall the words at the bottom are, so a photo that fits sits right on
-  // top of them, however many lines they take. Measured with the description
-  // closed: opening it shouldn't move the photo.
+  // How tall the words at the bottom are, so the photo sits right on top of
+  // them. On a phone they're always the same height (so the photo never jumps
+  // from home to home); measured anyway, with the description closed: opening
+  // it shouldn't move the photo.
   const words = useRef<HTMLDivElement>(null);
   const [wordsHeight, setWordsHeight] = useState<number | null>(null);
   useLayoutEffect(() => {
@@ -619,6 +723,11 @@ function Panel({
     observer.observe(el);
     return () => observer.disconnect();
   }, [more]);
+  // "Show everything" takes the place of what it hid, so the keyboard stays put.
+  const everything = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (bare) everything.current?.focus();
+  }, [bare]);
   // Photos load as a home comes close, and stay once loaded.
   const [loaded, setLoaded] = useState(near);
   if (near && !loaded) setLoaded(true);
@@ -639,6 +748,9 @@ function Panel({
         }))
       : [];
   const comments = post.timeline.filter((item) => item.kind === "comment").length;
+  // Nothing over the photo: held, or "Show the photo only".
+  const hidden = clear || bare;
+  const agentFirst = agentName?.split(" ")[0] || "your agent";
 
   const likeWhatsShown = (shown: ListingMedia) => {
     onDoubleTapLike();
@@ -670,13 +782,23 @@ function Panel({
       data-panel={index}
       data-home={listing.ListingKey}
       aria-label={listing.UnparsedAddress}
-      // The clear space between the header and the words at the bottom. A
-      // photo that fits sits there: when narrow, right on top of the words, so
-      // the photo and what it is read as one, top to bottom; when wide,
-      // centred. A wide screen has room for more, so there the photo grows on
-      // under the words.
-      className="relative h-full snap-start snap-always overflow-hidden bg-stone-950 [--photo-align:1] [--photo-bottom:21rem] [--photo-top:calc(var(--chrome-top,4rem)_+_0.5rem)] @5xl:[--photo-align:0.5]"
-      style={wordsHeight ? ({ "--photo-bottom": `${wordsHeight + 8}px` } as CSSProperties) : undefined}
+      // Where the photo goes. On a phone: in the clear space between the
+      // header and the words, right on top of them, so the photo and what it
+      // is read as one, top to bottom, with a blurred copy of it filling the
+      // band above. Wide, or a phone on its side: today's full-screen photo
+      // with the words over it, centred when wide.
+      className={cn(
+        "relative h-full snap-start snap-always overflow-hidden bg-night",
+        "[--photo-align:1] [--photo-fit:1] [--photo-bottom:calc(308px+env(safe-area-inset-bottom))]",
+        "[--backdrop-top:var(--photo-top)] [--backdrop-bottom:var(--photo-bottom)] [--backdrop-shade:0.4]",
+        "short:[--backdrop-bottom:0px] short:[--backdrop-shade:0] short:[--backdrop-top:0px] short:[--photo-fit:0] short:[--words-gap:8px]",
+        "@5xl:[--backdrop-bottom:0px] @5xl:[--backdrop-shade:0] @5xl:[--backdrop-top:0px] @5xl:[--photo-align:0.5] @5xl:[--photo-fit:0] @5xl:[--photo-top:calc(var(--chrome-top,4rem)+0.5rem)] @5xl:[--words-gap:8px]",
+      )}
+      style={
+        wordsHeight
+          ? ({ "--photo-bottom": `calc(${wordsHeight}px + var(--words-gap, 0px))` } as CSSProperties)
+          : undefined
+      }
     >
       {loaded && (
         <ReelPhotos
@@ -684,6 +806,8 @@ function Panel({
           address={listing.UnparsedAddress}
           active={active}
           priority={index <= 1}
+          start={first}
+          counter={counter}
           onIndexChange={(next) => {
             setPhoto(next);
             onSwipe?.();
@@ -693,26 +817,46 @@ function Panel({
           onTap={onOpen ? () => onOpen() : photos.enabled ? tapPhoto : undefined}
           onHold={onOpen ? undefined : onHoldPhoto}
           controls={!onOpen}
+          chrome={!hidden}
           show={show}
           peek={nudge === "photos"}
-          overlay={nudge && <NudgeHint nudge={nudge} />}
+          overlay={
+            <>
+              {nudge && <NudgeHint nudge={nudge} />}
+              {bare && (
+                // Never stuck with nothing to tap: one way back, on the photo.
+                <button
+                  ref={everything}
+                  type="button"
+                  onClick={onShowEverything}
+                  style={{ top: `calc(${photoFoot(current)} - 3.25rem)` }}
+                  className="absolute left-1/2 z-10 flex h-11 -translate-x-1/2 items-center gap-2 rounded-full bg-black/50 px-4 text-[15px] font-semibold text-white backdrop-blur-md hover:bg-black/65"
+                >
+                  <Eye aria-hidden size={18} />
+                  Show everything
+                </button>
+              )}
+            </>
+          }
         />
       )}
-      {/* Shades keep the header and the words readable over any photo; the
-          bottom one deepens to hold the whole description. */}
+      {/* With the words over the photo (wide, or a phone on its side), shades
+          keep the header and the words readable over any photo; the bottom
+          one deepens to hold the whole description. A phone's words sit on
+          the dark ground instead. */}
       <div
         aria-hidden
         className={cn(
-          "pointer-events-none absolute inset-x-0 top-0 h-32 bg-linear-to-b from-black/50 to-transparent transition-opacity duration-300",
-          clear && "opacity-0",
+          "pointer-events-none absolute inset-x-0 top-0 hidden h-32 bg-linear-to-b from-black/50 to-transparent transition-opacity duration-300 short:block @5xl:block",
+          hidden && "opacity-0",
         )}
       />
       <div
         aria-hidden
         className={cn(
-          "pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t to-transparent transition-[opacity,height] duration-300",
+          "pointer-events-none absolute inset-x-0 bottom-0 hidden bg-linear-to-t to-transparent transition-[opacity,height] duration-300 short:block @5xl:block",
           more ? "h-3/4 from-black/85 via-black/55" : "h-1/2 from-black/80 via-black/40",
-          (covered || clear) && "opacity-0",
+          (covered || hidden) && "opacity-0",
         )}
       />
 
@@ -722,7 +866,7 @@ function Panel({
       <div
         className={cn(
           "pointer-events-none absolute inset-0 transition-[opacity,visibility] duration-300 [&_a]:pointer-events-auto [&_button]:pointer-events-auto",
-          clear && "invisible opacity-0",
+          hidden && "invisible opacity-0",
         )}
       >
         {/* The buttons and the words at the bottom are under the comments
@@ -740,7 +884,7 @@ function Panel({
               liked={liked}
               likes={likes}
               comments={comments}
-              mode={mode}
+              shareAs={shareAs}
               onLike={onLike}
               onComments={onComments}
               onShare={onShare}
@@ -750,31 +894,53 @@ function Panel({
         </div>
 
         {/* All the words, in one block at the bottom, read top to bottom like
-            a listing: who's talking, then the price, beds, baths and size, the
-            address, the description, and the comment bar right under it. When
-            the feed is wide, a column in the middle, over the photo, its words
-            starting at its left edge; narrower (a phone, or the pane beside the
-            map), the words sit beside the buttons, like a reel. */}
+            a listing: who's talking, the price, beds, baths and size, the
+            address, the description, who listed it, and the comment bar. On a
+            phone a fixed 308px on the dark ground, every row one line (the
+            description two) so it never changes height: anything new belongs
+            in a sheet, not here. Wide, a column in the middle, over the photo.
+            Beside the map, the same, with "Open full screen" for the bar. */}
         <div
           ref={words}
+          data-words
           className={cn(
-            "absolute inset-x-0 bottom-0 flex flex-col px-4 pb-[max(1.5rem,calc(env(safe-area-inset-bottom)_+_0.75rem))] transition-[opacity,visibility] duration-300 sm:px-6 @5xl:items-center",
+            "absolute inset-x-0 bottom-0 flex flex-col bg-night pb-(--words-pad) transition-[opacity,visibility] duration-300 [--words-pad:calc(12px+env(safe-area-inset-bottom))]",
+            more ? "h-auto" : "h-[calc(296px+var(--words-pad))]",
+            "short:h-auto short:bg-transparent",
+            "@5xl:h-auto @5xl:items-center @5xl:bg-transparent @5xl:px-6 @5xl:[--words-pad:max(1.5rem,calc(env(safe-area-inset-bottom)+0.75rem))]",
             // Beside the map on a phone, its Map button floats at the bottom.
-            onOpen && "max-lg:pb-24",
+            onOpen && "max-lg:[--words-pad:6rem]",
             covered && "invisible opacity-0",
           )}
         >
           <div
             data-keep-clear
             className={cn(
-              "w-full [text-shadow:0_1px_3px_rgb(0_0_0/0.45)] @5xl:max-w-xl @5xl:pr-0",
-              !onOpen && "pr-20 sm:pr-24",
+              "relative w-full pl-4 [text-shadow:0_1px_3px_rgb(0_0_0/0.45)] @5xl:max-w-xl @5xl:px-0",
+              // Clear of the buttons down the right.
+              onOpen ? "pr-4" : "pr-[76px]",
             )}
           >
-            <ActivityLine headline={post.headline} trending={post.buzz.trending} onOpen={onOpen ?? onComments} />
+            <div className="flex h-12 items-center">
+              <ActivityLine
+                headline={post.headline}
+                listing={listing}
+                photo={settled}
+                // Beside the map, just to read; a tap there opens the home.
+                onOpen={onOpen ? undefined : onComments}
+                hint={
+                  onOpen
+                    ? null
+                    : mode === "share"
+                      ? `Tap anything in the photo to tell ${agentFirst} what you think`
+                      : "Tap anything in the photo to like it or say something"
+                }
+              />
+            </div>
             <Facts
               listing={listing}
               items={post.timeline}
+              trending={post.buzz.trending}
               // Beside the map, just a look.
               photos={onOpen || !photos.enabled ? null : photos}
               open={picked?.mediaKey === FACTS && isFactTag(picked.tag) ? picked.tag : null}
@@ -785,40 +951,53 @@ function Panel({
               onComment={onCommentSpot}
               onPosted={() => setPicked(null)}
             />
-            <Description
-              listing={post.listing}
-              reasons={post.reasons}
+            <Caption
+              listing={listing}
+              greeting={post.greeting}
+              note={post.note}
               open={more}
               onToggle={onOpen ? undefined : () => setMore(!more)}
             />
+            <p className="h-5 truncate text-[13px] leading-5 text-white/80">
+              {listing.ListAgentFullName && `Listed by ${listing.ListAgentFullName}`}
+              {listing.ListOfficeName && ` · ${listing.ListOfficeName}`}
+              {isSampleListing(listing) && " · Sample listing"}
+            </p>
             {error && (
-              <p role="alert" className="mt-1 text-sm font-semibold text-rose-200">
+              <p
+                role="alert"
+                className="absolute bottom-full left-4 mb-2 rounded-full bg-rose-700 px-3 py-1.5 text-sm font-semibold text-white [text-shadow:none]"
+              >
                 {error}
               </p>
             )}
           </div>
-          {onOpen ? (
-            <button
-              type="button"
-              data-keep-clear
-              onClick={onOpen}
-              className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-full bg-white text-[15px] font-semibold text-ink shadow-lg transition-colors hover:bg-white/90 @5xl:max-w-xl"
-            >
-              <Maximize2 aria-hidden size={17} />
-              Open full screen
-              <span className="sr-only">: {listing.UnparsedAddress}</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              data-keep-clear
-              onClick={onCompose}
-              className="mt-3 flex h-11 w-full items-center gap-3 rounded-full @5xl:max-w-xl border border-white/15 bg-white/10 pl-5 pr-3 text-left text-[15px] text-white/75 backdrop-blur-md transition-colors hover:bg-white/15"
-            >
-              <span className="min-w-0 flex-1 truncate">Add a comment…</span>
-              <Send aria-hidden size={18} className="shrink-0 opacity-70" />
-            </button>
-          )}
+          <div className="mt-2 w-full px-4 @5xl:max-w-xl @5xl:px-0">
+            {onOpen ? (
+              <button
+                type="button"
+                data-keep-clear
+                onClick={onOpen}
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-white text-[15px] font-semibold text-ink shadow-lg transition-colors hover:bg-white/90"
+              >
+                <Maximize2 aria-hidden size={17} />
+                Open full screen
+                <span className="sr-only">: {listing.UnparsedAddress}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                data-keep-clear
+                onClick={onCompose}
+                className="flex h-12 w-full items-center gap-3 rounded-full bg-white/12 pl-5 pr-3 text-left text-base text-white/75 ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18"
+              >
+                <span className="min-w-0 flex-1 truncate">
+                  {mode === "share" ? `Tell ${agentFirst} what you think…` : "Add a comment…"}
+                </span>
+                <Send aria-hidden size={18} className="shrink-0 opacity-70" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -827,7 +1006,7 @@ function Panel({
       {loaded && photos.enabled && !onOpen && (
         <SpotLayer
           listingKey={listing.ListingKey}
-          photo={active && !clear && settled === photo ? current : undefined}
+          photo={active && !hidden && settled === photo ? current : undefined}
           items={post.timeline}
           photos={photos}
           picked={picked}
@@ -855,7 +1034,7 @@ function RailButton({
   name,
 }: {
   label: string;
-  count?: string | number;
+  count?: string;
   pressed?: boolean;
   onClick: () => void;
   children: ReactNode;
@@ -867,9 +1046,9 @@ function RailButton({
       aria-label={name}
       aria-pressed={pressed}
       onClick={onClick}
-      className="group flex w-14 flex-col items-center gap-0.5 text-xs font-semibold [text-shadow:0_1px_3px_rgb(0_0_0/0.6)]"
+      className="group flex w-14 flex-col items-center gap-0.5 text-[13px] font-semibold leading-4 [text-shadow:0_1px_3px_rgb(0_0_0/0.6)]"
     >
-      <span className="flex size-12 items-center justify-center rounded-full bg-black/25 backdrop-blur-sm transition-transform group-active:scale-90 motion-reduce:transition-none motion-reduce:group-active:scale-100">
+      <span className="flex size-12 items-center justify-center rounded-full bg-black/35 backdrop-blur-md transition-transform group-active:scale-90 compact:size-11 motion-reduce:transition-none motion-reduce:group-active:scale-100">
         {children}
       </span>
       <span aria-hidden className="tabular-nums">
@@ -881,13 +1060,15 @@ function RailButton({
 
 type Thing = { tag: string; liked: boolean; count: number; toggle: () => void };
 
+// Down the right, in reach of a thumb, bottom up from just over the comment
+// bar: like, comments, share (or invite, or send), more. Each keeps its label.
 function Rail({
   address,
   things,
   liked,
   likes,
   comments,
-  mode,
+  shareAs,
   onLike,
   onComments,
   onShare,
@@ -898,21 +1079,23 @@ function Rail({
   liked: boolean;
   likes: number;
   comments: number;
-  mode: "public" | "share";
+  shareAs: ShareKind | null;
   onLike: () => void;
   onComments: () => void;
   onShare?: () => void;
   onMore: () => void;
 }) {
+  const icon = { "aria-hidden": true, className: "drop-shadow" } as const;
   return (
     <div
       data-keep-clear
-      className="pointer-events-auto absolute bottom-[max(5rem,calc(env(safe-area-inset-bottom)_+_4.25rem))] right-2 z-10 flex flex-col items-center gap-4 sm:right-4">
+      className="pointer-events-auto absolute bottom-[calc(68px+env(safe-area-inset-bottom))] right-2 z-10 flex flex-col items-center gap-1 @5xl:bottom-[max(5rem,calc(env(safe-area-inset-bottom)+4.25rem))] @5xl:right-4"
+    >
       <LikeWithList things={things}>
         <RailButton
           name={`Like ${address}${likes ? `, ${likes} ${likes === 1 ? "like" : "likes"}` : ""}`}
           label="Like"
-          count={likes || "Like"}
+          count={likes ? countLabel(likes) : "Like"}
           pressed={liked}
           onClick={onLike}
         >
@@ -927,22 +1110,28 @@ function Rail({
       <RailButton
         name={`Comments${comments ? `, ${comments}` : ""}`}
         label="Comments"
-        count={comments || "Comment"}
+        count={comments ? countLabel(comments) : "Comment"}
         onClick={onComments}
       >
-        <MessageCircle aria-hidden size={28} className="drop-shadow" />
+        <MessageCircle size={28} {...icon} />
       </RailButton>
-      {onShare && (
-        <RailButton
-          name={mode === "share" ? "Invite someone" : "Share"}
-          label={mode === "share" ? "Invite" : "Share"}
-          onClick={onShare}
-        >
-          {mode === "share" ? <Send aria-hidden size={26} /> : <Share2 aria-hidden size={26} className="drop-shadow" />}
+      {onShare && shareAs === "send" && (
+        <RailButton name="Send to a client" label="Send" onClick={onShare}>
+          <Send size={26} {...icon} />
+        </RailButton>
+      )}
+      {onShare && shareAs === "invite" && (
+        <RailButton name="Invite someone" label="Invite" onClick={onShare}>
+          <UserPlus size={26} {...icon} />
+        </RailButton>
+      )}
+      {onShare && shareAs === "share" && (
+        <RailButton name="Share" label="Share" onClick={onShare}>
+          <Share2 size={26} {...icon} />
         </RailButton>
       )}
       <RailButton name="More options" label="More" onClick={onMore}>
-        <MoreHorizontal aria-hidden size={28} />
+        <Ellipsis size={28} {...icon} />
       </RailButton>
     </div>
   );
@@ -959,55 +1148,102 @@ function headlineText(headline: Headline) {
   return `${who} ${describeReaction(headline.state)}`;
 }
 
-// The latest thing someone did, like a caption's first line. Opens the conversation.
+// The latest thing someone did, in a slot of its own above the price that's
+// always the same height: who and what, then where and when. Opens the
+// conversation. With nothing yet, what you can do.
 function ActivityLine({
   headline,
-  trending,
+  listing,
+  photo,
   onOpen,
+  hint,
 }: {
   headline: Headline | null;
-  trending: boolean;
-  onOpen: () => void;
+  listing: Listing;
+  // The photo on screen: a like on another one says which.
+  photo: number;
+  // Unset beside the map, where it's just to read.
+  onOpen?: () => void;
+  // Said when nobody has done anything yet (null: nothing).
+  hint: string | null;
 }) {
-  if (!headline && !trending) return null;
-  const named = headline && "name" in headline;
-  return (
-    <div className="flex flex-wrap items-center gap-x-2">
-      {headline && (
-        <button type="button" onClick={onOpen} className="flex min-h-9 items-center gap-2 text-left text-sm">
-          <span
-            aria-hidden
-            className={cn(
-              "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold [text-shadow:none]",
-              named ? "bg-brand text-white" : "bg-white/25 text-white",
-            )}
-          >
-            {named ? headline.name[0]?.toUpperCase() : headline.kind === "sent" ? <Send size={13} /> : <User size={14} />}
-          </span>
-          <span>
-            <span className="font-semibold">{headlineText(headline)}</span>
-            <span className="text-white/75" suppressHydrationWarning>
-              {" "}
-              · {timeAgo(headline.at)}
-            </span>
-          </span>
-        </button>
-      )}
-      {trending && (
-        <span className="rounded-full bg-rose-500/90 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide [text-shadow:none]">
-          Trending
+  if (!headline) {
+    if (!hint) return null;
+    return (
+      <div className="flex min-w-0 items-center gap-2.5 text-white/70">
+        <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white/10">
+          <Hand size={16} className="text-white/60" />
         </span>
-      )}
-    </div>
+        <p className="line-clamp-2 text-[15px] leading-5">{hint}</p>
+      </div>
+    );
+  }
+  const named = "name" in headline;
+  const text = headlineText(headline);
+  // "Exterior · photo 1": where, when it was in a photo.
+  const index =
+    headline.kind === "photo" && headline.mediaKey
+      ? listing.Media.findIndex((m) => mediaKeyOf(m) === headline.mediaKey)
+      : -1;
+  const where =
+    index >= 0
+      ? [listing.Media[index].ImageOf, index !== photo ? `photo ${index + 1}` : null].filter(Boolean).join(" · ")
+      : null;
+  const ago = timeAgo(headline.at);
+  const glyph =
+    headline.kind === "comment" ? (
+      <MessageCircle size={10} strokeWidth={3} className="text-brand" />
+    ) : headline.kind === "sent" ? (
+      <Send size={9} strokeWidth={3} className="text-stone-600" />
+    ) : headline.kind === "react" && headline.state.reaction === "dislike" ? (
+      <ThumbsDown size={9} strokeWidth={3} className="text-amber-700" />
+    ) : (
+      <Heart size={10} strokeWidth={0} className="fill-rose-500" />
+    );
+  const body = (
+    <>
+      <span
+        aria-hidden
+        className={cn(
+          "relative flex size-8 shrink-0 items-center justify-center rounded-full text-[13px] font-bold [text-shadow:none]",
+          named ? "bg-brand text-white" : "bg-stone-500 text-white",
+        )}
+      >
+        {named ? headline.name[0]?.toUpperCase() : headline.kind === "sent" ? <Send size={14} /> : <User size={14} />}
+        <span className="absolute -bottom-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-white">
+          {glyph}
+        </span>
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[15px] font-semibold leading-5">{text}</span>
+        <span className="block truncate text-[13px] leading-[18px] text-white/75" suppressHydrationWarning>
+          {where ? `${where} · ${ago}` : ago}
+        </span>
+      </span>
+    </>
+  );
+  return onOpen ? (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`${text}${where ? `, ${where}` : ""}, ${ago === "just now" ? ago : `${ago} ago`}. See the comments`}
+      className="-mx-1 flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1 text-left"
+    >
+      {body}
+    </button>
+  ) : (
+    <div className="flex min-w-0 flex-1 items-center gap-2.5">{body}</div>
   );
 }
 
 // What the home costs, what it is, and where: one line each, the way listings
 // read. Each fact can be liked, disliked or commented on, just like anything in
-// the photos: tap the price, and a card opens above it.
+// the photos: tap the price, and a card opens above it. What people thought of
+// each is said to screen readers and shown on its card, not printed here.
 function Facts({
   listing,
   items,
+  trending,
   photos,
   open,
   onOpen,
@@ -1017,6 +1253,7 @@ function Facts({
 }: {
   listing: Listing;
   items: TimelineItem[];
+  trending: boolean;
   // Null where they're just to read (beside the map).
   photos: Photos | null;
   open: FactTag | null;
@@ -1050,12 +1287,12 @@ function Facts({
         {children}
       </FactButton>
     ) : (
-      <span className={cn("inline-flex min-h-8 items-center gap-1.5", className)}>{children}</span>
+      <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)}>{children}</span>
     );
   const beds = listing.BedroomsTotal;
   const baths = listing.BathroomsTotalInteger;
   return (
-    <div className="relative mt-1">
+    <div className="relative">
       {photos && (
         <span id={hint} hidden>
           Like, dislike or comment on it
@@ -1078,7 +1315,7 @@ function Facts({
             open === "Address" && (
               <Link
                 href={`/search?home=${encodeURIComponent(listing.ListingKey)}`}
-                className="mt-2 flex min-h-9 items-center gap-1.5 rounded-lg px-1 text-sm font-semibold text-brand hover:underline"
+                className="mt-2 flex min-h-11 items-center gap-1.5 rounded-lg px-1 text-sm font-semibold text-brand hover:underline"
               >
                 <MapPin aria-hidden size={15} />
                 See it on the map
@@ -1086,13 +1323,23 @@ function Facts({
             )
           }
           // Above the facts, over the photo, clear of everything else.
-          className="bottom-full left-0 z-30 mb-2"
+          className="bottom-full left-0 z-40 mb-2"
         />
       )}
-      <p className="font-display text-3xl font-semibold leading-none tabular-nums @5xl:text-4xl">
-        {fact("Price", formatPrice(listing.ListPrice))}
-      </p>
-      <p className="flex flex-wrap items-center gap-x-1.5 text-[15px] font-medium">
+      <div className="flex h-11 items-center gap-2.5">
+        <p className="font-display text-[30px] font-semibold leading-none tabular-nums @5xl:text-4xl">
+          {fact("Price", formatPrice(listing.ListPrice))}
+        </p>
+        {trending && (
+          // Earned, not decoration: real activity from several people this
+          // week, among the busiest homes for sale.
+          <span className="flex h-6 shrink-0 items-center gap-1 rounded-full bg-white/15 px-2.5 text-[13px] font-semibold [text-shadow:none] short:bg-black/45 short:backdrop-blur-md @5xl:bg-black/45 @5xl:backdrop-blur-md">
+            <Flame aria-hidden size={12} className="text-rose-300" />
+            Trending
+          </span>
+        )}
+      </div>
+      <p className="flex h-10 items-center gap-x-1.5 whitespace-nowrap text-base text-white/90">
         {fact("Bedrooms", `${beds} ${beds === 1 ? "bed" : "beds"}`)}
         <span aria-hidden className="text-white/60">
           ·
@@ -1103,21 +1350,25 @@ function Facts({
         </span>
         {fact("Square footage", `${listing.LivingArea.toLocaleString("en-US")} sq ft`)}
       </p>
-      <h2 className="text-sm font-semibold leading-snug">
+      <h2 className="flex h-10 min-w-0 items-center text-base font-medium">
         {fact(
           "Address",
           `${listing.UnparsedAddress}, ${listing.City}`,
           <>
-            <MapPin aria-hidden size={15} className="shrink-0" />
-            {listing.UnparsedAddress}, {listing.City}
+            <MapPin aria-hidden size={16} className="shrink-0" />
+            <span className="min-w-0 truncate">
+              {listing.UnparsedAddress}, {listing.City}
+            </span>
           </>,
+          "max-w-full",
         )}
       </h2>
     </div>
   );
 }
 
-// One fact, to tap; with a quiet count of what people thought of it, if anything.
+// One fact, to tap. Its name says what people thought of it ("$985,000, 1
+// like, 1 comment"); the card it opens shows it.
 function FactButton({
   tag,
   name,
@@ -1142,7 +1393,6 @@ function FactButton({
 }) {
   const likes = photos.count(FACTS, tag);
   const dislikes = photos.dislikes(FACTS, tag);
-  const mine = photos.reactionOf(FACTS, tag);
   const counts = [
     likes > 0 && `${likes} ${likes === 1 ? "like" : "likes"}`,
     dislikes > 0 && `${dislikes} ${dislikes === 1 ? "dislike" : "dislikes"}`,
@@ -1156,88 +1406,81 @@ function FactButton({
       aria-describedby={hint}
       onClick={onOpen}
       className={cn(
-        "-mx-1 inline-flex min-h-8 items-center gap-1.5 rounded-md px-1 text-left transition-colors hover:bg-white/10 active:bg-white/15",
+        "-mx-1 inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded-md px-1 text-left transition-colors hit-44 hover:bg-white/10 active:bg-white/15",
         open && "bg-white/15",
         className,
       )}
     >
       {children}
-      {counts.length > 0 && (
-        <span
-          aria-hidden
-          className="inline-flex items-center gap-1.5 font-sans text-[11px] font-semibold leading-none tabular-nums text-white/75"
-        >
-          {likes > 0 && (
-            <span className="inline-flex items-center gap-0.5">
-              <Heart size={10} strokeWidth={0} className={mine === "like" ? "fill-rose-400" : "fill-white/80"} />
-              {likes}
-            </span>
-          )}
-          {dislikes > 0 && (
-            <span className="inline-flex items-center gap-0.5">
-              <ThumbsDown size={10} className={mine === "dislike" ? "text-amber-300" : undefined} />
-              {dislikes}
-            </span>
-          )}
-          {comments > 0 && (
-            <span className="inline-flex items-center gap-0.5">
-              <MessageCircle size={10} />
-              {comments}
-            </span>
-          )}
-        </span>
-      )}
     </button>
   );
 }
 
-// The listing's description, two lines until you ask for more, then who listed
-// it. All of it can run long over the photo, so past a point it scrolls.
-function Description({
+// Two lines of the description (or, on an agent's link, their greeting and
+// note), then "… more" to read it all, in place.
+function Caption({
   listing,
-  reasons,
+  greeting,
+  note,
   open,
   onToggle,
 }: {
-  listing: FeedPost["listing"];
-  reasons: string[];
+  listing: Listing;
+  greeting?: string;
+  note?: string;
   open: boolean;
   // Unset beside the map, where it's just a look.
   onToggle?: () => void;
 }) {
-  return (
-    <div className="mt-1 text-sm leading-relaxed text-white/85">
-      {reasons.length > 0 && (
-        <p className="mb-1 flex flex-wrap items-center gap-1 font-semibold text-white">
-          <Sparkles aria-hidden size={13} />
-          For you: {reasons.join(" · ")}
-        </p>
-      )}
-      {listing.PublicRemarks && (
-        <p
-          className={cn(
-            "mt-0.5",
-            open ? "pointer-events-auto max-h-[45dvh] overflow-y-auto overscroll-contain" : "line-clamp-2",
-          )}
-        >
-          {listing.PublicRemarks}
-        </p>
-      )}
-      {onToggle && listing.PublicRemarks && listing.PublicRemarks.length > 110 && (
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={onToggle}
-          className="min-h-8 text-sm font-semibold text-white"
-        >
-          {open ? "less" : "more"}
+  const text = note || listing.PublicRemarks;
+  const box = useRef<HTMLDivElement>(null);
+  // Whether it runs past two lines, and so needs "more".
+  const [long, setLong] = useState(false);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el || open) return;
+    const measure = () => setLong(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [open, text, greeting]);
+  const content = (
+    <>
+      {greeting && <h1 className="inline font-semibold text-white">{greeting}</h1>}
+      {greeting && text && " "}
+      {text && <span>{text}</span>}
+    </>
+  );
+  if (open) {
+    return (
+      <div className="pointer-events-auto mb-1 max-h-[45dvh] overflow-y-auto overscroll-contain text-[15px] leading-[22px] text-white/85">
+        {content}{" "}
+        <button type="button" aria-expanded onClick={onToggle} className="font-semibold text-white hit-44">
+          less
         </button>
-      )}
-      <p className="mt-1.5 text-xs text-white/70">
-        {listing.ListAgentFullName && `Listed by ${listing.ListAgentFullName}`}
-        {listing.ListOfficeName && ` · ${listing.ListOfficeName}`}
-        {isSampleListing(listing) && " · Sample listing"}
-      </p>
+      </div>
+    );
+  }
+  return (
+    // The "more" floats to the end of the last line, after the ellipsis.
+    <div className="mb-1 flex h-11 text-[15px] leading-[22px] text-white/85 short:mb-0 short:h-[22px]">
+      <div
+        ref={box}
+        className="line-clamp-2 before:float-right before:h-[calc(100%-22px)] before:content-[''] short:line-clamp-1"
+      >
+        {onToggle && long && (
+          <button
+            type="button"
+            aria-expanded={false}
+            onClick={onToggle}
+            className="float-right clear-both ml-1 font-semibold text-white hit-44"
+          >
+            more
+          </button>
+        )}
+        {content}
+      </div>
     </div>
   );
 }
@@ -1387,6 +1630,7 @@ function MoreSheet({
   onPass,
   onToggle,
   onNext,
+  onPhotoOnly,
   onClose,
   anchor,
 }: {
@@ -1397,6 +1641,7 @@ function MoreSheet({
   onPass: () => void;
   onToggle: (aspect: Aspect) => void;
   onNext: () => void;
+  onPhotoOnly: () => void;
   onClose: () => void;
 }) {
   const passed = state.reaction === "dislike";
@@ -1404,6 +1649,13 @@ function MoreSheet({
     <Sheet open={Boolean(post)} onClose={onClose} label="More" title="More" anchor={anchor}>
       {post && (
         <div className="flex flex-col gap-5">
+          {/* Why it fits your taste: here for now, off the words on the photo. */}
+          {post.reasons.length > 0 && (
+            <p className="-mb-1 flex items-start gap-1.5 text-sm font-semibold text-stone-800">
+              <Sparkles aria-hidden size={15} className="mt-0.5 shrink-0 text-brand" />
+              For you: {post.reasons.join(" · ")}
+            </p>
+          )}
           <button
             type="button"
             aria-pressed={passed}
@@ -1441,6 +1693,14 @@ function MoreSheet({
               See homes near {post.listing.City} on the map
             </Link>
           )}
+          <button
+            type="button"
+            onClick={onPhotoOnly}
+            className="-mt-1 flex min-h-11 items-center gap-2 self-start rounded-lg text-sm font-semibold text-ink hover:text-stone-600"
+          >
+            <ImageIcon aria-hidden size={17} />
+            Show the photo only
+          </button>
         </div>
       )}
     </Sheet>
@@ -1518,7 +1778,7 @@ function LikeWithList({ things, children }: { things: Thing[]; children: ReactNo
                   aria-pressed={thing.liked}
                   aria-label={`Like ${tagPhrase(thing.tag)}${thing.count > 0 ? `, ${thing.count} ${thing.count === 1 ? "like" : "likes"}` : ""}`}
                   onClick={thing.toggle}
-                  className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full bg-black/50 px-3 text-[13px] font-semibold text-white backdrop-blur-md hover:bg-black/70 [text-shadow:none]"
+                  className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full bg-black/50 px-3 text-[13px] font-semibold text-white backdrop-blur-md hit-44 hover:bg-black/70 [text-shadow:none]"
                 >
                   <Heart
                     aria-hidden
