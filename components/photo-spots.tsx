@@ -209,11 +209,65 @@ export function SpotLayer({
   const fine = useFinePointer();
   const layer = useRef<HTMLDivElement>(null);
   const head = useRef<HTMLSpanElement>(null);
-  const shape = useWordsOver(layer, photo?.ImageWidth && photo.ImageHeight ? mediaKeyOf(photo) : undefined);
-  // Gathered spots someone asked to see one by one, on this photo.
+  const photoKey = photo?.ImageWidth && photo.ImageHeight ? mediaKeyOf(photo) : undefined;
+  const shape = useWordsOver(layer, photoKey);
+  // Gathered spots someone asked to see one by one, on this photo, until
+  // another photo shows.
   const [spread, setSpread] = useState<{ mediaKey: string; tags: string[] } | null>(null);
-  if (!photo || !photo.ImageWidth || !photo.ImageHeight) return null;
-  const mediaKey = mediaKeyOf(photo);
+  if (spread && photoKey && spread.mediaKey !== photoKey) setSpread(null);
+  // The keyboard goes to a spot once it's drawn: the first of a gathered few
+  // just spread out, or the one whose card was opened from it and is closed.
+  const [focusTo, setFocusTo] = useState<{ tag: string; n: number } | null>(null);
+  const focusOn = (tag: string) => setFocusTo((now) => ({ tag, n: (now?.n ?? 0) + 1 }));
+  const openTag = picked?.mediaKey === photoKey ? picked?.tag : undefined;
+  const [wasOpen, setWasOpen] = useState(openTag);
+  if (openTag !== wasOpen) {
+    setWasOpen(openTag);
+    if (wasOpen && !openTag && picked === null) focusOn(wasOpen);
+  }
+  const focused = useRef(0);
+  useLayoutEffect(() => {
+    if (!focusTo || focused.current === focusTo.n) return;
+    focused.current = focusTo.n;
+    const tag = CSS.escape(focusTo.tag);
+    const at =
+      layer.current?.querySelector<HTMLElement>(`[data-pin="${tag}"]`) ??
+      layer.current?.querySelector<HTMLElement>(`[data-thing="${tag}"]`);
+    // Only when nothing else has the keyboard (it was on what just went away).
+    if (at && (document.activeElement === document.body || !document.activeElement)) at.focus({ preventScroll: true });
+  }, [focusTo]);
+  // Like dots that would sit under someone's words while those show step
+  // aside (they stay in place, unseen, so they can be measured again).
+  const [underWords, setUnderWords] = useState<string[]>([]);
+  useLayoutEffect(() => {
+    const el = layer.current;
+    if (!el || !pinsShown) return setUnderWords((now) => (now.length ? [] : now));
+    const measure = () => {
+      const pills = [...el.querySelectorAll("[data-pin-words]")].map((pill) => pill.getBoundingClientRect());
+      const under = [...el.querySelectorAll<HTMLElement>("[data-pin][data-like-only]")]
+        .filter((pin) => {
+          // The dot drawn (20px), not the fingertip around it.
+          const box = pin.getBoundingClientRect();
+          const [x, y] = [box.left + box.width / 2, box.top + box.height / 2];
+          const r = 12;
+          return pills.some((pill) => x + r > pill.left && x - r < pill.right && y + r > pill.top && y - r < pill.bottom);
+        })
+        .map((pin) => pin.dataset.pin!);
+      setUnderWords((now) => (now.length === under.length && now.every((tag, i) => tag === under[i]) ? now : under));
+    };
+    measure();
+    // Again once the words have finished popping into place.
+    let live = true;
+    Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished)).then(
+      () => live && measure(),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [pinsShown, shape, photoKey, items, photos]);
+  if (!photo || !photoKey) return null;
+  const mediaKey = photoKey;
   const pins = pinsOf(photo, items, photos);
   // Where a point in the photo is on screen, in the layer's own terms.
   const onScreen = (at: { x: number; y: number }) => {
@@ -247,7 +301,9 @@ export function SpotLayer({
   const ranked = [...pins].sort((a, b) => b.likes - a.likes || newest(b).localeCompare(newest(a)));
   const shown = ranked.filter(
     (pin, i) =>
-      (i < MOST_PINS || isMine(pin) || (pinsShown && pin.comments.length > 0)) && pin.tag !== open?.tag && clearOfWords(pin),
+      (i < MOST_PINS || isMine(pin) || (pinsShown && pin.comments.length > 0)) &&
+      pin.tag !== open?.tag &&
+      clearOfWords(pin),
   );
   // Spots right beside each other gather into one count, so none hides another.
   const groups: Pin[][] = [];
@@ -282,10 +338,14 @@ export function SpotLayer({
           aria-label={`${pinsShown ? "Hide" : "Show"} the comments on this photo, ${comments} ${comments === 1 ? "comment" : "comments"}`}
           onClick={onTogglePins}
           // A fingertip tall; a small pill to see, at the photo's bottom left.
-          style={{ top: `calc(${photoFoot(photo)} - 2.875rem)`, left: `calc(${place.left} + 0.5rem)` }}
+          // Never up under the header (a phone on its side).
+          style={{
+            top: `max(${photoFoot(photo)} - 2.875rem, var(--photo-top, 0px))`,
+            left: `max(${place.left} + 0.5rem, env(safe-area-inset-left) + 0.5rem)`,
+          }}
           className={cn("group pointer-events-auto absolute flex h-11 items-center", toggleCovered && "invisible")}
         >
-          <span className="flex h-8 items-center gap-1 rounded-full bg-black/45 px-3 text-[13px] font-semibold text-white backdrop-blur-md group-hover:bg-black/60 group-aria-pressed:bg-white group-aria-pressed:text-ink">
+          <span className="flex h-8 items-center gap-1 rounded-full bg-black/60 px-3 text-[13px] font-semibold text-white backdrop-blur-md group-hover:bg-black/75 group-aria-pressed:bg-white group-aria-pressed:text-ink">
             <MessageCircle aria-hidden size={14} /> {comments}
           </span>
         </button>
@@ -299,6 +359,7 @@ export function SpotLayer({
           <button
             key={thing.tag}
             type="button"
+            data-thing={thing.tag}
             onClick={() => onPick({ mediaKey, tag: thing.tag, x: thing.x, y: thing.y, keyboard: true })}
             style={{ left: `${thing.x * 100}%`, top: `${thing.y * 100}%` }}
             className="pointer-events-none absolute size-px -translate-x-1/2 -translate-y-1/2 overflow-hidden whitespace-nowrap opacity-0 focus-visible:size-auto focus-visible:rounded-full focus-visible:bg-black/60 focus-visible:px-3 focus-visible:py-1.5 focus-visible:text-[13px] focus-visible:font-semibold focus-visible:text-white focus-visible:opacity-100"
@@ -314,13 +375,20 @@ export function SpotLayer({
               pin={group[0]}
               label={thingOf(photo, group[0].tag) ?? "A spot"}
               expanded={pinsShown}
-              onOpen={() => onPick({ mediaKey, tag: group[0].tag, x: group[0].x, y: group[0].y })}
+              underWords={pinsShown && !isMine(group[0]) && underWords.includes(group[0].tag)}
+              // From the keyboard, the card takes it (and gives it back here).
+              onOpen={(keyboard) =>
+                onPick({ mediaKey, tag: group[0].tag, x: group[0].x, y: group[0].y, keyboard })
+              }
             />
           ) : (
             <SpotCluster
               key={group.map((pin) => pin.tag).join()}
               pins={group}
-              onSpread={() => setSpread({ mediaKey, tags: [...spreadHere, ...group.map((pin) => pin.tag)] })}
+              onSpread={() => {
+                setSpread({ mediaKey, tags: [...spreadHere, ...group.map((pin) => pin.tag)] });
+                focusOn(group[0].tag);
+              }}
             />
           ),
         )}
@@ -379,12 +447,16 @@ function SpotPin({
   pin,
   label,
   expanded,
+  underWords = false,
   onOpen,
 }: {
   pin: Pin;
   label: string;
   expanded: boolean;
-  onOpen: () => void;
+  // A like under someone's words beside it: out of sight while they show.
+  underWords?: boolean;
+  // `keyboard`: pressed with a key, rather than tapped.
+  onOpen: (keyboard: boolean) => void;
 }) {
   const latest = pin.comments.at(-1);
   const said = latest
@@ -393,10 +465,15 @@ function SpotPin({
   const likes = pin.likes > 0 ? counted(pin.likes, "like") : null;
   const dislikes = pin.dislikes > 0 ? counted(pin.dislikes, "dislike") : null;
   return (
-    <div style={{ left: `${pin.x * 100}%`, top: `${pin.y * 100}%` }} className="absolute size-0">
+    <div
+      style={{ left: `${pin.x * 100}%`, top: `${pin.y * 100}%` }}
+      className={cn("absolute size-0", underWords && "invisible")}
+    >
       <button
         type="button"
-        onClick={onOpen}
+        data-pin={pin.tag}
+        data-like-only={pin.comments.length === 0 || undefined}
+        onClick={(event) => onOpen(event.detail === 0)}
         aria-label={`${label}: ${[said, likes, dislikes].filter(Boolean).join(", ")}`}
         // A fingertip to tap; a small frosted dot to see, taking on the photo's
         // colours behind it.
@@ -429,9 +506,11 @@ function SpotPin({
           type="button"
           aria-hidden
           tabIndex={-1}
-          onClick={onOpen}
+          data-pin-words
+          onClick={() => onOpen(false)}
           style={{ translate: away(pin.x, pin.y, "1.25rem") }}
-          className="pointer-events-auto absolute left-0 top-0 flex w-max max-w-[13rem] items-center gap-1.5 rounded-full bg-white/95 py-1 pl-1 pr-2.5 text-[13px] text-ink shadow-lg animate-[nudge-in_250ms_ease-out_both] hover:bg-white"
+          // Over any dot beside it: the words come first.
+          className="pointer-events-auto absolute left-0 top-0 z-10 flex w-max max-w-[13rem] items-center gap-1.5 rounded-full bg-white/95 py-1 pl-1 pr-2.5 text-[13px] text-ink shadow-lg animate-[nudge-in_250ms_ease-out_both] hover:bg-white"
         >
           <span
             className={cn(

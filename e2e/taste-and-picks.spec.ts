@@ -1,7 +1,7 @@
 // Runs after the other specs (alphabetically last) because it likes a lot of
 // homes, which would throw off their counts.
 import { expect, test } from "@playwright/test";
-import { heartOf, homeIn, likeInPhoto, openComments, openMore, scrollToEnd, signUpBuyer } from "./helpers";
+import { heartOf, homeIn, joinAs, likeInPhoto, openComments, openMore, scrollToEnd, signUpBuyer } from "./helpers";
 
 test("the feed learns your taste from what you like and pass on", async ({ browser }) => {
   test.setTimeout(90_000);
@@ -51,7 +51,7 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
 });
 
 test("replies, comment likes, the activity bell, trending, and who liked what", async ({ browser }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(120_000);
   const FOXGLOVE = "24611 SE Foxglove Pl";
   const cleo = await signUpBuyer(browser, "cleo@example.com", "Cleo Ray");
   await cleo.goto("/homes/SAMPLE-1012");
@@ -87,17 +87,29 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   await heartOf(devHome).click();
   await expect(heartOf(devHome)).toHaveAttribute("aria-pressed", "true");
 
-  // Someone else likes it too, and the front door and the lawn. (Trending
-  // takes several people, and a place among the busiest homes this week, which
-  // the other tests have made busy.)
+  // Two more people like it, and plenty in its photo. (Trending takes
+  // several people, and a place among the busiest homes this week. The other
+  // tests make some homes busy too, so this one gets a clear lead of its own:
+  // 14 things this week, where the busiest of theirs has 12.)
   const fay = await signUpBuyer(browser, "fay@example.com", "Fay Lin");
   await fay.goto("/homes/SAMPLE-1012");
   const fayHome = homeIn(fay, FOXGLOVE);
   await heartOf(fayHome).click();
   await expect(heartOf(fayHome)).toHaveAttribute("aria-pressed", "true");
-  const door = await likeInPhoto(fayHome, "the front door");
-  await door.getByRole("button", { name: "Close" }).click();
-  await likeInPhoto(fayHome, "the front lawn");
+  for (const thing of ["the front door", "the front lawn", "the arched window", "the three-car garage"]) {
+    const card = await likeInPhoto(fayHome, thing);
+    await card.getByRole("button", { name: "Close" }).click();
+  }
+  const gus = await (await browser.newContext()).newPage();
+  await gus.goto("/homes/SAMPLE-1012");
+  const gusHome = homeIn(gus, FOXGLOVE);
+  await heartOf(gusHome).click();
+  await joinAs(gus, "Gus");
+  await expect(heartOf(gusHome)).toHaveAttribute("aria-pressed", "true");
+  for (const thing of ["the front door", "the front lawn", "the arched window"]) {
+    const card = await likeInPhoto(gusHome, thing);
+    await card.getByRole("button", { name: "Close" }).click();
+  }
 
   // A third person comments on the home Cleo liked.
   const eli = await signUpBuyer(browser, "eli@example.com", "Eli Moss");
@@ -106,9 +118,9 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   // Real activity this week makes it trending.
   await expect(eliHome.getByText("Trending")).toBeVisible();
   // Liking just something in a photo counts toward the home's likes too.
-  await expect(eliHome.getByRole("button", { name: `Like ${FOXGLOVE}, 3 likes` })).toBeVisible();
+  await expect(eliHome.getByRole("button", { name: `Like ${FOXGLOVE}, 4 likes` })).toBeVisible();
   await likeInPhoto(eliHome, "the stone and shingle");
-  await expect(eliHome.getByRole("button", { name: `Like ${FOXGLOVE}, 4 likes` })).toHaveAttribute(
+  await expect(eliHome.getByRole("button", { name: `Like ${FOXGLOVE}, 5 likes` })).toHaveAttribute(
     "aria-pressed",
     "false",
   );

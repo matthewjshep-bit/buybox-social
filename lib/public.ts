@@ -44,10 +44,10 @@ export type TotalsRow = {
   views: number;
   last_activity: Date | null;
   this_week: number;
-  // How many people that week's activity came from, and where the home ranks
-  // by it among homes for sale (ties share a place; null with none).
+  // How many people that week's activity came from, and whether the home is
+  // for sale and among the busiest that week (ties share a place).
   people_this_week: number;
-  trend_rank: number | null;
+  trend_top: boolean;
   liked_aspects: AspectCounts;
   disliked_aspects: AspectCounts;
 };
@@ -60,10 +60,7 @@ export const toTotals = (row: TotalsRow) => ({
     views: row.views,
     lastActivityAt: row.last_activity?.toISOString() ?? null,
     trending:
-      row.this_week >= TRENDING_MIN_THIS_WEEK &&
-      row.people_this_week >= TRENDING_MIN_PEOPLE &&
-      row.trend_rank !== null &&
-      row.trend_rank <= TRENDING_TOP,
+      row.this_week >= TRENDING_MIN_THIS_WEEK && row.people_this_week >= TRENDING_MIN_PEOPLE && row.trend_top,
   },
   aspects: { liked: row.liked_aspects, disliked: row.disliked_aspects },
 });
@@ -76,7 +73,7 @@ export const totalsForListing = () => sql`
     pr.likes as pub_like, pr.dislikes as pub_dislike, pc.n as pub_comments,
     xr.likes as priv_like, xr.dislikes as priv_dislike, xc.n as priv_comments,
     xs.n as sends, v.n as views, la.counts as liked_aspects, da.counts as disliked_aspects,
-    wk.n as this_week, wk.people as people_this_week, tr.rank as trend_rank,
+    wk.n as this_week, wk.people as people_this_week, tr.top as trend_top,
     greatest(
       (select max(updated_at) from public_reactions where listing_key = l.listing_key),
       (select max(created_at) from public_comments where listing_key = l.listing_key),
@@ -134,12 +131,17 @@ export const totalsForListing = () => sql`
     from (${weekActivity()}) a
     where a.listing_key = l.listing_key) wk
   cross join lateral (
-    select min(r.rank)::int as rank from (
-      select a.listing_key, dense_rank() over (order by count(*) desc) as rank
-      from (${weekActivity()}) a
-      join listings active on active.listing_key = a.listing_key and active.standard_status = 'Active'
-      group by a.listing_key) r
-    where r.listing_key = l.listing_key) tr`;
+    -- Among the busiest homes for sale: at least as busy as the third-busiest
+    -- (ties share a place). The bar doesn't depend on the home, so it's
+    -- worked out once per query, not once per home.
+    select l.standard_status = 'Active' and wk.n >= coalesce((
+      select d.n from (
+        select distinct count(*)::int as n
+        from (${weekActivity()}) a
+        join listings active on active.listing_key = a.listing_key and active.standard_status = 'Active'
+        group by a.listing_key) d
+      order by d.n desc
+      offset ${TRENDING_TOP - 1} limit 1), 0) as top) tr`;
 
 // Every reaction and comment in the past week, public or on a link, with the
 // home and who it came from (a visitor or someone on a link).

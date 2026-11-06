@@ -28,6 +28,7 @@ import {
   useId,
   type CSSProperties,
   type ReactNode,
+  type Ref,
   type RefObject,
 } from "react";
 import { flushSync } from "react-dom";
@@ -517,6 +518,9 @@ function Feed({
         </section>
       </div>
 
+      {/* Layers over the homes: the header z-30, a card about a spot or a fact
+          z-40 (so it can always be closed), a toast z-50. Sheets open in the
+          browser's top layer, over all of them. */}
       {header && (
         // Out of the way while a photo is cleared to be seen whole.
         <div
@@ -723,10 +727,30 @@ function Panel({
     observer.observe(el);
     return () => observer.disconnect();
   }, [more]);
-  // "Show everything" takes the place of what it hid, so the keyboard stays put.
+  // "Show the photo only" puts away any card, and a tap on the photo then is
+  // just a look: nothing waits to pop up when everything comes back.
+  if (bare && picked) setPicked(null);
+  // "Show everything" takes the place of what it hid, so the keyboard stays
+  // put; pressing it hands the keyboard back to More, where it started.
   const everything = useRef<HTMLButtonElement>(null);
+  const moreButton = useRef<HTMLButtonElement>(null);
+  const backToMore = useRef(false);
   useEffect(() => {
-    if (bare) everything.current?.focus();
+    if (bare) {
+      everything.current?.focus();
+      return;
+    }
+    if (!backToMore.current) return;
+    backToMore.current = false;
+    // As soon as it's back: it fades in, and can't take the keyboard till then.
+    let frame = 0;
+    let tries = 0;
+    const focusMore = () => {
+      moreButton.current?.focus({ preventScroll: true });
+      if (document.activeElement !== moreButton.current && ++tries < 30) frame = requestAnimationFrame(focusMore);
+    };
+    focusMore();
+    return () => cancelAnimationFrame(frame);
   }, [bare]);
   // Photos load as a home comes close, and stay once loaded.
   const [loaded, setLoaded] = useState(near);
@@ -786,16 +810,20 @@ function Panel({
       // header and the words, right on top of them, so the photo and what it
       // is read as one, top to bottom, with a blurred copy of it filling the
       // band above. Wide, or a phone on its side: today's full-screen photo
-      // with the words over it, centred when wide.
+      // with the words over it, centred when wide. The photo alone, on a
+      // phone: whole and centred in the whole screen, its blurred copy all
+      // round it, rather than over an empty band where the words were.
       className={cn(
         "relative h-full snap-start snap-always overflow-hidden bg-night",
-        "[--photo-align:1] [--photo-fit:1] [--photo-bottom:calc(308px+env(safe-area-inset-bottom))]",
-        "[--backdrop-top:var(--photo-top)] [--backdrop-bottom:var(--photo-bottom)] [--backdrop-shade:0.4]",
+        "[--photo-fit:1] [--backdrop-shade:0.4]",
+        bare
+          ? "[--backdrop-bottom:0px] [--backdrop-top:0px] [--photo-align:0.5] [--photo-bottom:env(safe-area-inset-bottom)] [--photo-top:env(safe-area-inset-top)]"
+          : "[--backdrop-bottom:var(--photo-bottom)] [--backdrop-top:var(--photo-top)] [--photo-align:1] [--photo-bottom:calc(308px+env(safe-area-inset-bottom))]",
         "short:[--backdrop-bottom:0px] short:[--backdrop-shade:0] short:[--backdrop-top:0px] short:[--photo-fit:0] short:[--words-gap:8px]",
         "@5xl:[--backdrop-bottom:0px] @5xl:[--backdrop-shade:0] @5xl:[--backdrop-top:0px] @5xl:[--photo-align:0.5] @5xl:[--photo-fit:0] @5xl:[--photo-top:calc(var(--chrome-top,4rem)+0.5rem)] @5xl:[--words-gap:8px]",
       )}
       style={
-        wordsHeight
+        wordsHeight && !bare
           ? ({ "--photo-bottom": `calc(${wordsHeight}px + var(--words-gap, 0px))` } as CSSProperties)
           : undefined
       }
@@ -814,7 +842,7 @@ function Panel({
           }}
           onSettle={setSettled}
           onDoubleTap={onOpen ? undefined : likeWhatsShown}
-          onTap={onOpen ? () => onOpen() : photos.enabled ? tapPhoto : undefined}
+          onTap={onOpen ? () => onOpen() : photos.enabled && !hidden ? tapPhoto : undefined}
           onHold={onOpen ? undefined : onHoldPhoto}
           controls={!onOpen}
           chrome={!hidden}
@@ -824,11 +852,15 @@ function Panel({
             <>
               {nudge && <NudgeHint nudge={nudge} />}
               {bare && (
-                // Never stuck with nothing to tap: one way back, on the photo.
+                // Never stuck with nothing to tap: one way back, at the foot
+                // of the photo (with the words gone, its own bottom edge).
                 <button
                   ref={everything}
                   type="button"
-                  onClick={onShowEverything}
+                  onClick={() => {
+                    backToMore.current = true;
+                    onShowEverything();
+                  }}
                   style={{ top: `calc(${photoFoot(current)} - 3.25rem)` }}
                   className="absolute left-1/2 z-10 flex h-11 -translate-x-1/2 items-center gap-2 rounded-full bg-black/50 px-4 text-[15px] font-semibold text-white backdrop-blur-md hover:bg-black/65"
                 >
@@ -843,7 +875,8 @@ function Panel({
       {/* With the words over the photo (wide, or a phone on its side), shades
           keep the header and the words readable over any photo; the bottom
           one deepens to hold the whole description. A phone's words sit on
-          the dark ground instead. */}
+          the dark ground instead; on its side, they carry their own shade
+          (below), since they fill most of the height there. */}
       <div
         aria-hidden
         className={cn(
@@ -854,7 +887,7 @@ function Panel({
       <div
         aria-hidden
         className={cn(
-          "pointer-events-none absolute inset-x-0 bottom-0 hidden bg-linear-to-t to-transparent transition-[opacity,height] duration-300 short:block @5xl:block",
+          "pointer-events-none absolute inset-x-0 bottom-0 hidden bg-linear-to-t to-transparent transition-[opacity,height] duration-300 @5xl:block",
           more ? "h-3/4 from-black/85 via-black/55" : "h-1/2 from-black/80 via-black/40",
           (covered || hidden) && "opacity-0",
         )}
@@ -889,6 +922,7 @@ function Panel({
               onComments={onComments}
               onShare={onShare}
               onMore={onMore}
+              moreRef={moreButton}
             />
           )}
         </div>
@@ -906,7 +940,11 @@ function Panel({
           className={cn(
             "absolute inset-x-0 bottom-0 flex flex-col bg-night pb-(--words-pad) transition-[opacity,visibility] duration-300 [--words-pad:calc(12px+env(safe-area-inset-bottom))]",
             more ? "h-auto" : "h-[calc(296px+var(--words-pad))]",
-            "short:h-auto short:bg-transparent",
+            // On its side: over the photo, on a shade of their own that
+            // starts a little above the first line, so every line of it reads
+            // on the brightest photo.
+            "short:h-auto short:bg-transparent short:bg-linear-to-t short:from-black/80 short:to-black/65",
+            "short:before:pointer-events-none short:before:absolute short:before:inset-x-0 short:before:bottom-full short:before:h-12 short:before:bg-linear-to-t short:before:from-black/65 short:before:to-transparent",
             "@5xl:h-auto @5xl:items-center @5xl:bg-transparent @5xl:px-6 @5xl:[--words-pad:max(1.5rem,calc(env(safe-area-inset-bottom)+0.75rem))]",
             // Beside the map on a phone, its Map button floats at the bottom.
             onOpen && "max-lg:[--words-pad:6rem]",
@@ -916,9 +954,12 @@ function Panel({
           <div
             data-keep-clear
             className={cn(
-              "relative w-full pl-4 [text-shadow:0_1px_3px_rgb(0_0_0/0.45)] @5xl:max-w-xl @5xl:px-0",
-              // Clear of the buttons down the right.
-              onOpen ? "pr-4" : "pr-[76px]",
+              // Clear of a notch or rounded corner, on a phone on its side.
+              "relative w-full pl-[max(1rem,env(safe-area-inset-left))] [text-shadow:0_1px_3px_rgb(0_0_0/0.45)] @5xl:max-w-xl @5xl:px-0",
+              // Clear of the buttons down the right (two columns of them, on its side).
+              onOpen
+                ? "pr-[max(1rem,env(safe-area-inset-right))]"
+                : "pr-[calc(76px+env(safe-area-inset-right))] short:pr-[calc(140px+env(safe-area-inset-right))]",
             )}
           >
             <div className="flex h-12 items-center">
@@ -958,21 +999,26 @@ function Panel({
               open={more}
               onToggle={onOpen ? undefined : () => setMore(!more)}
             />
-            <p className="h-5 truncate text-[13px] leading-5 text-white/80">
-              {listing.ListAgentFullName && `Listed by ${listing.ListAgentFullName}`}
-              {listing.ListOfficeName && ` · ${listing.ListOfficeName}`}
-              {isSampleListing(listing) && " · Sample listing"}
+            {/* Who's selling it runs short before "Sample listing" does: it's
+                the only sign on the home that it isn't real. */}
+            <p className="flex h-5 whitespace-nowrap text-[13px] leading-5 text-white/80">
+              <span className="min-w-0 truncate">
+                {listing.ListAgentFullName && `Listed by ${listing.ListAgentFullName}`}
+                {listing.ListOfficeName && ` · ${listing.ListOfficeName}`}
+              </span>
+              {isSampleListing(listing) && <span className="shrink-0">&nbsp;· Sample listing</span>}
             </p>
             {error && (
               <p
                 role="alert"
-                className="absolute bottom-full left-4 mb-2 rounded-full bg-rose-700 px-3 py-1.5 text-sm font-semibold text-white [text-shadow:none]"
+                // Over the photo's foot, and over the comments toggle there.
+                className="absolute bottom-full left-[max(1rem,env(safe-area-inset-left))] z-30 mb-2 rounded-full bg-rose-700 px-3 py-1.5 text-sm font-semibold text-white [text-shadow:none]"
               >
                 {error}
               </p>
             )}
           </div>
-          <div className="mt-2 w-full px-4 @5xl:max-w-xl @5xl:px-0">
+          <div className="mt-2 w-full pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] @5xl:max-w-xl @5xl:px-0">
             {onOpen ? (
               <button
                 type="button"
@@ -1032,6 +1078,7 @@ function RailButton({
   onClick,
   children,
   name,
+  ref,
 }: {
   label: string;
   count?: string;
@@ -1039,9 +1086,11 @@ function RailButton({
   onClick: () => void;
   children: ReactNode;
   name: string;
+  ref?: Ref<HTMLButtonElement>;
 }) {
   return (
     <button
+      ref={ref}
       type="button"
       aria-label={name}
       aria-pressed={pressed}
@@ -1073,6 +1122,7 @@ function Rail({
   onComments,
   onShare,
   onMore,
+  moreRef,
 }: {
   address: string;
   things: Thing[];
@@ -1084,12 +1134,15 @@ function Rail({
   onComments: () => void;
   onShare?: () => void;
   onMore: () => void;
+  moreRef?: Ref<HTMLButtonElement>;
 }) {
   const icon = { "aria-hidden": true, className: "drop-shadow" } as const;
   return (
     <div
       data-keep-clear
-      className="pointer-events-auto absolute bottom-[calc(68px+env(safe-area-inset-bottom))] right-2 z-10 flex flex-col items-center gap-1 @5xl:bottom-[max(5rem,calc(env(safe-area-inset-bottom)+4.25rem))] @5xl:right-4"
+      // Clear of a notch or rounded corner, on a phone on its side. There, in
+      // two columns: one would run up under the header.
+      className="pointer-events-auto absolute bottom-[calc(68px+env(safe-area-inset-bottom))] right-[calc(0.5rem+env(safe-area-inset-right))] z-10 flex flex-col items-center gap-1 short:grid short:grid-cols-2 short:gap-x-2 @5xl:bottom-[max(5rem,calc(env(safe-area-inset-bottom)+4.25rem))] @5xl:right-[calc(1rem+env(safe-area-inset-right))]"
     >
       <LikeWithList things={things}>
         <RailButton
@@ -1130,7 +1183,7 @@ function Rail({
           <Share2 size={26} {...icon} />
         </RailButton>
       )}
-      <RailButton name="More options" label="More" onClick={onMore}>
+      <RailButton name="More options" label="More" onClick={onMore} ref={moreRef}>
         <Ellipsis size={28} {...icon} />
       </RailButton>
     </div>
@@ -1222,11 +1275,15 @@ function ActivityLine({
       </span>
     </>
   );
+  // Said in full: "7h ago", but a date as it is ("Nov 2").
+  const spoken = /^\d+[mhd]$/.test(ago) ? `${ago} ago` : ago;
   return onOpen ? (
     <button
       type="button"
       onClick={onOpen}
-      aria-label={`${text}${where ? `, ${where}` : ""}, ${ago === "just now" ? ago : `${ago} ago`}. See the comments`}
+      aria-label={`${text}${where ? `, ${where}` : ""}, ${spoken}. See the comments`}
+      // The time is the server's until the page wakes up, as on the line itself.
+      suppressHydrationWarning
       className="-mx-1 flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1 text-left"
     >
       {body}
@@ -1291,8 +1348,42 @@ function Facts({
     );
   const beds = listing.BedroomsTotal;
   const baths = listing.BathroomsTotalInteger;
+
+  // A card opens above the facts. Where there's no room for it there under
+  // the header (a phone on its side), it goes as high as it can, beside what
+  // was tapped, so its Close is always on screen and the fact stays in view.
+  const root = useRef<HTMLDivElement>(null);
+  const card = useRef<HTMLDivElement>(null);
+  const [cardAt, setCardAt] = useState<{ tag: FactTag; style: CSSProperties | null } | null>(null);
+  useLayoutEffect(() => {
+    const el = card.current;
+    const box = root.current;
+    const panel = box?.closest("article");
+    if (!open || !el || !box || !panel) return;
+    const place = () => {
+      const facts = box.getBoundingClientRect();
+      const frame = panel.getBoundingClientRect();
+      const height = el.offsetHeight;
+      const highest = headerFoot(panel) + 8;
+      const above = facts.top - 8 - height;
+      if (above >= highest) return setCardAt({ tag: open, style: null });
+      const top = Math.max(highest, Math.min(above, frame.bottom - 8 - height));
+      const tapped = box.querySelector('[aria-expanded="true"]')?.getBoundingClientRect();
+      const left =
+        tapped && top + height > tapped.top
+          ? Math.max(0, Math.min(tapped.right + 8 - facts.left, facts.width - el.offsetWidth))
+          : 0;
+      setCardAt({ tag: open, style: { top: top - facts.top, left, bottom: "auto", marginBottom: 0 } });
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(el);
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div ref={root} className="relative">
       {photos && (
         <span id={hint} hidden>
           Like, dislike or comment on it
@@ -1322,8 +1413,11 @@ function Facts({
               </Link>
             )
           }
-          // Above the facts, over the photo, clear of everything else.
-          className="bottom-full left-0 z-40 mb-2"
+          ref={card}
+          style={cardAt?.tag === open ? (cardAt.style ?? undefined) : undefined}
+          // Above the facts, over the photo, clear of everything else, and no
+          // wider than the words (so not over the buttons down the right).
+          className="bottom-full left-0 z-40 mb-2 max-w-full"
         />
       )}
       <div className="flex h-11 items-center gap-2.5">
@@ -1339,16 +1433,21 @@ function Facts({
           </span>
         )}
       </div>
+      {/* One line however long: the size runs short first. */}
       <p className="flex h-10 items-center gap-x-1.5 whitespace-nowrap text-base text-white/90">
-        {fact("Bedrooms", `${beds} ${beds === 1 ? "bed" : "beds"}`)}
+        {fact("Bedrooms", `${beds} ${beds === 1 ? "bed" : "beds"}`, undefined, "shrink-0")}
         <span aria-hidden className="text-white/60">
           ·
         </span>
-        {fact("Bathrooms", `${baths} ${baths === 1 ? "bath" : "baths"}`)}
+        {fact("Bathrooms", `${baths} ${baths === 1 ? "bath" : "baths"}`, undefined, "shrink-0")}
         <span aria-hidden className="text-white/60">
           ·
         </span>
-        {fact("Square footage", `${listing.LivingArea.toLocaleString("en-US")} sq ft`)}
+        {fact(
+          "Square footage",
+          `${listing.LivingArea.toLocaleString("en-US")} sq ft`,
+          <span className="min-w-0 truncate">{listing.LivingArea.toLocaleString("en-US")} sq ft</span>,
+        )}
       </p>
       <h2 className="flex h-10 min-w-0 items-center text-base font-medium">
         {fact(
@@ -1365,6 +1464,17 @@ function Facts({
       </h2>
     </div>
   );
+}
+
+// Where the header ends over a home (`--photo-top`): nothing that opens over
+// the home goes higher, so it can always be closed.
+function headerFoot(panel: HTMLElement) {
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:absolute;top:var(--photo-top,0px);width:0;height:0;visibility:hidden";
+  panel.append(probe);
+  const at = probe.getBoundingClientRect().top;
+  probe.remove();
+  return at;
 }
 
 // One fact, to tap. Its name says what people thought of it ("$985,000, 1
@@ -1417,7 +1527,9 @@ function FactButton({
 }
 
 // Two lines of the description (or, on an agent's link, their greeting and
-// note), then "… more" to read it all, in place.
+// note), then "… more" right after the last word that fits, to read it all in
+// place, and "less" to put it away: one button that stays where the keyboard
+// is, after the words it opens, a fingertip to tap.
 function Caption({
   listing,
   greeting,
@@ -1432,57 +1544,93 @@ function Caption({
   // Unset beside the map, where it's just a look.
   onToggle?: () => void;
 }) {
-  const text = note || listing.PublicRemarks;
+  const text = note || listing.PublicRemarks || "";
+  const row = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
-  // Whether it runs past two lines, and so needs "more".
-  const [long, setLong] = useState(false);
+  // How much of the text fits before "… more" (all of it: no "more"). Until
+  // it's measured, the browser cuts it off at two lines.
+  const [fits, setFits] = useState<{ text: string; n: number } | null>(null);
   useLayoutEffect(() => {
+    const outer = row.current;
     const el = box.current;
-    if (!el || open) return;
-    const measure = () => setLong(el.scrollHeight > el.clientHeight + 1);
+    if (!outer || !el || open || !text) return;
+    const measure = () => {
+      if (el.clientWidth === 0) return;
+      const m = captionFit(outer, el, text);
+      setFits((now) => (now?.text === text && now.n === m ? now : { text, n: m }));
+    };
     measure();
+    // Again when the room changes (the window, a phone turning) or the
+    // typeface arrives.
     const observer = new ResizeObserver(measure);
+    observer.observe(outer);
     observer.observe(el);
-    return () => observer.disconnect();
+    document.fonts?.addEventListener("loadingdone", measure);
+    return () => {
+      observer.disconnect();
+      document.fonts?.removeEventListener("loadingdone", measure);
+    };
   }, [open, text, greeting]);
-  const content = (
-    <>
-      {greeting && <h1 className="inline font-semibold text-white">{greeting}</h1>}
-      {greeting && text && " "}
-      {text && <span>{text}</span>}
-    </>
-  );
-  if (open) {
-    return (
-      <div className="pointer-events-auto mb-1 max-h-[45dvh] overflow-y-auto overscroll-contain text-[15px] leading-[22px] text-white/85">
-        {content}{" "}
-        <button type="button" aria-expanded onClick={onToggle} className="font-semibold text-white hit-44">
-          less
-        </button>
-      </div>
-    );
-  }
+  // (Not measured, or a greeting too long for the lines on its own: cut off.)
+  const n = fits && fits.text === text && fits.n >= 0 ? fits.n : null;
+  const cut = !open && n !== null && n < text.length;
   return (
-    // The "more" floats to the end of the last line, after the ellipsis.
-    <div className="mb-1 flex h-11 text-[15px] leading-[22px] text-white/85 short:mb-0 short:h-[22px]">
-      <div
-        ref={box}
-        className="line-clamp-2 before:float-right before:h-[calc(100%-22px)] before:content-[''] short:line-clamp-1"
-      >
-        {onToggle && long && (
-          <button
-            type="button"
-            aria-expanded={false}
-            onClick={onToggle}
-            className="float-right clear-both ml-1 font-semibold text-white hit-44"
-          >
-            more
+    <div
+      ref={row}
+      className={cn(
+        "mb-1 text-[15px] leading-[22px] text-white/85",
+        open ? "pointer-events-auto max-h-[45dvh] overflow-y-auto overscroll-contain" : "h-11 short:mb-0 short:h-[22px]",
+      )}
+    >
+      <div ref={box} className={cn(!open && n === null && "line-clamp-2 short:line-clamp-1")}>
+        {greeting && <h1 className="inline font-semibold text-white">{greeting}</h1>}
+        {greeting && text && " "}
+        {text && <span>{cut ? clipped(text, n ?? 0) : text}</span>}
+        {cut && <span aria-hidden>…</span>}{" "}
+        {onToggle && (open || cut) && (
+          <button type="button" aria-expanded={open} onClick={onToggle} className="font-semibold text-white hit-44">
+            {open ? "less" : "more"}
           </button>
         )}
-        {content}
       </div>
     </div>
   );
+}
+
+// The first `n` characters, without a dangling stop, comma or dash before the "…".
+const clipped = (text: string, n: number) => text.slice(0, n).replace(/[\s.,;:\u2013\u2014-]+$/, "");
+
+// How many characters of `text` fit in the caption's lines with "… more"
+// after them, at the end of a whole word (all of them, when "more" isn't
+// needed). Laid out in an unseen copy beside it, with the same type and width.
+function captionFit(row: HTMLElement, box: HTMLElement, text: string) {
+  const limit = row.clientHeight + 1;
+  const probe = document.createElement("div");
+  probe.style.cssText = `position:absolute;left:0;top:0;width:${box.clientWidth}px;visibility:hidden;pointer-events:none`;
+  const words = document.createTextNode(text);
+  const greeting = box.querySelector("h1")?.cloneNode(true);
+  probe.append(...(greeting ? [greeting, " "] : []), words);
+  row.append(probe);
+  try {
+    if (probe.offsetHeight <= limit) return text.length;
+    const more = document.createElement("button");
+    more.className = "font-semibold";
+    more.textContent = "more";
+    probe.append("… ", more);
+    let [low, high] = [0, text.length];
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      words.data = clipped(text, mid);
+      if (probe.offsetHeight <= limit) low = mid;
+      else high = mid - 1;
+    }
+    words.data = clipped(text, low);
+    if (probe.offsetHeight > limit) return -1;
+    const end = /\s/.test(text[low] ?? " ") ? low : text.lastIndexOf(" ", low);
+    return end > 0 ? end : low;
+  } finally {
+    probe.remove();
+  }
 }
 
 const NO_ITEMS: FeedPost["timeline"] = [];

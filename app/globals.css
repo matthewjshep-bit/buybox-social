@@ -19,9 +19,6 @@
 
 /* A small control still takes a fingertip: its touch area grows to 44px
    around it, without moving anything. */
-/* Layers over the reel: the header z-30, a card about a spot z-40, a toast
-   z-50. Sheets open in the browser's top layer, over all of them. */
-
 @utility hit-44 {
   position: relative;
   &::after {
@@ -64,11 +61,13 @@ a {
 }
 
 /* On the reel, focus is white with a dark halo, so it shows on any photo.
-   Inside light things over it (cards, sheets, forms), the brand ring. */
+   Inside light things over it (cards, sheets, forms), the brand ring. A light
+   thing around the reel (the map's pop-out) doesn't count: the reel inside it
+   is still dark. */
 [data-dark-ground] {
   --ring: white;
 }
-[data-dark-ground] :focus-visible:not(:is(dialog, [data-light], .bg-white) *) {
+[data-dark-ground] :focus-visible:not([data-dark-ground] :is(dialog, [data-light], .bg-white) *) {
   box-shadow: 0 0 0 4px rgb(0 0 0 / 0.55);
 }
 [data-dark-ground] :is(dialog, [data-light], .bg-white) :focus-visible {

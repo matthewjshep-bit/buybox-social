@@ -5,6 +5,7 @@ import { heartOf, homeIn, joinAs, likeInPhoto, openMore, settle, tapPhoto } from
 const IPHONE = { viewport: { width: 393, height: 660 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true };
 const SMALL = { viewport: { width: 360, height: 640 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
 const ON_ITS_SIDE = { viewport: { width: 844, height: 390 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true };
+const SMALL_ON_ITS_SIDE = { viewport: { width: 740, height: 360 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
 const HEADER = 56;
 
 const phone = async (browser: Browser, options?: typeof IPHONE) => (await browser.newContext(options)).newPage();
@@ -131,10 +132,74 @@ test("a phone on its side keeps the words over the photo, the description to one
   // (The box it's clamped in: the words run on, unseen, past it.)
   const caption = await box(home.getByText(/^A blue cottage behind a white picket fence/).locator("xpath=.."));
   expect(caption.height).toBeLessThanOrEqual(23);
-  // No room for labels on the photo here.
+  // No room for labels on the photo here, and the arrows stay off the words
+  // (a swipe turns the photos).
   await expect(home.getByText("Exterior · 1 of 2", { exact: true })).toBeHidden();
+  await expect(home.getByRole("button", { name: "Next photo" })).toHaveCSS("opacity", "0");
+  await expect(home.getByRole("button", { name: "Next photo" })).toHaveCSS("pointer-events", "none");
   // The buttons stay clear of the header.
   expect((await box(heartOf(home))).y).toBeGreaterThanOrEqual(HEADER);
+
+  // The price's card can't go above it here, so it opens as high as it can
+  // under the header, beside the price, and closes.
+  const price = home.getByRole("button", { name: /^\$[\d,]+/ });
+  await price.click();
+  const card = home.locator("[data-spot-card]");
+  await expect(card).toBeVisible();
+  await settle(card);
+  const cardBox = await box(card);
+  expect(cardBox.y).toBeGreaterThanOrEqual(HEADER);
+  expect(cardBox.x).toBeGreaterThanOrEqual((await box(price)).x + (await box(price)).width);
+  await card.getByRole("button", { name: "Close" }).click();
+  await expect(card).toBeHidden();
+
+  // A smaller phone on its side: the buttons go in two columns, under the header.
+  const small = await phone(browser, SMALL_ON_ITS_SIDE);
+  await small.goto("/homes/SAMPLE-1008");
+  const smallHome = homeIn(small, "719 Saltmarsh Ln");
+  await settled(smallHome);
+  expect((await box(heartOf(smallHome))).y).toBeGreaterThanOrEqual(HEADER);
+  expect((await box(smallHome.getByRole("button", { name: "More options" }))).y).toBeGreaterThan(
+    (await box(heartOf(smallHome))).y,
+  );
+});
+
+test("the description: two lines, then more right after the last word, one button that keeps the keyboard", async ({
+  browser,
+}) => {
+  const page = await phone(browser, IPHONE);
+  await page.goto("/homes/SAMPLE-1001");
+  const home = homeIn(page, "4127 Larkmoor Ave NE");
+  await settled(home);
+  const more = home.getByRole("button", { name: "more", exact: true });
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  // The words come first, then "more", right after them on the second line.
+  const text = home.getByText(/^A warm Ravenna-area Craftsman/);
+  const caption = await box(text.locator("xpath=.."));
+  expect(caption.height).toBeLessThanOrEqual(45);
+  const at = await box(more);
+  expect(at.y).toBeGreaterThan(caption.y + 20);
+  const words = await text.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return [...range.getClientRects()].at(-1)!.right;
+  });
+  expect(at.x - words).toBeLessThan(20);
+  // A fingertip to tap, not clipped by the two lines.
+  const hit = await page.evaluate(
+    ({ x, y }) => document.elementFromPoint(x, y)?.textContent,
+    { x: at.x + at.width / 2, y: at.y + at.height + 9 },
+  );
+  expect(hit).toBe("more");
+  // From the keyboard, it opens and closes in place, and stays where the keyboard is.
+  await more.focus();
+  await page.keyboard.press("Enter");
+  const less = home.getByRole("button", { name: "less", exact: true });
+  await expect(less).toBeFocused();
+  await expect(less).toHaveAttribute("aria-expanded", "true");
+  await page.keyboard.press("Enter");
+  await expect(more).toBeFocused();
+  await page.context().close();
 });
 
 test("Show the photo only, from More, hides everything on the home until you ask or move on", async ({ page }) => {
@@ -151,16 +216,29 @@ test("Show the photo only, from More, hides everything on the home until you ask
   await expect(home.getByRole("button", { name: /^Comments/ })).toBeHidden();
   await expect(home.getByRole("button", { name: "Add a comment…" })).toBeHidden();
   await expect(page.getByRole("link", { name: "BuyBox Social" })).toBeHidden();
-  // One way back, on the photo, where the keyboard now is.
+  // One way back, at the foot of the photo, where the keyboard now is.
   const back = home.getByRole("button", { name: "Show everything" });
   await expect(back).toBeFocused();
-  // The photo stays exactly where it was.
+  // The photo, whole, in the middle of the screen (not over an empty band
+  // where the words were).
+  const { height } = page.viewportSize()!;
+  await expect.poll(async () => Math.abs((await box(photoOf(home))).y + (await box(photoOf(home))).height / 2 - height / 2)).toBeLessThanOrEqual(2);
   const during = await box(photoOf(home));
-  expect(Math.abs(during.y - before.y)).toBeLessThan(1);
-  expect(Math.abs(during.height - before.height)).toBeLessThan(1);
-  await back.click();
+  const pill = await box(back);
+  expect(during.y + during.height - (pill.y + pill.height)).toBeGreaterThanOrEqual(0);
+  expect(during.y + during.height - (pill.y + pill.height)).toBeLessThanOrEqual(16);
+  // A tap on the photo is just a look: no card now, and none waiting.
+  await page.mouse.click(during.x + during.width * 0.3, during.y + during.height * 0.4);
+  await page.waitForTimeout(600);
+  await expect(home.locator("[data-spot-card]")).toHaveCount(0);
+  await back.press("Enter");
   await expect(price).toBeVisible();
   await expect(back).toHaveCount(0);
+  await page.waitForTimeout(600);
+  await expect(home.locator("[data-spot-card]")).toHaveCount(0);
+  // The keyboard goes back to More, and the photo back to its place.
+  await expect(home.getByRole("button", { name: "More options" })).toBeFocused();
+  await expect.poll(async () => Math.abs((await box(photoOf(home))).y - before.y)).toBeLessThan(1);
 
   // Moving on to another home brings everything back.
   more = await openMore(page, home);
@@ -221,7 +299,9 @@ test("spots right beside each other gather into one count, and spread out when t
   const count = theirs.getByRole("button", { name: "2 spots here. Show them" });
   await expect(count).toBeVisible();
   await expect(theirs.getByRole("button", { name: /: 1 like$/ })).toHaveCount(0);
-  await count.click();
+  await count.press("Enter");
   await expect(theirs.getByRole("button", { name: /: 1 like$/ })).toHaveCount(2);
   await expect(count).toHaveCount(0);
+  // The keyboard lands on the first of them, not lost with the count.
+  await expect(theirs.getByRole("button", { name: /: 1 like$/ }).first()).toBeFocused();
 });

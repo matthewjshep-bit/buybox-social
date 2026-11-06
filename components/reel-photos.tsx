@@ -30,12 +30,14 @@ const ratioOf = (photo: ListingMedia | undefined) =>
 // sits in the clear space, right on top of the words, and never under the
 // header. With the words over it (a wide screen, a phone on its side), it
 // grows past the clear space, under the words, when there's room to show more
-// of it. Measured against the nearest box with `container-type: size`.
+// of it. Without a known size (a video, some photos), it takes all that space
+// and shows whole inside it. Measured against the nearest box with
+// `container-type: size`.
 export function photoPlace(photo: ListingMedia | undefined) {
   const ratio = ratioOf(photo);
   const room = `(100cqw - ${RIGHT})`;
   const width = ratio ? `min(${room}, ${MAX_HEIGHT} * ${ratio})` : room;
-  const height = ratio ? `min(${MAX_HEIGHT}, ${room} / ${ratio})` : "100cqh";
+  const height = ratio ? `min(${MAX_HEIGHT}, ${room} / ${ratio})` : MAX_HEIGHT;
   const top = `clamp(0px, ${TOP} + (${CLEAR} - ${height}) * ${ALIGN}, 100cqh - ${height})`;
   return { width, height, top, left: `(${room} - ${width}) / 2` };
 }
@@ -255,12 +257,21 @@ export function ReelPhotos({
   const place = photoPlace(shown);
   const middle = `calc(${place.top} + ${place.height} / 2)`;
   const head = `calc(${photoHead(shown)} + 0.5rem)`;
-  // The arrows and labels sit just inside the photo's edges.
-  const edge = `calc(${place.left} + 0.5rem)`;
-  const farEdge = `calc(100cqw - (${place.left}) - ${place.width} + 0.5rem)`;
+  // The arrows and labels sit just inside the photo's edges, and clear of a
+  // notch or a rounded corner (a phone on its side).
+  const edge = `max(${place.left} + 0.5rem, env(safe-area-inset-left) + 0.5rem)`;
+  const farEdge = `max(100cqw - (${place.left}) - ${place.width} + 0.5rem, env(safe-area-inset-right) + 0.5rem)`;
   // "Kitchen · 3 of 12": what the photo shows, and where it is among them.
   const room = [shown?.ImageOf, media.length > 1 ? `${index + 1} of ${media.length}` : null].filter(Boolean).join(" · ");
-  const glass = "rounded-full bg-black/50 text-white backdrop-blur-md";
+  // Dark enough that white words on it read over the brightest photo.
+  const glass = "rounded-full bg-black/60 text-white backdrop-blur-md";
+  // On a phone on its side the middle of the photo is under the words, so
+  // the arrows only show while the keyboard is on them (a swipe turns photos).
+  const arrow = cn(
+    "absolute z-10 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-md transition-[opacity,visibility] duration-300 disabled:hidden",
+    "short:pointer-events-none short:opacity-0 short:focus-visible:pointer-events-auto short:focus-visible:opacity-100",
+    !chrome && "invisible opacity-0",
+  );
 
   return (
     <div
@@ -301,10 +312,10 @@ export function ReelPhotos({
                   <div className="absolute inset-0 bg-[rgb(0_0_0/var(--backdrop-shade,0))]" />
                 </div>
               )}
-              {isVideo(photo) ? (
-                <ReelVideo src={photo.MediaURL} playing={active && i === index} label={photo.ShortDescription} />
-              ) : photo.ImageWidth && photo.ImageHeight ? (
-                <PhotoBox photo={photo}>
+              <PhotoBox photo={photo}>
+                {isVideo(photo) ? (
+                  <ReelVideo src={photo.MediaURL} playing={active && i === index} label={photo.ShortDescription} />
+                ) : (
                   <Image
                     src={photo.MediaURL}
                     alt={photo.ShortDescription ?? `${address}, photo ${i + 1}`}
@@ -314,21 +325,8 @@ export function ReelPhotos({
                     draggable={false}
                     className="object-contain"
                   />
-                </PhotoBox>
-              ) : (
-                // Without a known size, it fills the slide.
-                <div data-photo-frame className="absolute inset-0">
-                  <Image
-                    src={photo.MediaURL}
-                    alt={photo.ShortDescription ?? `${address}, photo ${i + 1}`}
-                    fill
-                    priority={priority && i === 0}
-                    sizes="100vw"
-                    draggable={false}
-                    className="object-contain"
-                  />
-                </div>
-              )}
+                )}
+              </PhotoBox>
               {burst?.slide === i && (
                 <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center">
                   <Heart
@@ -384,10 +382,7 @@ export function ReelPhotos({
                 disabled={index === 0}
                 onClick={() => embla?.scrollPrev()}
                 style={{ top: middle, left: edge }}
-                className={cn(
-                  "absolute z-10 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-md transition-[opacity,visibility] duration-300 disabled:hidden",
-                  !chrome && "invisible opacity-0",
-                )}
+                className={arrow}
               >
                 <ChevronLeft aria-hidden size={24} />
               </button>
@@ -397,10 +392,7 @@ export function ReelPhotos({
                 disabled={index === media.length - 1}
                 onClick={() => embla?.scrollNext()}
                 style={{ top: middle, right: farEdge }}
-                className={cn(
-                  "absolute z-10 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-md transition-[opacity,visibility] duration-300 disabled:hidden",
-                  !chrome && "invisible opacity-0",
-                )}
+                className={arrow}
               >
                 <ChevronRight aria-hidden size={24} />
               </button>
