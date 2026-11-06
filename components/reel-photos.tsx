@@ -2,7 +2,7 @@
 
 import useEmblaCarousel from "embla-carousel-react";
 import { WheelGesturesPlugin } from "embla-carousel-wheel-gestures";
-import { ChevronLeft, ChevronRight, Heart } from "lucide-react";
+import { ChevronLeft, ChevronRight, Heart, Play } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { cn } from "@/lib/format";
@@ -10,10 +10,12 @@ import type { ListingMedia } from "@/lib/listings/types";
 
 // The clear space between the header at the top and the words at the bottom,
 // set by the page as `--photo-top` and `--photo-bottom` (in units of the slide,
-// or the carousel, it's measured in), less anything down the right-hand side
-// (`--photo-right`).
+// or the carousel, it's measured in), less anything down either side
+// (`--photo-left`, `--photo-right`: a wide screen's stage, beside the buttons
+// and the words).
 const TOP = "var(--photo-top, 4.5rem)";
 const BOTTOM = "var(--photo-bottom, 14.5rem)";
+const LEFT = "var(--photo-left, 0px)";
 const RIGHT = "var(--photo-right, 0px)";
 const CLEAR = `(100cqh - ${TOP} - ${BOTTOM})`;
 // Where in that space it sits: 0 at the top, 0.5 in the middle, 1 on the words.
@@ -35,11 +37,11 @@ const ratioOf = (photo: ListingMedia | undefined) =>
 // `container-type: size`.
 export function photoPlace(photo: ListingMedia | undefined) {
   const ratio = ratioOf(photo);
-  const room = `(100cqw - ${RIGHT})`;
+  const room = `(100cqw - ${LEFT} - ${RIGHT})`;
   const width = ratio ? `min(${room}, ${MAX_HEIGHT} * ${ratio})` : room;
   const height = ratio ? `min(${MAX_HEIGHT}, ${room} / ${ratio})` : MAX_HEIGHT;
   const top = `clamp(0px, ${TOP} + (${CLEAR} - ${height}) * ${ALIGN}, 100cqh - ${height})`;
-  return { width, height, top, left: `(${room} - ${width}) / 2` };
+  return { width, height, top, left: `${LEFT} + (${room} - ${width}) / 2` };
 }
 
 // Along the bottom of the photo, or of the clear space when the photo goes on
@@ -113,6 +115,7 @@ export function ReelPhotos({
   chrome = true,
   start = 0,
   counter,
+  likesOf,
 }: {
   media: ListingMedia[];
   address: string;
@@ -143,6 +146,9 @@ export function ReelPhotos({
   start?: number;
   // Which home of several this is ("Home 1 of 3"), at the photo's top right.
   counter?: string;
+  // How many likes there are on things in a photo, for the strip of them
+  // under it on a wide screen.
+  likesOf?: (photo: ListingMedia) => number;
 }) {
   // Each carousel needs its own plugin; a sideways trackpad swipe turns the
   // photos, while an up-and-down one still scrolls between homes.
@@ -302,11 +308,12 @@ export function ReelPhotos({
               className="group/photo relative h-full w-full shrink-0 cursor-pointer select-none overflow-hidden [container-type:size] [-webkit-touch-callout:none]"
             >
               {/* The same photo, blurred and dimmed, fills the space around it:
-                  on a phone, only between the header and the words. */}
+                  on a phone, only between the header and the words. Not on
+                  a wide screen's stage, where the photo sits on the dark ground. */}
               {!isVideo(photo) && (
                 <div
                   aria-hidden
-                  className="absolute inset-x-0 top-(--backdrop-top,0px) bottom-(--backdrop-bottom,0px) overflow-hidden"
+                  className="absolute inset-x-0 top-(--backdrop-top,0px) bottom-(--backdrop-bottom,0px) overflow-hidden split:hidden"
                 >
                   <Image src={photo.MediaURL} alt="" fill sizes="96px" className="scale-125 object-cover opacity-70 blur-2xl" />
                   <div className="absolute inset-0 bg-[rgb(0_0_0/var(--backdrop-shade,0))]" />
@@ -369,6 +376,15 @@ export function ReelPhotos({
           </p>
         )}
       </div>
+      {media.length > 1 && controls && (
+        <Filmstrip
+          media={media}
+          index={index}
+          likesOf={likesOf}
+          onPick={(i) => embla?.scrollTo(i, true)}
+          className={cn("transition-[opacity,visibility] duration-300", !chrome && "invisible opacity-0")}
+        />
+      )}
       {media.length > 1 && (
         <>
           <p className="sr-only" aria-live="polite">
@@ -400,6 +416,88 @@ export function ReelPhotos({
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// Wide screens: every photo in a row under the stage, in place of swiping
+// blind, the one on screen ringed, those people liked marked with a count. A
+// click goes straight there.
+function Filmstrip({
+  media,
+  index,
+  likesOf,
+  onPick,
+  className,
+}: {
+  media: ListingMedia[];
+  index: number;
+  likesOf?: (photo: ListingMedia) => number;
+  onPick: (index: number) => void;
+  className?: string;
+}) {
+  const strip = useRef<HTMLUListElement>(null);
+  // The one on screen stays in view as the photos turn.
+  useEffect(() => {
+    const list = strip.current;
+    const item = list?.children[index] as HTMLElement | undefined;
+    if (!list || !item || list.clientWidth === 0) return;
+    const left = item.offsetLeft - list.offsetLeft;
+    if (left < list.scrollLeft || left + item.offsetWidth > list.scrollLeft + list.clientWidth) {
+      list.scrollTo({ left: left - (list.clientWidth - item.offsetWidth) / 2, behavior: "smooth" });
+    }
+  }, [index]);
+  return (
+    <div
+      className={cn(
+        "absolute bottom-6 left-(--photo-left,0px) right-(--photo-right,0px) hidden h-[88px] split:block",
+        className,
+      )}
+    >
+      <ul
+        ref={strip}
+        aria-label="Photos"
+        className="flex h-full w-max max-w-full items-center gap-2 overflow-x-auto px-1 [scrollbar-width:thin]"
+      >
+        {media.map((photo, i) => {
+          const likes = likesOf?.(photo) ?? 0;
+          const name = [
+            `Photo ${i + 1}${photo.ImageOf ? `: ${photo.ImageOf}` : ""}`,
+            likes > 0 && `${likes} ${likes === 1 ? "like" : "likes"}`,
+          ]
+            .filter(Boolean)
+            .join(", ");
+          return (
+            <li key={photo.MediaURL} className="shrink-0">
+              <button
+                type="button"
+                aria-label={name}
+                aria-current={i === index ? "true" : undefined}
+                onClick={() => onPick(i)}
+                className={cn(
+                  "relative block h-[72px] w-24 overflow-hidden rounded-lg bg-stone-800 transition-opacity",
+                  i === index ? "ring-2 ring-white" : "opacity-70 hover:opacity-100",
+                )}
+              >
+                {isVideo(photo) ? (
+                  <Play aria-hidden size={20} className="absolute inset-0 m-auto fill-white text-white" />
+                ) : (
+                  <Image src={photo.MediaURL} alt="" fill sizes="96px" className="object-contain" />
+                )}
+                {likes > 0 && (
+                  <span
+                    aria-hidden
+                    className="absolute bottom-1 right-1 flex h-5 items-center gap-0.5 rounded-full bg-black/65 px-1.5 text-[11px] font-semibold tabular-nums text-white"
+                  >
+                    <Heart size={10} strokeWidth={0} className="fill-white" />
+                    {likes}
+                  </span>
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

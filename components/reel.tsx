@@ -2,6 +2,8 @@
 
 import {
   ArrowUp,
+  ChevronDown,
+  ChevronUp,
   Ellipsis,
   Eye,
   Flame,
@@ -40,6 +42,7 @@ import {
   NameGate,
   Timeline,
   type ReplyTarget,
+  type SeenBy,
   type SpotRef,
   type ThreadActions,
 } from "@/components/listing-thread";
@@ -53,7 +56,7 @@ import {
   type Photos,
   type PickedSpot,
 } from "@/components/photo-spots";
-import { photoFoot, ReelPhotos } from "@/components/reel-photos";
+import { photoFoot, photoPlace, ReelPhotos } from "@/components/reel-photos";
 import { Sheet } from "@/components/sheet";
 import { NudgeHint, useNudges, type Nudge } from "@/components/walkthrough";
 import type { FeedPost, Headline } from "@/lib/feed";
@@ -77,6 +80,17 @@ import { describeReaction, NO_REACTION, type Aspect, type ReactionState } from "
 // on the dark ground (who's talking, the price, the facts, the description,
 // the comment bar), always the same height, so the photo never jumps from home
 // to home and nothing is written over it; the buttons run down the right.
+// Wide, side by side: the photo on a stage of its own, the buttons in a column
+// beside it, and the same words in a white panel on the right, where the
+// comments open too, so the photo is never covered.
+
+// The side-by-side layout on wide screens. Off (false): the words over the
+// photo, in a column in the middle, and comments rising from the bottom, as
+// before.
+const SPLIT_WIDE = true;
+// What a wide screen looked like before the side-by-side layout (only with
+// SPLIT_WIDE off).
+const legacy = (classes: string) => (SPLIT_WIDE ? "" : classes);
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -129,6 +143,8 @@ export function ReelFeed({
   onSend,
   initialPhoto,
   onPhotoSeen,
+  suggestedName,
+  nameHint,
 }: {
   initial: FeedPost[];
   // Public pages, or an agent's private link.
@@ -167,6 +183,10 @@ export function ReelFeed({
   initialPhoto?: number;
   // A photo has settled on screen.
   onPhotoSeen?: (listingKey: string, index: number) => void;
+  // Fills in the name prompt (selected, to type over).
+  suggestedName?: string;
+  // One more line in the name prompt, just above the name.
+  nameHint?: string;
 }) {
   // The order is fixed when the page opens, so a background refresh never
   // reshuffles the homes under your thumb. Agent links follow the page, which
@@ -199,11 +219,28 @@ export function ReelFeed({
           },
         };
 
+  // Who sees a comment, said under every comment box.
+  const agent = agentName || "your agent";
+  const seenBy: SeenBy =
+    mode === "public"
+      ? { text: "Everyone can see your comment and first name.", private: false }
+      : canInvite
+        ? { text: `Only ${agent} and people on this link see this.`, private: true }
+        : { text: `Only you and ${agent} see this.`, private: true };
+
   return (
-    <NameGate actions={threadActions} myName={myName} prompt={prompt}>
+    <NameGate
+      actions={threadActions}
+      myName={myName}
+      prompt={prompt}
+      suggestedName={suggestedName}
+      nameHint={nameHint}
+      seenBy={seenBy}
+    >
       <Feed
         posts={posts}
         mode={mode}
+        myName={myName}
         header={header}
         intro={intro}
         end={end}
@@ -234,6 +271,7 @@ export function ReelFeed({
 function Feed({
   posts,
   mode,
+  myName,
   header,
   intro,
   end,
@@ -252,6 +290,7 @@ function Feed({
 }: {
   posts: FeedPost[];
   mode: "public" | "share";
+  myName: string | null;
   header?: ReactNode;
   intro?: ReactNode;
   end?: ReactNode;
@@ -272,8 +311,20 @@ function Feed({
   const scroller = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
   // A sheet over the home: its comments (all of them, or those about one spot
-  // in a photo), or More.
-  const [sheet, setSheet] = useState<{ kind: "comments" | "more"; key: string; spot?: SpotRef } | null>(null);
+  // in a photo), or More. `photoFoot`: where the photo ended when it opened,
+  // so the comments rise to just there.
+  const [sheet, setSheet] = useState<{
+    kind: "comments" | "more";
+    key: string;
+    spot?: SpotRef;
+    photoFoot?: number;
+  } | null>(null);
+  // Each sheet closes only itself: one can open another without the first's
+  // closing shutting the second.
+  const closeSheet = (kind: "comments" | "more") => setSheet((now) => (now?.kind === kind ? null : now));
+  // Side by side (wide): comments open beside the photo, in the white panel's place.
+  const wide = useWide(frame);
+  const dock = useRef<HTMLElement | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   // Pressing and holding a home's photo clears everything off it, to see it
   // whole, until you let go.
@@ -298,6 +349,9 @@ function Feed({
   const offset = intro ? 1 : 0;
   const panelCount = offset + posts.length + 1;
   const activePost = posts[active - offset];
+  // Comments beside the photo belong to the home on screen: moving on to
+  // another closes them.
+  if (wide && sheet?.kind === "comments" && sheet.key !== (activePost?.listing.ListingKey ?? null)) setSheet(null);
 
   // Which screen is showing.
   useEffect(() => {
@@ -368,15 +422,16 @@ function Feed({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus]);
 
-  // ↑ and ↓ move between homes, unless you're typing or a sheet is open.
+  // ↑ and ↓ (or J and K) move between homes, unless you're typing or a sheet is open.
   useEffect(() => {
     if (embedded) return;
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (target.closest("input, textarea, select, [contenteditable]") || document.querySelector("dialog[open]")) return;
-      if (event.key === "ArrowDown" || event.key === "PageDown") goTo(active + 1);
-      else if (event.key === "ArrowUp" || event.key === "PageUp") goTo(active - 1);
+      const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+      if (key === "ArrowDown" || key === "PageDown" || key === "j") goTo(active + 1);
+      else if (key === "ArrowUp" || key === "PageUp" || key === "k") goTo(active - 1);
       else return;
       event.preventDefault();
     };
@@ -384,11 +439,14 @@ function Feed({
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  // Comments rise from the bottom. From the comment bar, the cursor goes
-  // straight into the comment box, in the same tap, so a phone opens its
-  // keyboard (it won't for focus that arrives later).
+  // Comments rise from the bottom, to the photo's foot, so it stays in view
+  // (wide, they open beside it, in the white panel's place). From the comment
+  // bar, the cursor goes straight into the comment box, in the same tap, so a
+  // phone opens its keyboard (it won't for focus that arrives later).
   const openComments = (key: string, compose = false, spot?: SpotRef) => {
-    flushSync(() => setSheet({ kind: "comments", key, spot }));
+    const home = frame.current?.querySelector(`[data-home="${CSS.escape(key)}"]`);
+    dock.current = home?.querySelector<HTMLElement>("[data-words]") ?? null;
+    flushSync(() => setSheet({ kind: "comments", key, spot, photoFoot: home ? photoFootIn(home, frame.current!) : undefined }));
     if (compose) frame.current?.ownerDocument.querySelector<HTMLElement>("dialog[open] [data-composer]")?.focus();
   };
 
@@ -427,10 +485,12 @@ function Feed({
       className={cn(
         // Its size, not the window's, decides the layout of each home.
         "overflow-hidden bg-night text-white @container-size/reel",
-        // The photo starts just under the header, never beneath it.
+        // The photo starts just under the header, never beneath it. Side by
+        // side, the stage and the panel start a little further down (in a
+        // pop-out, below its close button in the corner).
         header
-          ? "[--chrome-top:4rem] [--photo-top:calc(56px+env(safe-area-inset-top)+4px)]"
-          : "[--chrome-top:0.75rem] [--photo-top:0.5rem]",
+          ? "[--chrome-top:4rem] [--photo-top:calc(56px+env(safe-area-inset-top)+4px)] [--stage-top:72px]"
+          : "[--chrome-top:0.75rem] [--photo-top:0.5rem] [--stage-top:64px]",
         embedded ? "relative h-full w-full" : "fixed inset-0 z-30",
       )}
     >
@@ -455,6 +515,7 @@ function Feed({
               index={offset + i}
               post={post}
               mode={mode}
+              myName={myName}
               agentName={agentName}
               start={i === 0 ? initialPhoto : undefined}
               onPhotoSeen={onPhotoSeen}
@@ -471,7 +532,9 @@ function Feed({
               onComments={() => openComments(key)}
               onCompose={() => openComments(key, true)}
               onCommentSpot={(spot) => openComments(key, true, spot)}
-              covered={sheet?.kind === "comments" && sheet.key === key}
+              // Over the words on a phone; beside them, wide.
+              covered={!wide && sheet?.kind === "comments" && sheet.key === key}
+              spotSheet={sheet?.kind === "comments" && sheet.key === key && Boolean(sheet.spot)}
               clear={clear === offset + i}
               onHoldPhoto={(holding) => setClear(holding ? offset + i : null)}
               bare={bare === offset + i}
@@ -483,6 +546,9 @@ function Feed({
               onMore={() => setSheet({ kind: "more", key })}
               shareAs={kind}
               onShare={kind ? () => share(post) : undefined}
+              // (Not in a pop-out, which has just the one home.)
+              onPrevious={!embedded && offset + i > 0 ? () => goTo(offset + i - 1) : undefined}
+              onNext={embedded ? undefined : () => goTo(offset + i + 1)}
             />
           );
         })}
@@ -551,9 +617,12 @@ function Feed({
         post={sheet?.kind === "comments" ? (sheetPost ?? null) : null}
         spot={sheet?.kind === "comments" ? sheet.spot : undefined}
         mode={mode}
+        agentName={agentName}
         canShare={sheetPost ? reactions.states[sheetPost.listing.ListingKey]?.reaction === "like" : false}
-        anchor={frame}
-        onClose={() => setSheet(null)}
+        anchor={wide ? dock : frame}
+        docked={wide}
+        photoFoot={sheet?.photoFoot}
+        onClose={() => closeSheet("comments")}
         // Posted about a spot: back to the photo, where it now shows.
         onPostedSpot={(key) => {
           setSheet(null);
@@ -581,16 +650,45 @@ function Feed({
           setSheet(null);
           if (sheetPost) setBare(offset + posts.indexOf(sheetPost));
         }}
-        onClose={() => setSheet(null)}
+        onClose={() => closeSheet("more")}
       />
     </div>
   );
+}
+
+// Whether the feed is wide enough (64rem) to lay each home out side by side,
+// as its own layout decides by the same measure.
+function useWide(frame: RefObject<HTMLElement | null>) {
+  const [wide, setWide] = useState(false);
+  useLayoutEffect(() => {
+    const el = frame.current;
+    if (!el || !SPLIT_WIDE) return;
+    const measure = () => {
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      setWide(el.clientWidth >= 64 * rem);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [frame]);
+  return wide;
+}
+
+// Where the photo on screen ends, from the top of the feed.
+function photoFootIn(home: Element, feed: Element) {
+  const box = feed.getBoundingClientRect();
+  const shown = [...home.querySelectorAll("[data-photo-frame]")]
+    .map((photo) => photo.getBoundingClientRect())
+    .find((photo) => photo.width > 0 && photo.left >= box.left - 1 && photo.right <= box.right + 1);
+  return shown ? shown.bottom - box.top : undefined;
 }
 
 function Panel({
   index,
   post,
   mode,
+  myName,
   agentName,
   start,
   onPhotoSeen,
@@ -608,6 +706,7 @@ function Panel({
   onCompose,
   onCommentSpot,
   covered,
+  spotSheet,
   clear,
   onHoldPhoto,
   bare,
@@ -619,10 +718,13 @@ function Panel({
   onMore,
   shareAs,
   onShare,
+  onPrevious,
+  onNext,
 }: {
   index: number;
   post: FeedPost;
   mode: "public" | "share";
+  myName: string | null;
   agentName?: string;
   // The photo to open on.
   start?: number;
@@ -647,6 +749,9 @@ function Panel({
   onCommentSpot: (spot: SpotRef) => void;
   // Its comments are open, over the photo: the words and buttons under them step aside.
   covered: boolean;
+  // The comments about one spot are open (over or beside the photo): its card
+  // shows just where.
+  spotSheet: boolean;
   // Nothing over the photo, to see it whole.
   clear: boolean;
   onHoldPhoto: (holding: boolean) => void;
@@ -663,6 +768,9 @@ function Panel({
   onMore: () => void;
   shareAs: ShareKind | null;
   onShare?: () => void;
+  // The homes before and after (side by side, the chevrons over the buttons).
+  onPrevious?: () => void;
+  onNext?: () => void;
 }) {
   const { listing } = post;
   const [first] = useState(() => Math.max(0, Math.min(listing.Media.length - 1, start ?? 0)));
@@ -678,10 +786,11 @@ function Panel({
   }
   // When the comments close (posted, or put away), so does the card: what was
   // said now shows on the photo.
-  const [wasCovered, setWasCovered] = useState(covered);
-  if (covered !== wasCovered) {
-    setWasCovered(covered);
-    if (!covered) setPicked(null);
+  const sheetOver = covered || spotSheet;
+  const [wasCovered, setWasCovered] = useState(sheetOver);
+  if (sheetOver !== wasCovered) {
+    setWasCovered(sheetOver);
+    if (!sheetOver) setPicked(null);
   }
   // To a spot from a comment about it: its photo, with its card open (or the
   // fact's card, for one about the price).
@@ -775,6 +884,11 @@ function Panel({
   // Nothing over the photo: held, or "Show the photo only".
   const hidden = clear || bare;
   const agentFirst = agentName?.split(" ")[0] || "your agent";
+  // Side by side on a wide screen (never beside the map, just a look there).
+  const split = SPLIT_WIDE && !onOpen;
+  // Likes on things in a photo, for the strip of photos.
+  const likesIn = (shown: ListingMedia) =>
+    photos.likedTags(shown).reduce((sum, tag) => sum + photos.count(shown, tag), 0);
 
   const likeWhatsShown = (shown: ListingMedia) => {
     onDoubleTapLike();
@@ -809,24 +923,29 @@ function Panel({
       // Where the photo goes. On a phone: in the clear space between the
       // header and the words, right on top of them, so the photo and what it
       // is read as one, top to bottom, with a blurred copy of it filling the
-      // band above. Wide, or a phone on its side: today's full-screen photo
-      // with the words over it, centred when wide. The photo alone, on a
-      // phone: whole and centred in the whole screen, its blurred copy all
-      // round it, rather than over an empty band where the words were.
+      // band above. A phone on its side: the full-screen photo with the
+      // words over it. The photo alone, on a phone: whole and centred in the
+      // whole screen, its blurred copy all round it, rather than over an
+      // empty band where the words were. Side by side, wide: whole and
+      // centred on a stage on the left, over the strip of photos (when there
+      // are several), clear of the buttons and the white panel down the
+      // right; held, or alone, it stays put. (With SPLIT_WIDE off, wide is
+      // the full-screen photo with the words over it, centred.)
+      data-split={split || undefined}
       className={cn(
         "relative h-full snap-start snap-always overflow-hidden bg-night",
         "[--photo-fit:1] [--backdrop-shade:0.4]",
         bare
           ? "[--backdrop-bottom:0px] [--backdrop-top:0px] [--photo-align:0.5] [--photo-bottom:env(safe-area-inset-bottom)] [--photo-top:env(safe-area-inset-top)]"
-          : "[--backdrop-bottom:var(--photo-bottom)] [--backdrop-top:var(--photo-top)] [--photo-align:1] [--photo-bottom:calc(308px+env(safe-area-inset-bottom))]",
+          : "[--backdrop-bottom:var(--photo-bottom)] [--backdrop-top:var(--photo-top)] [--photo-align:1] [--photo-bottom:calc(var(--words-height,calc(308px+env(safe-area-inset-bottom)))+var(--words-gap,0px))]",
         "short:[--backdrop-bottom:0px] short:[--backdrop-shade:0] short:[--backdrop-top:0px] short:[--photo-fit:0] short:[--words-gap:8px]",
-        "@5xl:[--backdrop-bottom:0px] @5xl:[--backdrop-shade:0] @5xl:[--backdrop-top:0px] @5xl:[--photo-align:0.5] @5xl:[--photo-fit:0] @5xl:[--photo-top:calc(var(--chrome-top,4rem)+0.5rem)] @5xl:[--words-gap:8px]",
+        legacy(
+          "@5xl:[--backdrop-bottom:0px] @5xl:[--backdrop-shade:0] @5xl:[--backdrop-top:0px] @5xl:[--photo-align:0.5] @5xl:[--photo-fit:0] @5xl:[--photo-top:calc(var(--chrome-top,4rem)+0.5rem)] @5xl:[--words-gap:8px]",
+        ),
+        "split:[--photo-align:0.5] split:[--photo-fit:1] split:[--photo-left:24px] split:[--photo-right:468px] split:[--photo-top:var(--stage-top)] split-xl:[--photo-right:508px]",
+        listing.Media.length > 1 ? "split:[--photo-bottom:120px]" : "split:[--photo-bottom:24px]",
       )}
-      style={
-        wordsHeight && !bare
-          ? ({ "--photo-bottom": `calc(${wordsHeight}px + var(--words-gap, 0px))` } as CSSProperties)
-          : undefined
-      }
+      style={wordsHeight ? ({ "--words-height": `${wordsHeight}px` } as CSSProperties) : undefined}
     >
       {loaded && (
         <ReelPhotos
@@ -836,6 +955,7 @@ function Panel({
           priority={index <= 1}
           start={first}
           counter={counter}
+          likesOf={likesIn}
           onIndexChange={(next) => {
             setPhoto(next);
             onSwipe?.();
@@ -861,8 +981,11 @@ function Panel({
                     backToMore.current = true;
                     onShowEverything();
                   }}
-                  style={{ top: `calc(${photoFoot(current)} - 3.25rem)` }}
-                  className="absolute left-1/2 z-10 flex h-11 -translate-x-1/2 items-center gap-2 rounded-full bg-black/50 px-4 text-[15px] font-semibold text-white backdrop-blur-md hover:bg-black/65"
+                  style={{
+                    top: `calc(${photoFoot(current)} - 3.25rem)`,
+                    left: `calc(${photoPlace(current).left} + ${photoPlace(current).width} / 2)`,
+                  }}
+                  className="absolute z-10 flex h-11 -translate-x-1/2 items-center gap-2 rounded-full bg-black/50 px-4 text-[15px] font-semibold text-white backdrop-blur-md hover:bg-black/65"
                 >
                   <Eye aria-hidden size={18} />
                   Show everything
@@ -872,26 +995,31 @@ function Panel({
           }
         />
       )}
-      {/* With the words over the photo (wide, or a phone on its side), shades
-          keep the header and the words readable over any photo; the bottom
-          one deepens to hold the whole description. A phone's words sit on
-          the dark ground instead; on its side, they carry their own shade
-          (below), since they fill most of the height there. */}
-      <div
-        aria-hidden
-        className={cn(
-          "pointer-events-none absolute inset-x-0 top-0 hidden h-32 bg-linear-to-b from-black/50 to-transparent transition-opacity duration-300 short:block @5xl:block",
-          hidden && "opacity-0",
-        )}
-      />
-      <div
-        aria-hidden
-        className={cn(
-          "pointer-events-none absolute inset-x-0 bottom-0 hidden bg-linear-to-t to-transparent transition-[opacity,height] duration-300 @5xl:block",
-          more ? "h-3/4 from-black/85 via-black/55" : "h-1/2 from-black/80 via-black/40",
-          (covered || hidden) && "opacity-0",
-        )}
-      />
+      {/* Before the side-by-side layout, wide screens had the words over
+          the photo, centred, with shades to keep the header and the words
+          readable; the bottom one deepened to hold the whole description.
+          Now a phone's words sit on the dark ground, side by side they're on
+          a white panel, and on a phone on its side they carry their own
+          shade (below), under the header's own. */}
+      {!SPLIT_WIDE && (
+        <div
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-x-0 top-0 hidden h-32 bg-linear-to-b from-black/50 to-transparent transition-opacity duration-300 short:block @5xl:block",
+            hidden && "opacity-0",
+          )}
+        />
+      )}
+      {!SPLIT_WIDE && (
+        <div
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-x-0 bottom-0 hidden bg-linear-to-t to-transparent transition-[opacity,height] duration-300 @5xl:block",
+            more ? "h-3/4 from-black/85 via-black/55" : "h-1/2 from-black/80 via-black/40",
+            (covered || hidden) && "opacity-0",
+          )}
+        />
+      )}
 
       {/* The words and buttons. Only their links and buttons take a touch: a
           swipe that starts on the words, where a thumb usually is, turns the
@@ -906,10 +1034,33 @@ function Panel({
             while they're open, so they step aside. */}
         <div
           className={cn(
-            "relative mx-auto h-full max-w-5xl transition-[opacity,visibility] duration-300",
+            "relative mx-auto h-full max-w-5xl transition-[opacity,visibility] duration-300 split:max-w-none",
             covered && "invisible opacity-0",
           )}
         >
+          {!onOpen && onNext && (
+            // Side by side: to the home before or after, at the top of the
+            // buttons' column, for anyone who doesn't think to scroll.
+            <div className="pointer-events-auto absolute right-[396px] top-(--stage-top) hidden w-[72px] flex-col items-center gap-2 split:flex split-xl:right-[436px]">
+              <button
+                type="button"
+                aria-label="Go to the previous home"
+                disabled={!onPrevious}
+                onClick={onPrevious}
+                className="flex size-11 items-center justify-center rounded-full bg-white/10 text-white ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-white/20 disabled:cursor-default disabled:opacity-35 disabled:hover:bg-white/10"
+              >
+                <ChevronUp aria-hidden size={24} />
+              </button>
+              <button
+                type="button"
+                aria-label="Go to the next home"
+                onClick={onNext}
+                className="flex size-11 items-center justify-center rounded-full bg-white/10 text-white ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-white/20"
+              >
+                <ChevronDown aria-hidden size={24} />
+              </button>
+            </div>
+          )}
           {!onOpen && (
             <Rail
               address={listing.UnparsedAddress}
@@ -932,8 +1083,10 @@ function Panel({
             address, the description, who listed it, and the comment bar. On a
             phone a fixed 308px on the dark ground, every row one line (the
             description two) so it never changes height: anything new belongs
-            in a sheet, not here. Wide, a column in the middle, over the photo.
-            Beside the map, the same, with "Open full screen" for the bar. */}
+            in a sheet, not here. Side by side, the same words in a white
+            panel beside the photo, scrolling if they need to, with who liked
+            it, and the comment bar at its foot. Beside the map, the phone's,
+            with "Open full screen" for the bar. */}
         <div
           ref={words}
           data-words
@@ -945,7 +1098,10 @@ function Panel({
             // on the brightest photo.
             "short:h-auto short:bg-transparent short:bg-linear-to-t short:from-black/80 short:to-black/65",
             "short:before:pointer-events-none short:before:absolute short:before:inset-x-0 short:before:bottom-full short:before:h-12 short:before:bg-linear-to-t short:before:from-black/65 short:before:to-transparent",
-            "@5xl:h-auto @5xl:items-center @5xl:bg-transparent @5xl:px-6 @5xl:[--words-pad:max(1.5rem,calc(env(safe-area-inset-bottom)+0.75rem))]",
+            legacy(
+              "@5xl:h-auto @5xl:items-center @5xl:bg-transparent @5xl:px-6 @5xl:[--words-pad:max(1.5rem,calc(env(safe-area-inset-bottom)+0.75rem))]",
+            ),
+            "split:pointer-events-auto split:bottom-6 split:left-auto split:right-6 split:top-(--stage-top) split:h-auto split:w-[360px] split:overflow-hidden split:rounded-2xl split:bg-white split:bg-none split:pb-0 split:text-ink split:shadow-xl split:before:hidden split-xl:w-[400px]",
             // Beside the map on a phone, its Map button floats at the bottom.
             onOpen && "max-lg:[--words-pad:6rem]",
             covered && "invisible opacity-0",
@@ -955,11 +1111,13 @@ function Panel({
             data-keep-clear
             className={cn(
               // Clear of a notch or rounded corner, on a phone on its side.
-              "relative w-full pl-[max(1rem,env(safe-area-inset-left))] [text-shadow:0_1px_3px_rgb(0_0_0/0.45)] @5xl:max-w-xl @5xl:px-0",
+              "relative w-full pl-[max(1rem,env(safe-area-inset-left))] [text-shadow:0_1px_3px_rgb(0_0_0/0.45)]",
+              legacy("@5xl:max-w-xl @5xl:px-0"),
               // Clear of the buttons down the right (two columns of them, on its side).
               onOpen
                 ? "pr-[max(1rem,env(safe-area-inset-right))]"
                 : "pr-[calc(76px+env(safe-area-inset-right))] short:pr-[calc(140px+env(safe-area-inset-right))]",
+              "split:min-h-0 split:flex-1 split:overflow-y-auto split:overscroll-contain split:pb-5 split:pl-5 split:pr-5 split:pt-3 split:[text-shadow:none]",
             )}
           >
             <div className="flex h-12 items-center">
@@ -1001,24 +1159,41 @@ function Panel({
             />
             {/* Who's selling it runs short before "Sample listing" does: it's
                 the only sign on the home that it isn't real. */}
-            <p className="flex h-5 whitespace-nowrap text-[13px] leading-5 text-white/80">
+            <p className="flex h-5 whitespace-nowrap text-[13px] leading-5 text-white/80 split:text-stone-600">
               <span className="min-w-0 truncate">
                 {listing.ListAgentFullName && `Listed by ${listing.ListAgentFullName}`}
                 {listing.ListOfficeName && ` · ${listing.ListOfficeName}`}
               </span>
               {isSampleListing(listing) && <span className="shrink-0">&nbsp;· Sample listing</span>}
             </p>
+            {split && likes > 0 && (
+              <LikedBy
+                likes={likes}
+                you={liked || photos.hasAny}
+                myName={myName}
+                names={post.likers}
+                onOpen={onComments}
+                className="hidden split:block"
+              />
+            )}
             {error && (
               <p
                 role="alert"
-                // Over the photo's foot, and over the comments toggle there.
-                className="absolute bottom-full left-[max(1rem,env(safe-area-inset-left))] z-30 mb-2 rounded-full bg-rose-700 px-3 py-1.5 text-sm font-semibold text-white [text-shadow:none]"
+                // Over the photo's foot, and over the comments toggle there
+                // (side by side, in the panel, under the words).
+                className="absolute bottom-full left-[max(1rem,env(safe-area-inset-left))] z-30 mb-2 rounded-full bg-rose-700 px-3 py-1.5 text-sm font-semibold text-white [text-shadow:none] split:static split:mb-0 split:mt-3 split:w-fit"
               >
                 {error}
               </p>
             )}
           </div>
-          <div className="mt-2 w-full pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] @5xl:max-w-xl @5xl:px-0">
+          <div
+            className={cn(
+              "mt-2 w-full pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]",
+              legacy("@5xl:max-w-xl @5xl:px-0"),
+              "split:mt-0 split:border-t split:border-stone-200 split:p-3",
+            )}
+          >
             {onOpen ? (
               <button
                 type="button"
@@ -1035,7 +1210,7 @@ function Panel({
                 type="button"
                 data-keep-clear
                 onClick={onCompose}
-                className="flex h-12 w-full items-center gap-3 rounded-full bg-white/12 pl-5 pr-3 text-left text-base text-white/75 ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18"
+                className="flex h-12 w-full items-center gap-3 rounded-full bg-white/12 pl-5 pr-3 text-left text-base text-white/75 ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18 split:bg-stone-100 split:text-stone-500 split:ring-0 split:backdrop-blur-none split:hover:bg-stone-200"
               >
                 <span className="min-w-0 flex-1 truncate">
                   {mode === "share" ? `Tell ${agentFirst} what you think…` : "Add a comment…"}
@@ -1060,7 +1235,7 @@ function Panel({
           pinsShown={pinsShown}
           onTogglePins={() => onPins(!pinsShown)}
           onComment={onCommentSpot}
-          covered={covered}
+          covered={sheetOver}
           onPosted={() => {
             setPicked(null);
             onPins(true);
@@ -1097,7 +1272,7 @@ function RailButton({
       onClick={onClick}
       className="group flex w-14 flex-col items-center gap-0.5 text-[13px] font-semibold leading-4 [text-shadow:0_1px_3px_rgb(0_0_0/0.6)]"
     >
-      <span className="flex size-12 items-center justify-center rounded-full bg-black/35 backdrop-blur-md transition-transform group-active:scale-90 compact:size-11 motion-reduce:transition-none motion-reduce:group-active:scale-100">
+      <span className="flex size-12 items-center justify-center rounded-full bg-black/35 backdrop-blur-md transition-transform group-active:scale-90 compact:size-11 motion-reduce:transition-none motion-reduce:group-active:scale-100 split:bg-white/10 split:ring-1 split:ring-white/15 split:group-hover:bg-white/20">
         {children}
       </span>
       <span aria-hidden className="tabular-nums">
@@ -1142,7 +1317,12 @@ function Rail({
       data-keep-clear
       // Clear of a notch or rounded corner, on a phone on its side. There, in
       // two columns: one would run up under the header.
-      className="pointer-events-auto absolute bottom-[calc(68px+env(safe-area-inset-bottom))] right-[calc(0.5rem+env(safe-area-inset-right))] z-10 flex flex-col items-center gap-1 short:grid short:grid-cols-2 short:gap-x-2 @5xl:bottom-[max(5rem,calc(env(safe-area-inset-bottom)+4.25rem))] @5xl:right-[calc(1rem+env(safe-area-inset-right))]"
+      // Side by side: a column of its own between the photo and the panel.
+      className={cn(
+        "pointer-events-auto absolute bottom-[calc(68px+env(safe-area-inset-bottom))] right-[calc(0.5rem+env(safe-area-inset-right))] z-10 flex flex-col items-center gap-1 short:grid short:grid-cols-2 short:gap-x-2",
+        legacy("@5xl:bottom-[max(5rem,calc(env(safe-area-inset-bottom)+4.25rem))] @5xl:right-[calc(1rem+env(safe-area-inset-right))]"),
+        "split:bottom-6 split:right-[396px] split:flex split:w-[72px] split-xl:right-[436px]",
+      )}
     >
       <LikeWithList things={things}>
         <RailButton
@@ -1223,9 +1403,9 @@ function ActivityLine({
   if (!headline) {
     if (!hint) return null;
     return (
-      <div className="flex min-w-0 items-center gap-2.5 text-white/70">
-        <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white/10">
-          <Hand size={16} className="text-white/60" />
+      <div className="flex min-w-0 items-center gap-2.5 text-white/70 split:text-stone-600">
+        <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white/10 split:bg-stone-100">
+          <Hand size={16} className="text-white/60 split:text-stone-500" />
         </span>
         <p className="line-clamp-2 text-[15px] leading-5">{hint}</p>
       </div>
@@ -1263,13 +1443,13 @@ function ActivityLine({
         )}
       >
         {named ? headline.name[0]?.toUpperCase() : headline.kind === "sent" ? <Send size={14} /> : <User size={14} />}
-        <span className="absolute -bottom-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-white">
+        <span className="absolute -bottom-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-white split:ring-1 split:ring-stone-200">
           {glyph}
         </span>
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[15px] font-semibold leading-5">{text}</span>
-        <span className="block truncate text-[13px] leading-[18px] text-white/75" suppressHydrationWarning>
+        <span className="block truncate text-[13px] leading-[18px] text-white/75 split:text-stone-600" suppressHydrationWarning>
           {where ? `${where} · ${ago}` : ago}
         </span>
       </span>
@@ -1284,7 +1464,7 @@ function ActivityLine({
       aria-label={`${text}${where ? `, ${where}` : ""}, ${spoken}. See the comments`}
       // The time is the server's until the page wakes up, as on the line itself.
       suppressHydrationWarning
-      className="-mx-1 flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1 text-left"
+      className="-mx-1 flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1 text-left split:hover:bg-stone-50"
     >
       {body}
     </button>
@@ -1361,6 +1541,10 @@ function Facts({
     const panel = box?.closest("article");
     if (!open || !el || !box || !panel) return;
     const place = () => {
+      // Side by side, in the panel: just under the facts, over the words below them.
+      if (sideBySide(panel)) {
+        return setCardAt({ tag: open, style: { top: "100%", bottom: "auto", marginTop: 8, marginBottom: 0, left: 0 } });
+      }
       const facts = box.getBoundingClientRect();
       const frame = panel.getBoundingClientRect();
       const height = el.offsetHeight;
@@ -1421,26 +1605,33 @@ function Facts({
         />
       )}
       <div className="flex h-11 items-center gap-2.5">
-        <p className="font-display text-[30px] font-semibold leading-none tabular-nums @5xl:text-4xl">
+        <p className={cn("font-display text-[30px] font-semibold leading-none tabular-nums split:text-[32px]", legacy("@5xl:text-4xl"))}>
           {fact("Price", formatPrice(listing.ListPrice))}
         </p>
         {trending && (
           // Earned, not decoration: real activity from several people this
           // week, among the busiest homes for sale.
-          <span className="flex h-6 shrink-0 items-center gap-1 rounded-full bg-white/15 px-2.5 text-[13px] font-semibold [text-shadow:none] short:bg-black/45 short:backdrop-blur-md @5xl:bg-black/45 @5xl:backdrop-blur-md">
-            <Flame aria-hidden size={12} className="text-rose-300" />
+          <span
+            className={cn(
+              "flex h-6 shrink-0 items-center gap-1 rounded-full bg-white/15 px-2.5 text-[13px] font-semibold [text-shadow:none] short:bg-black/45 short:backdrop-blur-md",
+              legacy("@5xl:bg-black/45 @5xl:backdrop-blur-md"),
+              // On the white panel beside the photo.
+              "split:bg-rose-50 split:text-rose-700 split:backdrop-blur-none",
+            )}
+          >
+            <Flame aria-hidden size={12} className="text-rose-300 split:text-rose-600" />
             Trending
           </span>
         )}
       </div>
       {/* One line however long: the size runs short first. */}
-      <p className="flex h-10 items-center gap-x-1.5 whitespace-nowrap text-base text-white/90">
+      <p className="flex h-10 items-center gap-x-1.5 whitespace-nowrap text-base text-white/90 split:text-stone-700">
         {fact("Bedrooms", `${beds} ${beds === 1 ? "bed" : "beds"}`, undefined, "shrink-0")}
-        <span aria-hidden className="text-white/60">
+        <span aria-hidden className="text-white/60 split:text-stone-400">
           ·
         </span>
         {fact("Bathrooms", `${baths} ${baths === 1 ? "bath" : "baths"}`, undefined, "shrink-0")}
-        <span aria-hidden className="text-white/60">
+        <span aria-hidden className="text-white/60 split:text-stone-400">
           ·
         </span>
         {fact(
@@ -1464,6 +1655,12 @@ function Facts({
       </h2>
     </div>
   );
+}
+
+// A home laid out side by side right now (wide, and not beside the map).
+function sideBySide(home: HTMLElement) {
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  return SPLIT_WIDE && home.hasAttribute("data-split") && home.clientWidth >= 64 * rem;
 }
 
 // Where the header ends over a home (`--photo-top`): nothing that opens over
@@ -1516,13 +1713,70 @@ function FactButton({
       aria-describedby={hint}
       onClick={onOpen}
       className={cn(
-        "-mx-1 inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded-md px-1 text-left transition-colors hit-44 hover:bg-white/10 active:bg-white/15",
-        open && "bg-white/15",
+        "-mx-1 inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded-md px-1 text-left transition-colors hit-44 hover:bg-white/10 active:bg-white/15 split:hover:bg-stone-100 split:active:bg-stone-200",
+        open && "bg-white/15 split:bg-stone-100",
         className,
       )}
     >
       {children}
     </button>
+  );
+}
+
+// Side by side, under who listed it: who liked the home, a face or three and
+// their names, "Liked by Maya, Sam and 6 others", to see them all in the
+// comments. You first, then the people the page names (on an agent's link,
+// those on it; elsewhere, the latest few), then how many more.
+function LikedBy({
+  likes,
+  you,
+  myName,
+  names,
+  onOpen,
+  className,
+}: {
+  likes: number;
+  // You like it (or something in its photos).
+  you: boolean;
+  myName: string | null;
+  names: string[];
+  onOpen: () => void;
+  className?: string;
+}) {
+  const others = names.filter((name) => !(you && name === myName));
+  const named = [...(you ? ["you"] : []), ...others].slice(0, Math.min(2, likes));
+  const rest = likes - named.length;
+  const text =
+    named.length === 0
+      ? `Liked by ${likes} ${likes === 1 ? "person" : "people"}`
+      : rest > 0
+        ? `Liked by ${named.join(", ")} and ${rest} ${rest === 1 ? "other" : "others"}`
+        : `Liked by ${named.join(" and ")}`;
+  const faces = [...named.map((name) => (name === "you" ? (myName ?? "") : name)), ...(rest > 0 ? [null] : [])].slice(0, 3);
+  return (
+    <div className={cn("mt-4 border-t border-stone-200 pt-2", className)}>
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={`${text}. See who`}
+        className="-mx-1 flex min-h-11 items-center gap-2.5 rounded-xl px-1 text-left text-sm text-stone-700 hover:bg-stone-50"
+      >
+        <span aria-hidden className="flex shrink-0 pl-2">
+          {faces.map((name, i) => (
+            <span
+              key={i}
+              className={cn(
+                "-ml-2 flex size-6 items-center justify-center rounded-full text-[11px] font-semibold ring-2 ring-white",
+                name ? "bg-brand text-white" : "bg-stone-200 text-stone-600",
+              )}
+            >
+              {name ? name[0]?.toUpperCase() : <User size={12} />}
+            </span>
+          ))}
+        </span>
+        <span className="min-w-0">{text}</span>
+      </button>
+    </div>
   );
 }
 
@@ -1578,17 +1832,21 @@ function Caption({
     <div
       ref={row}
       className={cn(
-        "mb-1 text-[15px] leading-[22px] text-white/85",
-        open ? "pointer-events-auto max-h-[45dvh] overflow-y-auto overscroll-contain" : "h-11 short:mb-0 short:h-[22px]",
+        // Side by side: three lines in the panel, and all of it right there
+        // when opened (the panel scrolls).
+        "mb-1 text-[15px] leading-[22px] text-white/85 split:mb-2 split:mt-1 split:leading-6 split:text-stone-700",
+        open
+          ? "pointer-events-auto max-h-[45dvh] overflow-y-auto overscroll-contain split:max-h-none split:overflow-visible"
+          : "h-11 short:mb-0 short:h-[22px] split:h-[72px]",
       )}
     >
-      <div ref={box} className={cn(!open && n === null && "line-clamp-2 short:line-clamp-1")}>
-        {greeting && <h1 className="inline font-semibold text-white">{greeting}</h1>}
+      <div ref={box} className={cn(!open && n === null && "line-clamp-2 short:line-clamp-1 split:line-clamp-3")}>
+        {greeting && <h1 className="inline font-semibold text-white split:text-ink">{greeting}</h1>}
         {greeting && text && " "}
         {text && <span>{cut ? clipped(text, n ?? 0) : text}</span>}
         {cut && <span aria-hidden>…</span>}{" "}
         {onToggle && (open || cut) && (
-          <button type="button" aria-expanded={open} onClick={onToggle} className="font-semibold text-white hit-44">
+          <button type="button" aria-expanded={open} onClick={onToggle} className="font-semibold text-white hit-44 split:text-ink">
             {open ? "less" : "more"}
           </button>
         )}
@@ -1639,8 +1897,11 @@ function CommentsSheet({
   post,
   spot,
   mode,
+  agentName,
   canShare,
   anchor,
+  docked,
+  photoFoot,
   onClose,
   onPostedSpot,
   onShowSpot,
@@ -1649,8 +1910,14 @@ function CommentsSheet({
   // Only the comments about this spot in a photo, and a box to add one.
   spot?: SpotRef;
   mode: "public" | "share";
+  agentName?: string;
   canShare: boolean;
+  // The feed (phones), or the white panel it takes the place of (wide).
   anchor: RefObject<HTMLElement | null>;
+  // Beside the photo, wide.
+  docked: boolean;
+  // Where the photo ends, from the top of the feed, when it opened.
+  photoFoot?: number;
   onClose: () => void;
   onPostedSpot: (listingKey: string) => void;
   onShowSpot: (listingKey: string, spot: SpotRef) => void;
@@ -1690,8 +1957,11 @@ function CommentsSheet({
             : "Comments"
       }
       anchor={anchor}
-      // About one spot: just tall enough, so the photo stays in view above it.
+      docked={docked}
+      // All of them: up to the photo's foot, and taller by dragging. About
+      // one spot: just tall enough, so the photo stays in view above it.
       tall={!spot}
+      detents={!spot && photoFoot !== undefined ? { minTop: photoFoot } : undefined}
       footer={
         post && (
           <CommentComposer
@@ -1701,7 +1971,14 @@ function CommentsSheet({
             replyTo={replyTo}
             onCancelReply={() => setReplyTo(null)}
             spot={spot}
-            placeholder={name ? `Comment on ${name}…` : undefined}
+            placeholder={
+              name
+                ? `Comment on ${name}…`
+                : mode === "share"
+                  ? `Tell ${agentName?.split(" ")[0] || "your agent"} what you think…`
+                  : undefined
+            }
+            label={name ? undefined : "Add a comment"}
             onPosted={() => {
               setReplyTo(null);
               if (spot) onPostedSpot(post.listing.ListingKey);

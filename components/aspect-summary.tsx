@@ -1,4 +1,4 @@
-import { ThumbsDown, ThumbsUp } from "lucide-react";
+import { Heart, ThumbsDown } from "lucide-react";
 import { cn } from "@/lib/format";
 import { aspectLabel, topAspects, type AspectCounts } from "@/lib/reactions";
 
@@ -39,10 +39,10 @@ function AspectRow({
   items: [keyof AspectCounts, number][];
 }) {
   const like = tone === "like";
-  const Icon = like ? ThumbsUp : ThumbsDown;
+  const Icon = like ? Heart : ThumbsDown;
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-sm">
-      <span className={cn("flex items-center gap-1 font-semibold", like ? "text-emerald-900" : "text-amber-900")}>
+      <span className={cn("flex items-center gap-1 font-semibold", like ? "text-rose-900" : "text-amber-900")}>
         <Icon aria-hidden size={14} />
         {label}
       </span>
@@ -51,7 +51,7 @@ function AspectRow({
           key={aspect}
           className={cn(
             "rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1",
-            like ? "bg-emerald-50 text-emerald-900 ring-emerald-200" : "bg-amber-50 text-amber-900 ring-amber-200",
+            like ? "bg-rose-50 text-rose-900 ring-rose-200" : "bg-amber-50 text-amber-900 ring-amber-200",
           )}
         >
           {aspectLabel(aspect)} <span className="tabular-nums">{count}</span>

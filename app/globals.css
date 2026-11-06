@@ -17,6 +17,26 @@
 @custom-variant short (@container reel (height < 520px));
 @custom-variant compact (@container reel (height < 700px));
 
+/* Wide (64rem across and up), a home laid out side by side: the photo on a
+   stage of its own, the buttons in a column beside it, the words in a white
+   panel on the right. Only inside a home marked `data-split` (the reel's
+   SPLIT_WIDE switch). After `short`, so a short, wide window stays side by
+   side. `split-xl`: 80rem and up, for the roomier sizes. */
+@custom-variant split {
+  @container reel (width >= 64rem) {
+    &:where([data-split], [data-split] *) {
+      @slot;
+    }
+  }
+}
+@custom-variant split-xl {
+  @container reel (width >= 80rem) {
+    &:where([data-split], [data-split] *) {
+      @slot;
+    }
+  }
+}
+
 /* A small control still takes a fingertip: its touch area grows to 44px
    around it, without moving anything. */
 @utility hit-44 {
@@ -72,6 +92,13 @@ a {
 }
 [data-dark-ground] :is(dialog, [data-light], .bg-white) :focus-visible {
   outline-color: var(--brand);
+}
+/* Wide, the words sit in a white panel beside the photo: the brand ring there. */
+@container reel (width >= 64rem) {
+  [data-dark-ground] [data-split] [data-words] :focus-visible {
+    outline-color: var(--brand);
+    box-shadow: none;
+  }
 }
 
 /* Places focus is moved to (a card, the end of the stream), not controls: no ring. */

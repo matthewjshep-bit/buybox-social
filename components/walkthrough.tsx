@@ -92,7 +92,7 @@ export function NudgeHint({ nudge }: { nudge: Nudge }) {
     <div
       aria-hidden
       className={cn(
-        "pointer-events-none absolute inset-x-0 top-(--photo-top) bottom-(--photo-bottom) z-10 flex justify-center px-4",
+        "pointer-events-none absolute left-(--photo-left,0px) right-(--photo-right,0px) top-(--photo-top) bottom-(--photo-bottom) z-10 flex justify-center px-4",
         nudge === "photos" ? "items-center" : "items-end pb-3",
       )}
     >

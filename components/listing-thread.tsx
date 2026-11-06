@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, Globe, Heart, Lock, MapPin, ThumbsDown, ThumbsUp, User } from "lucide-react";
+import { ArrowUp, Globe, Heart, Lock, MapPin, ThumbsDown, User } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -13,6 +13,8 @@ import {
   useTransition,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
+import { Sheet } from "@/components/sheet";
 import type { ActionResult } from "@/lib/engagement";
 import { cn, timeAgo } from "@/lib/format";
 import type { SpotReaction } from "@/lib/photos";
@@ -46,7 +48,11 @@ export type SpotRef = { mediaKey: string; tag: string };
 // How a list of comments names a spot, and takes you to it on the photo.
 export type SpotLinks = { name: (spot: SpotRef) => string; show: (spot: SpotRef) => void };
 
-type ThreadValue = { actions: ThreadActions; ensureName: () => Promise<boolean> };
+// Who sees what you write here, said under every comment box: "Everyone can
+// see your comment and first name." `private`: only some people (a lock).
+export type SeenBy = { text: string; private: boolean };
+
+type ThreadValue = { actions: ThreadActions; ensureName: () => Promise<boolean>; seenBy?: SeenBy };
 const ThreadContext = createContext<ThreadValue | null>(null);
 
 export const useThread = () => {
@@ -55,19 +61,29 @@ export const useThread = () => {
   return value;
 };
 
-// Asks for a first name the first time someone reacts or comments. No account.
+// Asks for a first name the first time someone reacts or comments, in a sheet
+// that rises like everything else. No account.
 export function NameGate({
   actions,
   myName,
   prompt,
+  suggestedName,
+  nameHint,
+  seenBy,
   children,
 }: {
   actions: ThreadActions;
   myName: string | null;
   prompt: string;
+  // Filled in already (and selected, to type over): a name the page knows.
+  suggestedName?: string;
+  // One more line, just above the name.
+  nameHint?: string;
+  seenBy?: SeenBy;
   children: ReactNode;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
+  const [asking, setAsking] = useState(false);
+  const field = useRef<HTMLInputElement>(null);
   const resolver = useRef<((joined: boolean) => void) | null>(null);
   const joined = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,28 +93,29 @@ export function NameGate({
 
   const ensureName = () => {
     if (myName || joined.current) return Promise.resolve(true);
-    setError(null);
-    dialog.current?.showModal();
+    // Open, and the cursor in the name, in the same tap: a phone only shows
+    // its keyboard for that.
+    flushSync(() => {
+      setError(null);
+      setAsking(true);
+    });
+    field.current?.focus();
+    field.current?.select();
     return new Promise<boolean>((resolve) => {
       resolver.current = resolve;
     });
   };
 
   const finish = (result: boolean) => {
-    dialog.current?.close();
+    setAsking(false);
     resolver.current?.(result);
     resolver.current = null;
   };
 
   return (
-    <ThreadContext.Provider value={{ actions, ensureName }}>
+    <ThreadContext.Provider value={{ actions, ensureName, seenBy }}>
       {children}
-      <dialog
-        ref={dialog}
-        onCancel={() => finish(false)}
-        aria-labelledby={`${id}-title`}
-        className="m-auto w-[min(24rem,calc(100vw-2rem))] rounded-2xl p-6 shadow-xl backdrop:bg-black/50"
-      >
+      <Sheet open={asking} onClose={() => finish(false)} label="What's your first name?" title="What's your first name?">
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -113,22 +130,26 @@ export function NameGate({
               }
             });
           }}
+          className="mx-auto max-w-sm px-1 pb-1"
         >
-          <h2 id={`${id}-title`} className="font-display text-2xl">
-            What&apos;s your first name?
-          </h2>
-          <p className="mt-1 text-sm text-stone-600">{prompt}</p>
+          <p className="text-center text-sm text-stone-600">{prompt}</p>
+          {nameHint && <p className="mt-3 text-[13px] text-stone-600">{nameHint}</p>}
           <label htmlFor={`${id}-name`} className="sr-only">
             First name
           </label>
           <input
+            ref={field}
             id={`${id}-name`}
             name="firstName"
             required
             maxLength={40}
             autoComplete="given-name"
+            defaultValue={suggestedName}
             placeholder="First name"
-            className="mt-4 w-full rounded-xl border border-stone-300 px-4 py-3 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
+            className={cn(
+              "w-full rounded-xl border border-stone-300 px-4 py-3 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30",
+              nameHint ? "mt-1.5" : "mt-4",
+            )}
           />
           {error && (
             <p role="alert" className="mt-2 text-sm text-red-700">
@@ -139,20 +160,20 @@ export function NameGate({
             <button
               type="button"
               onClick={() => finish(false)}
-              className="flex-1 rounded-xl border border-stone-300 py-3 font-medium"
+              className="min-h-12 flex-1 rounded-xl border border-stone-300 font-medium hover:bg-stone-50"
             >
               Not now
             </button>
             <button
               type="submit"
               disabled={pending}
-              className="flex-1 rounded-xl bg-brand py-3 font-semibold text-white disabled:opacity-60"
+              className="min-h-12 flex-1 rounded-xl bg-brand font-semibold text-white disabled:opacity-60"
             >
               {pending ? "Saving…" : "Continue"}
             </button>
           </div>
         </form>
-      </dialog>
+      </Sheet>
     </ThreadContext.Provider>
   );
 }
@@ -272,8 +293,6 @@ function ReactionItem({ item }: { item: TimelineReaction }) {
     item.state.reaction === "dislike" || (!item.state.reaction && !item.photos.length && item.photoDislikes.length > 0);
   const badge = passed ? (
     <ThumbsDown size={10} className="text-amber-800" />
-  ) : item.state.reaction === "like" ? (
-    <ThumbsUp size={10} className="text-emerald-700" />
   ) : (
     <Heart size={10} className="fill-rose-600 text-rose-600" />
   );
@@ -343,7 +362,7 @@ function CommentItem({
         <p className="flex flex-wrap items-center gap-x-1 text-[13px] leading-snug text-stone-500">
           <Who name={comment.name} profileId={comment.profileId} />
           {comment.isAgent && (
-            <span className="rounded bg-ink px-1.5 py-px text-[10px] font-bold uppercase tracking-wide text-white">
+            <span className="rounded-full bg-ink px-2 py-px text-[10px] font-bold uppercase tracking-wide text-white">
               Agent
             </span>
           )}
@@ -470,6 +489,7 @@ export function CommentComposer({
   onPosted,
   spot = null,
   placeholder,
+  label,
   compact = false,
   autoFocus = false,
 }: {
@@ -481,11 +501,13 @@ export function CommentComposer({
   // The spot in a photo the comment is about.
   spot?: SpotRef | null;
   placeholder?: string;
+  // Its name, when the placeholder says something else ("Add a comment").
+  label?: string;
   // Just the box: no emoji row, no sharing (the card on a photo).
   compact?: boolean;
   autoFocus?: boolean;
 }) {
-  const { actions, ensureName } = useThread();
+  const { actions, ensureName, seenBy } = useThread();
   const [body, setBody] = useState("");
   // Back to the box after posting: the Post button disables once the box is
   // empty, and a focused disabled button swallows keys (like Escape).
@@ -543,7 +565,7 @@ export function CommentComposer({
           </button>
         </p>
       ) : compact ? null : (
-        <div className="flex justify-between px-1 pb-1">
+        <div className="flex max-w-[420px] justify-between px-1 pb-1">
           {QUICK.map((emoji) => (
             <button
               key={emoji}
@@ -561,7 +583,7 @@ export function CommentComposer({
       )}
       <div className="flex items-end gap-2 rounded-3xl bg-stone-100 py-1 pl-4 pr-1 focus-within:ring-2 focus-within:ring-brand/80">
         <label htmlFor={inputId} className="sr-only">
-          {who ? `Reply to ${who}` : (placeholder?.replace(/…$/, "") ?? "Add a comment")}
+          {who ? `Reply to ${who}` : (label ?? placeholder?.replace(/…$/, "") ?? "Add a comment")}
         </label>
         <textarea
           ref={field}
@@ -606,6 +628,16 @@ export function CommentComposer({
       {error && (
         <p role="alert" className="mt-1 px-2 text-sm text-red-700">
           {error}
+        </p>
+      )}
+      {seenBy && (
+        <p className="mt-1.5 flex items-center gap-1.5 px-2 text-[13px] leading-[18px] text-stone-600">
+          {seenBy.private ? (
+            <Lock aria-hidden size={12} className="shrink-0" />
+          ) : (
+            <Globe aria-hidden size={12} className="shrink-0" />
+          )}
+          {seenBy.text}
         </p>
       )}
     </form>
