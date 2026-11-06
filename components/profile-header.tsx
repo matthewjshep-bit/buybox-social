@@ -1,0 +1,74 @@
+import { Globe } from "lucide-react";
+import Image from "next/image";
+import { ShareMyPage } from "@/app/people/[id]/client";
+import { sinceLabel } from "@/lib/profile";
+
+// The top of someone's page: a band from the photo they liked most, their
+// initial, name, how long they've been looking and how much. Counts are plain
+// words, not links: the filters below the header do the filtering.
+export function ProfileHeader({
+  name,
+  isMe,
+  since,
+  homes,
+  counts,
+  cover,
+  showPassed = true,
+}: {
+  name: string;
+  isMe: boolean;
+  since: string;
+  homes: number;
+  counts: { liked: number; passed: number; comments: number };
+  cover: string | null;
+  showPassed?: boolean;
+}) {
+  return (
+    <section aria-labelledby="profile-name" className="overflow-hidden rounded-2xl bg-white ring-1 ring-stone-200">
+      <div aria-hidden className="relative h-[120px] overflow-hidden bg-stone-200">
+        {cover && (
+          <>
+            <Image src={cover} alt="" fill sizes="96px" className="scale-125 object-cover blur-2xl" />
+            <span className="absolute inset-0 bg-black/40" />
+          </>
+        )}
+      </div>
+      <div className="px-4 pb-4">
+        <span
+          aria-hidden
+          className="relative -mt-9 flex size-[72px] items-center justify-center rounded-full bg-brand font-display text-[28px] font-semibold text-white ring-4 ring-white"
+        >
+          {name[0]?.toUpperCase()}
+        </span>
+        <h1 id="profile-name" className="mt-2 break-words font-display text-[30px] leading-tight">
+          {isMe ? `${name} (you)` : name}
+        </h1>
+        <p className="mt-1 text-[15px] text-stone-600">
+          Looking since {sinceLabel(since)}
+          {homes > 0 && ` · ${homes} ${homes === 1 ? "home" : "homes"}`}
+        </p>
+        <p className="mt-2 text-[15px] text-stone-700">
+          <strong className="font-semibold text-ink tabular-nums">{counts.liked}</strong> liked
+          {showPassed && (
+            <>
+              {" · "}
+              <strong className="font-semibold text-ink tabular-nums">{counts.passed}</strong> passed
+            </>
+          )}
+          {" · "}
+          <strong className="font-semibold text-ink tabular-nums">{counts.comments}</strong>{" "}
+          {counts.comments === 1 ? "comment" : "comments"}
+        </p>
+        {isMe && (
+          <>
+            <p className="mt-3 flex gap-1.5 text-[13px] leading-snug text-stone-600">
+              <Globe aria-hidden size={14} className="mt-0.5 shrink-0" />
+              Everyone can see this page. What you do on an agent&apos;s link never shows here.
+            </p>
+            <ShareMyPage name={name} />
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
