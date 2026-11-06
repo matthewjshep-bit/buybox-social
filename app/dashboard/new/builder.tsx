@@ -18,16 +18,21 @@ export function ShareBuilder({
   results,
   initialQuery,
   addTo,
+  start,
 }: {
   results: Listing[];
   initialQuery: string;
   // Adding to an existing client's link rather than starting a new one.
   addTo?: { shareId: string; clientName: string };
+  // A home already picked (sent from the home itself): just who it's for, and
+  // a note, until they ask for another home.
+  start?: Listing;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
   // Kept here rather than in the URL, so picks survive a new search.
-  const [picked, setPicked] = useState<Listing[]>([]);
+  const [picked, setPicked] = useState<Listing[]>(start ? [start] : []);
+  const [searching, setSearching] = useState(!start);
   // Everyone the homes are for. Each gets their own link.
   const [people, setPeople] = useState([""]);
   const [note, setNote] = useState("");
@@ -43,6 +48,7 @@ export function ShareBuilder({
     debounce.current = setTimeout(() => {
       const params = new URLSearchParams();
       if (addTo) params.set("share", addTo.shareId);
+      if (start) params.set("home", start.ListingKey);
       if (value.trim()) params.set("q", value.trim());
       const search = params.toString();
       router.replace(`/dashboard/new${search ? `?${search}` : ""}`, { scroll: false });
@@ -70,62 +76,79 @@ export function ShareBuilder({
     });
   };
 
+  const card = (listing: Listing) => {
+    const selected = picked.some((l) => l.ListingKey === listing.ListingKey);
+    const disabled = !selected && picked.length >= MAX_LISTINGS;
+    return (
+      <li key={listing.ListingKey}>
+        <button
+          type="button"
+          aria-pressed={selected}
+          disabled={disabled}
+          onClick={() => toggle(listing)}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-2xl bg-white p-2.5 text-left ring-1 transition disabled:opacity-50",
+            selected ? "ring-2 ring-brand" : "ring-stone-200 hover:ring-stone-400",
+          )}
+        >
+          <div className="relative size-20 shrink-0 overflow-hidden rounded-xl bg-stone-200">
+            <Image src={listing.Media[0]?.MediaURL} alt="" fill sizes="80px" className="object-cover" />
+            {selected && (
+              <span className="absolute inset-0 flex items-center justify-center bg-brand/70 text-white">
+                <Check aria-hidden size={28} />
+              </span>
+            )}
+          </div>
+          <span className="min-w-0">
+            <span className="block font-semibold">{formatPrice(listing.ListPrice)}</span>
+            <span className="block truncate text-sm">{listing.UnparsedAddress}</span>
+            <span className="block truncate text-sm text-stone-700">
+              {listing.City} · {listing.BedroomsTotal} bd · {listing.BathroomsTotalInteger} ba
+            </span>
+          </span>
+        </button>
+      </li>
+    );
+  };
+
   return (
     <div className="mt-5 pb-4">
-      <label htmlFor="search" className="sr-only">
-        Search by address, city, ZIP or MLS number
-      </label>
-      <div className="relative">
-        <Search aria-hidden size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-600" />
-        <input
-          id="search"
-          type="search"
-          value={query}
-          onChange={(event) => onSearch(event.target.value)}
-          placeholder="Address, city, ZIP or MLS number"
-          className={cn(inputClass, "pl-11")}
-        />
-      </div>
+      {searching ? (
+        <>
+          <label htmlFor="search" className="sr-only">
+            Search by address, city, ZIP or MLS number
+          </label>
+          <div className="relative">
+            <Search aria-hidden size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-600" />
+            <input
+              id="search"
+              type="search"
+              value={query}
+              // Asked for from "Add another home", so the cursor goes straight there.
+              autoFocus={Boolean(start)}
+              onChange={(event) => onSearch(event.target.value)}
+              placeholder="Address, city, ZIP or MLS number"
+              className={cn(inputClass, "pl-11")}
+            />
+          </div>
 
-      {results.length === 0 ? (
-        <p className="mt-6 text-center text-stone-700">No homes match that search.</p>
+          {results.length === 0 ? (
+            <p className="mt-6 text-center text-stone-700">No homes match that search.</p>
+          ) : (
+            <ul className="mt-4 grid gap-3 sm:grid-cols-2">{results.map(card)}</ul>
+          )}
+        </>
       ) : (
-        <ul className="mt-4 grid gap-3 sm:grid-cols-2">
-          {results.map((listing) => {
-            const selected = picked.some((l) => l.ListingKey === listing.ListingKey);
-            const disabled = !selected && picked.length >= MAX_LISTINGS;
-            return (
-              <li key={listing.ListingKey}>
-                <button
-                  type="button"
-                  aria-pressed={selected}
-                  disabled={disabled}
-                  onClick={() => toggle(listing)}
-                  className={cn(
-                    "flex w-full items-center gap-3 rounded-2xl bg-white p-2.5 text-left ring-1 transition disabled:opacity-50",
-                    selected ? "ring-2 ring-brand" : "ring-stone-200 hover:ring-stone-400",
-                  )}
-                >
-                  <div className="relative size-20 shrink-0 overflow-hidden rounded-xl bg-stone-200">
-                    <Image src={listing.Media[0]?.MediaURL} alt="" fill sizes="80px" className="object-cover" />
-                    {selected && (
-                      <span className="absolute inset-0 flex items-center justify-center bg-brand/70 text-white">
-                        <Check aria-hidden size={28} />
-                      </span>
-                    )}
-                  </div>
-                  <span className="min-w-0">
-                    <span className="block font-semibold">{formatPrice(listing.ListPrice)}</span>
-                    <span className="block truncate text-sm">{listing.UnparsedAddress}</span>
-                    <span className="block truncate text-sm text-stone-700">
-                      {listing.City} · {listing.BedroomsTotal} bd · {listing.BathroomsTotalInteger} ba
-                    </span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          <ul className="grid gap-3 sm:grid-cols-2">{start && card(start)}</ul>
+          <button
+            type="button"
+            onClick={() => setSearching(true)}
+            className="mt-2 flex min-h-11 items-center gap-1.5 text-sm font-semibold text-brand"
+          >
+            <Plus aria-hidden size={16} /> Add another home
+          </button>
+        </>
       )}
 
       <div className="mt-6 flex flex-col gap-4 rounded-2xl bg-white p-4 ring-1 ring-stone-200">

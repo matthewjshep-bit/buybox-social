@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import type { ThreadActions } from "@/components/listing-thread";
 import type { MapHome } from "@/components/listing-map";
+import { sendHomeFrom, SendThisHome } from "@/components/quick-send";
 import { ReelFeed } from "@/components/reel";
 import type { FeedPost } from "@/lib/feed";
 import { cn, formatPrice } from "@/lib/format";
@@ -36,6 +37,7 @@ export function SearchView({
   actions,
   myName,
   prompt,
+  sender,
 }: {
   filters: SearchFilters;
   count: number;
@@ -45,8 +47,11 @@ export function SearchView({
   actions: ThreadActions;
   myName: string | null;
   prompt: string;
+  // A signed-in agent, who can send the home showing to a client.
+  sender: { profileComplete: boolean } | null;
 }) {
   const router = useRouter();
+  const pane = useRef<HTMLElement>(null);
   const [pending, startTransition] = useTransition();
   // The controls show a change at once, while the new results load.
   const [shown, setShown] = useOptimistic(filters);
@@ -97,6 +102,9 @@ export function SearchView({
   };
 
   const count = `${total} ${total === 1 ? "home" : "homes"}`;
+  const sendable = posts.find(
+    (post) => post.listing.ListingKey === activeKey && post.listing.StandardStatus === "Active",
+  );
 
   return (
     <div className="flex h-[calc(100dvh-3.5rem-1px)] flex-col">
@@ -245,14 +253,23 @@ export function SearchView({
         </div>
 
         <section
+          ref={pane}
           aria-label="Homes"
           aria-busy={pending}
           className={cn(
-            "min-h-0 bg-stone-950 transition-opacity lg:block lg:w-[min(46rem,50%)] lg:flex-none",
+            "relative min-h-0 bg-stone-950 transition-opacity lg:block lg:w-[min(46rem,50%)] lg:flex-none",
             mobileMap ? "hidden" : "block flex-1",
             pending && "opacity-60",
           )}
         >
+          {sender && (
+            <SendThisHome
+              // Only a home that's still for sale.
+              home={sendable ? sendHomeFrom(sendable.listing) : null}
+              profileComplete={sender.profileComplete}
+              anchor={pane}
+            />
+          )}
           {posts.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center bg-surface p-8 text-center">
               <p className="font-semibold">No homes match those filters.</p>

@@ -73,6 +73,14 @@ import { describeReaction, NO_REACTION, type Aspect, type ReactionState } from "
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+export type SendHome = { // SEND-HOOK (share track)
+  listingKey: string; address: string; city: string; price: number; // SEND-HOOK (share track)
+  beds: number | null; baths: number | null; sqft: number | null; // SEND-HOOK (share track)
+}; // SEND-HOOK (share track)
+const sendHomeOf = ({ listing }: FeedPost): SendHome => ({ // SEND-HOOK (share track)
+  listingKey: listing.ListingKey, address: listing.UnparsedAddress, city: listing.City, price: listing.ListPrice, // SEND-HOOK (share track)
+  beds: listing.BedroomsTotal ?? null, baths: listing.BathroomsTotalInteger ?? null, sqft: listing.LivingArea ?? null, // SEND-HOOK (share track)
+}); // SEND-HOOK (share track)
 export function ReelFeed({
   initial,
   mode,
@@ -90,6 +98,7 @@ export function ReelFeed({
   onActiveChange,
   loadMore,
   onOpen,
+  onSend, // SEND-HOOK (share track)
 }: {
   initial: FeedPost[];
   // Public pages, or an agent's private link.
@@ -121,6 +130,9 @@ export function ReelFeed({
   // Just a look at each home (beside the map): a tap anywhere opens it here,
   // and nothing on it can be liked, said or tapped.
   onOpen?: (listingKey: string) => void;
+  // Signed-in agents on public pages: the rail's share button sends this home. // SEND-HOOK (share track)
+  // Called synchronously, first thing in the click, nothing awaited before it. // SEND-HOOK (share track)
+  onSend?: (home: SendHome) => void; // SEND-HOOK (share track)
 }) {
   // The order is fixed when the page opens, so a background refresh never
   // reshuffles the homes under your thumb. Agent links follow the page, which
@@ -167,6 +179,7 @@ export function ReelFeed({
         canInvite={canInvite}
         focus={focus}
         onActiveChange={onActiveChange}
+        onSend={onSend} // SEND-HOOK (share track)
         hasMore={hasMore}
         loading={loading}
         onNearEnd={async () => {
@@ -194,6 +207,7 @@ function Feed({
   canInvite,
   focus,
   onActiveChange,
+  onSend, // SEND-HOOK (share track)
   hasMore,
   loading,
   onNearEnd,
@@ -209,6 +223,7 @@ function Feed({
   canInvite: boolean;
   focus?: { key: string; n: number } | null;
   onActiveChange?: (listingKey: string | null) => void;
+  onSend?: (home: SendHome) => void; // SEND-HOOK (share track)
   hasMore: boolean;
   loading: boolean;
   onNearEnd: () => void;
@@ -339,6 +354,8 @@ function Feed({
   };
 
   const share = async (post: FeedPost) => {
+    // A home that's off the market keeps the plain public link. // SEND-HOOK (share track)
+    if (onSend && mode === "public" && post.listing.StandardStatus === "Active") return onSend(sendHomeOf(post)); // SEND-HOOK (share track)
     const url =
       mode === "share" ? window.location.href : `${window.location.origin}/homes/${encodeURIComponent(post.listing.ListingKey)}`;
     const title = `${post.listing.UnparsedAddress} · ${formatPrice(post.listing.ListPrice)}`;

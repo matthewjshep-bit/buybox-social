@@ -1,8 +1,10 @@
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { connection } from "next/server";
+import type { ComponentProps } from "react";
 import { loadSearchReel } from "@/app/homes/actions";
 import { PUBLIC_PROMPT, publicReelActions } from "@/components/listing-detail";
+import { QuickSendReel } from "@/components/quick-send";
 import { ReelFeed } from "@/components/reel";
 import { SiteHeader } from "@/components/site-header";
 import { getCurrentUser } from "@/lib/auth";
@@ -39,39 +41,43 @@ export default async function SearchFeed({ searchParams }: Props) {
   const query = filtersQuery(filters);
   const map = `/search?${new URLSearchParams([...new URLSearchParams(query), ...(start ? [["home", start]] : [])])}`;
 
-  return (
-    <ReelFeed
-      initial={posts}
-      mode="public"
-      infinite={keys.length > first.length}
-      loadMore={loadSearchReel.bind(null, query)}
-      actions={publicReelActions}
-      myName={name}
-      prompt={PUBLIC_PROMPT}
-      focus={start ? { key: start, n: 0 } : null}
-      header={
-        <>
-          <SiteHeader overlay />
-          <Link
-            href={map}
-            className="absolute right-3 top-[calc(env(safe-area-inset-top)_+_3.75rem)] flex min-h-10 items-center gap-1.5 rounded-full bg-black/45 px-3.5 text-sm font-semibold text-white backdrop-blur-md hover:bg-black/60 sm:right-6"
-          >
-            <ArrowLeft aria-hidden size={16} /> Back to map
-          </Link>
-        </>
-      }
-      end={
-        <div className="max-w-sm">
-          <h2 className="font-display text-2xl">That&apos;s every home in this search</h2>
-          <p className="mt-2 text-white/80">Change the filters on the map to see more.</p>
-          <Link
-            href={map}
-            className="mt-6 inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-white px-5 font-semibold text-ink"
-          >
-            <ArrowLeft aria-hidden size={17} /> Back to the map
-          </Link>
-        </div>
-      }
-    />
+  const feed: ComponentProps<typeof ReelFeed> = {
+    initial: posts,
+    mode: "public",
+    infinite: keys.length > first.length,
+    loadMore: loadSearchReel.bind(null, query),
+    actions: publicReelActions,
+    myName: name,
+    prompt: PUBLIC_PROMPT,
+    focus: start ? { key: start, n: 0 } : null,
+    header: (
+      <>
+        <SiteHeader overlay />
+        <Link
+          href={map}
+          className="absolute right-3 top-[calc(env(safe-area-inset-top)_+_3.75rem)] flex min-h-10 items-center gap-1.5 rounded-full bg-black/45 px-3.5 text-sm font-semibold text-white backdrop-blur-md hover:bg-black/60 sm:right-6"
+        >
+          <ArrowLeft aria-hidden size={16} /> Back to map
+        </Link>
+      </>
+    ),
+    end: (
+      <div className="max-w-sm">
+        <h2 className="font-display text-2xl">That&apos;s every home in this search</h2>
+        <p className="mt-2 text-white/80">Change the filters on the map to see more.</p>
+        <Link
+          href={map}
+          className="mt-6 inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-white px-5 font-semibold text-ink"
+        >
+          <ArrowLeft aria-hidden size={17} /> Back to the map
+        </Link>
+      </div>
+    ),
+  };
+  // An agent's share button sends the home to a client.
+  return viewer?.role === "agent" ? (
+    <QuickSendReel {...feed} profileComplete={Boolean(viewer.full_name)} />
+  ) : (
+    <ReelFeed {...feed} />
   );
 }

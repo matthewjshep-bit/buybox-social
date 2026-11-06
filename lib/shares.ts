@@ -50,6 +50,27 @@ export const newShareToken = () => randomBytes(24).toString("base64url");
 
 export const isShareToken = (token: string) => /^[\w-]{32}$/.test(token);
 
+// The most link names one agent's open pages can hold at once, waiting for Send.
+const POOL_SIZE = 20;
+
+// A link name for an agent's next Send, made here so the browser never picks
+// one. It's no link until Send claims it (claimQuickShare), and a name left
+// unused for a day goes, as do the oldest when there are too many.
+export async function reserveSendTokenFor(agentId: string) {
+  const token = newShareToken();
+  await sql.begin(async (tx) => {
+    await tx`
+      delete from share_token_pool
+      where agent_id = ${agentId} and created_at <= now() - interval '24 hours'`;
+    await tx`
+      delete from share_token_pool where token in (
+        select token from share_token_pool where agent_id = ${agentId}
+        order by created_at desc offset ${POOL_SIZE - 1})`;
+    await tx`insert into share_token_pool (token, agent_id) values (${token}, ${agentId})`;
+  });
+  return token;
+}
+
 // A link opens a package two ways: the package's own link (anyone can join
 // by giving a first name), or one person's own link (it opens as them).
 export async function getShareByToken(token: string) {

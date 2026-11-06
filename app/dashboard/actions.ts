@@ -7,7 +7,7 @@ import { requireAgent } from "@/lib/auth";
 import { isContactPhone, phoneDigits } from "@/lib/contact";
 import { sql } from "@/lib/db";
 import { BRAND_COLORS } from "@/lib/format";
-import { invitePerson, newShareToken } from "@/lib/shares";
+import { invitePerson, isShareToken, newShareToken, reserveSendTokenFor } from "@/lib/shares";
 
 export type FormState = { error?: string };
 
@@ -220,6 +220,162 @@ export async function replyAsAgent(
   if (inserted.length === 0) return { error: "We couldn't find that conversation." };
   refresh();
   return {};
+}
+
+// One tap on Send, from any home: the phone's share sheet opens on a link the
+// server made before the tap, and then the agent can say who it's for.
+
+export type SendToken = { token: string } | { error: "profile" };
+
+// A link name for this page's next Send. Each page gets its own, so two open
+// tabs never hand out the same link.
+export async function reserveSendToken(): Promise<SendToken> {
+  const agent = await requireAgent();
+  // Clients should know who it's from.
+  if (!agent.full_name) return { error: "profile" };
+  return { token: await reserveSendTokenFor(agent.id) };
+}
+
+export type ClaimResult = { shareId: string; nextToken: string } | { error: string };
+
+const claimSchema = z.object({
+  token: z.string().refine(isShareToken),
+  listingKey: z.string().min(1).max(100),
+});
+
+// Send was tapped: the link it just handed to the share sheet becomes a link
+// for that one home, a new one each time, so one client's link is never
+// another's. Trying again with the same link and home gives the same link.
+export async function claimQuickShare(input: { token: string; listingKey: string }): Promise<ClaimResult> {
+  const agent = await requireAgent();
+  const parsed = claimSchema.safeParse(input);
+  if (!parsed.success || !agent.full_name) return { error: "That link didn't save. Tap Send again." };
+  const { token, listingKey } = parsed.data;
+
+  const claimed = await sql.begin(async (tx) => {
+    // Only homes still for sale, as on any new link.
+    const [home] = await tx`
+      select 1 from listings where listing_key = ${listingKey} and standard_status = 'Active'`;
+    if (!home) return null;
+    // Only a name this agent was given, in the last day, and only once.
+    const [fresh] = await tx`
+      delete from share_token_pool
+      where token = ${token} and agent_id = ${agent.id} and created_at > now() - interval '24 hours'
+      returning token`;
+    if (!fresh) return null;
+    const [share] = await tx<{ id: string }[]>`
+      insert into shares (token, agent_id, client_name, note, quick)
+      values (${token}, ${agent.id}, '', '', true)
+      returning id`;
+    await tx`
+      insert into share_listings (share_id, listing_key, position)
+      values (${share.id}, ${listingKey}, 0)`;
+    return share.id;
+  });
+  const [made] = claimed
+    ? [{ id: claimed }]
+    : await sql<{ id: string }[]>`
+        select s.id from shares s join share_listings sl on sl.share_id = s.id
+        where s.token = ${token} and s.agent_id = ${agent.id} and s.quick and sl.listing_key = ${listingKey}`;
+  if (!made) return { error: "That link didn't save. Tap Send again." };
+  return { shareId: made.id, nextToken: await reserveSendTokenFor(agent.id) };
+}
+
+// Nobody has joined the link (`s`) or said anything on it yet.
+const unopened = () => sql`
+  not exists (select 1 from participants p where p.share_id = s.id)
+  and not exists (select 1 from comments c where c.share_id = s.id)`;
+
+export type ReleaseResult = { released: boolean; opened?: boolean };
+
+// Takes back a link from Send: the share sheet was closed without sending, or
+// the agent changed their mind straight away. Only while no one has used it.
+export async function releaseQuickShare(shareId: string): Promise<ReleaseResult> {
+  const agent = await requireAgent();
+  if (!uuid.safeParse(shareId).success) return { released: false };
+  const deleted = await sql`
+    delete from shares s
+    where s.id = ${shareId} and s.agent_id = ${agent.id} and s.quick
+      and s.created_at > now() - interval '1 hour' and ${unopened()}
+    returning s.id`;
+  if (deleted.length) return { released: true };
+  const [kept] = await sql<{ opened: boolean }[]>`
+    select not (${unopened()}) as opened from shares s
+    where s.id = ${shareId} and s.agent_id = ${agent.id}`;
+  return { released: false, opened: kept?.opened ?? false };
+}
+
+const quickNameSchema = z.object({
+  clientName: z.string().trim().max(40),
+  note: z.string().trim().max(500),
+});
+
+// Who a link from Send was for, and a note: the link greets them by name the
+// next time it loads, with no new link to send.
+export async function nameQuickShare(shareId: string, input: { clientName: string; note: string }): Promise<FormState> {
+  const agent = await requireAgent();
+  const parsed = quickNameSchema.safeParse(input);
+  if (!parsed.success) return { error: "Names can be up to 40 characters, and notes up to 500." };
+  if (!uuid.safeParse(shareId).success) return { error: "We couldn't find that link." };
+  const updated = await sql`
+    update shares set client_name = ${parsed.data.clientName}, note = ${parsed.data.note}
+    where id = ${shareId} and agent_id = ${agent.id} and quick
+    returning id`;
+  if (updated.length === 0) return { error: "We couldn't find that link." };
+  return {};
+}
+
+export type RecentShare = { id: string; clientName: string; homes: number };
+
+// The clients a home from Send might really be for: the latest few, by name.
+export async function listRecentShares(): Promise<RecentShare[]> {
+  const agent = await requireAgent();
+  const rows = await sql<{ id: string; client_name: string; homes: number }[]>`
+    select s.id, s.client_name,
+      (select count(*)::int from share_listings sl where sl.share_id = s.id and sl.removed_at is null) as homes
+    from shares s
+    where s.agent_id = ${agent.id} and s.client_name <> ''
+    order by s.created_at desc
+    limit 6`;
+  return rows.map((row) => ({ id: row.id, clientName: row.client_name, homes: row.homes }));
+}
+
+export type MoveResult = { clientName: string; closed: boolean } | { error: string };
+
+// A home from Send was meant for a client who already has a link: it goes on
+// theirs, as if added from the dashboard, and the new link stops working if no
+// one has used it yet.
+export async function moveQuickShare(shareId: string, targetShareId: string): Promise<MoveResult> {
+  const agent = await requireAgent();
+  if (!uuid.safeParse(shareId).success || shareId === targetShareId) return { error: "We couldn't find that link." };
+  const [home] = await sql<{ listing_key: string; active: boolean }[]>`
+    select sl.listing_key, l.standard_status = 'Active' as active
+    from shares s
+    join share_listings sl on sl.share_id = s.id
+    join listings l on l.listing_key = sl.listing_key
+    where s.id = ${shareId} and s.agent_id = ${agent.id} and s.quick
+    order by sl.position limit 1`;
+  if (!home) return { error: "We couldn't find that link." };
+  if (!(await ownShare(agent.id, targetShareId))) return { error: "We couldn't find that client." };
+  if (!home.active) return { error: "That home is no longer available." };
+
+  const closed = await sql.begin(async (tx) => {
+    const [{ next }] = await tx<{ next: number }[]>`
+      select coalesce(max(position), -1) + 1 as next from share_listings where share_id = ${targetShareId}`;
+    // A home sent before and removed comes back, with its history intact.
+    await tx`
+      insert into share_listings (share_id, listing_key, position)
+      values (${targetShareId}, ${home.listing_key}, ${next})
+      on conflict (share_id, listing_key) do update set removed_at = null`;
+    const deleted = await tx`
+      delete from shares s
+      where s.id = ${shareId} and s.agent_id = ${agent.id} and s.quick and ${unopened()}
+      returning s.id`;
+    return deleted.length > 0;
+  });
+  const [target] = await sql<{ client_name: string }[]>`
+    select client_name from shares where id = ${targetShareId}`;
+  return { clientName: target?.client_name ?? "", closed };
 }
 
 export async function removeComment(commentId: string): Promise<void> {

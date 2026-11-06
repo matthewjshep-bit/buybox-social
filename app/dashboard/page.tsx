@@ -17,6 +17,12 @@ type Row = {
   comment_count: number;
 };
 
+// "1 home · 96 Fernhollow Ln", "3 homes · …": how many are on the link, then where.
+const homesLine = (addresses: string[]) =>
+  addresses.length === 0
+    ? "No homes on it right now"
+    : [`${addresses.length} ${addresses.length === 1 ? "home" : "homes"}`, ...addresses].join(" · ");
+
 export default async function DashboardPage() {
   const agent = await requireAgent();
   if (!agent.full_name) redirect("/dashboard/profile");
@@ -70,7 +76,7 @@ export default async function DashboardPage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{share.client_name || "Unnamed client"}</p>
-                  <p className="truncate text-sm text-stone-700">{share.addresses.join(" · ")}</p>
+                  <p className="truncate text-sm text-stone-700">{homesLine(share.addresses)}</p>
                   <p className="mt-1 flex items-center gap-3 text-sm text-stone-700">
                     <span className="flex items-center gap-1">
                       <Heart aria-hidden size={14} /> {share.reaction_count}
