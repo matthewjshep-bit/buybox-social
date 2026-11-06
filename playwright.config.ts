@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = 3100;
-const DB_PORT = 54330;
+// E2E_PORT and E2E_DB_PORT let two copies of the app run their tests at once.
+const PORT = Number(process.env.E2E_PORT ?? 3100);
+const DB_PORT = Number(process.env.E2E_DB_PORT ?? 54330);
 const DATABASE_URL = `postgres://postgres:postgres@127.0.0.1:${DB_PORT}/postgres`;
 
 // Set PLAYWRIGHT_CHROMIUM to reuse a browser you already have installed.
