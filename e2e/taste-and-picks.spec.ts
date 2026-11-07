@@ -187,7 +187,8 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   await expect(dev.getByText("Love the cul-de-sac.")).toBeVisible();
   await dev.getByRole("link", { name: "Passed" }).click();
   await expect(dev.getByText("Nothing passed on yet.")).toBeVisible();
-  // Your own, from the header.
+  // Your own, from the header: you, then Your profile.
+  await dev.getByRole("button", { name: "Your profile" }).click();
   await dev.getByRole("link", { name: "Your profile" }).click();
   await expect(dev.getByRole("heading", { level: 1 })).toHaveText("Dev (you)");
   await expect(dev.getByRole("link", { name: `${FOXGLOVE}: liked this` })).toBeVisible();

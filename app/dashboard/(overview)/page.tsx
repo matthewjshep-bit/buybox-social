@@ -10,7 +10,7 @@ import type { Listing } from "@/lib/listings/types";
 import { tagNameIn } from "@/lib/photos";
 import type { ReactionState } from "@/lib/reactions";
 import { clientActivity, describeTake, photosSeenLine } from "@/lib/shares";
-import { Opened } from "./opened";
+import { Opened } from "../opened";
 
 // Each home on a link, and how its people came down on it.
 type Home = { key: string; address: string; liked: number; passed: number };

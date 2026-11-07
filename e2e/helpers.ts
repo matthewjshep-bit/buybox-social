@@ -56,7 +56,7 @@ export async function signUpBuyer(browser: Browser, email: string, name: string,
   await form.getByLabel("Phone").fill(phone);
   await form.getByLabel("Email").fill(email);
   await form.getByRole("button", { name: "Sign up free" }).click();
-  await expect(page.getByRole("link", { name: "Your profile" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Your profile" })).toBeVisible();
   await expect(page.getByRole("form", { name: "Sign up" })).toHaveCount(0);
   return page;
 }

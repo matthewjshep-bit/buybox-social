@@ -1,8 +1,30 @@
+import { Home, Map as MapIcon, MapPinOff } from "lucide-react";
+import Link from "next/link";
+import { RouteState, routeAction } from "@/components/route-state";
+
+export const metadata = { title: "Page not found · BuyBox Social" };
+
+// Any address that isn't a page here, and anything that's gone (a home taken
+// off, someone who isn't here): back home, or to the map to look around.
 export default function NotFound() {
   return (
-    <main className="mx-auto max-w-md px-6 py-24 text-center">
-      <h1 className="font-display text-3xl">This link isn&apos;t available</h1>
-      <p className="mt-2 text-stone-700">Ask whoever sent it to share a new one.</p>
-    </main>
+    <RouteState
+      icon={MapPinOff}
+      title="We couldn't find that page"
+      actions={
+        <>
+          <Link href="/" className={routeAction.primary}>
+            <Home aria-hidden size={18} />
+            Go home
+          </Link>
+          <Link href="/search" className={routeAction.secondary}>
+            <MapIcon aria-hidden size={18} />
+            Open the map
+          </Link>
+        </>
+      }
+    >
+      The link may be out of date, or the page may have moved.
+    </RouteState>
   );
 }

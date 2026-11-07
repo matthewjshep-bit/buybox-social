@@ -43,7 +43,7 @@ test("signed out, the home page says what this is, shows three homes, then asks 
   // questions, they're a buyer, by the name they gave.
   await gate.getByLabel("Phone").fill("(206) 555-0100");
   await gate.getByRole("button", { name: "Sign up free" }).click();
-  await expect(page.getByRole("link", { name: "Your profile" })).toHaveText("R");
+  await expect(page.getByRole("button", { name: "Your profile" })).toHaveText("R");
   await expect(page).toHaveURL(/localhost:\d+\/$/);
 
   // Signed in, it's the feed, for as long as you scroll.
