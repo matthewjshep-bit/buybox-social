@@ -4,6 +4,12 @@ const nextConfig: NextConfig = {
   // Every page here is per-user and dynamic, so there is nothing to prerender.
   cacheComponents: false,
   partialPrefetching: false,
+  experimental: {
+    // A warm build cache on Vercel kept Tailwind's old list of classes, so new
+    // styles (the dark words block, the desktop layout) were missing from the
+    // live CSS. Every build starts clean instead: slower, but always right.
+    turbopackFileSystemCacheForBuild: false,
+  },
   turbopack: {
     rules: {
       "*.css": {
