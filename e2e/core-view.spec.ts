@@ -130,6 +130,16 @@ test("a tap near the top of the photo on an iPhone opens a card below the header
   expect((await box(close)).width).toBeGreaterThanOrEqual(44);
   await close.click();
   await expect(card).toBeHidden();
+
+  // The price's card, opened from the keyboard, takes it; Escape puts the
+  // card away and gives the keyboard back to the price.
+  const price = home.getByRole("button", { name: /^\$[\d,]+/ });
+  await price.focus();
+  await page.keyboard.press("Enter");
+  await expect(card.getByRole("button", { name: /^Like the price/ })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(card).toBeHidden();
+  await expect(price).toBeFocused();
 });
 
 test("a phone on its side keeps the words over the photo, the description to one line", async ({ browser }) => {
@@ -165,6 +175,21 @@ test("a phone on its side keeps the words over the photo, the description to one
   expect(cardBox.x).toBeGreaterThanOrEqual((await box(price)).x + (await box(price)).width);
   await card.getByRole("button", { name: "Close" }).click();
   await expect(card).toBeHidden();
+
+  // Too short for two heights, the comments open just under the header, the
+  // comment box and who sees it wholly on screen.
+  await home.getByRole("button", { name: /^Comments/ }).click();
+  const sheet = page.getByRole("dialog", { name: "Comments" });
+  await expect(sheet).toBeVisible();
+  await expect.poll(async () => Math.round((await box(sheet)).y)).toBe(HEADER);
+  await expect(sheet.getByRole("button", { name: /^(Expand|Shrink) comments$/ })).toHaveCount(0);
+  for (const part of [sheet.getByLabel("Add a comment"), sheet.getByText("Everyone can see your comment and first name.")]) {
+    const at = await box(part);
+    expect(at.y + at.height).toBeLessThanOrEqual(390);
+  }
+  expect((await box(sheet.locator("div.overflow-y-auto"))).height).toBeGreaterThanOrEqual(100);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
 
   // A smaller phone on its side: the buttons go in two columns, under the header.
   const small = await phone(browser, SMALL_ON_ITS_SIDE);
@@ -269,6 +294,22 @@ test("Show the photo only, from More, hides everything on the home until you ask
   await expect(price).toBeVisible();
 });
 
+test("a sheet with nothing under it stays clear of an iPhone's home bar, and its link takes a fingertip", async ({
+  browser,
+}) => {
+  const page = await phone(browser, { ...IPHONE, viewport: { width: 393, height: 852 } });
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 59, bottom: 34, left: 0, right: 0 } });
+  await page.goto("/homes/SAMPLE-1001");
+  const home = homeIn(page, "4127 Larkmoor Ave NE");
+  await settled(home);
+  const more = await openMore(page, home);
+  await settle(more);
+  const last = await box(more.getByRole("button", { name: "Show the photo only" }));
+  expect(last.y + last.height).toBeLessThanOrEqual(852 - 34);
+  expect((await box(more.getByRole("link", { name: /^See homes near .+ on the map$/ }))).height).toBeGreaterThanOrEqual(44);
+});
+
 test("one person tapping three things doesn't make a home trending", async ({ page }) => {
   await page.goto("/homes/SAMPLE-1007");
   const home = homeIn(page, "3518 Wexford Ave N");
@@ -338,6 +379,14 @@ test("on a desktop, the photo has a stage of its own, the buttons a column besid
   expect(photo.x).toBeGreaterThanOrEqual(23);
   expect(photo.x + photo.width).toBeLessThanOrEqual(933);
   expect(photo.y).toBeGreaterThanOrEqual(72 - 1);
+  // It's fetched about as wide as it shows, not as wide as the window.
+  await expect
+    .poll(() =>
+      photoOf(home).evaluate((img: HTMLImageElement) =>
+        img.currentSrc ? Number(new URL(img.currentSrc).searchParams.get("w")) : Infinity,
+      ),
+    )
+    .toBeLessThan(1440);
   const panel = await box(home.locator("[data-words]"));
   expect(Math.abs(panel.x + panel.width - 1416)).toBeLessThanOrEqual(1);
   for (const button of [heartOf(home), home.getByRole("button", { name: "More options" })]) {

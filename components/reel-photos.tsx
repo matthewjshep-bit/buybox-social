@@ -52,6 +52,21 @@ export const photoFoot = (photo: ListingMedia | undefined) => {
   return `min(${place.top} + ${place.height}, 100cqh - ${BOTTOM})`;
 };
 
+// How wide a photo shows, for the browser to fetch no bigger a copy than
+// that. At most the window's width; less where the window is wider than the
+// photo (a phone on its side), where it's only as wide as the height allows;
+// beside the words on a wide screen, about two thirds of the window.
+export function sizesFor(photo: ListingMedia, beside = false) {
+  const wide = photo.ImageWidth && photo.ImageHeight ? `${photo.ImageWidth}/${photo.ImageHeight}` : null;
+  return [
+    beside && "(min-width: 64rem) 65vw",
+    wide && `(min-aspect-ratio: ${wide}) ${Math.ceil((100 * photo.ImageWidth!) / photo.ImageHeight!)}vh`,
+    "100vw",
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
 // Its top edge, or the header's foot when the photo runs on under the header:
 // where anything pinned to the top of the photo goes.
 export const photoHead = (photo: ListingMedia | undefined) => `max(${photoPlace(photo).top}, ${TOP})`;
@@ -117,6 +132,7 @@ export function ReelPhotos({
   start = 0,
   counter,
   likesOf,
+  beside = false,
 }: {
   media: ListingMedia[];
   address: string;
@@ -150,6 +166,8 @@ export function ReelPhotos({
   // How many likes there are on things in a photo, for the strip of them
   // under it on a wide screen.
   likesOf?: (photo: ListingMedia) => number;
+  // On a wide screen, the photo shares the width with the words beside it.
+  beside?: boolean;
 }) {
   // Each carousel needs its own plugin; a sideways trackpad swipe turns the
   // photos, while an up-and-down one still scrolls between homes.
@@ -333,21 +351,23 @@ export function ReelPhotos({
                     alt={photo.ShortDescription ?? `${address}, photo ${i + 1}`}
                     fill
                     priority={priority && i === 0}
-                    sizes="100vw"
+                    sizes={sizesFor(photo, beside)}
                     draggable={false}
                     className="object-contain"
                   />
                 )}
+                {/* A double-tap's heart, in the middle of the photo (not of
+                    the screen, where the words would hide half of it). */}
+                {burst?.slide === i && (
+                  <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    <Heart
+                      key={burst.at}
+                      size={110}
+                      className="fill-rose-500 text-rose-500 opacity-0 drop-shadow-xl animate-[heart-pop_800ms_ease-out]"
+                    />
+                  </div>
+                )}
               </PhotoBox>
-              {burst?.slide === i && (
-                <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                  <Heart
-                    key={burst.at}
-                    size={110}
-                    className="fill-rose-500 text-rose-500 opacity-0 drop-shadow-xl animate-[heart-pop_800ms_ease-out]"
-                  />
-                </div>
-              )}
             </div>
           ))}
         </div>

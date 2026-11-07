@@ -76,10 +76,13 @@ test("comments rise from the comment bar under the description, like a reel", as
   await expect(sheet).toBeHidden();
   await expect(home.getByRole("button", { name: "Comments, 2" })).toBeVisible();
 
-  // The rail's comment button opens it too, without the keyboard.
+  // The rail's comment button opens it too, without the keyboard, at the
+  // top of the thread (though the last word in it is yours).
   await home.getByRole("button", { name: "Comments, 2" }).click();
   await expect(sheet).toBeVisible();
   await expect(sheet.getByLabel("Add a comment")).not.toBeFocused();
+  await page.waitForTimeout(400);
+  expect(await sheet.locator("div.overflow-y-auto").evaluate((body) => body.scrollTop)).toBe(0);
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
 

@@ -700,7 +700,17 @@ function Feed({
   // keyboard to go back to.
   const railButton = (key: string, which: "scorecard" | "more") =>
     frame.current?.querySelector<HTMLElement>(`[data-home="${CSS.escape(key)}"] [data-follow="${which}"]`) ?? null;
-  const reviewed = posts.filter((post) => reactions.states[post.listing.ListingKey]?.reaction).length;
+  // The homes you've had your say on, as the Scorecard counts it: liked or
+  // passed on, something in it liked or not, or a word about it.
+  const reviewed = posts.filter((post) => {
+    const key = post.listing.ListingKey;
+    const photos = yours[key] ?? { liked: post.photoLikes.mine, disliked: post.photoLikes.mineDisliked };
+    return (
+      Boolean(reactions.states[key]?.reaction) ||
+      photos.liked.length + photos.disliked.length > 0 ||
+      post.timeline.some((item) => item.kind === "comment" && item.mine)
+    );
+  }).length;
 
   return (
     <div
@@ -827,9 +837,12 @@ function Feed({
             ) : (
               <>
                 {/* Each `relative`, to stay over a backdrop photo the end screen may have. */}
-                {mode === "share" && posts.length > 0 && (
+                {/* How far through a few homes you are (one home has nothing to count). */}
+                {mode === "share" && posts.length > 1 && (
                   <p className="relative mb-3 text-sm text-white/80">
-                    You&apos;ve reacted to {reviewed} of {posts.length} {posts.length === 1 ? "home" : "homes"}.
+                    {reviewed > 0
+                      ? `You've reacted to ${reviewed} of ${posts.length} homes.`
+                      : "Tap the heart on the ones you like."}
                   </p>
                 )}
                 {end}
@@ -1412,12 +1425,14 @@ function Panel({
   // A card opened from the line, closed: the keyboard goes back to the line
   // (unless it's gone somewhere else meanwhile). One opened from the
   // Scorecard goes back there: its row, or (the sheet gone) its button on
-  // the rail, as soon as that's back in view.
+  // the rail, as soon as that's back in view. One opened with a key on a
+  // fact, back to the fact.
   const lastPicked = useRef(picked);
   useLayoutEffect(() => {
     const was = lastPicked.current;
     lastPicked.current = picked;
-    if (!(was?.fromLine || was?.back) || picked || !active) return;
+    const onFact = was?.mediaKey === FACTS && was.keyboard;
+    if (!(was?.fromLine || was?.back || onFact) || picked || !active) return;
     let frame = 0;
     let tries = 0;
     const giveBack = () => {
@@ -1427,7 +1442,8 @@ function Panel({
         if (!was.back.isConnected) return;
         was.back.focus({ preventScroll: true });
         if (document.activeElement !== was.back && ++tries < 30) frame = requestAnimationFrame(giveBack);
-      } else tickerLine.current?.focus({ preventScroll: true });
+      } else if (was.fromLine) tickerLine.current?.focus({ preventScroll: true });
+      else words.current?.querySelector<HTMLElement>(`[data-fact="${CSS.escape(was.tag)}"]`)?.focus({ preventScroll: true });
     };
     giveBack();
     return () => cancelAnimationFrame(frame);
@@ -1506,6 +1522,7 @@ function Panel({
           start={first}
           counter={counter}
           likesOf={likesIn}
+          beside={split && !bare}
           onIndexChange={(next) => {
             setPhoto(next);
             onSwipe?.();
@@ -1710,8 +1727,11 @@ function Panel({
               lit={litFact}
               open={picked?.mediaKey === FACTS && isFactTag(picked.tag) ? picked.tag : null}
               keyboard={picked?.mediaKey === FACTS && picked.keyboard}
-              onOpen={(tag) =>
-                setPicked((now) => (now?.mediaKey === FACTS && now.tag === tag ? null : { mediaKey: FACTS, tag, x: 0, y: 0 }))
+              // From the keyboard, its card takes it (and gives it back on closing).
+              onOpen={(tag, keyboard) =>
+                setPicked((now) =>
+                  now?.mediaKey === FACTS && now.tag === tag ? null : { mediaKey: FACTS, tag, x: 0, y: 0, keyboard },
+                )
               }
               onClose={() => setPicked(null)}
               onComment={onCommentSpot}
@@ -1872,7 +1892,9 @@ function RailButton({
       <span className="flex size-12 items-center justify-center rounded-full bg-black/35 backdrop-blur-md transition-transform group-active:scale-90 compact:size-11 motion-reduce:transition-none motion-reduce:group-active:scale-100 split:bg-white/10 split:ring-1 split:ring-white/15 split:group-hover:bg-white/20">
         {children}
       </span>
-      <span aria-hidden className="tabular-nums">
+      {/* On a backing of the dark ground's own colour: it reads over a
+          bright photo, and on the dark ground it isn't there at all. */}
+      <span aria-hidden className="rounded-full bg-night/70 px-1.5 tabular-nums">
         {count ?? label}
       </span>
     </button>
@@ -2005,15 +2027,16 @@ function Facts({
   listing: Listing;
   items: TimelineItem[];
   trending: boolean;
-  // The open one was asked for with a key (from the Scorecard): its card
-  // takes the keyboard.
+  // The open one was asked for with a key (on the fact, or from the
+  // Scorecard): its card takes the keyboard.
   keyboard?: boolean;
   // Null where they're just to read (beside the map).
   photos: Photos | null;
   // The one the line above is about just now: it lights up.
   lit?: FactTag | null;
   open: FactTag | null;
-  onOpen: (tag: FactTag) => void;
+  // `keyboard`: pressed with a key, rather than tapped.
+  onOpen: (tag: FactTag, keyboard: boolean) => void;
   onClose: () => void;
   // Comment on one in the sheet below (touchscreens).
   onComment: (spot: SpotRef) => void;
@@ -2038,7 +2061,7 @@ function Facts({
         comments={said(tag).length}
         open={open === tag}
         lit={lit === tag}
-        onOpen={() => onOpen(tag)}
+        onOpen={(keyboard) => onOpen(tag, keyboard)}
         className={className}
       >
         {children}
@@ -2225,7 +2248,8 @@ function FactButton({
   open: boolean;
   // What the line above is about just now.
   lit?: boolean;
-  onOpen: () => void;
+  // `keyboard`: pressed with a key, rather than tapped.
+  onOpen: (keyboard: boolean) => void;
   className?: string;
   children: ReactNode;
 }) {
@@ -2242,7 +2266,8 @@ function FactButton({
       aria-expanded={open}
       aria-label={`${name}${counts.length > 0 ? `, ${counts.join(", ")}` : ""}`}
       aria-describedby={hint}
-      onClick={onOpen}
+      data-fact={tag}
+      onClick={(event) => onOpen(event.detail === 0)}
       className={cn(
         "-mx-1 inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded-md px-1 text-left transition-colors hit-44 hover:bg-white/10 active:bg-white/15 split:hover:bg-stone-100 split:active:bg-stone-200",
         open && "bg-white/15 split:bg-stone-100",
@@ -2524,18 +2549,20 @@ function HomeSheet({
   const tabsId = useId();
 
   // A new comment of yours scrolls into view where it lands, after the others
-  // (and before who liked what).
-  const seen = useRef(items.length);
+  // (and before who liked what). Only one just posted here: opened on a home
+  // whose last word is yours, it still opens at the top.
+  const thread = key && (spot ? `${key}\u0000${spot.mediaKey}\u0000${spot.tag}` : key);
+  const seen = useRef({ thread, n: items.length });
   useEffect(() => {
     const last = items.at(-1);
-    if (items.length > seen.current && last?.kind === "comment" && last.mine) {
+    if (thread === seen.current.thread && items.length > seen.current.n && last?.kind === "comment" && last.mine) {
       end.current
         ?.closest("dialog")
         ?.querySelector(`[data-comment="${CSS.escape(last.id)}"]`)
         ?.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
     }
-    seen.current = items.length;
-  }, [items]);
+    seen.current = { thread, n: items.length };
+  }, [items, thread]);
 
   // The Scorecard opens where you left it on this home (while the page is
   // open), or at the part asked for; the comments, at the top.
@@ -2799,7 +2826,8 @@ function MoreSheet({
           {!agentName && (
             <Link
               href={`/search?q=${encodeURIComponent(post.listing.City)}`}
-              className="text-sm font-semibold text-brand underline-offset-2 hover:underline"
+              // A fingertip tall, without moving what's round it.
+              className="-my-3 inline-flex min-h-11 items-center self-start text-sm font-semibold text-brand underline-offset-2 hover:underline"
             >
               See homes near {post.listing.City} on the map
             </Link>

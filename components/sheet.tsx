@@ -8,6 +8,10 @@ const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)"
 
 // Where the header ends: a sheet pulled all the way up stops just under it.
 const HEADER = 56;
+// Shorter than this (a phone on its side, like the reel's own short layout),
+// there's no room for two heights: a sheet with them opens just under the
+// header, so the comment box, who sees it, and a comment or two all show.
+const SHORT = 520;
 
 // How far a notch reaches down from the top of the screen, if there is one.
 function notch() {
@@ -49,7 +53,8 @@ function holderOf(el: HTMLElement) {
 // With `detents` it has two heights: it opens at medium, with its top on the
 // photo's foot so the whole photo stays in view (but between 35% and 55% of
 // the way down), and the handle drags it up to large, just under the header,
-// and back (a tap on the handle, or Enter, switches too). `docked`, on a wide
+// and back (a tap on the handle, or Enter, switches too); on a short screen it
+// has just the one, just under the header. `docked`, on a wide
 // screen, it isn't over the home at all: it takes the anchor's exact box
 // beside the photo and leaves the photo free to tap, rather than shutting
 // everything else off. Closed from inside, the keyboard goes back to what
@@ -113,6 +118,8 @@ export function Sheet({
   const detent = useRef<"medium" | "large">("medium");
   // The same, for the handle's name.
   const [large, setLarge] = useState(false);
+  // Too short for two heights: one, as tall as it goes, with nothing to expand.
+  const [oneHeight, setOneHeight] = useState(false);
   const toDetent = (to: "medium" | "large") => {
     detent.current = to;
     setLarge(to === "large");
@@ -135,9 +142,11 @@ export function Sheet({
   const anchorBox = () => anchor?.current?.getBoundingClientRect() ?? new DOMRect(0, 0, innerWidth, innerHeight);
   // Where its top goes at each height, on screen.
   const tops = (box: DOMRect) => {
-    const medium = box.top + Math.min(Math.max(minTop ?? 0, box.height * 0.35), box.height * 0.55);
     notchAt.current ??= notch();
-    return { medium, large: Math.min(medium, box.top + HEADER + notchAt.current) };
+    const highest = box.top + HEADER + notchAt.current;
+    if (box.height < SHORT) return { medium: highest, large: highest };
+    const medium = box.top + Math.min(Math.max(minTop ?? 0, box.height * 0.35), box.height * 0.55);
+    return { medium, large: Math.min(medium, highest) };
   };
 
   const place = (el: HTMLDialogElement) => {
@@ -166,6 +175,7 @@ export function Sheet({
     el.style.borderBottomLeftRadius = el.style.borderBottomRightRadius = innerHeight - box.bottom > 1 ? "1rem" : "";
     if (minTop !== undefined) {
       const { medium, large } = tops(box);
+      setOneHeight(medium === large);
       el.style.height = `${box.bottom - (detent.current === "large" ? large : medium)}px`;
       el.style.maxHeight = "";
     } else {
@@ -418,7 +428,7 @@ export function Sheet({
           >
             <X aria-hidden size={20} />
           </button>
-          {minTop !== undefined ? (
+          {minTop !== undefined && !oneHeight ? (
             // A fingertip to tap (a pointer's tap is caught above, where the
             // drag is; the keyboard's press lands here).
             <button
@@ -444,7 +454,15 @@ export function Sheet({
           </h2>
         </div>
       )}
-      <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-2">
+      <div
+        ref={bodyRef}
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2",
+          // At the foot of the screen, with nothing under it: clear of a
+          // phone's home bar, as the footer is when there is one.
+          !docked && (!footer || footerHidden) ? "pb-[max(1rem,env(safe-area-inset-bottom))]" : "pb-4",
+        )}
+      >
         {children}
       </div>
       {footer && (

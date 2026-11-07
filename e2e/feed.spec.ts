@@ -10,6 +10,7 @@ import {
   photoList,
   pick,
   scrollToEnd,
+  settle,
   signInAgent,
   signUpBuyer,
 } from "./helpers";
@@ -68,6 +69,13 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   // Double-tapping a photo likes what it shows, too.
   await post.scrollIntoViewIfNeeded();
   await post.getByRole("group", { name: /Photos of/ }).dblclick();
+  // Its heart pops in the middle of the photo, not down behind the words.
+  const burst = post.locator("[data-photo-frame] [class*='heart-pop']");
+  await expect(burst).toHaveCount(1);
+  await settle(burst);
+  const popped = (await burst.boundingBox())!;
+  const tapped = (await burst.locator("xpath=ancestor::*[@data-photo-frame][1]").boundingBox())!;
+  expect(Math.abs(popped.y + popped.height / 2 - (tapped.y + tapped.height / 2))).toBeLessThan(2);
   // Hovering the heart lists everything in the photo; the double-tap liked the exterior.
   const list = await photoList(post);
   await expect(list.getByRole("button", { name: /^Like the exterior/ })).toHaveAttribute("aria-pressed", "true");
