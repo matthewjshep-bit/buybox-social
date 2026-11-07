@@ -11,6 +11,7 @@ import {
   Flame,
   Heart,
   ImageIcon,
+  LoaderCircle,
   MapPin,
   Maximize2,
   MessageCircle,
@@ -156,6 +157,7 @@ export function ReelFeed({
   embedded = false,
   agentName,
   canInvite = true,
+  alone = false,
   focus,
   onActiveChange,
   loadMore,
@@ -186,6 +188,9 @@ export function ReelFeed({
   agentName?: string;
   // On an agent's link: whether its share button invites others onto it.
   canInvite?: boolean;
+  // On an agent's link: the page knows nobody but you and the agent can read
+  // what's said on it (so "only you" can be said).
+  alone?: boolean;
   // Brings a home into view: the map's pins pick a home this way. `n` counts
   // picks, so picking the same home again still moves to it.
   focus?: { key: string; n: number } | null;
@@ -198,8 +203,9 @@ export function ReelFeed({
   // and nothing on it can be liked, said or tapped.
   onOpen?: (listingKey: string) => void;
   // Signed-in agents on public pages: the rail's share button sends this home.
-  // Called first thing in the tap, with nothing awaited before it.
-  onSend?: (home: SendHome) => void;
+  // Called first thing in the tap, with nothing awaited before it. Side by
+  // side, `panel` is the home's white panel, for what follows to rise over.
+  onSend?: (home: SendHome, panel?: HTMLElement | null) => void;
   // Send's next link is on its way: the button waits, and says so.
   sendBusy?: boolean;
   // The photo (from 0) the first home opens on.
@@ -276,13 +282,12 @@ export function ReelFeed({
 
   // Who sees a comment, said under every comment box. Everyone on an agent's
   // link reads what's said there, each on a link of their own or not, so
-  // "only you" is said only when the page knows nobody else is on it.
+  // "only you" is said only when the page knows nobody else can read it.
   const agent = agentCalled(agentName);
-  const alone = (initial[0]?.members?.length ?? 2) <= 1;
   const seenBy: SeenBy =
     mode === "public"
       ? { text: "Everyone can see your comment and first name.", private: false }
-      : !canInvite && alone
+      : alone
         ? { text: `Only you and ${agent} see this.`, private: true }
         : { text: `Only ${agent} and people on this link see this.`, private: true };
   // Where the name prompt rises from: side by side, the white panel's foot.
@@ -314,6 +319,7 @@ export function ReelFeed({
         onPhotoSeen={onPhotoSeen}
         agentName={agentName}
         canInvite={canInvite}
+        alone={mode === "share" && alone}
         focus={focus}
         onActiveChange={onActiveChange}
         hasMore={hasMore}
@@ -346,6 +352,7 @@ function Feed({
   onPhotoSeen,
   agentName,
   canInvite,
+  alone,
   focus,
   onActiveChange,
   hasMore,
@@ -361,12 +368,13 @@ function Feed({
   end?: ReactNode;
   embedded: boolean;
   onOpen?: (listingKey: string) => void;
-  onSend?: (home: SendHome) => void;
+  onSend?: (home: SendHome, panel?: HTMLElement | null) => void;
   sendBusy: boolean;
   initialPhoto?: number;
   onPhotoSeen?: (listingKey: string, index: number) => void;
   agentName?: string;
   canInvite: boolean;
+  alone: boolean;
   focus?: { key: string; n: number } | null;
   onActiveChange?: (listingKey: string | null) => void;
   hasMore: boolean;
@@ -646,7 +654,9 @@ function Feed({
         : "share";
 
   const share = async (post: FeedPost) => {
-    if (onSend && mode === "public" && isForSale(post)) return onSend(sendHomeOf(post));
+    if (onSend && mode === "public" && isForSale(post)) {
+      return onSend(sendHomeOf(post), wide ? wordsOf(post.listing.ListingKey) : null);
+    }
     const url =
       mode === "share" ? window.location.href : `${window.location.origin}/homes/${encodeURIComponent(post.listing.ListingKey)}`;
     const title = `${post.listing.UnparsedAddress} · ${formatPrice(post.listing.ListPrice)}`;
@@ -679,9 +689,6 @@ function Feed({
         : undefined,
     [sheetPost, sheetState, sheetYours],
   );
-  // On a link known to be one person's: the Scorecard says "only you", as
-  // the comment box does.
-  const alone = mode === "share" && !canInvite && (posts[0]?.members?.length ?? 2) <= 1;
   // A home's own button on the rail (the Scorecard's, More's), for the
   // keyboard to go back to.
   const railButton = (key: string, which: "scorecard" | "more") =>
@@ -716,6 +723,8 @@ function Feed({
         // side, what the page adds to it can line up with the stage (`split:`).
         <div
           data-split={SPLIT_WIDE || undefined}
+          // The page's skip link goes past it, to the homes just after.
+          data-reel-header
           className={cn(
             "absolute inset-x-0 top-0 z-30 transition-[opacity,visibility] duration-300",
             (clear === active || bare === active) && "invisible opacity-0",
@@ -798,32 +807,37 @@ function Feed({
         <section
           data-panel={offset + posts.length}
           aria-label="The end"
-          className="relative flex h-full snap-start snap-always flex-col items-center justify-center overflow-y-auto px-6 py-24 text-center"
+          className="relative flex h-full snap-start snap-always flex-col items-center overflow-y-auto px-6 py-24 text-center"
         >
-          {hasMore || loading ? (
-            <p role="status" className="text-white/80">
-              Finding more homes…
-            </p>
-          ) : (
-            <>
-              {/* Each `relative`, to stay over a backdrop photo the end screen may have. */}
-              {mode === "share" && posts.length > 0 && (
-                <p className="relative mb-3 text-sm text-white/80">
-                  You&apos;ve reacted to {reviewed} of {posts.length} {posts.length === 1 ? "home" : "homes"}.
-                </p>
-              )}
-              {end}
-              {!embedded && posts.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => goTo(0)}
-                  className="relative mt-6 flex min-h-11 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-white/90 hover:bg-white/10"
-                >
-                  <ArrowUp aria-hidden size={16} /> Back to the top
-                </button>
-              )}
-            </>
-          )}
+          {/* Centred when it fits; taller than the screen (a short phone), it
+              starts under the header and scrolls, rather than running up
+              out of reach behind it. */}
+          <div className="my-auto flex w-full flex-col items-center">
+            {hasMore || loading ? (
+              <p role="status" className="text-white/80">
+                Finding more homes…
+              </p>
+            ) : (
+              <>
+                {/* Each `relative`, to stay over a backdrop photo the end screen may have. */}
+                {mode === "share" && posts.length > 0 && (
+                  <p className="relative mb-3 text-sm text-white/80">
+                    You&apos;ve reacted to {reviewed} of {posts.length} {posts.length === 1 ? "home" : "homes"}.
+                  </p>
+                )}
+                {end}
+                {!embedded && posts.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => goTo(0)}
+                    className="relative mt-6 flex min-h-11 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-white/90 hover:bg-white/10"
+                  >
+                    <ArrowUp aria-hidden size={16} /> Back to the top
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </section>
       </div>
 
@@ -1930,15 +1944,20 @@ function Rail({
         <ClipboardList size={26} {...icon} />
       </RailButton>
       {/* For a moment after each send, while the link for the next is made,
-          it waits (the same button, so the keyboard comes back to it). */}
+          it waits, turning, and says so (the same button, so the keyboard
+          comes back to it). */}
       {onShare && (shareAs === "send" || shareAs === "sending") && (
         <RailButton
-          name={shareAs === "sending" ? "Getting a new link…" : "Send to a client"}
+          name={shareAs === "sending" ? "Send to a client, getting a new link…" : "Send to a client"}
           label="Send"
           onClick={onShare}
           busy={shareAs === "sending"}
         >
-          <Send size={26} {...icon} />
+          {shareAs === "sending" ? (
+            <LoaderCircle size={26} aria-hidden className="animate-spin drop-shadow motion-reduce:animate-none" />
+          ) : (
+            <Send size={26} {...icon} />
+          )}
         </RailButton>
       )}
       {onShare && shareAs === "invite" && (
@@ -2285,10 +2304,11 @@ function LikedBy({
 }
 
 // Two lines of the description (or, on an agent's link, their greeting and
-// note), then "… more" right after the last word that fits, a fingertip to
-// tap. On a phone it opens the Scorecard at "About this home", where all of
-// it is; side by side, it reads it all in place, and "less" puts it away (one
-// button, which stays where the keyboard is).
+// note, then the description on a line of its own), then "… more" right after
+// the last word that fits, a fingertip to tap. On a phone it opens the
+// Scorecard at "About this home", where all of it is; side by side, it reads
+// it all in place, and "less" puts it away (one button, which stays where the
+// keyboard is).
 function Caption({
   listing,
   greeting,
@@ -2306,7 +2326,8 @@ function Caption({
   // Unset beside the map, where it's just a look.
   onToggle?: () => void;
 }) {
-  const text = note || listing.PublicRemarks || "";
+  // The note never hides the description: it follows, from a new line.
+  const text = [note, listing.PublicRemarks].filter(Boolean).join("\n");
   const row = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
   // How much of the text fits before "… more" (all of it: no "more"). Until
@@ -2349,8 +2370,14 @@ function Caption({
           : "h-11 short:mb-0 short:h-[22px] split:h-auto split:max-h-60",
       )}
     >
-      <div ref={box} className={cn(!open && n === null && "line-clamp-2 short:line-clamp-1 split:line-clamp-10")}>
+      <div
+        ref={box}
+        // (With a note, its own lines and the description's are kept.)
+        className={cn(note && "whitespace-pre-line", !open && n === null && "line-clamp-2 short:line-clamp-1 split:line-clamp-10")}
+      >
+        {/* The greeting ends with a stop, seen, so it doesn't run into the note. */}
         {greeting && <h1 className="inline font-semibold text-white split:text-ink">{greeting}</h1>}
+        {greeting && <span aria-hidden>.</span>}
         {greeting && text && " "}
         {text && <span>{cut ? clipped(text, n ?? 0) : text}</span>}
         {cut && <span aria-hidden>…</span>}{" "}
@@ -2381,10 +2408,10 @@ function captionFit(row: HTMLElement, box: HTMLElement, text: string) {
   const most = parseFloat(getComputedStyle(row).maxHeight);
   const limit = (Number.isFinite(most) ? most : row.clientHeight) + 1;
   const probe = document.createElement("div");
-  probe.style.cssText = `position:absolute;left:0;top:0;width:${box.clientWidth}px;visibility:hidden;pointer-events:none`;
+  probe.style.cssText = `position:absolute;left:0;top:0;width:${box.clientWidth}px;visibility:hidden;pointer-events:none;white-space:${getComputedStyle(box).whiteSpace}`;
   const words = document.createTextNode(text);
   const greeting = box.querySelector("h1")?.cloneNode(true);
-  probe.append(...(greeting ? [greeting, " "] : []), words);
+  probe.append(...(greeting ? [greeting, ". "] : []), words);
   row.append(probe);
   try {
     if (probe.offsetHeight <= limit) return text.length;

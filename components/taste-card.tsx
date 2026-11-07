@@ -1,4 +1,4 @@
-import { ChevronRight, Sparkles } from "lucide-react";
+import { ChevronRight, Lock, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { Headline, TasteRow } from "@/components/taste-story-card";
 import { cn } from "@/lib/format";
@@ -17,6 +17,8 @@ export type ReelTaste = {
   ai: boolean;
   loves: TasteChip[];
   passes: TasteChip[];
+  // Passes kept off your page for everyone else.
+  passesPrivate: boolean;
 };
 
 // The card with your story in it, once it's read. Read from what's stored,
@@ -37,7 +39,11 @@ async function reelTaste(visitorId: string | null, taste: Taste | null): Promise
   if (!visitorId || !hasTaste(taste)) return null;
   const person = await getProfilePerson(visitorId);
   if (!person) return null;
-  const story = storyOf(await getProfileRows(person.id, true), { hidden: person.tasteHidden, hidePasses: person.hidePasses });
+  // (Not the comments of others you liked: nothing on the card comes from them.)
+  const story = storyOf(await getProfileRows(person.id, false), {
+    hidden: person.tasteHidden,
+    hidePasses: person.hidePasses,
+  });
   const shown = shownStory(await readStory(person.id), story, false);
   return {
     visitorId: person.id,
@@ -46,6 +52,7 @@ async function reelTaste(visitorId: string | null, taste: Taste | null): Promise
     ai: shown?.ai ?? false,
     loves: story.own.loves,
     passes: story.own.passes,
+    passesPrivate: person.hidePasses,
   };
 }
 
@@ -65,7 +72,11 @@ export function TasteCard({
   const chipHref = (key: string, side: TopicSide) =>
     `/people/${story?.visitorId}?${new URLSearchParams({ about: key, side })}`;
   return (
-    <section aria-labelledby="taste-title" className={cn("rounded-2xl bg-white p-5 ring-1 ring-stone-200", className)}>
+    <section
+      data-light
+      aria-labelledby="taste-title"
+      className={cn("rounded-2xl bg-white p-5 ring-1 ring-stone-200", className)}
+    >
       <h3 id="taste-title" className="text-[13px] font-semibold text-stone-600">
         Your taste
       </h3>
@@ -82,6 +93,12 @@ export function TasteCard({
             <>
               <TasteRow side="like" chips={story.loves} current={null} href={chipHref} isMe />
               <TasteRow side="pass" chips={story.passes} current={null} href={chipHref} isMe />
+              {story.passesPrivate && story.passes.length > 0 && (
+                <p className="mt-2 flex items-center gap-1.5 text-[13px] text-stone-600">
+                  <Lock aria-hidden size={12} className="shrink-0" />
+                  Only you see what you pass on
+                </p>
+              )}
             </>
           )}
           <p className="mt-3 flex items-start gap-1.5 text-[13px] leading-snug text-stone-600">

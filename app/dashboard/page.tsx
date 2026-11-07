@@ -348,8 +348,12 @@ function ShareRow({ share }: { share: Row }) {
         )}
         <p className="mt-2 text-sm text-stone-700">
           {share.opened_at ? <Opened at={share.opened_at.toISOString()} /> : "Not opened yet"}
+          {/* (Moves to the next line whole.) */}
           {share.opened_at && photosSeenLine(share.photos_seen, share.photo_count) && (
-            <>{` · ${photosSeenLine(share.photos_seen, share.photo_count)}`}</>
+            <>
+              {" · "}
+              <span className="whitespace-nowrap">{photosSeenLine(share.photos_seen, share.photo_count)}</span>
+            </>
           )}
         </p>
         {/* Each part stays whole when the line wraps. */}

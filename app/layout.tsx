@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Figtree, Fraunces } from "next/font/google";
 import { HeaderGate } from "@/components/header-gate";
 import { SiteHeader } from "@/components/site-header";
+import { SkipLink } from "@/components/skip-link";
 import { appUrl } from "@/lib/format";
 import "./globals.css";
 
@@ -25,12 +26,7 @@ export default function RootLayout({ children, modal }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${body.variable} ${heading.variable} antialiased`}>
       <body className="min-h-dvh font-sans">
-        <a
-          href="#main"
-          className="sr-only z-50 rounded-lg bg-ink px-4 py-3 font-semibold text-white focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
-        >
-          Skip to main content
-        </a>
+        <SkipLink />
         <HeaderGate>
           <SiteHeader />
         </HeaderGate>

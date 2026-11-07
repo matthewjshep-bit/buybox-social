@@ -103,7 +103,10 @@ export function NudgeHint({ nudge }: { nudge: Nudge }) {
       >
         {nudge === "photos" ? (
           <>
-            Swipe for more photos
+            {/* A mouse or trackpad has the arrows on the photo too. */}
+            <span>
+              Swipe for more photos<span className="hidden pointer-fine:inline">, or use the arrows</span>
+            </span>
             <ChevronRight size={18} strokeWidth={2.5} className="animate-[nudge-right_1.4s_ease-in-out_3]" />
           </>
         ) : (

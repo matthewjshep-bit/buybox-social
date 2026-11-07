@@ -86,7 +86,7 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
   await sendButton(agent, "96 Fernhollow Ln").click();
   const sheet = agent.getByRole("dialog", { name: "Sent. Who's it for?" });
   await expect(sheet).toBeVisible();
-  const waiting = agent.locator('article[aria-label="96 Fernhollow Ln"] button[aria-label="Getting a new link…"]');
+  const waiting = agent.locator('article[aria-label="96 Fernhollow Ln"] button[aria-label="Send to a client, getting a new link…"]');
   await expect(waiting).toHaveAttribute("aria-disabled", "true");
   seen.hold = null;
   release();
@@ -136,6 +136,15 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
   // It's on the dashboard like any other link.
   await agent.goto("/dashboard");
   await expect(agent.getByRole("link", { name: /Toby/ })).toContainText("1 home · 96 Fernhollow Ln");
+
+  // The agent looking at their own link isn't taken for Toby.
+  await agent.goto(url);
+  await heartOf(homeIn(agent, "96 Fernhollow Ln")).click();
+  const own = agent.getByRole("dialog", { name: "What's your first name?" });
+  await expect(own.getByRole("textbox", { name: "First name" })).toHaveValue("");
+  await expect(own.getByText(/sent this to/)).toHaveCount(0);
+  await own.getByRole("button", { name: "Not now" }).click();
+  await expect(own).toBeHidden();
 
   // [P] The link carries nothing of the agent's but what they chose to show,
   // and no other link: not another client's, not the one waiting for the next Send.

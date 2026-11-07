@@ -144,7 +144,7 @@ export function NameGate({
         >
           <p className="text-center text-sm text-stone-600">{prompt}</p>
           {nameHint && (
-            <p id={`${id}-hint`} className="mt-3 text-[13px] text-stone-600">
+            <p id={`${id}-hint`} className="mt-3 text-balance text-center text-[13px] text-stone-600">
               {nameHint}
             </p>
           )}

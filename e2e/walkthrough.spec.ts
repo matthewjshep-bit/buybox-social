@@ -33,8 +33,9 @@ test("an agent's link nudges a first-timer: swipe for photos, then on to the nex
   await page.keyboard.press("ArrowDown");
   const first = homeIn(page, "10421 Halvard Way NE");
   await expect(first).toBeInViewport({ ratio: 0.9 });
-  // First: there are more photos, this way.
+  // First: there are more photos, this way. (On a phone, a swipe is the way.)
   await expect(first.getByText("Swipe for more photos")).toBeVisible();
+  await expect(first.getByText(", or use the arrows")).toBeHidden();
 
   // A thumb swipe low on the screen, over the caption's words, turns the photo.
   const caption = await first.getByText(/^Listed by/).boundingBox();
@@ -58,12 +59,12 @@ test("an agent's link nudges a first-timer: swipe for photos, then on to the nex
   await page.waitForTimeout(2500);
   await expect(nudge(page)).toHaveCount(0);
 
-  // On a desktop screen it says scroll, not swipe up.
+  // On a desktop screen it says scroll, not swipe up, and points to the arrows.
   const desk = await (await browser.newContext(DESKTOP)).newPage();
   await desk.goto(url);
   await desk.keyboard.press("ArrowDown");
   const deskHome = homeIn(desk, "10421 Halvard Way NE");
-  await expect(deskHome.getByText("Swipe for more photos")).toBeVisible();
+  await expect(deskHome.getByText("Swipe for more photos, or use the arrows")).toBeVisible();
   await deskHome.getByRole("button", { name: "Next photo" }).click();
   await expect(deskHome.getByText("Scroll for the next home")).toBeVisible({ timeout: 5000 });
   await expect(deskHome.getByText("Swipe up for the next home")).toBeHidden();

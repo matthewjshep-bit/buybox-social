@@ -80,12 +80,14 @@ export type ShareOpen = {
   photosSeen: number;
 };
 
-// "saw 3 of 4 photos", "saw all 4 photos": how much of a link someone looked
-// at, of the photos on it now. Null before they've looked at any.
+// "saw 3 of 4 photos", "saw all 4 photos" ("saw the photo", for a link with
+// one): how much of a link someone looked at, of the photos on it now. Null
+// before they've looked at any.
 export function photosSeenLine(seen: number, photos: number) {
   const n = Math.min(seen, photos);
   if (n <= 0) return null;
-  return `saw ${n === photos ? `all ${photos}` : `${n} of ${photos}`} ${photos === 1 ? "photo" : "photos"}`;
+  if (photos === 1) return "saw the photo";
+  return `saw ${n === photos ? `all ${photos}` : `${n} of ${photos}`} photos`;
 }
 
 // Who has had a link open, and when they last did, newest first: for the agent
@@ -185,6 +187,26 @@ export async function getShareMembers(shareId: string) {
     where share_id = ${shareId}
     order by invited_at nulls last, created_at, first_name`;
   return rows.map((row) => row.first_name);
+}
+
+// Whether what one person says on their own link is between them and the agent
+// alone: nobody else is on it, and the package's own link (which anyone holding
+// it can read without joining) was never out. That's so only for a link the
+// agent made with this person on it from the start, never a quick send, and
+// never once anyone has opened the package's own link.
+export async function isPrivateTo(shareId: string, personId: string) {
+  const [row] = await sql<{ alone: boolean }[]>`
+    select (
+      not s.quick
+      and p.invited_at is not null and p.invited_at <= s.created_at
+      and not exists (select 1 from participants o where o.share_id = s.id and o.id <> p.id)
+      and not exists (
+        select 1 from share_opens o left join participants q on q.id = o.participant_id
+        where o.share_id = s.id and (o.participant_id is null or q.token is null))
+    ) as alone
+    from shares s join participants p on p.share_id = s.id and p.id = ${personId}
+    where s.id = ${shareId}`;
+  return row?.alone ?? false;
 }
 
 // Adds someone to a package with their own link. Returns their link token.

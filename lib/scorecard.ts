@@ -323,15 +323,21 @@ export function buildScorecard(
   }
   const quiet = total === 0 && comments.length === 0 && privateMore === 0 && people.every((person) => !hasTake(person));
   const few = named && total <= 5;
-  // Everyone on the link who hasn't said what they think yet: never you, and
-  // each name once for every person who has it (two Sams are two people).
-  const notYet = [...(post.members ?? [])];
-  const drop = (name: string) => {
-    const at = notYet.findIndex((member) => member.toLowerCase() === name.toLowerCase());
-    if (at !== -1) notYet.splice(at, 1);
-  };
-  if (myName) drop(myName);
-  for (const person of people) if (!person.you && hasTake(person)) drop(person.name);
+  // Everyone on the link who hasn't said what they think yet, by first name,
+  // each once: never you, nor anyone with your name or the name of someone who
+  // has. (Someone who joined on their phone and their laptop is on the link
+  // twice under one name, and is still one person; two people sharing a first
+  // name on one client's link are rarer, and fold together.)
+  const said = new Set<string>();
+  if (myName) said.add(myName.trim().toLowerCase());
+  for (const person of people) if (!person.you && hasTake(person)) said.add(person.name.trim().toLowerCase());
+  const notYet: string[] = [];
+  for (const member of post.members ?? []) {
+    const name = member.trim().toLowerCase();
+    if (said.has(name)) continue;
+    said.add(name);
+    notYet.push(member);
+  }
   const feel: Scorecard["feel"] = {
     likes,
     passes,

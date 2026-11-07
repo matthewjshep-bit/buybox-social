@@ -626,3 +626,21 @@ test("every comment box says who sees it, and the name prompt rises like a sheet
     await client.context().close();
   }
 });
+
+test("the skip link goes past the header to the homes, though the header comes first", async ({ browser }) => {
+  for (const options of [DESKTOP, IPHONE]) {
+    const page = await (await browser.newContext(options)).newPage();
+    await page.goto("/homes/SAMPLE-1008");
+    const home = homeIn(page, "719 Saltmarsh Ln");
+    await settled(home);
+    await page.keyboard.press("Tab");
+    const skip = page.getByRole("link", { name: "Skip to main content" });
+    await expect(skip).toBeFocused();
+    await page.keyboard.press("Enter");
+    // The next stop is in the first home, not the header's logo or links.
+    await page.keyboard.press("Tab");
+    expect(await home.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+    await expect(page.getByRole("banner").locator(":focus")).toHaveCount(0);
+    await page.context().close();
+  }
+});

@@ -224,7 +224,12 @@ function OpenedBy({ opens, name, photos }: { opens: ShareOpen[]; name?: string; 
         return (
           <span key={i} className="block">
             <Opened at={line.at} name={line.name} />
-            {seen && ` · ${seen}`}
+            {seen && (
+              <>
+                {" · "}
+                <span className="whitespace-nowrap">{seen}</span>
+              </>
+            )}
           </span>
         );
       })}

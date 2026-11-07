@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { homeFacts } from "@/app/homes/[key]/preview";
 import { LiveRefresh } from "@/components/live-refresh";
+import { getCurrentUser } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
 import { isSampleListing } from "@/lib/listings/types";
 import { NO_PHOTO_LIKES } from "@/lib/photos";
 import { NO_REACTION } from "@/lib/reactions";
-import { getParticipant, getShareByToken, getShareListings, getShareMembers } from "@/lib/shares";
+import { getParticipant, getShareByToken, getShareListings, getShareMembers, isPrivateTo } from "@/lib/shares";
 import { headlineFromTimeline, type FeedPost } from "@/lib/feed";
 import { getSharePhotoLikes, getShareTimelines, type TimelineReaction } from "@/lib/timeline";
 import { addComment, askToSee, joinThread, likePhotoInShare, setCommentSharing, setReaction } from "./actions";
@@ -40,11 +41,17 @@ export default async function SharePage({ params }: Props) {
   if (!found) notFound();
   const { share, agent, person } = found;
 
-  const [listings, device, members] = await Promise.all([
+  const [listings, device, members, viewer, alone] = await Promise.all([
     getShareListings(share.id),
     readDevice(),
     getShareMembers(share.id),
+    getCurrentUser(),
+    // Only you and the agent read what's said here: worked out here, never
+    // guessed from who has joined, since the package's own link may be out.
+    person ? isPrivateTo(share.id, person.id) : false,
   ]);
+  // The agent looking at their own link: never taken for the client.
+  const agentViewing = viewer?.id === share.agent_id;
   // Someone's own link is them; otherwise it's whoever this device joined as.
   const me = person ?? (await getParticipant(share.id, device));
   const keys = listings.map((listing) => listing.ListingKey);
@@ -64,7 +71,12 @@ export default async function SharePage({ params }: Props) {
   // A link the agent made for one person, opened before anyone has said who
   // they are on it, is most likely theirs: the name prompt starts with it.
   const expected =
-    !person && !me && members.length === 0 && share.client_name && !/[&,]| and /i.test(share.client_name)
+    !agentViewing &&
+    !person &&
+    !me &&
+    members.length === 0 &&
+    share.client_name &&
+    !/[&,]| and /i.test(share.client_name)
       ? share.client_name
       : undefined;
   const agentFirst = agent.full_name.trim().split(/\s+/)[0] || "Your agent";
@@ -115,6 +127,7 @@ export default async function SharePage({ params }: Props) {
         agentName={agent.full_name || undefined}
         // A personal link opens as its owner, so it isn't one to pass around.
         canInvite={!person}
+        alone={alone}
         actions={{
           join: joinThread.bind(null, token),
           react: setReaction.bind(null, token),

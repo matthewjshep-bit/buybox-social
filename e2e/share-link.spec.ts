@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { commentIn, createShare, heartOf, homeIn, joinAs, openComments, openScorecard, signInAgent } from "./helpers";
+import { commentIn, createShare, heartOf, homeIn, joinAs, openComments, openMore, openScorecard, signInAgent } from "./helpers";
 
 // The link anyone can join, when no one was named.
 async function packageLink(agent: Page, addresses: string[]) {
@@ -41,11 +41,18 @@ test("one home: the link opens on it, in the agent's space, with a way to text, 
   await expect(home).toBeInViewport({ ratio: 0.9 });
   await expect(page.getByRole("region", { name: "Welcome" })).toHaveCount(0);
   // The agent's greeting and note are the home's caption, under its photo,
-  // in place of the description: the page's one heading.
+  // ahead of the description: the page's one heading.
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(home.getByRole("heading", { level: 1 })).toHaveText("Owen, I picked this home for you");
   await expect(home.getByRole("heading", { level: 1 })).toBeVisible();
-  await expect(home.getByText("This one has the yard you mentioned.")).toBeVisible();
+  await expect(home.getByText(/^This one has the yard/)).toBeVisible();
+  // The note whole, then the home's own description, one tap on "more" away.
+  await home.getByRole("button", { name: "more", exact: true }).click();
+  const about = page.getByRole("dialog", { name: "Scorecard" });
+  await expect(about.getByText("This one has the yard you mentioned.")).toBeVisible();
+  await expect(about).toContainText("A warm Ravenna-area Craftsman");
+  await page.keyboard.press("Escape");
+  await expect(about).toBeHidden();
   // The agent's header comes first, as it reads and as Tab goes, though it floats over the home.
   expect(
     await page.evaluate(() => {
@@ -253,6 +260,81 @@ test("the Scorecard says who on the link hasn't weighed in yet, never you", asyn
   card = await openScorecard(pat, homeIn(pat, "812 N Corbel St"));
   await expect(card).toContainText("Owen liked it");
   await expect(card.getByText(/^Not yet/)).toHaveCount(0);
+});
+
+test("one person on two devices is one person, and never 'not yet' to themselves", async ({ browser }) => {
+  test.setTimeout(90_000);
+  const agent = await signInAgent(browser, "twice-agent@example.com", "Jordan Rivera");
+  const { url } = await packageLink(agent, ["812 N Corbel"]);
+  const ADDRESS = "812 N Corbel St";
+
+  // Says who they are with a pass (a pass stays on the link), and unless
+  // `keep`, takes it back.
+  const joinWithPass = async (name: string, keep: boolean) => {
+    const page = await (await browser.newContext()).newPage();
+    await page.goto(url);
+    const home = homeIn(page, ADDRESS);
+    await expect(home).toBeInViewport({ ratio: 0.9 });
+    const more = await openMore(page, home);
+    const pass = more.getByRole("button", { name: "Not for me" });
+    await pass.click();
+    await joinAs(page, name);
+    await expect(pass).toHaveAttribute("aria-pressed", "true");
+    if (!keep) {
+      await pass.click();
+      await expect(pass).toHaveAttribute("aria-pressed", "false");
+    }
+    await page.keyboard.press("Escape");
+    await expect(more).toBeHidden();
+    return page;
+  };
+  // Owen passes on his phone, then joins on his laptop too; Pat joins and
+  // hasn't said what he thinks.
+  const phone = await joinWithPass("Owen", true);
+  const laptop = await joinWithPass("Owen", false);
+  const pat = await joinWithPass("Pat", false);
+
+  for (const page of [phone, laptop]) {
+    await page.reload();
+    const card = await openScorecard(page, homeIn(page, ADDRESS));
+    await expect(card.getByText(/^Not yet/)).toHaveText("Not yet: Pat");
+    if (page === phone) await expect(card).toContainText("You passed");
+  }
+  // Pat sees Owen's pass, and no Owen still to come.
+  await pat.reload();
+  const card = await openScorecard(pat, homeIn(pat, ADDRESS));
+  await expect(card).toContainText("Owen passed");
+  await expect(card.getByText(/^Not yet/)).toHaveCount(0);
+});
+
+test("'only you' is said only when nobody else can read it: not once the package link is out", async ({ browser }) => {
+  test.setTimeout(60_000);
+  const agent = await signInAgent(browser, "out-agent@example.com", "Jordan Rivera");
+  const { url } = await packageLink(agent, ["4127 Larkmoor"]);
+
+  // Someone opens the package's own link, and never says who they are.
+  const holder = await (await browser.newContext()).newPage();
+  await holder.goto(url);
+  await expect(homeIn(holder, "4127 Larkmoor Ave NE")).toBeInViewport({ ratio: 0.9 });
+
+  // Then the agent adds Owen, with a link of his own.
+  await agent.getByPlaceholder("Their first name").fill("Owen");
+  await agent.getByRole("button", { name: "Add a person" }).click();
+  const owenUrl = await agent.getByLabel("Owen's link").inputValue();
+  const owen = await (await browser.newContext()).newPage();
+  await owen.goto(owenUrl);
+  const home = homeIn(owen, "4127 Larkmoor Ave NE");
+  await expect(home).toBeInViewport({ ratio: 0.9 });
+  // Whoever holds the package's link reads what he says there too.
+  const chat = await openComments(owen, home);
+  await expect(chat.getByText("Only Jordan Rivera and people on this link see this.")).toBeVisible();
+  await expect(chat.getByText(/Only you and/)).toHaveCount(0);
+  await owen.keyboard.press("Escape");
+  await expect(chat).toBeHidden();
+  const card = await openScorecard(owen, home);
+  await expect(card).toBeVisible();
+  await expect(card.getByText(/only you and/i)).toHaveCount(0);
+  expect(await (await owen.request.get(owenUrl)).text()).not.toContain("Only you and");
 });
 
 test("a link that isn't there says so, with a way home", async ({ page }) => {

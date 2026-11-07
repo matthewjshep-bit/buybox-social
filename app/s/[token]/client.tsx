@@ -2,7 +2,7 @@
 
 import { ArrowDown, Check, Phone, Share2 } from "lucide-react";
 import Image from "next/image";
-import { createContext, useContext, useEffect, useRef, useState, type ComponentProps } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { agentFirstName, focusOnDark, ShareHeader } from "@/components/agent-card";
 import { Backdrop } from "@/components/join";
@@ -75,13 +75,51 @@ export function ShareReel({
   const [contact, setContact] = useState(false);
   const home = homes.find((listing) => listing.ListingKey === seen);
 
+  // The photos this browser has looked at, of the homes on the link now (a
+  // home taken off it since doesn't count), and how many the agent has heard of.
+  const looked = useRef<Set<string> | null>(null);
+  const told = useRef(0);
+  const shown = useRef(false);
+  const seenTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const onLink = useRef(homes);
+  useLayoutEffect(() => {
+    onLink.current = homes;
+  });
+  const seenCount = () => {
+    looked.current ??= seenBefore(token);
+    let n = 0;
+    for (const photo of looked.current) {
+      const at = photo.lastIndexOf(":");
+      const home = onLink.current.find((listing) => listing.ListingKey === photo.slice(0, at));
+      if (home && Number(photo.slice(at + 1)) < home.Media.length) n++;
+    }
+    return n;
+  };
+  // Tells the agent how many photos have been looked at, if that's more than
+  // they know. Only once the page has been on screen.
+  const tellSeen = useRef(() => {});
+  useLayoutEffect(() => {
+    tellSeen.current = () => {
+      clearTimeout(seenTimer.current);
+      if (!shown.current) return;
+      const count = seenCount();
+      if (count <= told.current) return;
+      told.current = count;
+      recordOpen(token, count).catch(() => {});
+    };
+  });
+
   // Lets the agent see the link was opened, once it's really on someone's
   // screen: a page loaded out of sight (a preview, a tab opened behind) waits
-  // until it's shown. Nothing shows for it here.
+  // until it's shown. With it goes how many photos this browser had already
+  // looked at here. Nothing shows for it here.
   useEffect(() => {
     const record = () => {
       if (document.visibilityState !== "visible") return false;
-      recordOpen(token).catch(() => {});
+      shown.current = true;
+      const count = seenCount();
+      told.current = Math.max(told.current, count);
+      recordOpen(token, count || undefined).catch(() => {});
       return true;
     };
     if (record()) return;
@@ -90,27 +128,35 @@ export function ShareReel({
     };
     document.addEventListener("visibilitychange", onShow);
     return () => document.removeEventListener("visibilitychange", onShow);
+    // (Once per link: what it counts is read from refs.)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // And how many of the link's photos have been looked at: each new one, a
-  // moment after the last, so swiping through sends one count, not many.
-  const looked = useRef<Set<string> | null>(null);
-  const told = useRef(0);
-  const seenTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => () => clearTimeout(seenTimer.current), []);
+  // And how many of the link's photos have been looked at: a moment after the
+  // last one settles, so swiping through sends one count, not many; at once
+  // if the page is put away or closed first.
+  useEffect(() => {
+    const now = () => tellSeen.current();
+    const onChange = () => {
+      if (document.visibilityState === "hidden") now();
+    };
+    document.addEventListener("visibilitychange", onChange);
+    window.addEventListener("pagehide", now);
+    return () => {
+      document.removeEventListener("visibilitychange", onChange);
+      window.removeEventListener("pagehide", now);
+      now();
+    };
+  }, []);
   const photoSeen = (listingKey: string, index: number) => {
     looked.current ??= seenBefore(token);
     const photo = `${listingKey}:${index}`;
-    if (looked.current.has(photo)) return;
-    looked.current.add(photo);
-    keepSeen(token, looked.current);
+    if (!looked.current.has(photo)) {
+      looked.current.add(photo);
+      keepSeen(token, looked.current);
+    }
     clearTimeout(seenTimer.current);
-    seenTimer.current = setTimeout(() => {
-      const count = looked.current?.size ?? 0;
-      if (count <= told.current || document.visibilityState !== "visible") return;
-      told.current = count;
-      recordOpen(token, count).catch(() => {});
-    }, SEEN_AFTER_MS);
+    seenTimer.current = setTimeout(() => tellSeen.current(), SEEN_AFTER_MS);
   };
 
   return (

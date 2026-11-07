@@ -110,6 +110,9 @@ export function useQuickSend({
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const sends = useRef(0);
+  // What this Send's sheets rise over: side by side, the home's white panel
+  // (as More does), so a sheet never sits half over it; otherwise `anchor`.
+  const sheetAnchor = useRef<HTMLElement | null>(null);
 
   // A beat after any sheet has closed, so screen readers, which can't hear
   // outside an open sheet, hear it.
@@ -184,7 +187,8 @@ export function useQuickSend({
     take(value, epoch.current);
   };
 
-  const send = (home: SendHome) => {
+  const send = (home: SendHome, panel?: HTMLElement | null) => {
+    sheetAnchor.current = panel ?? anchor?.current ?? null;
     if (!profileComplete) return setNeedsProfile(true);
     const held = token.current;
     // Too old to trust, or not here yet: the slower way, and a new link for next time.
@@ -249,7 +253,7 @@ export function useQuickSend({
 
   const ui = (
     <>
-      <Sheet open={Boolean(sent)} onClose={() => setSent(null)} label={sentTitle} title={sentTitle} anchor={anchor}>
+      <Sheet open={Boolean(sent)} onClose={() => setSent(null)} label={sentTitle} title={sentTitle} anchor={sheetAnchor}>
         {sent && (
           <SentBody
             key={sent.n}
@@ -261,7 +265,7 @@ export function useQuickSend({
           />
         )}
       </Sheet>
-      <Sheet open={Boolean(draft)} onClose={() => setDraft(null)} label="Send this home" title="Send this home" anchor={anchor}>
+      <Sheet open={Boolean(draft)} onClose={() => setDraft(null)} label="Send this home" title="Send this home" anchor={sheetAnchor}>
         {draft && (
           <DraftBody key={draft.listingKey} home={draft} onNextToken={offer} />
         )}
@@ -271,7 +275,7 @@ export function useQuickSend({
         onClose={() => setNeedsProfile(false)}
         label="Before you send"
         title="Before you send"
-        anchor={anchor}
+        anchor={sheetAnchor}
       >
         <div className="pb-2 text-center">
           <p className="text-[15px] leading-relaxed text-stone-700">

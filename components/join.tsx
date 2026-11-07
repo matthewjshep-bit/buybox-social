@@ -122,7 +122,7 @@ function SignUpForm({ devMode, className }: { devMode: boolean; className?: stri
 
   if (state.sent) {
     return (
-      <div role="status" className={cn("rounded-2xl bg-white p-6 text-ink shadow-xl", className)}>
+      <div role="status" data-light className={cn("rounded-2xl bg-white p-6 text-ink shadow-xl", className)}>
         <MailCheck aria-hidden size={28} className="text-brand" />
         <p className="mt-3 text-lg font-semibold">Check your email</p>
         <p className="mt-1 text-stone-700">
@@ -147,6 +147,8 @@ function SignUpForm({ devMode, className }: { devMode: boolean; className?: stri
     <form
       action={action}
       aria-label="Sign up"
+      // Light, over the dark reel: the brand focus ring inside it.
+      data-light
       className={cn("rounded-2xl bg-white p-5 text-ink shadow-xl sm:p-6", className)}
     >
       <div className="flex flex-col gap-2.5">
