@@ -1,4 +1,4 @@
-import { ArrowLeft, Globe, Heart, Plus, RotateCcw, Tag, ThumbsDown, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, Globe, Heart, Plus, RotateCcw, Tag, ThumbsDown, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -7,8 +7,8 @@ import { LiveRefresh } from "@/components/live-refresh";
 import { requireAgent } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { appUrl, cn, formatPrice, timeAgo } from "@/lib/format";
-import { FACTS, mediaKeyOf, tagPosition, thingOf } from "@/lib/photos";
-import { NO_REACTION, type ReactionState } from "@/lib/reactions";
+import { aspectOfTag, FACTS, mediaKeyOf, photoTags, tagPosition, thingOf } from "@/lib/photos";
+import { aspectLabel, NO_REACTION, type Aspect, type ReactionState } from "@/lib/reactions";
 import { comparePeople, suggestHomes, type Suggestion } from "@/lib/compare";
 import {
   clientActivity,
@@ -78,7 +78,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
   const everyone = people.map((p) => ({ id: p.id, name: p.first_name }));
   const comparison = comparePeople(everyone, thread, listings);
   const { suggestions, together } = await suggestHomes(everyone, thread, listings);
-  const oneHome = active.length === 1 ? active[0].UnparsedAddress : undefined;
+  const oneHome = active.length === 1 ? { address: active[0].UnparsedAddress, price: active[0].ListPrice } : undefined;
 
   return (
     <div data-wide>
@@ -105,7 +105,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
                       url={`${appUrl()}/s/${person.token}`}
                       clientName={person.first_name}
                       count={active.length}
-                      address={oneHome}
+                      home={oneHome}
                       label={`${person.first_name}'s link`}
                       status={<OpenedBy opens={opens.filter((o) => o.participantId === person.id)} name={person.first_name} />}
                     />
@@ -126,7 +126,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
                   url={`${appUrl()}/s/${share.token}`}
                   clientName={share.client_name}
                   count={active.length}
-                  address={oneHome}
+                  home={oneHome}
                   status={<OpenedBy opens={opens} />}
                 />
               )}
@@ -145,6 +145,8 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
             suggestions={suggestions}
             together={together}
             people={comparison.summaries.filter((s) => s.likes.length > 0).map((s) => s.person.name)}
+            everyone={everyone}
+            thread={thread}
           />
         </div>
 
@@ -228,13 +230,22 @@ const listed = (things: string[]) =>
     </span>
   ));
 
+// Liked (the home, or anything in it) or passed (Not for me, or only things
+// they didn't like), counted the way the dashboard counts a home's verdicts.
+const verdictOf = ({ reaction, likes, passes }: TakeOf): "like" | "pass" | null =>
+  reaction === "dislike" || (!reaction && likes.length === 0 && passes.length > 0)
+    ? "pass"
+    : reaction === "like" || likes.length > 0
+      ? "like"
+      : null;
+
 // "♥ Kitchen · Marble counters", "👎 Price", "Not yet". Passing, or only not
-// liking things, leads with the thumbs down, as the dashboard's verdicts count it.
+// liking things, leads with the thumbs down.
 function Take({ take }: { take: TakeOf }) {
   const { reaction, likes, passes } = take;
-  const passed = reaction === "dislike" || (!reaction && likes.length === 0 && passes.length > 0);
-  const liked = !passed && (reaction === "like" || likes.length > 0);
-  if (!passed && !liked) return <span className="text-stone-500">Not yet</span>;
+  const verdict = verdictOf(take);
+  const passed = verdict === "pass";
+  if (!verdict) return <span className="text-stone-500">Not yet</span>;
   const like = (passed ? likes.length > 0 : true) && (
     <span className="inline-flex items-start gap-1.5">
       <Heart aria-hidden size={14} className="mt-[3px] shrink-0 text-rose-600" />
@@ -282,7 +293,6 @@ function WhatTheyWant({
   thread: Thread;
 }) {
   const { summaries, both, only, homes } = comparison;
-  const heard = summaries.filter((s) => s.liked + s.passed + s.likes.length > 0);
   const several = summaries.length >= 2;
   // The table's cells, plus what each person didn't like in a home's photos
   // and facts, so a pass says why, and the spots they tapped that aren't on
@@ -302,6 +312,27 @@ function WhatTheyWant({
       passes: uniq([...cell.passes, ...disliked.filter((d) => !d.tag.startsWith("@")).map((d) => d.tag), ...spots(disliked)]),
     };
   };
+  // Each person's take on each home, and how many they liked and passed on,
+  // from the same takes, so the summary and the cards below always agree: a
+  // spot liked in a photo counts as liking that home.
+  const takes = Object.fromEntries(summaries.map((s) => [s.person.id, homes.map((home) => takeOf(home, s.person.id))]));
+  const tally = Object.fromEntries(
+    summaries.map((s) => {
+      const verdicts = takes[s.person.id].map(verdictOf);
+      return [s.person.id, { liked: verdicts.filter((v) => v === "like").length, passed: verdicts.filter((v) => v === "pass").length }];
+    }),
+  );
+  const heard = summaries.filter((s) => tally[s.person.id].liked + tally[s.person.id].passed > 0);
+  // Where they agree is worked out among those who've liked particular
+  // things; when that isn't everyone, it says who.
+  const likers = summaries.filter((s) => s.likes.length > 0);
+  const names = likers.map((s) => s.person.name);
+  const inCommon =
+    likers.length === summaries.length
+      ? likers.length === 2
+        ? "Both like"
+        : "Everyone likes"
+      : `${names.slice(0, -1).join(", ")} and ${names.at(-1)} ${likers.length === 2 ? "both" : "all"} like`;
   return (
     <section aria-labelledby="profile-title" className="@container mt-6 rounded-2xl bg-white p-5 ring-1 ring-stone-200">
       <h2 id="profile-title" className="font-display text-2xl">
@@ -314,13 +345,13 @@ function WhatTheyWant({
         </p>
       ) : (
         <>
-          {heard.length >= 2 && (
+          {likers.length >= 2 && (
             <div className="mt-3 flex flex-col gap-1.5 rounded-xl bg-stone-50 p-3 text-sm ring-1 ring-stone-200">
               <p>
-                <span className="font-semibold">{heard.length === 2 ? "Both like" : "Everyone likes"}:</span>{" "}
+                <span className="font-semibold">{inCommon}:</span>{" "}
                 {both.length > 0 ? both.join("\u00a0· ") : <span className="text-stone-600">nothing in common yet</span>}
               </p>
-              {heard.map((s) =>
+              {likers.map((s) =>
                 only[s.person.id]?.length ? (
                   <p key={s.person.id}>
                     <span className="font-semibold">Only {s.person.name}:</span> {only[s.person.id].join("\u00a0· ")}
@@ -334,13 +365,13 @@ function WhatTheyWant({
               <li key={s.person.id}>
                 <p className="text-[15px]">
                   <span className="font-semibold">{s.person.name}</span>{" "}
-                  {s.liked + s.passed + s.likes.length === 0 ? (
+                  {tally[s.person.id].liked + tally[s.person.id].passed === 0 ? (
                     <span className="text-stone-600">hasn&apos;t reacted yet</span>
                   ) : (
                     <>
-                      liked <span className="tabular-nums">{s.liked}</span> of{" "}
+                      liked <span className="tabular-nums">{tally[s.person.id].liked}</span> of{" "}
                       <span className="tabular-nums">{homeCount}</span> {homeCount === 1 ? "home" : "homes"} · passed{" "}
-                      <span className="tabular-nums">{s.passed}</span>
+                      <span className="tabular-nums">{tally[s.person.id].passed}</span>
                     </>
                   )}
                 </p>
@@ -351,31 +382,45 @@ function WhatTheyWant({
           </ul>
           {several && (
             <>
-              <h3 className="mt-6 font-semibold">Home by home</h3>
-              {/* Phones: a card per home, a line per person, nothing cut off. */}
-              <ul className="mt-2 flex flex-col gap-2.5 @md:hidden">
-                {homes.map((home) => (
-                  <li key={home.listing.ListingKey} className="rounded-xl bg-stone-50 p-3 ring-1 ring-stone-200">
-                    <p className="flex items-center gap-2.5">
-                      <span className="relative size-10 shrink-0 overflow-hidden rounded-lg bg-stone-200">
-                        {home.listing.Media[0] && (
-                          <Image src={home.listing.Media[0].MediaURL} alt="" fill sizes="40px" className="object-cover" />
-                        )}
-                      </span>
-                      <span className="min-w-0 font-semibold leading-snug">{home.listing.UnparsedAddress}</span>
-                    </p>
-                    <ul className="mt-2 flex flex-col gap-1.5 text-sm">
-                      {summaries.map((s) => (
-                        <li key={s.person.id} className="flex gap-2">
-                          <span className="w-16 shrink-0 truncate font-semibold">{s.person.name}</span>{" "}
-                          <Take take={takeOf(home, s.person.id)} />
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                ))}
-              </ul>
+              {/* Phones: a card per home, a line per person, nothing cut off.
+                  Folded away to start with, since each home further down says
+                  the same beside its comments. */}
+              <details className="group mt-5 @md:hidden">
+                <summary className="-mx-2 flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl px-2 font-semibold hover:bg-stone-50 [&::-webkit-details-marker]:hidden">
+                  <ChevronRight aria-hidden size={18} className="shrink-0 text-stone-500 transition-transform group-open:rotate-90" />
+                  Home by home{" "}
+                  <span className="font-normal text-stone-600">
+                    · {homes.length} {homes.length === 1 ? "home" : "homes"}
+                  </span>
+                </summary>
+                <ul className="mt-2 flex flex-col gap-2.5">
+                  {homes.map((home, i) => (
+                    <li key={home.listing.ListingKey} className="rounded-xl bg-stone-50 p-3 ring-1 ring-stone-200">
+                      <p className="flex items-center gap-2.5">
+                        <span className="relative size-10 shrink-0 overflow-hidden rounded-lg bg-stone-200">
+                          {home.listing.Media[0] && (
+                            <Image src={home.listing.Media[0].MediaURL} alt="" fill sizes="40px" className="object-cover" />
+                          )}
+                        </span>
+                        <span className="min-w-0 font-semibold leading-snug">{home.listing.UnparsedAddress}</span>
+                      </p>
+                      {/* Names take the room they need, up to a point, then wrap. */}
+                      <ul className="mt-2 grid grid-cols-[minmax(0,max-content)_minmax(0,1fr)] gap-x-2.5 gap-y-1.5 text-sm">
+                        {summaries.map((s) => (
+                          <li key={s.person.id} className="col-span-2 grid grid-cols-subgrid">
+                            <span data-person-name className="max-w-[7.5rem] break-words font-semibold">
+                              {s.person.name}
+                            </span>{" "}
+                            <Take take={takes[s.person.id][i]} />
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  ))}
+                </ul>
+              </details>
               {/* With room: the table, its homes column kept in view as it scrolls. */}
+              <h3 className="mt-6 hidden font-semibold @md:block">Home by home</h3>
               <div className="mt-2 hidden overflow-x-auto @md:block">
                 <table className="w-full text-left text-sm">
                   <caption className="sr-only">Each home, by person</caption>
@@ -392,14 +437,14 @@ function WhatTheyWant({
                     </tr>
                   </thead>
                   <tbody>
-                    {homes.map((home) => (
+                    {homes.map((home, i) => (
                       <tr key={home.listing.ListingKey} className="border-b border-stone-100 align-top">
                         <th scope="row" className="sticky left-0 z-10 w-36 bg-white py-2 pr-3 font-medium">
                           {home.listing.UnparsedAddress}
                         </th>
                         {summaries.map((s) => (
                           <td key={s.person.id} className="py-2 pr-3">
-                            <Take take={takeOf(home, s.person.id)} />
+                            <Take take={takes[s.person.id][i]} />
                           </td>
                         ))}
                       </tr>
@@ -442,23 +487,44 @@ function Things({ label, tone, things }: { label: string; tone: "like" | "pass";
 const PRICE_RANGE = "their price range";
 
 // Why a home might suit them: "Ben: mature trees · Nina: in Seattle", and the
-// price once for everyone it suits ("Priced like homes they both liked").
+// price once, for whoever it suits ("priced like homes they both liked",
+// "priced like homes Ben and Nina liked").
 function reasonsLine(reasons: Suggestion["reasons"]) {
   const people = Object.entries(reasons).filter(([, why]) => why.length > 0);
-  const priced = people.filter(([, why]) => why.includes(PRICE_RANGE));
-  const all = priced.length > 0 && priced.length === people.length;
+  if (people.length === 0) return "";
+  const priced = people.filter(([, why]) => why.includes(PRICE_RANGE)).map(([name]) => name);
   const parts = people.flatMap(([name, why]) => {
     const own = why.filter((w) => w !== PRICE_RANGE);
-    // Only some of them: the price goes with their own reasons.
-    if (!all && why.includes(PRICE_RANGE)) own.push("priced like homes they liked");
     return own.length ? [`${name}: ${own.join(", ")}`] : [];
   });
-  if (all) {
-    const who = people.length === 1 ? people[0][0] : people.length === 2 ? "they both" : "they all";
-    parts.push(`Priced like homes ${who} liked`);
+  if (priced.length > 0) {
+    const who =
+      priced.length === people.length && people.length > 1
+        ? people.length === 2
+          ? "they both"
+          : "they all"
+        : priced.length === 1
+          ? priced[0]
+          : `${priced.slice(0, -1).join(", ")} and ${priced.at(-1)}`;
+    parts.push(`priced like homes ${who} liked`);
   }
-  // The dot stays with the reason before it when the line wraps.
-  return parts.join("\u00a0· ");
+  // The dot stays with the reason before it when the line wraps. One capital,
+  // at the start, as in a sentence.
+  const line = parts.join("\u00a0· ");
+  return line.charAt(0).toUpperCase() + line.slice(1);
+}
+
+// The kinds of things in a home that someone liked in others ("layout,
+// natural light"), for when nothing more particular is why it's suggested.
+function aspectsIn(listing: Pick<Listing, "Media">, liked: Set<Aspect>) {
+  const found = new Set<Aspect>();
+  for (const photo of listing.Media) {
+    for (const tag of photoTags(photo)) {
+      const aspect = aspectOfTag(photo, tag);
+      if (aspect && liked.has(aspect)) found.add(aspect);
+    }
+  }
+  return [...found].slice(0, 2).map((aspect) => aspectLabel(aspect).toLowerCase());
 }
 
 // Homes not on the package yet that fit what they've liked so far.
@@ -467,13 +533,33 @@ function Suggestions({
   suggestions,
   together,
   people,
+  everyone,
+  thread,
 }: {
   shareId: string;
   suggestions: Suggestion[];
   together: boolean;
   people: string[];
+  everyone: { id: string; name: string }[];
+  thread: Thread;
 }) {
   if (suggestions.length === 0) return null;
+  // The kinds of things each person has liked, in photos and in their verdicts.
+  const likedAspects = (name: string) => {
+    const ids = new Set(everyone.filter((p) => p.name === name).map((p) => p.id));
+    return new Set<Aspect>([
+      ...thread.photoLikes.filter((l) => ids.has(l.participantId)).flatMap((l) => (l.aspect ? [l.aspect] : [])),
+      ...thread.reactions.filter((r) => ids.has(r.participantId)).flatMap((r) => r.state.liked),
+    ]);
+  };
+  // Someone with no particular reason gets the kinds of things it shares with
+  // what they liked, so every pick says why.
+  const why = ({ listing, reasons }: Suggestion) =>
+    reasonsLine(
+      Object.fromEntries(
+        Object.entries(reasons).map(([name, own]) => [name, own.length ? own : aspectsIn(listing, likedAspects(name))]),
+      ),
+    );
   return (
     <section aria-labelledby="suggest-title" className="mt-6 rounded-2xl bg-white p-5 ring-1 ring-stone-200">
       <h2 id="suggest-title" className="font-display text-2xl">
@@ -498,7 +584,7 @@ function Suggestions({
                 <span className="font-display text-base text-ink">{formatPrice(listing.ListPrice)}</span> ·{" "}
                 {listing.City}
               </p>
-              <p className="text-stone-600">{reasonsLine(reasons)}</p>
+              <p className="text-stone-600">{why({ listing, reasons })}</p>
             </div>
             <form action={addSuggestedHome.bind(null, shareId, listing.ListingKey)} className="col-start-2 sm:col-start-3">
               <button
@@ -538,6 +624,7 @@ function CommentSpot({ listing, spot }: { listing: Listing; spot: NonNullable<Th
       at={tagPosition(photo, spot.tag)}
       photoNumber={index + 1}
       photoCount={listing.Media.length}
+      description={photo.ShortDescription}
     />
   );
 }
@@ -571,23 +658,32 @@ function HomePanel({ shareId, listing, thread }: { shareId: string; listing: Lis
       aria-label={listing.UnparsedAddress}
       className="scroll-mt-4 rounded-2xl bg-white p-4 ring-1 ring-stone-200 transition-[box-shadow] duration-1000 data-target:ring-2 data-target:ring-amber-300"
     >
-      <div className="flex items-start gap-3">
+      {/* On a phone, Remove sits under the words so they keep the width: the
+          address on one line, the price and city on the next. */}
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
         <div
           className={cn(
-            "relative size-18 shrink-0 overflow-hidden rounded-xl bg-stone-200",
+            "relative row-span-2 size-16 shrink-0 overflow-hidden rounded-xl bg-stone-200 sm:row-span-1 sm:size-18",
             isRemoved && "opacity-60 grayscale",
           )}
         >
           {listing.Media[0] && <Image src={listing.Media[0].MediaURL} alt="" fill sizes="72px" className="object-cover" />}
         </div>
-        <div className="min-w-0 flex-1">
-          <h3 className="font-semibold leading-snug">{listing.UnparsedAddress}</h3>
+        <div className="min-w-0">
+          {/* Focus lands here when the last comment on a removed home goes. */}
+          <h3 tabIndex={-1} className="font-semibold leading-snug outline-none">
+            {listing.UnparsedAddress}
+          </h3>
           <p className="text-sm text-stone-700">
-            <span className="font-display text-lg text-ink">{formatPrice(listing.ListPrice)}</span> · {listing.City}
+            <span className="font-display text-lg text-ink">{formatPrice(listing.ListPrice)}</span>{" "}
+            <span className="whitespace-nowrap">· {listing.City}</span>
           </p>
         </div>
         {/* C2: the Scorecard button goes here, before Remove. */}
-        <form action={setHomeRemoved.bind(null, shareId, listing.ListingKey, !isRemoved)} className="-mr-1 shrink-0">
+        <form
+          action={setHomeRemoved.bind(null, shareId, listing.ListingKey, !isRemoved)}
+          className="-ml-3 justify-self-start sm:-mr-1 sm:ml-0"
+        >
           <button
             type="submit"
             className="flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-stone-700 hover:bg-stone-100"

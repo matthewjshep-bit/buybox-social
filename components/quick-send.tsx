@@ -23,6 +23,7 @@ import {
   type ClaimResult,
   type RecentShare,
 } from "@/app/dashboard/actions";
+import { HOME_MESSAGE_TITLE, homeMessage } from "@/app/dashboard/message";
 import { ReelFeed, type SendHome } from "@/components/reel";
 import { Sheet } from "@/components/sheet";
 import { cn, formatPrice, timeAgo } from "@/lib/format";
@@ -33,8 +34,7 @@ import type { Listing } from "@/lib/listings/types";
 
 const FAILED = "That link didn't save. Tap Send again.";
 
-const messageFor = (home: SendHome) =>
-  `I picked a home for you: ${home.address}, ${formatPrice(home.price)}. Tell me what you think.`;
+const messageFor = (home: SendHome) => homeMessage(home);
 
 export const sendHomeFrom = (listing: Listing): SendHome => ({
   listingKey: listing.ListingKey,
@@ -205,7 +205,7 @@ export function useQuickSend({
     let handed: Promise<void>;
     try {
       handed = phone
-        ? navigator.share({ title: "A home for you", text, url })
+        ? navigator.share({ title: HOME_MESSAGE_TITLE, text, url })
         : navigator.clipboard.writeText(`${text} ${url}`);
     } catch (error) {
       handed = Promise.reject(error);
@@ -759,7 +759,7 @@ function DraftBody({ home, onNextToken }: { home: SendHome; onNextToken: (token:
               <button
                 type="button"
                 onClick={() =>
-                  navigator.share({ title: "A home for you", text: messageFor(home), url: link.url }).catch(() => {})
+                  navigator.share({ title: HOME_MESSAGE_TITLE, text: messageFor(home), url: link.url }).catch(() => {})
                 }
                 className={cn(action, secondary)}
               >

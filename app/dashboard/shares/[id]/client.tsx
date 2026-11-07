@@ -14,6 +14,7 @@ import {
 } from "react";
 import { cn } from "@/lib/format";
 import { addPerson, markShareSeen, removeComment, renameClient, replyAsAgent, type FormState } from "../../actions";
+import { HOME_MESSAGE_TITLE, homeMessage } from "../../message";
 
 // Looking at this page counts as seeing what's on it, so the dashboard stops
 // marking the link as new; something that arrives while it's open counts too.
@@ -130,15 +131,16 @@ export function SendLink({
   url,
   clientName,
   count,
-  address,
+  home,
   label = "Your link is ready",
   status,
 }: {
   url: string;
   clientName: string;
   count: number;
-  // The home, when the link has just one: the message names it.
-  address?: string;
+  // The home, when the link has just one: the message names it, in the same
+  // words as sending a home from its page.
+  home?: { address: string; price: number };
   label?: string;
   // Whether it's been opened, and when.
   status?: ReactNode;
@@ -148,10 +150,11 @@ export function SendLink({
   const field = useRef<HTMLInputElement>(null);
   const share = useSyncExternalStore(never, canShare, () => false);
   const greeting = clientName ? `Hi ${clientName}, ` : "";
-  const picked =
-    count === 1 && address ? `I picked a home for you: ${address}.` : `I picked ${count === 1 ? "a home" : `${count} homes`} for you.`;
-  const words = `${greeting}${picked} Tell me what you think`;
-  const message = `${words}: ${url}`;
+  const one = count === 1 && home;
+  const words = `${greeting}${
+    one ? homeMessage(home) : `I picked ${count === 1 ? "a home" : `${count} homes`} for you. Tell me what you think.`
+  }`;
+  const message = `${words} ${url}`;
   const button = "flex min-h-11 items-center justify-center gap-1.5 rounded-full";
 
   return (
@@ -177,7 +180,7 @@ export function SendLink({
           <button
             type="button"
             onClick={() => {
-              navigator.share({ text: `${words}.`, url }).catch(() => {});
+              navigator.share({ ...(one && { title: HOME_MESSAGE_TITLE }), text: words, url }).catch(() => {});
             }}
             className={cn(button, "border border-stone-300 hover:bg-stone-50")}
           >
@@ -302,6 +305,7 @@ export function SpotChip({
   at,
   photoNumber,
   photoCount,
+  description,
 }: {
   // "Covered porch", or "A spot in photo 2".
   label: string;
@@ -310,6 +314,8 @@ export function SpotChip({
   at: { x: number; y: number } | null;
   photoNumber: number;
   photoCount: number;
+  // What the photo shows, from the listing.
+  description?: string;
 }) {
   const [open, setOpen] = useState(false);
   const id = useId();
@@ -323,7 +329,7 @@ export function SpotChip({
         type="button"
         data-spot-chip
         aria-expanded={open}
-        aria-controls={id}
+        aria-controls={open ? id : undefined}
         onClick={() => setOpen((v) => !v)}
         className="flex min-h-11 max-w-full items-center gap-2 rounded-xl bg-stone-100 p-0.5 pr-3.5 text-left text-[13px] font-semibold text-stone-700 hover:bg-stone-200"
       >
@@ -350,7 +356,7 @@ export function SpotChip({
           <div className="relative aspect-[3/2] overflow-hidden rounded-xl bg-stone-200">
             <Image
               src={photo}
-              alt={`Photo ${photoNumber} of ${photoCount}`}
+              alt={description || `Photo ${photoNumber} of ${photoCount}`}
               fill
               sizes="320px"
               style={crop}
@@ -372,6 +378,17 @@ export function SpotChip({
       )}
     </div>
   );
+}
+
+// Where focus goes once a comment is gone: the next comment's "…", else the
+// one before, else the reply box (or the home itself, once it's removed).
+function focusAfter(trigger: HTMLElement | null) {
+  const item = trigger?.closest("li");
+  const home = item?.closest("section");
+  const near = [item?.nextElementSibling, item?.previousElementSibling]
+    .map((li) => li?.querySelector<HTMLElement>("[data-comment-menu]"))
+    .find(Boolean);
+  return near ?? home?.querySelector<HTMLElement>("input[id^='reply-']") ?? home?.querySelector<HTMLElement>("h3") ?? null;
 }
 
 // "…" on a comment: removing it, asked once more first.
@@ -413,10 +430,19 @@ export function CommentMenu({ commentId, name }: { commentId: string; name: stri
   }, [open]);
 
   return (
-    <div className="relative -mr-2 -mt-2 shrink-0 self-start">
+    <div
+      className="relative -mr-2 -mt-2 shrink-0 self-start"
+      // Tabbing out of it puts it away too, so it never covers what has focus.
+      onBlur={(event) => {
+        if (!open || pending || event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        setOpen(false);
+        setError(false);
+      }}
+    >
       <button
         ref={trigger}
         type="button"
+        data-comment-menu
         aria-label={`More for ${name}'s comment`}
         aria-expanded={open}
         aria-controls={open ? id : undefined}
@@ -431,7 +457,9 @@ export function CommentMenu({ commentId, name }: { commentId: string; name: stri
           id={id}
           role="dialog"
           aria-labelledby={`${id}-ask`}
-          className="absolute right-0 top-full z-20 mt-1 w-64 rounded-2xl bg-white p-3 text-sm shadow-lg ring-1 ring-stone-200"
+          // A tap on its words keeps focus inside it, so it stays open.
+          tabIndex={-1}
+          className="absolute right-0 top-full z-20 mt-1 w-64 rounded-2xl bg-white p-3 text-sm shadow-lg outline-none ring-1 ring-stone-200"
         >
           <p id={`${id}-ask`}>
             <span className="font-semibold">Remove this comment?</span> Your client won&apos;t see it.
@@ -454,15 +482,19 @@ export function CommentMenu({ commentId, name }: { commentId: string; name: stri
             <button
               type="button"
               disabled={pending}
-              onClick={() =>
+              onClick={() => {
+                const next = focusAfter(trigger.current);
                 startTransition(async () => {
                   try {
                     await removeComment(commentId);
                   } catch {
                     setError(true);
+                    return;
                   }
-                })
-              }
+                  // The comment is going; keep the agent's place in the thread.
+                  next?.focus();
+                });
+              }}
               className="min-h-11 rounded-full bg-red-700 px-4 font-semibold text-white disabled:opacity-60"
             >
               {pending ? "Removing…" : "Remove"}

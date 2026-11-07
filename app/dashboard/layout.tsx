@@ -11,7 +11,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           more room with data-wide. */}
       <div className="mx-auto max-w-3xl px-4 lg:has-[[data-wide]]:max-w-6xl">
         <DashboardNav />
-        <main className="pb-6 pt-2">{children}</main>
+        <main className="pb-6 pt-5">{children}</main>
       </div>
     </div>
   );

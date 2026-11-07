@@ -270,7 +270,7 @@ test("buyers and visitors still share the public page; an agent without a name i
   await homeIn(buyer, "96 Fernhollow Ln").getByRole("button", { name: "Share", exact: true }).click();
   await expect.poll(async () => (await shared(buyer))[0]?.url).toMatch(/\/homes\/SAMPLE-1004$/);
   await buyer.goto("/search");
-  await expect(buyer.getByRole("region", { name: "Homes" }).getByRole("article").first()).toBeAttached();
+  await expect(buyer.getByRole("region", { name: "Homes", exact: true }).getByRole("article").first()).toBeAttached();
   await expect(buyer.getByRole("button", { name: "Send this home" })).toHaveCount(0);
 
   // Someone signed out: the same.
@@ -304,7 +304,7 @@ test("buyers and visitors still share the public page; an agent without a name i
   await agent.goto("/search");
   await expect.poll(() => seen.token.length).toBe(1);
   const [token] = seen.token;
-  const homes = agent.getByRole("region", { name: "Homes" });
+  const homes = agent.getByRole("region", { name: "Homes", exact: true });
   const showing = (await homes.getByRole("article").first().getAttribute("aria-label"))!;
   // On a phone it sits beside the Map button, below the home's words, and
   // says which home it sends.

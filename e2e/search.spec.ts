@@ -150,10 +150,27 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
     "true",
   );
 
-  // No matches says so and offers a way out.
+  // No matches says so, once, right under the count beside the map, and
+  // offers a way out.
   await page.goto("/search?q=Spokane");
-  await expect(page.getByText("No homes match those filters.")).toBeVisible();
+  const none = page.getByText("No homes match those filters.").filter({ visible: true });
+  await expect(none).toHaveCount(1);
+  const zero = (await page.getByText("0 homes", { exact: true }).boundingBox())!;
+  const said = (await none.boundingBox())!;
+  expect(said.y).toBeGreaterThan(zero.y);
+  expect(Math.abs(said.x - zero.x)).toBeLessThan(2);
   await expect(page.getByRole("link", { name: "Clear all filters" })).toHaveAttribute("href", "/search");
+
+  // A little narrower, the list makes way for the map: the map and one home
+  // share the width, and what was found sits over the map on one line.
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.goto("/search");
+  await expect(page.locator(".maplibregl-canvas")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Homes found" })).toBeHidden();
+  expect((await page.locator(".maplibregl-map").boundingBox())!.width).toBeGreaterThanOrEqual(480);
+  const heading = (await page.getByRole("heading", { name: "Washington homes for sale" }).boundingBox())!;
+  const sorted = (await page.getByRole("combobox", { name: "Sort:" }).boundingBox())!;
+  expect(Math.abs(heading.y + heading.height / 2 - (sorted.y + sorted.height / 2))).toBeLessThan(4);
 
   expect(pageErrors).toEqual([]);
 });
@@ -177,6 +194,27 @@ test("on a phone, homes and the map are a tap apart, and a pin opens its home", 
   await page.getByRole("button", { name: "Map", exact: true }).click();
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
   await page.waitForTimeout(1000);
+  // Zoomed out, the Seattle homes sit close together: their prices move apart,
+  // each with a line to its home, so none covers another and every one can be
+  // read and tapped. Each pin is named for the price it shows first.
+  await expect(pins(page)).toHaveCount(13);
+  await expect(pins(page).first()).toHaveAccessibleName(/^\$\d+(\.\d+)?[KM], \d+ /);
+  await expect
+    .poll(() =>
+      pins(page).evaluateAll((chips) => {
+        const boxes = chips.map((chip) => chip.getBoundingClientRect());
+        const map = document.querySelector(".maplibregl-map")!.getBoundingClientRect();
+        let trouble = 0;
+        boxes.forEach((a, i) => {
+          if (a.left < map.left || a.right > map.right || a.top < map.top || a.bottom > map.bottom) trouble++;
+          boxes.slice(i + 1).forEach((b) => {
+            if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) trouble++;
+          });
+        });
+        return trouble;
+      }),
+    )
+    .toBe(0);
   await tapPin(page, "4127 Larkmoor Ave NE, $985,000");
   await expect(page.locator(".maplibregl-canvas")).toBeHidden();
   await expect(homeIn(page, "4127 Larkmoor Ave NE")).toBeInViewport({ ratio: 0.9 });

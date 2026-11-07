@@ -206,17 +206,14 @@ test("the agent's page about a client reads like the product: a card per home, s
       },
     });
   });
-  const { urls, dashboardUrl } = await createShare(agent, ["5902 Lakeview", "719 Saltmarsh"], ["Nina", "Ben"]);
+  const { urls, dashboardUrl } = await createShare(agent, ["5902 Lakeview", "719 Saltmarsh"], ["Nina", "Christopher"]);
 
-  // Nina likes the first home, likes a spot that isn't on anything named in
-  // the second home's second photo, and says something about its sofa.
+  // Nina hearts nothing: she only likes a spot that isn't on anything named
+  // in the second home's second photo, and says something about its sofa.
   const nina = await (await browser.newContext()).newPage();
   // A phone that has had a link before: no swipe nudges moving the homes about.
   await nina.addInitScript(() => localStorage.setItem("buybox:nudges", JSON.stringify({ photos: true, next: true })));
   await nina.goto(urls.Nina);
-  const lakeview = homeIn(nina, "5902 Lakeview Terrace SE");
-  await heartOf(lakeview).click();
-  await expect(heartOf(lakeview)).toHaveAttribute("aria-pressed", "true");
   const saltmarsh = homeIn(nina, "719 Saltmarsh Ln");
   await saltmarsh.scrollIntoViewIfNeeded();
   await expect(saltmarsh).toBeInViewport({ ratio: 0.9 });
@@ -251,16 +248,18 @@ test("the agent's page about a client reads like the product: a card per home, s
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(sheet).toBeHidden();
 
-  // Ben passes on the first, for its price.
-  const ben = await (await browser.newContext()).newPage();
-  await ben.goto(urls.Ben);
-  const more = await openMore(ben, homeIn(ben, "5902 Lakeview Terrace SE"));
+  // Christopher passes on the first, for its price.
+  const chris = await (await browser.newContext()).newPage();
+  await chris.goto(urls.Christopher);
+  const more = await openMore(chris, homeIn(chris, "5902 Lakeview Terrace SE"));
   await more.getByRole("button", { name: "Not for me" }).click();
   const why = more.getByRole("group", { name: "What made you pass?" });
   await why.getByRole("button", { name: "Price" }).click();
   await expect(why.getByRole("button", { name: "Price" })).toHaveAttribute("aria-pressed", "true");
 
-  // On a phone, home by home is a card each, a line per person, nothing cut off.
+  // On a phone, home by home is a card each, a line per person, nothing cut
+  // off, not even a long name; folded away at first, since each home further
+  // down says the same.
   await agent.setViewportSize({ width: 393, height: 852 });
   await agent.goto(dashboardUrl);
   const nav = agent.getByRole("navigation", { name: "Dashboard" });
@@ -268,16 +267,26 @@ test("the agent's page about a client reads like the product: a card per home, s
   expect((await nav.getByRole("link", { name: "Your brand" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
   const compare = agent.getByRole("region", { name: "What they each want" });
   await expect(compare.getByRole("table")).toBeHidden();
+  // A spot she liked counts: the summary and her card agree.
+  await expect(compare).toContainText("Nina liked 1 of 2 homes · passed 0");
+  await expect(compare).toContainText("Christopher liked 0 of 2 homes · passed 1");
+  await expect(compare).not.toContainText("hasn't reacted yet");
   const card = compare.getByRole("listitem").filter({ hasText: "5902 Lakeview Terrace SE" });
-  const benSays = card.getByRole("listitem").filter({ hasText: "Ben" });
+  await expect(card).toBeHidden();
+  await compare.locator("summary").filter({ hasText: "Home by home · 2 homes" }).click();
+  await expect(card).toBeVisible();
+  const chrisSays = card.getByRole("listitem").filter({ hasText: "Christopher" });
   const ninaSays = card.getByRole("listitem").filter({ hasText: "Nina" });
-  await expect(benSays).toContainText("passed on Price");
-  await expect(ninaSays).toContainText("Liked");
-  for (const line of [benSays, ninaSays]) {
+  await expect(chrisSays).toContainText("passed on Price");
+  await expect(ninaSays).toContainText("Not yet");
+  for (const line of [chrisSays, ninaSays]) {
     const box = (await line.boundingBox())!;
     expect(box.x + box.width).toBeLessThanOrEqual(393);
   }
   expect(await compare.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  const names = card.locator("[data-person-name]");
+  expect((await names.allTextContents()).sort()).toEqual(["Christopher", "Nina"]);
+  expect(await names.evaluateAll((els) => els.every((el) => el.scrollWidth <= el.clientWidth))).toBe(true);
   await expect(
     compare
       .getByRole("listitem")
@@ -306,9 +315,14 @@ test("the agent's page about a client reads like the product: a card per home, s
   // The sofa sits half way across and 82% down its photo.
   expect(Math.abs(dot.x + dot.width / 2 - (thumb.x + thumb.width * 0.5))).toBeLessThan(2);
   expect(Math.abs(dot.y + dot.height / 2 - (thumb.y + thumb.height * 0.82))).toBeLessThan(2);
+  await expect(chip).not.toHaveAttribute("aria-controls");
   await chip.click();
   await expect(chip).toHaveAttribute("aria-expanded", "true");
-  await expect(said.getByRole("img", { name: "Photo 2 of 2" })).toBeVisible();
+  // Named for what the photo shows; the caption says which photo it is.
+  const photo = said.getByRole("img", { name: "Living room with a white sofa and teal pillows" });
+  await expect(photo).toBeVisible();
+  await expect(said.getByText("Photo 2 of 2, where they tapped")).toBeVisible();
+  await expect(chip).toHaveAttribute("aria-controls", (await photo.locator("xpath=ancestor::figure").getAttribute("id"))!);
 
   // Removing a comment takes two taps, and can be called off.
   const menu = said.getByRole("button", { name: "More for Nina's comment" });
@@ -319,9 +333,21 @@ test("the agent's page about a client reads like the product: a card per home, s
   await expect(ask).toHaveCount(0);
   await expect(menu).toBeFocused();
   await expect(said).toBeVisible();
-  await menu.click();
-  await ask.getByRole("button", { name: "Remove comment from Nina" }).click();
+  // Tabbing on past it puts it away, so it never covers what has focus.
+  await agent.keyboard.press("Enter");
+  await expect(ask.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await agent.keyboard.press("Tab");
+  await agent.keyboard.press("Tab");
+  await expect(ask).toHaveCount(0);
+  // Removed with the keyboard, the place in the thread is kept: here, the
+  // reply box, as it was the only comment.
+  await menu.focus();
+  await agent.keyboard.press("Enter");
+  await agent.keyboard.press("Tab");
+  await expect(ask.getByRole("button", { name: "Remove comment from Nina" })).toBeFocused();
+  await agent.keyboard.press("Enter");
   await expect(home.getByText("Where would the TV go?")).toHaveCount(0);
+  await expect(home.getByRole("textbox", { name: "Reply to your client" })).toBeFocused();
 
   // Wide: what they want on the left, the homes and what was said on the right,
   // and the side-by-side table, its homes kept in view as it scrolls.
@@ -332,21 +358,24 @@ test("the agent's page about a client reads like the product: a card per home, s
   expect(right.x).toBeGreaterThan(left.x + left.width);
   await expect(compare.getByRole("table")).toBeVisible();
   await expect(compare.getByRole("row", { name: /^5902 Lakeview Terrace SE/ })).toContainText("passed on Price");
+  await expect(compare.locator("summary")).toBeHidden();
   expect(await compare.getByRole("rowheader").first().evaluate((el) => getComputedStyle(el).position)).toBe("sticky");
 
-  // With one home left on it, the link's message names the home, and Share…
-  // hands it to the phone's share sheet from the tap itself.
+  // With one home left on it, the link's message names the home in the same
+  // words as sending it from its page, and Share… hands it to the phone's
+  // share sheet from the tap itself.
   await home.getByRole("button", { name: "Remove 719 Saltmarsh Ln" }).click();
   await expect(agent.getByRole("region", { name: "Removed from their link" })).toBeVisible();
   // (The first link on the page, whoever's it is.)
   const firstUrl = await agent.locator("input[readonly]").first().inputValue();
+  const message = "I picked a home for you: 5902 Lakeview Terrace SE, $2,450,000. Tell me what you think.";
   await expect(agent.getByRole("link", { name: "Text" }).first()).toHaveAttribute(
     "href",
-    new RegExp(encodeURIComponent("I picked a home for you: 5902 Lakeview Terrace SE.")),
+    new RegExp(encodeURIComponent(message).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
   );
   await agent.getByRole("button", { name: "Share…" }).first().click();
   await expect.poll(() => agent.evaluate(() => (window as unknown as { shared?: ShareData }).shared?.url)).toBe(firstUrl);
-  expect(await agent.evaluate(() => (window as unknown as { shared: ShareData }).shared.text)).toContain(
-    "I picked a home for you: 5902 Lakeview Terrace SE.",
-  );
+  const handed = await agent.evaluate(() => (window as unknown as { shared: ShareData }).shared);
+  expect(handed.title).toBe("A home for you");
+  expect(handed.text).toMatch(/^Hi \w+, I picked a home for you: 5902 Lakeview Terrace SE, \$2,450,000\. Tell me what you think\.$/);
 });

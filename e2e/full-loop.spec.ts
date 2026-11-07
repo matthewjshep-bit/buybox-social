@@ -117,7 +117,8 @@ test("one package, a link for each person: they react, the agent compares and re
   const compare = agent.getByRole("region", { name: "What they each want" });
   await expect(compare).toContainText("Both like: Kitchen");
   await expect(compare).toContainText("Only Jamie: Marble counters");
-  // Home by home, on a phone a card each, with a line per person.
+  // Home by home, on a phone a card each, with a line per person, one tap away.
+  await compare.locator("summary").filter({ hasText: "Home by home" }).click();
   const larkmoor = compare.getByRole("listitem").filter({ hasText: "4127 Larkmoor Ave NE" });
   await expect(larkmoor.getByRole("listitem").filter({ hasText: "Jamie" })).toContainText("liked Kitchen · Marble counters");
   await expect(larkmoor.getByRole("listitem").filter({ hasText: "Sam" })).toContainText("Passed but liked Kitchen");

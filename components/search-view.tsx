@@ -63,10 +63,21 @@ function FilterRow({ children }: { children: ReactNode }) {
   return (
     <div
       ref={row}
+      // A filter reached with the keyboard slides fully into view, clear of the fade.
+      onFocus={(event) => {
+        const el = row.current;
+        if (!el || el.scrollWidth <= el.clientWidth) return;
+        const box = el.getBoundingClientRect();
+        const at = event.target.getBoundingClientRect();
+        const clear = 44;
+        if (at.left < box.left + clear) el.scrollBy({ left: at.left - box.left - clear });
+        else if (at.right > box.right - clear) el.scrollBy({ left: at.right - box.right + clear });
+      }}
       data-filter-row
       data-fade={[more.start && "start", more.end && "end"].filter(Boolean).join(" ") || undefined}
       style={faded ? { maskImage: fade, WebkitMaskImage: fade } : undefined}
-      className="-mx-4 flex w-[calc(100%+2rem)] gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:w-auto sm:flex-wrap sm:overflow-visible sm:px-0"
+      // Room above and below, so a focused filter's ring isn't cut off.
+      className="-mx-4 -my-1 flex w-[calc(100%+2rem)] gap-2 overflow-x-auto px-4 py-1 [scrollbar-width:none] sm:mx-0 sm:my-0 sm:w-auto sm:flex-wrap sm:overflow-visible sm:px-0 sm:py-0"
     >
       {children}
     </div>
@@ -170,8 +181,9 @@ export function SearchView({
 
   return (
     // Phones: the filters, what was found, then the homes or the map. Wide
-    // screens: the filters across the top; the map, the list and one home below.
-    <div className="flex h-[calc(100dvh-3.5rem-1px)] flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_17rem_min(40rem,44%)] lg:grid-rows-[auto_minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_20rem_min(44rem,44%)]">
+    // screens: the filters across the top; what was found over the map, one
+    // home beside it. Wider still, a list of the homes between the two.
+    <div className="flex h-[calc(100dvh-3.5rem-1px)] flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_min(46rem,50%)] lg:grid-rows-[auto_auto_minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_18rem_min(44rem,44%)] xl:grid-rows-[auto_minmax(0,1fr)]">
       <form
         role="search"
         aria-label="Filter homes"
@@ -179,7 +191,7 @@ export function SearchView({
           event.preventDefault();
           update({ q: String(new FormData(event.currentTarget).get("q") ?? "").trim() });
         }}
-        className="flex flex-wrap items-center gap-2 bg-white px-4 pb-1 pt-3 lg:col-span-3 lg:border-b lg:border-stone-200 lg:pb-3"
+        className="flex flex-wrap items-center gap-2 bg-white px-4 pb-1 pt-3 lg:col-span-2 lg:border-b lg:border-stone-200 lg:pb-3 xl:col-span-3"
       >
         <div className="relative w-full sm:w-72">
           <label htmlFor="search-q" className="sr-only">
@@ -281,22 +293,19 @@ export function SearchView({
         </FilterRow>
       </form>
 
-      {/* What was found, on one line on a phone. Wide screens: a list of the
-          homes beside the map, each bringing its home up and lighting its pin. */}
-      <section
-        aria-labelledby="results-title"
-        className="flex flex-col border-b border-stone-200 bg-white lg:col-start-2 lg:row-start-2 lg:min-h-0 lg:border-b-0 lg:border-l"
-      >
-        <div className="flex items-center justify-between gap-x-3 px-4 lg:flex-wrap lg:pt-2">
-          <h1 id="results-title" className="text-sm font-semibold max-lg:sr-only lg:w-full lg:truncate lg:pt-1">
+      {/* What was found, on one line on a phone and over the map. Wider
+          screens: a list of the homes beside the map, each bringing its home
+          up and lighting its pin. */}
+      <div className="flex flex-col border-b border-stone-200 bg-white lg:col-start-1 lg:row-start-2 xl:col-start-2 xl:min-h-0 xl:border-b-0 xl:border-l">
+        <div className="flex items-center justify-between gap-x-3 px-4 lg:justify-start xl:flex-wrap xl:justify-between xl:pt-2">
+          <h1 className="text-sm font-semibold max-lg:sr-only lg:min-w-0 lg:truncate xl:w-full xl:pt-1">
             {filters.q ? `Homes matching “${filters.q}”` : "Washington homes for sale"}
           </h1>
-          <p className="text-sm font-semibold text-ink lg:font-normal lg:text-stone-600" aria-live="polite">
+          <p className="shrink-0 text-sm font-semibold text-ink lg:font-normal lg:text-stone-600" aria-live="polite">
             {count}
           </p>
-          <label className="flex min-w-0 items-center gap-1.5 text-sm">
-            {/* The narrowest list column has room for the choice only. */}
-            <span className="shrink-0 text-stone-700 lg:max-xl:sr-only">Sort:</span>
+          <label className={cn("flex min-w-0 items-center gap-1.5 text-sm lg:ml-auto xl:ml-0", posts.length === 0 && "invisible")}>
+            <span className="shrink-0 text-stone-700">Sort:</span>
             <select
               value={shown.sort}
               onChange={(event) => update({ sort: event.target.value })}
@@ -310,54 +319,75 @@ export function SearchView({
             </select>
           </label>
         </div>
-        {posts.length > 0 && (
+        {posts.length > 0 ? (
           <ol
             ref={list}
             aria-label="Homes found"
-            className="hidden min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-stone-200 lg:block"
+            className="hidden min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-stone-200 xl:block"
           >
             {posts.map(({ listing }) => {
               const key = listing.ListingKey;
               const query = filtersQuery(filters);
+              // The whole card is the link, but only the address is its
+              // words, so it's called what it says: "Show 96 Fernhollow Ln".
               return (
-                <li key={key} data-key={key}>
-                  <a
-                    href={`/search?${query ? `${query}&` : ""}home=${encodeURIComponent(key)}`}
-                    aria-label={`Show ${listing.UnparsedAddress}`}
-                    aria-describedby={`result-${key}`}
-                    aria-current={key === activeKey ? "true" : undefined}
-                    onClick={(event) => {
-                      // A new tab still opens the link; here, it brings the home up.
-                      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                      event.preventDefault();
-                      pick(key);
-                    }}
-                    onMouseEnter={() => setHoveredKey(key)}
-                    onMouseLeave={() => setHoveredKey(null)}
-                    className="flex items-center gap-3 border-b border-stone-100 px-4 py-2.5 outline-none hover:bg-stone-50 focus-visible:bg-stone-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand aria-[current=true]:bg-stone-100 aria-[current=true]:shadow-[inset_3px_0_0_var(--brand)]"
-                  >
-                    <span className="relative h-14 w-18 shrink-0 overflow-hidden rounded-lg bg-stone-200">
-                      {listing.Media[0] && (
-                        <Image src={listing.Media[0].MediaURL} alt="" fill sizes="72px" className="object-cover" />
-                      )}
-                    </span>
-                    <span id={`result-${key}`} className="min-w-0 flex-1 leading-snug">
+                <li
+                  key={key}
+                  data-key={key}
+                  className="relative flex items-center gap-3 border-b border-stone-100 px-4 py-2.5 hover:bg-stone-50 has-[a:focus-visible]:bg-stone-50 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-inset has-[a:focus-visible]:ring-brand has-[a[aria-current=true]]:bg-stone-100 has-[a[aria-current=true]]:shadow-[inset_3px_0_0_var(--brand)]"
+                >
+                  <span className="relative h-14 w-18 shrink-0 overflow-hidden rounded-lg bg-stone-200">
+                    {listing.Media[0] && (
+                      <Image src={listing.Media[0].MediaURL} alt="" fill sizes="72px" className="object-cover" />
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1 leading-snug">
+                    <span id={`result-${key}`} className="block">
                       <span className="block font-display text-lg text-ink">{formatPrice(listing.ListPrice)}</span>
                       <span className="block truncate text-[13px] text-stone-700">{factsOf(listing)}</span>
-                      <span className="block truncate text-[13px] text-stone-600">
-                        {listing.UnparsedAddress}, {listing.City}
-                      </span>
                     </span>
-                  </a>
+                    <span className="block truncate text-[13px] text-stone-600">
+                      <a
+                        href={`/search?${query ? `${query}&` : ""}home=${encodeURIComponent(key)}`}
+                        aria-label={`Show ${listing.UnparsedAddress}`}
+                        aria-describedby={`result-${key} result-${key}-city`}
+                        aria-current={key === activeKey ? "true" : undefined}
+                        onClick={(event) => {
+                          // A new tab still opens the link; here, it brings the home up.
+                          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                          event.preventDefault();
+                          pick(key);
+                        }}
+                        onMouseEnter={() => setHoveredKey(key)}
+                        onMouseLeave={() => setHoveredKey(null)}
+                        // The card shows focus around itself, not around these words.
+                        className="outline-none! after:absolute after:inset-0"
+                      >
+                        {listing.UnparsedAddress}
+                      </a>
+                      <span id={`result-${key}-city`}>, {listing.City}</span>
+                    </span>
+                  </span>
                 </li>
               );
             })}
           </ol>
+        ) : (
+          // Beside the map, the way out is right under the count.
+          <div className="hidden border-t border-stone-200 px-4 py-6 xl:block">
+            <p className="font-semibold">No homes match those filters.</p>
+            <Link href="/search" className="mt-2 inline-block font-semibold text-brand underline">
+              Clear all filters
+            </Link>
+          </div>
         )}
-      </section>
+      </div>
 
       <div
-        className={cn("relative min-h-0 flex-1 lg:col-start-1 lg:row-start-2", mobileMap ? "block" : "hidden lg:block")}
+        className={cn(
+          "relative min-h-0 flex-1 lg:col-start-1 lg:row-start-3 xl:row-start-2",
+          mobileMap ? "block" : "hidden lg:block",
+        )}
       >
         <ListingMap
           homes={homes}
@@ -373,7 +403,7 @@ export function SearchView({
         aria-label="Homes"
         aria-busy={pending}
         className={cn(
-          "relative min-h-0 bg-stone-950 transition-opacity lg:col-start-3 lg:row-start-2 lg:block",
+          "relative min-h-0 bg-stone-950 transition-opacity lg:col-start-2 lg:row-span-2 lg:row-start-2 lg:block xl:col-start-3 xl:row-span-1",
           mobileMap ? "hidden" : "block flex-1",
           pending && "opacity-60",
         )}
@@ -383,11 +413,14 @@ export function SearchView({
           <SendPill home={sending} quick={quick} className="absolute left-3 top-3 z-30 hidden lg:flex" />
         )}
         {posts.length === 0 ? (
+          // Said once: beside the map on the widest screens, here otherwise.
           <div className="flex h-full flex-col items-center justify-center bg-surface p-8 text-center">
-            <p className="font-semibold">No homes match those filters.</p>
-            <Link href="/search" className="mt-2 inline-block font-semibold text-brand underline">
-              Clear all filters
-            </Link>
+            <div className="xl:hidden">
+              <p className="font-semibold">No homes match those filters.</p>
+              <Link href="/search" className="mt-2 inline-block font-semibold text-brand underline">
+                Clear all filters
+              </Link>
+            </div>
           </div>
         ) : (
           <ReelFeed

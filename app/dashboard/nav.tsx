@@ -25,7 +25,8 @@ export function DashboardNav() {
             aria-current={here ? "page" : within ? "true" : undefined}
             className={cn(
               "flex min-h-11 items-center rounded-full px-4",
-              within ? "bg-ink text-white" : "text-stone-700 hover:bg-stone-200/60",
+              // Marked quietly, so the page's own buttons lead.
+              within ? "bg-white font-semibold text-ink shadow-sm ring-1 ring-stone-300" : "text-stone-700 hover:bg-stone-200/60",
             )}
           >
             {label}
