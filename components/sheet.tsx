@@ -69,6 +69,7 @@ export function Sheet({
   tabs,
   bodyRef,
   footerHidden = false,
+  returnTo,
   className,
 }: {
   open: boolean;
@@ -95,6 +96,9 @@ export function Sheet({
   bodyRef?: Ref<HTMLDivElement>;
   // The footer stays (what's typed in it too) but out of sight.
   footerHidden?: boolean;
+  // Where the keyboard goes back to when what opened it has gone (it opened
+  // from a sheet that changed into this one). Asked as it opens.
+  returnTo?: () => HTMLElement | null;
   className?: string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -116,6 +120,10 @@ export function Sheet({
   const hadFocus = useRef(false);
   // The notch, measured once each time it opens.
   const notchAt = useRef<number | null>(null);
+  const returnRef = useRef(returnTo);
+  useLayoutEffect(() => {
+    returnRef.current = returnTo;
+  });
   const minTop = detents?.minTop;
 
   const anchorBox = () => anchor?.current?.getBoundingClientRect() ?? new DOMRect(0, 0, innerWidth, innerHeight);
@@ -168,12 +176,14 @@ export function Sheet({
     const shut = () => {
       const inside = el.contains(document.activeElement) || hadFocus.current;
       hadFocus.current = false;
+      const was = opener.current;
+      const back = was && was !== document.body && was.isConnected ? was : (returnRef.current?.() ?? null);
       // Beside the photo, the keyboard goes back to what opened it, before
       // it closes; over the home, the browser hands it back as it closes,
       // and if that's still out of sight, it follows once it's back.
-      if (openedDocked.current && inside) opener.current?.focus({ preventScroll: true });
+      if (openedDocked.current && inside) back?.focus({ preventScroll: true });
       el.close();
-      if (inside || !openedDocked.current) giveFocusBack(opener.current, el);
+      if (inside || !openedDocked.current) giveFocusBack(back, el);
     };
     if (!open) {
       if (el.open) shut();
@@ -187,7 +197,11 @@ export function Sheet({
       notchAt.current = null;
       openedDocked.current = docked;
       hadFocus.current = false;
-      opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      // (Opened as the sheet before it changed into this one, the button
+      // that did it has gone with it: `returnTo` stands in for it.)
+      const active = document.activeElement;
+      opener.current =
+        active instanceof HTMLElement && active !== document.body ? active : (returnRef.current?.() ?? null);
       if (docked) {
         // Placed first: opening moves the keyboard into it, which would
         // otherwise scroll whatever holds it to wherever it was. With tabs,
@@ -210,8 +224,9 @@ export function Sheet({
   }, [open, anchor, tall, docked, minTop]);
 
   // What it holds changes while it's open (the comments, then the
-  // Scorecard): the keyboard stays in it, on its title, rather than falling
-  // out of the page with the button that changed it.
+  // Scorecard): the keyboard stays in it, on its title (beside the photo,
+  // the tab that's showing), rather than falling out of the page with the
+  // button that changed it.
   const shownLabel = useRef(label);
   useLayoutEffect(() => {
     const el = dialog.current;
@@ -219,7 +234,9 @@ export function Sheet({
     shownLabel.current = label;
     if (!open || !el?.open || was === label) return;
     const now = document.activeElement;
-    if (!now || now === document.body || !el.contains(now)) heading.current?.focus({ preventScroll: true });
+    if (!now || now === document.body || !el.contains(now)) {
+      (el.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') ?? heading.current)?.focus({ preventScroll: true });
+    }
   }, [open, label]);
 
   // Slides back down (or, beside the photo, fades away), then closes.
@@ -305,16 +322,6 @@ export function Sheet({
     >
       {docked ? (
         <div className={cn("relative flex shrink-0 items-center border-b border-stone-100 py-2 pr-2", tabs ? "pl-3" : "pl-5")}>
-          {/* Close first for the keyboard (in from the buttons beside it),
-              last on screen. */}
-          <button
-            type="button"
-            onClick={dismiss}
-            aria-label="Close"
-            className="order-last flex size-11 shrink-0 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-ink"
-          >
-            <X aria-hidden size={20} />
-          </button>
           {tabs ? (
             <div className="min-w-0 flex-1">{tabs}</div>
           ) : (
@@ -322,6 +329,14 @@ export function Sheet({
               {title}
             </h2>
           )}
+          <button
+            type="button"
+            onClick={dismiss}
+            aria-label="Close"
+            className="flex size-11 shrink-0 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-ink"
+          >
+            <X aria-hidden size={20} />
+          </button>
         </div>
       ) : (
         // The handle and title: drag them down to close (or, with two

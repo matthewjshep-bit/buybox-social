@@ -89,7 +89,8 @@ test("public pages show activity, never private words, and private threads share
   await expect(card).not.toContainText(/pass/i);
   const buzz = card.getByLabel("Activity");
   await expect(buzz).toContainText("agents sent it to 1 buyer");
-  await expect(buzz).toContainText("2 comments in private chats");
+  // (The one shared here shows among the comments, so isn't counted again.)
+  await expect(buzz).toContainText("1 comment in private chats");
   await expect(buzz).not.toContainText("pass");
   await expect(card.getByText(SECRET)).toHaveCount(0);
   await expect(card.getByText(/Riley|Quinn/)).toHaveCount(0);

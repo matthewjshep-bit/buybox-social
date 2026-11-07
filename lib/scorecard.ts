@@ -18,7 +18,7 @@ import {
   type FactTag,
   type PhotoLikes,
 } from "./photos";
-import { aspectLabel, describeReaction, topAspects, type Aspect, type AspectCounts, type ReactionState } from "./reactions";
+import { aspectLabel, topAspects, type Aspect, type AspectCounts, type ReactionState } from "./reactions";
 import type { PhotoThing, TimelineComment, TimelineItem, TimelineReaction } from "./timeline";
 
 // Public pages; an agent's link, as the people on it see it; or the agent's
@@ -63,6 +63,8 @@ export type AspectRow = {
 
 export type SpotRow = {
   id: string;
+  // Every spot it stands for (two taps on the same front door are one row).
+  ids: string[];
   spot: ScorecardSpot;
   // "Front door"; "A spot in the kitchen"
   name: string;
@@ -72,6 +74,7 @@ export type SpotRow = {
   index: number;
   // Where on the photo (null: the photo as a whole).
   at: { x: number; y: number } | null;
+  // How many people (one who tapped it twice is one).
   count: number;
   names: string[];
   others: number;
@@ -115,7 +118,8 @@ export type Scorecard = {
   agree: { label: string; things: string[] }[] | null;
   photos: { loved: SpotRow[]; pause: SpotRow[] | null; pauseNone: string | null } | null;
   said: { top: TimelineComment[]; total: number; privateMore: number };
-  take: { line: string | null; reacted: boolean; forYou: string[] | null };
+  // "You liked this.", then what you liked and didn't, as lists.
+  take: { verdict: string | null; liked: string[]; disliked: string[]; reacted: boolean; forYou: string[] | null };
   people: PersonTake[] | null;
   facts: FactRow[];
   about: { remarks: string | null; listedBy: string | null; sample: boolean };
@@ -271,11 +275,14 @@ export function buildScorecard(
     viewer,
     agentName,
     siblings,
+    myName,
   }: {
     viewer?: ScorecardViewer;
     agentName?: string;
     // The other homes on the same link, to compare with.
     siblings?: FeedPost[];
+    // Your first name, so you're never "not yet" on your own link.
+    myName?: string | null;
   } = {},
 ): Scorecard {
   const { listing } = post;
@@ -317,7 +324,10 @@ export function buildScorecard(
   const quiet = total === 0 && comments.length === 0 && privateMore === 0 && people.every((person) => !hasTake(person));
   const few = named && total <= 5;
   const members = post.members ?? [];
-  const reactedNames = new Set(people.filter(hasTake).map((person) => person.name.toLowerCase()));
+  // (You're "You" here: by your own name too.)
+  const reactedNames = new Set(
+    people.filter(hasTake).flatMap((person) => (person.you && myName ? [person.name, myName] : [person.name]).map((n) => n.toLowerCase())),
+  );
   const feel: Scorecard["feel"] = {
     likes,
     passes,
@@ -370,7 +380,7 @@ export function buildScorecard(
       const who = peopleFor(aspect, tone).sort((a, b) => Number(b.you) - Number(a.you));
       const shown = who.filter((person) => !person.anonymous).map((person) => person.name);
       const rows = (tone === "like" ? loved : pause).filter((row) => aspectOfSpot(listing, row) === aspect);
-      const about = new Set(rows.map((row) => row.id));
+      const about = new Set(rows.flatMap((row) => row.ids));
       return {
         aspect,
         label: aspectLabel(aspect),
@@ -385,24 +395,6 @@ export function buildScorecard(
   const likedAspects = aspectRows("like");
   const dislikedAspects = aspectRows("dislike");
 
-  // ② What people say.
-  const say = total >= 3 ? sayOf(listing, people, likedAspects, dislikedAspects, loved, pause, named, total) : null;
-  const latest = [...post.timeline.map((item) => item.at), post.buzz.lastActivityAt ?? ""].sort().at(-1) || null;
-
-  // ④ Where you agree.
-  const agree = named ? agreeOf(listing, people) : null;
-
-  // ⑦ Your take.
-  const you = people.find((person) => person.you);
-  const state = viewer?.state ?? post.mine;
-  const yourLikes = you ? you.liked.map((thing) => thing.tag) : [];
-  const yourDislikes = you ? you.disliked.map((thing) => thing.tag) : [];
-  const take = {
-    line: state.reaction || yourLikes.length || yourDislikes.length ? `You ${describeReaction(state, yourLikes, yourDislikes)}` : null,
-    reacted: Boolean(state.reaction),
-    forYou: mode === "public" && post.reasons.length > 0 ? post.reasons : null,
-  };
-
   // ⑧ The facts.
   const factTally = (tag: FactTag) => ({
     tag,
@@ -411,6 +403,7 @@ export function buildScorecard(
     comments: comments.filter((c) => !c.parentId && c.spot?.mediaKey === FACTS && c.spot.tag === tag).length,
   });
   const none = { likes: 0, dislikes: 0, comments: 0 };
+  const address = factTally("Address");
   const facts: FactRow[] = [
     { label: "Price", value: formatPrice(listing.ListPrice), ...factTally("Price") },
     ...(listing.LivingArea > 0
@@ -422,12 +415,31 @@ export function buildScorecard(
     ...(listing.YearBuilt ? [{ label: "Year built", value: String(listing.YearBuilt), ...none }] : []),
     ...(listing.PropertySubType ? [{ label: "Home type", value: listing.PropertySubType, ...none }] : []),
     ...(listing.OnMarketDate ? [{ label: "On the market since", value: onMarket(listing.OnMarketDate), ...none }] : []),
-    {
-      label: "City and ZIP",
-      value: [listing.City, listing.PostalCode].filter(Boolean).join(" "),
-      ...factTally("Address"),
-    },
+    // What people said about the address goes on a row of its own, so it
+    // never looks like the ZIP code they liked.
+    ...(address.likes + address.dislikes + address.comments > 0
+      ? [{ label: "Address", value: listing.UnparsedAddress, ...address }]
+      : []),
+    { label: "City and ZIP", value: [listing.City, listing.PostalCode].filter(Boolean).join(" "), ...none },
   ];
+
+  // ② What people say.
+  const say = total >= 3 ? sayOf(listing, people, likedAspects, dislikedAspects, loved, pause, facts, named, total) : null;
+  const latest = [...post.timeline.map((item) => item.at), post.buzz.lastActivityAt ?? ""].sort().at(-1) || null;
+
+  // ④ Where you agree.
+  const agree = named ? agreeOf(listing, people) : null;
+
+  // ⑦ Your take.
+  const you = people.find((person) => person.you);
+  const state = viewer?.state ?? post.mine;
+  const take = {
+    verdict: state.reaction === "like" ? "You liked this." : state.reaction === "dislike" ? "You passed on this." : null,
+    liked: takeList(state.liked, you?.liked ?? []),
+    disliked: takeList(state.disliked, you?.disliked ?? []),
+    reacted: Boolean(state.reaction),
+    forYou: mode === "public" && post.reasons.length > 0 ? post.reasons : null,
+  };
 
   // ⑩ Activity, on public pages: never a pass.
   const activity =
@@ -435,7 +447,8 @@ export function buildScorecard(
       ? [
           post.buzz.views > 0 && plural(post.buzz.views, "view"),
           post.buzz.sends > 0 && `agents sent it to ${plural(post.buzz.sends, "buyer")}`,
-          post.privateComments > 0 && `${plural(post.privateComments, "comment")} in private chats`,
+          // (Those shared here already show among the comments.)
+          privateMore > 0 && `${plural(privateMore, "comment")} in private chats`,
         ]
           .filter(Boolean)
           .join(" · ") || null
@@ -524,11 +537,27 @@ function onMarket(date: string, now = new Date()) {
   return `${day} · ${days === 0 ? "today" : plural(days, "day")}`;
 }
 
+// Your take, as a list: what you picked, then named things in the photos
+// and facts, each once, then how many other spots ("Vibe", "Covered porch",
+// "Address", "2 spots in the photos").
+function takeList(aspects: Aspect[], things: PhotoThing[]) {
+  const named = things.map((thing) => thing.tag).filter((tag) => !isPointTag(tag));
+  const seen = new Set<string>();
+  const out = [...aspects.map(aspectLabel), ...named.map(capital)].filter((thing) => {
+    const key = thing.toLowerCase();
+    return seen.has(key) ? false : (seen.add(key), true);
+  });
+  const spots = things.length - named.length;
+  if (spots > 0) out.push(spots === 1 ? "1 spot in a photo" : `${spots} spots in the photos`);
+  return out;
+}
+
 const fromLine = (reactions: number, comments: number) =>
   `From ${[plural(reactions, "reaction"), comments > 0 && plural(comments, "comment")].filter(Boolean).join(" and ")}`;
 
 // The spots people liked (or didn't) in the photos, most first, then newest.
-// A thing liked at two points (two taps on the front door) is one row.
+// A thing liked at two points (two taps on the front door) is one row, and
+// its count is people, not taps.
 function spotRowsOf(
   listing: Listing,
   people: ScorecardPerson[],
@@ -536,7 +565,9 @@ function spotRowsOf(
   tone: "like" | "dislike",
   named: boolean,
 ): SpotRow[] {
-  const rows = new Map<string, SpotRow>();
+  // Who's behind each row, by person; and how many the page counts but
+  // can't say who (at most, on any one spot).
+  const rows = new Map<string, { row: SpotRow; keys: Set<string>; unknown: number }>();
   const order = Object.entries(counts)
     .filter(([id, n]) => n > 0 && splitId(id).mediaKey !== FACTS)
     .sort((a, b) => b[1] - a[1]);
@@ -545,7 +576,6 @@ function spotRowsOf(
     const index = listing.Media.findIndex((m) => mediaKeyOf(m) === spot.mediaKey);
     const photo = listing.Media[index];
     if (!photo) continue;
-    const name = spotName(listing, photo, index, spot.tag);
     const thing = thingOf(photo, spot.tag);
     // Grouped by the thing on the photo; spots on nothing named stay apart.
     const key = thing ? `${spot.mediaKey}\u0000=${thing.toLowerCase()}` : id;
@@ -559,35 +589,42 @@ function spotRowsOf(
     );
     const newest = times.sort().at(-1) ?? "";
     const names = who.filter((person) => named || !person.anonymous).map((person) => person.name);
-    const row = rows.get(key);
-    if (row) {
-      row.count += count;
-      row.names = [...new Set([...row.names, ...names])];
-      row.others = Math.max(0, row.count - row.names.length);
-      if (newest > row.newest) row.newest = newest;
-      continue;
-    }
-    const where = [photo.ImageOf, `photo ${index + 1}`].filter(Boolean).join(" · ");
-    rows.set(key, {
-      id,
-      spot,
-      name,
-      where,
-      photo,
-      index,
-      at: tagPosition(photo, spot.tag),
-      count,
-      names,
-      others: Math.max(0, count - names.length),
-      newest,
-      tone,
-    });
+    const unknown = Math.max(0, count - who.length);
+    const had = rows.get(key);
+    const at = had ?? {
+      row: {
+        id,
+        ids: [],
+        spot,
+        name: spotName(listing, photo, index, spot.tag),
+        where: [photo.ImageOf, `photo ${index + 1}`].filter(Boolean).join(" · "),
+        photo,
+        index,
+        at: tagPosition(photo, spot.tag),
+        count: 0,
+        names: [],
+        others: 0,
+        newest,
+        tone,
+      },
+      keys: new Set<string>(),
+      unknown: 0,
+    };
+    at.row.ids.push(id);
+    for (const person of who) at.keys.add(person.key);
+    at.unknown = Math.max(at.unknown, unknown);
+    at.row.names = [...new Set([...at.row.names, ...names])];
+    if (newest > at.row.newest) at.row.newest = newest;
+    at.row.count = at.keys.size + at.unknown;
+    at.row.others = Math.max(0, at.row.count - at.row.names.length);
+    rows.set(key, at);
   }
-  return [...rows.values()].sort((a, b) => b.count - a.count || b.newest.localeCompare(a.newest));
+  return [...rows.values()].map(({ row }) => row).sort((a, b) => b.count - a.count || b.newest.localeCompare(a.newest));
 }
 
 // A theme: an aspect or a named thing chosen by two or more people (on an
-// agent's link, a pass by one person can be named).
+// agent's link, a pass by one person can be named). Counted in people: on a
+// link, everyone by name; in public, the most any one count gives.
 type Theme = { label: string; count: number; who: string[] };
 
 function themesOf(
@@ -595,6 +632,7 @@ function themesOf(
   people: ScorecardPerson[],
   aspects: AspectRow[],
   spots: SpotRow[],
+  facts: FactRow[],
   tone: "like" | "dislike",
   named: boolean,
 ): Theme[] {
@@ -602,19 +640,32 @@ function themesOf(
   const add = (label: string, count: number, who: string[]) => {
     const same = themes.find((t) => t.label.toLowerCase() === label.toLowerCase());
     if (same) {
-      same.count = Math.max(same.count, count);
       same.who = [...new Set([...same.who, ...who])];
-    } else themes.push({ label, count, who });
+      same.count = named ? same.who.length : Math.max(same.count, count);
+    } else themes.push({ label, count: named ? who.length : count, who });
   };
+  const holding = (match: (thing: PhotoThing) => boolean) =>
+    named ? people.filter((p) => (tone === "like" ? p.liked : p.disliked).some(match)).map((p) => p.name) : [];
   for (const row of aspects) add(row.label, row.count, named ? people.filter((p) => aspectsOf(listing, p, tone).has(row.aspect)).map((p) => p.name) : []);
   for (const row of spots) {
     if (row.name.startsWith("A spot")) continue;
-    // Two different people, not two taps by one.
-    const count = named ? row.names.length : row.count;
-    add(row.name, count, row.names);
+    add(row.name, row.count, row.names);
+  }
+  // The facts, as the facts table counts them: the price under "Price", the
+  // address under "Location".
+  for (const fact of facts) {
+    const n = tone === "like" ? fact.likes : fact.dislikes;
+    if (!fact.tag || n === 0) continue;
+    const tag = fact.tag;
+    const aspect = aspectOfFact(tag);
+    add(aspect ? aspectLabel(aspect) : tag, n, holding((t) => t.mediaKey === FACTS && (t.spot ?? t.tag) === tag));
   }
   return themes.sort((a, b) => b.count - a.count);
 }
+
+// "Most people", "A few people": how many, in words, of everyone who reacted.
+const howMany = (n: number, total: number) =>
+  n > total / 2 ? "Most people" : n === 2 ? "A couple of people" : n <= 4 ? "A few people" : "People";
 
 // One or two sentences on what people say, from what they did: no AI, no
 // superlatives, no percentages, and the credit goes to the people.
@@ -625,11 +676,13 @@ function sayOf(
   disliked: AspectRow[],
   loved: SpotRow[],
   pause: SpotRow[],
+  facts: FactRow[],
   named: boolean,
   total: number,
 ): string[] {
-  const likes = themesOf(listing, people, liked, loved, "like", named).filter((t) => t.count >= 2);
-  const passes = themesOf(listing, people, disliked, pause, "dislike", named);
+  const allLikes = themesOf(listing, people, liked, loved, facts, "like", named);
+  const likes = allLikes.filter((t) => t.count >= 2);
+  const passes = themesOf(listing, people, disliked, pause, facts, "dislike", named);
   const sentences: string[] = [];
   const reactors = people.filter(hasTake).length;
   if (named && reactors <= 4) {
@@ -645,25 +698,33 @@ function sayOf(
       const what = passes.filter((t) => t.who.join() === pass.who.join()).slice(0, 3);
       sentences.push(`${namesList(pass.who)} didn't like ${thingsList(what.map((t) => t.label))}.`);
     } else {
-      const solo = themesOf(listing, people, liked, loved, "like", named).find((t) => t.who.length === 1);
+      const solo = allLikes.find((t) => t.who.length === 1);
       if (solo && sentences.length > 0) sentences.push(`Only ${solo.who[0]} liked ${thingsList([solo.label])}.`);
     }
     return sentences.slice(0, 2);
   }
-  if (likes.length > 0) {
-    const listed = likes.slice(0, 3);
-    // True of every one listed: the least of them.
-    const n = Math.min(...listed.map((t) => t.count));
-    const who = n > total / 2 ? "Most people" : n === 2 ? "A couple of people" : n <= 4 ? "A few people" : "People";
-    sentences.push(`${who} like ${thingsList(listed.map((t) => t.label))}.`);
+  // The top three, each said with the words true of it: "Most people like
+  // the kitchen and the aesthetic. A few people like the exterior."
+  const groups: { who: string; labels: string[] }[] = [];
+  for (const theme of likes.slice(0, 3)) {
+    const who = howMany(theme.count, total);
+    if (groups.at(-1)?.who === who) groups.at(-1)!.labels.push(theme.label);
+    else groups.push({ who, labels: [theme.label] });
   }
+  const said = groups.map((group) => `${group.who} like ${thingsList(group.labels)}.`);
   const passing = passes.filter((t) => t.count >= 2 || (named && t.who.length === 1));
+  let pass: string | null = null;
   if (passing[0]) {
     const n = passing[0].count;
-    const what = passing.filter((t) => t.count === n).slice(0, 3);
-    const who = named && passing[0].who.length === 1 ? passing[0].who[0] : `${capital(numberWord(n))} people`;
-    sentences.push(`${who} didn't like ${thingsList(what.map((t) => t.label))}.`);
+    const one = named && passing[0].who.length === 1 ? passing[0].who : null;
+    // The same people, if it's one person by name; otherwise, as many.
+    const what = passing.filter((t) => t.count === n && (!one || t.who.join() === one.join())).slice(0, 3);
+    const who = one ? one[0] : `${capital(numberWord(n))} people`;
+    pass = `${who} didn't like ${thingsList(what.map((t) => t.label))}.`;
   }
+  if (said[0]) sentences.push(said[0]);
+  if (pass) sentences.push(pass);
+  else if (said[1]) sentences.push(said[1]);
   return sentences;
 }
 

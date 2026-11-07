@@ -42,8 +42,9 @@ import type { TimelineComment, TimelineItem } from "@/lib/timeline";
 
 // The spot whose card is open. `keyboard`: it was picked by keyboard, so the
 // card takes focus. `fromLine`: opened from the activity line, which takes
-// the keyboard back when it closes.
-export type PickedSpot = PhotoSpot & { keyboard?: boolean; fromLine?: boolean };
+// the keyboard back when it closes. `back`: opened from somewhere else (the
+// Scorecard), which takes the keyboard back instead.
+export type PickedSpot = PhotoSpot & { keyboard?: boolean; fromLine?: boolean; back?: HTMLElement | null };
 
 export type Photos = ReturnType<typeof usePhotoLikes>;
 
@@ -280,11 +281,13 @@ export function SpotLayer({
   // just spread out, or the one whose card was opened from it and is closed.
   const [focusTo, setFocusTo] = useState<{ tag: string; n: number } | null>(null);
   const focusOn = (tag: string) => setFocusTo((now) => ({ tag, n: (now?.n ?? 0) + 1 }));
-  // (One opened from the activity line gives it back there instead.)
+  // (One opened from the activity line, or the Scorecard, gives it back
+  // there instead.)
   const openTag = picked?.mediaKey === photoKey ? picked?.tag : undefined;
-  const [wasOpen, setWasOpen] = useState({ tag: openTag, fromLine: Boolean(picked?.fromLine) });
+  const elsewhere = Boolean(picked?.fromLine || picked?.back);
+  const [wasOpen, setWasOpen] = useState({ tag: openTag, fromLine: elsewhere });
   if (openTag !== wasOpen.tag) {
-    setWasOpen({ tag: openTag, fromLine: Boolean(picked?.fromLine) });
+    setWasOpen({ tag: openTag, fromLine: elsewhere });
     if (wasOpen.tag && !openTag && picked === null && !wasOpen.fromLine) focusOn(wasOpen.tag);
   }
   const focused = useRef(0);

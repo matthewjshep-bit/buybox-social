@@ -408,8 +408,15 @@ function Feed({
   // until you move on to another.
   const [bare, setBare] = useState<number | null>(null);
   if (bare !== null && bare !== active) setBare(null);
-  // A spot to go to, from a comment about it. `n` counts requests.
-  const [goToSpot, setGoToSpot] = useState<{ key: string; spot: SpotRef; n: number } | null>(null);
+  // A spot to go to, from a comment about it. `n` counts requests. From the
+  // Scorecard by keyboard, the card takes it, and gives it `back` on closing.
+  const [goToSpot, setGoToSpot] = useState<{
+    key: string;
+    spot: SpotRef;
+    n: number;
+    keyboard?: boolean;
+    back?: HTMLElement | null;
+  } | null>(null);
   // Homes whose photos show what people said and liked where they said it.
   const [pinned, setPinned] = useState<Set<string>>(() => new Set());
   const pin = (key: string, on: boolean) =>
@@ -436,14 +443,6 @@ function Feed({
       JSON.stringify(now[key]) === JSON.stringify({ liked, disliked }) ? now : { ...now, [key]: { liked, disliked } },
     );
   }, []);
-  const viewerOf = (post: FeedPost): ScorecardViewer => {
-    const key = post.listing.ListingKey;
-    return {
-      state: reactions.states[key] ?? post.mine,
-      liked: yours[key]?.liked ?? post.photoLikes.mine,
-      disliked: yours[key]?.disliked ?? post.photoLikes.mineDisliked,
-    };
-  };
 
   // Which screen is showing.
   useEffect(() => {
@@ -648,6 +647,30 @@ function Feed({
   };
 
   const sheetPost = sheet && posts.find((post) => post.listing.ListingKey === sheet.key);
+  // You, as you are now on the home the sheet is about, for its Scorecard:
+  // the same object until something of yours changes, so the Scorecard isn't
+  // worked out again each time anything else on the page does.
+  const sheetKey = sheetPost?.listing.ListingKey;
+  const sheetState = sheetKey ? reactions.states[sheetKey] : undefined;
+  const sheetYours = sheetKey ? yours[sheetKey] : undefined;
+  const sheetViewer = useMemo<ScorecardViewer | undefined>(
+    () =>
+      sheetPost
+        ? {
+            state: sheetState ?? sheetPost.mine,
+            liked: sheetYours?.liked ?? sheetPost.photoLikes.mine,
+            disliked: sheetYours?.disliked ?? sheetPost.photoLikes.mineDisliked,
+          }
+        : undefined,
+    [sheetPost, sheetState, sheetYours],
+  );
+  // On a link known to be one person's: the Scorecard says "only you", as
+  // the comment box does.
+  const alone = mode === "share" && !canInvite && (posts[0]?.members?.length ?? 2) <= 1;
+  // A home's own button on the rail (the Scorecard's, More's), for the
+  // keyboard to go back to.
+  const railButton = (key: string, which: "scorecard" | "more") =>
+    frame.current?.querySelector<HTMLElement>(`[data-home="${CSS.escape(key)}"] [data-follow="${which}"]`) ?? null;
   const reviewed = posts.filter((post) => reactions.states[post.listing.ListingKey]?.reaction).length;
 
   return (
@@ -809,7 +832,8 @@ function Feed({
         section={sheet?.kind === "scorecard" ? sheet.section : undefined}
         mode={mode}
         agentName={agentName}
-        viewer={sheetPost ? viewerOf(sheetPost) : undefined}
+        viewer={sheetViewer}
+        alone={alone}
         myName={myName}
         canShare={sheetPost ? reactions.states[sheetPost.listing.ListingKey]?.reaction === "like" : false}
         anchor={wide ? dock : frame}
@@ -831,16 +855,16 @@ function Feed({
           setGoToSpot((current) => ({ key, spot, n: (current?.n ?? 0) + 1 }));
         }}
         // From the Scorecard: to the spot on its photo, with its card open
-        // (beside the photo, the Scorecard stays).
-        onScorecardSpot={(key, spot) => {
-          if (!wide) setSheet(null);
-          setGoToSpot((current) => ({ key, spot, n: (current?.n ?? 0) + 1 }));
-        }}
-        // A fact's card opens in the words the sheet is over (or beside the
-        // photo, in the white panel it stands in for), so it goes first.
-        onOpenFact={(key, tag) => {
-          setSheet(null);
-          setGoToSpot((current) => ({ key, spot: { mediaKey: FACTS, tag }, n: (current?.n ?? 0) + 1 }));
+        // (beside the photo, the Scorecard stays, and the keyboard comes back
+        // to the row after). A fact's card opens in the words the sheet is
+        // over (or beside the photo, in the white panel it stands in for),
+        // so for a fact it goes first, at any width. Gone first, too, so the
+        // card can take the keyboard (nothing behind a sheet can).
+        onScorecardSpot={(key, spot, keyboard) => {
+          const stays = wide && spot.mediaKey !== FACTS;
+          const back = stays ? (document.activeElement as HTMLElement | null) : railButton(key, "scorecard");
+          if (!stays) flushSync(() => setSheet(null));
+          setGoToSpot((current) => ({ key, spot, n: (current?.n ?? 0) + 1, keyboard, back }));
         }}
         onLike={(key) => reactions.choose(key, "like")}
         // "Not for me", then More, to say why.
@@ -860,6 +884,9 @@ function Feed({
         agentName={agentName}
         // Side by side, up from the foot of the white panel, like the comments.
         anchor={wide ? dock : frame}
+        // Turned to from the Scorecard ("Change your take"), the keyboard
+        // goes back to the Scorecard's button on the rail.
+        returnTo={() => (sheetPost ? railButton(sheetPost.listing.ListingKey, "scorecard") : null)}
         onPass={() => sheetPost && reactions.choose(sheetPost.listing.ListingKey, "dislike")}
         onToggle={(aspect) => sheetPost && reactions.toggle(sheetPost.listing.ListingKey, aspect)}
         onNext={() => {
@@ -1047,8 +1074,8 @@ function Panel({
   // What people said and liked shows on the photos, where they said it.
   pinsShown: boolean;
   onPins: (on: boolean) => void;
-  // Go to this spot, from a comment about it.
-  goToSpot: { spot: SpotRef; n: number } | null;
+  // Go to this spot, from a comment about it (or the Scorecard).
+  goToSpot: { spot: SpotRef; n: number; keyboard?: boolean; back?: HTMLElement | null } | null;
   // Just a look (beside the map): a tap anywhere opens the home full screen.
   onOpen?: () => void;
   onMore: () => void;
@@ -1087,7 +1114,7 @@ function Panel({
   const [went, setWent] = useState(0);
   if (goToSpot && goToSpot.n !== went && goToSpot.spot.mediaKey === FACTS) {
     setWent(goToSpot.n);
-    setPicked({ ...goToSpot.spot, x: 0, y: 0 });
+    setPicked({ ...goToSpot.spot, x: 0, y: 0, keyboard: goToSpot.keyboard, back: goToSpot.back });
   } else if (goToSpot && goToSpot.n !== went) {
     setWent(goToSpot.n);
     const index = listing.Media.findIndex((m) => mediaKeyOf(m) === goToSpot.spot.mediaKey);
@@ -1098,7 +1125,7 @@ function Panel({
       setShow({ index, n: goToSpot.n });
       setPhoto(index);
       setSettled(index);
-      if (at) setPicked({ ...goToSpot.spot, ...at });
+      if (at) setPicked({ ...goToSpot.spot, ...at, keyboard: goToSpot.keyboard, back: goToSpot.back });
     }
   }
   // Tell the page which photos have been seen, as each settles on screen.
@@ -1327,15 +1354,43 @@ function Panel({
     setPicked({ ...spot, ...at, keyboard, fromLine: true });
     if (tap === "spot-comments") onCommentsAbout(spot);
   };
+  // A fact's card asked for with a key takes it as soon as it can: on a
+  // phone, the words it opens in are still coming back from under the sheet.
+  useEffect(() => {
+    if (!picked?.keyboard || picked.mediaKey !== FACTS) return;
+    let frame = 0;
+    let tries = 0;
+    const take = () => {
+      const card = words.current?.querySelector<HTMLElement>("[data-spot-card]");
+      if (!card || card.contains(document.activeElement)) return;
+      card.querySelector<HTMLElement>("button[aria-pressed]")?.focus({ preventScroll: true });
+      if (!card.contains(document.activeElement) && ++tries < 30) frame = requestAnimationFrame(take);
+    };
+    frame = requestAnimationFrame(take);
+    return () => cancelAnimationFrame(frame);
+  }, [picked]);
   // A card opened from the line, closed: the keyboard goes back to the line
-  // (unless it's gone somewhere else meanwhile).
+  // (unless it's gone somewhere else meanwhile). One opened from the
+  // Scorecard goes back there: its row, or (the sheet gone) its button on
+  // the rail, as soon as that's back in view.
   const lastPicked = useRef(picked);
   useLayoutEffect(() => {
     const was = lastPicked.current;
     lastPicked.current = picked;
-    if (!was?.fromLine || picked || !active) return;
-    const now = document.activeElement;
-    if (!now || now === document.body) tickerLine.current?.focus({ preventScroll: true });
+    if (!(was?.fromLine || was?.back) || picked || !active) return;
+    let frame = 0;
+    let tries = 0;
+    const giveBack = () => {
+      const now = document.activeElement;
+      if (now && now !== document.body) return;
+      if (was.back) {
+        if (!was.back.isConnected) return;
+        was.back.focus({ preventScroll: true });
+        if (document.activeElement !== was.back && ++tries < 30) frame = requestAnimationFrame(giveBack);
+      } else tickerLine.current?.focus({ preventScroll: true });
+    };
+    giveBack();
+    return () => cancelAnimationFrame(frame);
   }, [picked, active]);
 
   const likeWhatsShown = (shown: ListingMedia) => {
@@ -1614,6 +1669,7 @@ function Panel({
               photos={onOpen || !photos.enabled ? null : photos}
               lit={litFact}
               open={picked?.mediaKey === FACTS && isFactTag(picked.tag) ? picked.tag : null}
+              keyboard={picked?.mediaKey === FACTS && picked.keyboard}
               onOpen={(tag) =>
                 setPicked((now) => (now?.mediaKey === FACTS && now.tag === tag ? null : { mediaKey: FACTS, tag, x: 0, y: 0 }))
               }
@@ -1881,6 +1937,7 @@ function Facts({
   photos,
   lit = null,
   open,
+  keyboard = false,
   onOpen,
   onClose,
   onComment,
@@ -1889,6 +1946,9 @@ function Facts({
   listing: Listing;
   items: TimelineItem[];
   trending: boolean;
+  // The open one was asked for with a key (from the Scorecard): its card
+  // takes the keyboard.
+  keyboard?: boolean;
   // Null where they're just to read (beside the map).
   photos: Photos | null;
   // The one the line above is about just now: it lights up.
@@ -1988,6 +2048,7 @@ function Facts({
           comments={said(open)}
           photos={photos}
           inline={fine}
+          keyboard={keyboard}
           onClose={onClose}
           onComment={() => onComment({ mediaKey: FACTS, tag: open })}
           onPosted={onPosted}
@@ -2329,6 +2390,7 @@ function HomeSheet({
   agentName,
   viewer,
   myName,
+  alone,
   canShare,
   anchor,
   docked,
@@ -2339,7 +2401,6 @@ function HomeSheet({
   onPostedSpot,
   onShowSpot,
   onScorecardSpot,
-  onOpenFact,
   onLike,
   onPass,
   onOpenMore,
@@ -2356,6 +2417,8 @@ function HomeSheet({
   agentName?: string;
   viewer?: ScorecardViewer;
   myName: string | null;
+  // On an agent's link known to be this person's alone.
+  alone: boolean;
   canShare: boolean;
   // The feed (phones), or the white panel it takes the place of (wide).
   anchor: RefObject<HTMLElement | null>;
@@ -2368,8 +2431,8 @@ function HomeSheet({
   onCompose: (listingKey: string) => void;
   onPostedSpot: (listingKey: string) => void;
   onShowSpot: (listingKey: string, spot: SpotRef) => void;
-  onScorecardSpot: (listingKey: string, spot: SpotRef) => void;
-  onOpenFact: (listingKey: string, tag: FactTag) => void;
+  // To a spot in the photos, or one of the facts (`keyboard`: pressed with a key).
+  onScorecardSpot: (listingKey: string, spot: SpotRef, keyboard?: boolean) => void;
   onLike: (listingKey: string) => void;
   onPass: (listingKey: string) => void;
   onOpenMore: (listingKey: string) => void;
@@ -2450,12 +2513,13 @@ function HomeSheet({
             }}
             className={cn(
               "flex min-h-11 items-center gap-1.5 rounded-full px-4 text-[15px] font-semibold transition-colors",
-              selected ? "bg-stone-100 text-ink" : "text-stone-600 hover:bg-stone-50 hover:text-ink",
+              // The one showing: filled in ink, plain at a glance.
+              selected ? "bg-ink text-white" : "text-stone-600 hover:bg-stone-100 hover:text-ink",
             )}
           >
             {which === "comments" ? "Comments" : "Scorecard"}
             {which === "comments" && comments > 0 && (
-              <span className="tabular-nums text-stone-500">{comments.toLocaleString("en-US")}</span>
+              <span className={cn("tabular-nums", selected ? "text-white/80" : "text-stone-600")}>{comments.toLocaleString("en-US")}</span>
             )}
           </button>
         );
@@ -2529,8 +2593,9 @@ function HomeSheet({
               agentName={agentName}
               viewer={viewer}
               myName={myName}
-              onShowSpot={(at) => onScorecardSpot(post.listing.ListingKey, at)}
-              onOpenFact={(tag) => onOpenFact(post.listing.ListingKey, tag)}
+              alone={alone}
+              onShowSpot={(at, keyboard) => onScorecardSpot(post.listing.ListingKey, at, keyboard)}
+              onOpenFact={(tag, keyboard) => onScorecardSpot(post.listing.ListingKey, { mediaKey: FACTS, tag }, keyboard)}
               onAllComments={() => onSwitch(post.listing.ListingKey, "comments")}
               onCompose={() => onCompose(post.listing.ListingKey)}
               onLike={() => onLike(post.listing.ListingKey)}
@@ -2539,6 +2604,25 @@ function HomeSheet({
             />
           ) : (
             <>
+              {!spot && !tabbed && (
+                // What everyone thinks of the home: at the top, where it shows
+                // at either height, then what people said.
+                <div className="-mt-1 mb-3 border-b border-stone-100 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => onSwitch(post.listing.ListingKey, "scorecard")}
+                    aria-label="See the scorecard: what people think of this home"
+                    className="-mx-2 flex min-h-11 w-[calc(100%+1rem)] items-center gap-2.5 rounded-xl px-2 py-1 text-left hover:bg-stone-50"
+                  >
+                    <ClipboardList aria-hidden size={18} className="shrink-0 text-brand" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px] font-semibold leading-5 text-ink">See the scorecard</span>
+                      <span className="block truncate text-[13px] leading-[18px] text-stone-600">What people think of this home</span>
+                    </span>
+                    <ChevronRight aria-hidden size={18} className="shrink-0 text-stone-400" />
+                  </button>
+                </div>
+              )}
               <Timeline
                 listingKey={post.listing.ListingKey}
                 items={items}
@@ -2565,18 +2649,6 @@ function HomeSheet({
                   ) : undefined
                 }
               />
-              {!spot && !tabbed && (
-                // What everyone thinks of the home, after what they said.
-                <button
-                  type="button"
-                  onClick={() => onSwitch(post.listing.ListingKey, "scorecard")}
-                  className="mt-6 flex min-h-11 w-full items-center gap-2.5 rounded-xl border-t border-stone-100 pt-3 text-left text-[15px] font-semibold text-ink hover:text-stone-700"
-                >
-                  <ClipboardList aria-hidden size={18} className="shrink-0 text-brand" />
-                  <span className="min-w-0 flex-1">See the scorecard: what people think of this home</span>
-                  <ChevronRight aria-hidden size={18} className="shrink-0 text-stone-400" />
-                </button>
-              )}
               {mode === "public" && !spot && (
                 <p className="mt-6 text-center text-xs text-stone-500">
                   Comments here are public. Buyers&apos; private chats with their agents stay private unless they choose to
@@ -2602,11 +2674,13 @@ function MoreSheet({
   onPhotoOnly,
   onClose,
   anchor,
+  returnTo,
 }: {
   post: FeedPost | null;
   state: ReactionState;
   agentName?: string;
   anchor: RefObject<HTMLElement | null>;
+  returnTo?: () => HTMLElement | null;
   onPass: () => void;
   onToggle: (aspect: Aspect) => void;
   onNext: () => void;
@@ -2615,7 +2689,7 @@ function MoreSheet({
 }) {
   const passed = state.reaction === "dislike";
   return (
-    <Sheet open={Boolean(post)} onClose={onClose} label="More" title="More" anchor={anchor}>
+    <Sheet open={Boolean(post)} onClose={onClose} label="More" title="More" anchor={anchor} returnTo={returnTo}>
       {post && (
         <div className="flex flex-col gap-5">
           <button

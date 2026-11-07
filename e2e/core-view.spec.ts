@@ -430,7 +430,11 @@ test("on a desktop, comments sit beside the photo, which can still be tapped; Es
   const more = home.getByRole("button", { name: "More options" });
   await more.focus();
   await page.keyboard.press("Tab");
+  // (First, in its header, the tab that's showing; Close after it.)
+  await expect(sheet.getByRole("tab", { name: /^Comments/ })).toBeFocused();
+  await page.keyboard.press("Tab");
   await expect(sheet.getByRole("button", { name: "Close" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
   await page.keyboard.press("Shift+Tab");
   await expect(more).toBeFocused();
   // Escape closes it from anywhere: from out on the buttons, the keyboard

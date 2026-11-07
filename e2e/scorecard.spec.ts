@@ -142,7 +142,7 @@ test("public and private: a link's people, passes and words stay on the link, an
   await expect(card.getByLabel(/passed$/)).toHaveCount(0);
   await expect(card.getByText("People pass on")).toHaveCount(0);
   await expect(card.getByText("Gave people pause")).toHaveCount(0);
-  await expect(card.getByText("and 1 in private chats")).toBeVisible();
+  await expect(card.getByText("and 1 more comment in private chats")).toBeVisible();
   await expect(card).not.toContainText(/pass/i);
   await expect(card).not.toContainText(/Uma|Vic|Saturday/);
   await expect(card.getByText(WES_SAYS)).toBeVisible();
@@ -179,9 +179,16 @@ test("public and private: a link's people, passes and words stay on the link, an
   await expect(card.getByRole("heading", { name: "About this home" })).toBeInViewport();
   await wes.keyboard.press("Escape");
 
-  // On the link: names, where they agree, the pass and the dislike, and
+  // On the link: the same buttons down the side (no Share on a link of
+  // one's own), then names, where they agree, the pass and the dislike, and
   // nothing from the public page.
   await uma.reload();
+  const umaRail = homeIn(uma, ALDER)
+    .locator("[data-keep-clear]")
+    .filter({ has: uma.getByRole("button", { name: /^Like (?!the )/ }) });
+  const onLink = [/^Like 16420 NE Alder Crest Way/, /^Comments/, "Scorecard", "More options"];
+  await expect(umaRail.getByRole("button")).toHaveCount(onLink.length);
+  for (const [i, name] of onLink.entries()) await expect(umaRail.getByRole("button").nth(i)).toHaveAccessibleName(name);
   const umaCard = await openScorecard(uma, homeIn(uma, ALDER));
   await expect(umaCard.getByText("From the people on this link · only they and Sage Agent see this")).toBeVisible();
   await expect(umaCard).toContainText("You liked it · Vic passed");
@@ -206,11 +213,23 @@ test("on a desktop, the Scorecard is a tab beside the comments, and the panel sa
   await page.goto("/homes/SAMPLE-1011");
   const home = homeIn(page, ALDER);
   await settled(home);
+  // Something for it to say: a like, its front door, and a word.
+  await heartOf(home).click();
+  await joinAs(page, "Kofi");
+  await expect(heartOf(home)).toHaveAttribute("aria-pressed", "true");
+  const door = await likeInPhoto(home, "the front door");
+  await door.getByRole("button", { name: "Close" }).click();
+  const chat = await openComments(page, home);
+  await chat.getByLabel("Add a comment").fill("The walk up to the door is lovely.");
+  await chat.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(chat.getByText("The walk up to the door is lovely.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(chat).toBeHidden();
 
   // In the white panel, in brief: how people feel and what they say, and the way in.
   const brief = home.getByRole("heading", { name: "What people think" }).locator("..");
   await expect(brief).toBeVisible();
-  await expect(brief.getByLabel("3 people liked it")).toBeVisible();
+  await expect(brief.getByLabel(/^\d+ (person|people) liked it$/)).toBeVisible();
   await brief.getByRole("button", { name: "Open the scorecard" }).click();
   const card = page.getByRole("dialog", { name: "Scorecard" });
   await expect(card).toBeVisible();
@@ -238,8 +257,22 @@ test("on a desktop, the Scorecard is a tab beside the comments, and the panel sa
   // Who liked it, in the panel, opens it too.
   await home.getByRole("button", { name: /^Liked by .+\. See the scorecard$/ }).click();
   await expect(card).toBeVisible();
-  // A spot in the photos: the photo shows it, the Scorecard stays.
-  await card.getByRole("button", { name: /^Front door, photo 1, / }).click();
-  await expect(home.getByRole("group", { name: "Front door" })).toBeVisible();
+  // "See all" from the keyboard: the comments, with the keyboard on their tab.
+  await card.getByRole("button", { name: /^See all \d+ comments?$/ }).press("Enter");
+  await expect(comments).toBeVisible();
+  await expect(comments.getByRole("tab", { name: /^Comments/ })).toBeFocused();
+  await comments.getByRole("tab", { name: "Scorecard" }).click();
   await expect(card).toBeVisible();
+  // A spot in the photos: the photo shows it, the Scorecard stays. From the
+  // keyboard, the spot's card takes it, and gives it back to the row.
+  const row = card.getByRole("button", { name: /^Front door, photo 1, / });
+  await row.press("Enter");
+  const spot = home.getByRole("group", { name: "Front door" });
+  await expect(spot).toBeVisible();
+  await expect(card).toBeVisible();
+  await expect(spot.getByRole("button", { name: /^Like the front door/ })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(spot).toBeHidden();
+  await expect(card).toBeVisible();
+  await expect(row).toBeFocused();
 });

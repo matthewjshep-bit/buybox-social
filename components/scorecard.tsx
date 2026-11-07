@@ -2,7 +2,8 @@
 
 import { ClipboardList, Hand, Heart, Lock, MapPin, MessageCircle, Sparkles, ThumbsDown, User } from "lucide-react";
 import Image from "next/image";
-import { useMemo, useState, type ReactNode } from "react";
+import { useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { AspectSummary } from "@/components/aspect-summary";
 import type { SpotRef } from "@/components/listing-thread";
 import type { FeedPost } from "@/lib/feed";
@@ -38,6 +39,7 @@ export function ScorecardBody({
   siblings,
   viewer,
   myName,
+  alone = false,
   onShowSpot,
   onOpenFact,
   onAllComments,
@@ -56,9 +58,13 @@ export function ScorecardBody({
   viewer?: ScorecardViewer;
   // Your first name, for your face.
   myName?: string | null;
-  // To a spot on the photo (or, for a fact, its card).
-  onShowSpot?: (spot: SpotRef) => void;
-  onOpenFact?: (tag: FactTag) => void;
+  // On an agent's link that's known to be yours alone: "Only you and {agent}
+  // see this", as the comment box says.
+  alone?: boolean;
+  // To a spot on the photo (or, for a fact, its card). `keyboard`: pressed
+  // with a key, so the card that opens takes the keyboard.
+  onShowSpot?: (spot: SpotRef, keyboard?: boolean) => void;
+  onOpenFact?: (tag: FactTag, keyboard?: boolean) => void;
   onAllComments?: () => void;
   // The comments, with the cursor in the box.
   onCompose?: () => void;
@@ -71,8 +77,8 @@ export function ScorecardBody({
   onReply?: () => void;
 }) {
   const card = useMemo(
-    () => buildScorecard(post, mode, { viewer, agentName, siblings }),
-    [post, mode, viewer, agentName, siblings],
+    () => buildScorecard(post, mode, { viewer, agentName, siblings, myName }),
+    [post, mode, viewer, agentName, siblings, myName],
   );
   const share = mode !== "public";
   const agent = agentCalled(agentName);
@@ -80,7 +86,8 @@ export function ScorecardBody({
 
   return (
     <div className="flex flex-col gap-6 pb-2 text-ink">
-      <header>
+      {/* (Plain boxes, not a page's banner and footer: the site has those.) */}
+      <div>
         <p className="text-[15px] font-semibold leading-snug">{card.header.address}</p>
         <p className="mt-0.5 text-[13px] text-stone-600">
           <span className="font-display font-semibold text-ink">{card.header.line.split(" · ")[0]}</span>
@@ -89,10 +96,12 @@ export function ScorecardBody({
         {share && (
           <p className="mt-2 inline-flex items-start gap-1.5 rounded-2xl bg-stone-100 px-2.5 py-1.5 text-[13px] leading-[18px] text-stone-700">
             <Lock aria-hidden size={12} className="mt-[3px] shrink-0" />
-            From the people on this link · only they and {agent} see this
+            {alone && mode === "share"
+              ? `Only you and ${agent} see this`
+              : `From the people on this link · only they and ${agent} see this`}
           </p>
         )}
-      </header>
+      </div>
 
       {card.quiet ? (
         <Quiet share={share} agent={agent} />
@@ -126,6 +135,8 @@ export function ScorecardBody({
                   liked: card.aspects.liked.filter((row) => row.you).map((row) => row.aspect),
                   disliked: (card.aspects.disliked ?? []).filter((row) => row.you).map((row) => row.aspect),
                 }}
+                // (Someone can like the home and still not like its light.)
+                dislikeNote="What people didn't like, whether or not they passed"
                 detail={(aspect, tone) => (
                   <AspectDetail
                     row={(tone === "like" ? card.aspects.liked : (card.aspects.disliked ?? [])).find((r) => r.aspect === aspect)}
@@ -225,7 +236,7 @@ export function ScorecardBody({
         </Section>
       )}
 
-      <footer className="border-t border-stone-200 pt-4">
+      <div className="border-t border-stone-200 pt-4">
         {mode === "public" ? (
           card.activity && (
             <p aria-label="Activity" className="text-[13px] text-stone-600">
@@ -258,7 +269,7 @@ export function ScorecardBody({
             <p className="mt-2 text-[13px] text-stone-600">{capital(agent)} sees what you like and say on this link.</p>
           </>
         )}
-      </footer>
+      </div>
     </div>
   );
 }
@@ -301,22 +312,27 @@ function Factoids({ card }: { card: Scorecard }) {
     { n: comments, label: comments === 1 ? "comment" : "comments", name: `${comments} ${comments === 1 ? "comment" : "comments"}`, icon: <MessageCircle size={14} className="text-stone-500" /> },
   ];
   return (
-    <ul className={cn("grid gap-3", items.length === 3 ? "grid-cols-3" : "grid-cols-2")}>
-      {items.map((item) => (
-        <li key={item.label} aria-label={item.name}>
-          <p aria-hidden className="font-display text-[28px] font-semibold leading-8 tabular-nums">
-            {item.n.toLocaleString("en-US")}
-          </p>
-          <p aria-hidden className="flex items-center gap-1 text-[13px] text-stone-600">
-            {item.icon}
-            {item.label}
-          </p>
-          {item.label.startsWith("comment") && privateMore > 0 && (
-            <p className="mt-0.5 text-[13px] text-stone-600">and {privateMore} in private chats</p>
-          )}
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className={cn("grid gap-3", items.length === 3 ? "grid-cols-3" : "grid-cols-2")}>
+        {items.map((item) => (
+          <li key={item.label} aria-label={item.name}>
+            <p aria-hidden className="font-display text-[28px] font-semibold leading-8 tabular-nums">
+              {item.n.toLocaleString("en-US")}
+            </p>
+            <p aria-hidden className="flex items-center gap-1 text-[13px] text-stone-600">
+              {item.icon}
+              {item.label}
+            </p>
+          </li>
+        ))}
+      </ul>
+      {/* On a line of its own, under the numbers, so none of them wraps. */}
+      {privateMore > 0 && (
+        <p className="mt-1.5 text-[13px] text-stone-600">
+          and {privateMore} more {privateMore === 1 ? "comment" : "comments"} in private chats
+        </p>
+      )}
+    </>
   );
 }
 
@@ -368,9 +384,12 @@ function Feel({ card, myName }: { card: Scorecard; myName?: string | null }) {
           {passes > 0 && <span style={{ flex: passes }} className="bg-amber-500" />}
         </div>
       )}
+      {/* With passes, every one of them is said: someone who passed but
+          liked a thing in the photos counts above among the likes, and here
+          among the passes, so the numbers add up. */}
       {people >= 5 && (
         <p className="mt-1.5 text-[13px] text-stone-600">
-          {likedOnly} of {people} liked it
+          {passes > 0 ? `Of ${people} people, ${likedOnly} liked it and ${passes} passed` : `${likedOnly} of ${people} liked it`}
         </p>
       )}
     </div>
@@ -396,27 +415,52 @@ function Face({ name, size = "md", ring = false }: { name: string | null; size?:
 }
 
 // Who and where behind one aspect.
-function AspectDetail({ row, share, onShowSpot }: { row?: AspectRow; share: boolean; onShowSpot?: (spot: SpotRef) => void }) {
+function AspectDetail({
+  row,
+  share,
+  onShowSpot,
+}: {
+  row?: AspectRow;
+  share: boolean;
+  onShowSpot?: (spot: SpotRef, keyboard?: boolean) => void;
+}) {
   if (!row) return null;
   const who = [...row.names, ...(row.others > 0 ? [`${row.others} ${share ? (row.others === 1 ? "other" : "others") : row.others === 1 ? "buyer" : "buyers"}`] : [])];
+  // Each photo once, with every spot on it, most liked first; a tap goes to
+  // the first of them.
+  const byPhoto = new Map<number, SpotRow[]>();
+  for (const spot of row.spots) byPhoto.set(spot.index, [...(byPhoto.get(spot.index) ?? []), spot]);
+  const photos = [...byPhoto.values()].slice(0, 6);
   return (
     <div className="flex flex-col gap-2.5 pl-0.5">
       {who.length > 0 && <p className="text-[13px] text-stone-700">{namesList(who)}</p>}
-      {row.spots.length > 0 && (
+      {photos.length > 0 && (
         <ul className="flex flex-wrap gap-2">
-          {row.spots.slice(0, 6).map((spot) => (
-            <li key={spot.id}>
-              <button
-                type="button"
-                disabled={!onShowSpot}
-                onClick={() => onShowSpot?.(spot.spot)}
-                aria-label={`${spot.name}, photo ${spot.index + 1}. Show it on the photo`}
-                className="block rounded-xl disabled:cursor-default"
-              >
-                <Thumb photo={spot.photo} at={spot.at} tone={spot.tone} height={56} />
-              </button>
-            </li>
-          ))}
+          {photos.map((spots) => {
+            const first = spots[0];
+            return (
+              <li key={first.id}>
+                <button
+                  type="button"
+                  disabled={!onShowSpot}
+                  onClick={(event) => onShowSpot?.(first.spot, event.detail === 0)}
+                  aria-label={
+                    spots.length === 1
+                      ? `${first.name}, photo ${first.index + 1}. Show it on the photo`
+                      : `Photo ${first.index + 1}: ${namesList(spots.map((spot) => spot.name))}. Show it on the photo`
+                  }
+                  className="flex flex-col items-start gap-0.5 rounded-xl text-left disabled:cursor-default"
+                >
+                  <Thumb photo={first.photo} dots={spots.flatMap((spot) => (spot.at ? [spot.at] : []))} tone={first.tone} height={56} />
+                  {spots.length > 1 && (
+                    <span aria-hidden className="pl-0.5 text-[12px] leading-4 text-stone-600">
+                      {spots.length} spots
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
       {row.comments.slice(0, 2).map((comment) => (
@@ -428,16 +472,19 @@ function AspectDetail({ row, share, onShowSpot }: { row?: AspectRow; share: bool
   );
 }
 
-// A photo in miniature, whole, at its own shape, with a dot where it happened.
+// A photo in miniature, whole, at its own shape, with a dot where it happened
+// (or one for each spot on it).
 function Thumb({
   photo,
   at,
+  dots,
   tone,
   width,
   height,
 }: {
   photo: ListingMedia;
-  at: { x: number; y: number } | null;
+  at?: { x: number; y: number } | null;
+  dots?: { x: number; y: number }[];
   tone: "like" | "dislike";
   width?: number;
   height?: number;
@@ -448,15 +495,16 @@ function Thumb({
   return (
     <span style={{ width: w, height: h }} className="relative block shrink-0 overflow-hidden rounded-xl bg-stone-200">
       <Image src={photo.MediaURL} alt="" fill sizes={`${w}px`} className="object-contain" />
-      {at && (
+      {(dots ?? (at ? [at] : [])).map((dot, i) => (
         <span
-          style={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }}
+          key={i}
+          style={{ left: `${dot.x * 100}%`, top: `${dot.y * 100}%` }}
           className={cn(
             "absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white",
             tone === "like" ? "bg-rose-500" : "bg-amber-500",
           )}
         />
-      )}
+      ))}
     </span>
   );
 }
@@ -475,38 +523,46 @@ function SpotList({
   share: boolean;
   // The agent's dashboard: a tap shows it bigger, here.
   agent: boolean;
-  onShowSpot?: (spot: SpotRef) => void;
+  onShowSpot?: (spot: SpotRef, keyboard?: boolean) => void;
 }) {
   const [all, setAll] = useState(false);
   const [big, setBig] = useState<string | null>(null);
   const like = rows[0]?.tone !== "dislike";
   const shown = all ? rows : rows.slice(0, SHOWN);
+  const list = useRef<HTMLUListElement>(null);
+  const ids = useId();
   return (
     <div>
       <h4 className={cn("text-[13px] font-semibold", like ? "text-rose-900" : "text-amber-900")}>{title}</h4>
-      <ul className="mt-1 flex flex-col">
-        {shown.map((row) => {
+      <ul ref={list} className="mt-1 flex flex-col">
+        {shown.map((row, i) => {
           const what =
             row.tone === "like"
               ? `${row.count} ${row.count === 1 ? "like" : "likes"}`
               : `${row.count} ${row.count === 1 ? "person" : "people"} didn't like it`;
           const who = [...row.names, ...(row.others > 0 ? [`${row.others} ${row.others === 1 ? "other" : "others"}`] : [])];
+          // The room and who, as the eye reads them, said after the name.
+          const where = `${ids}-${i}-where`;
+          const whom = `${ids}-${i}-who`;
           return (
             <li key={row.id}>
               <button
                 type="button"
                 aria-label={`${row.name}, photo ${row.index + 1}, ${what}. ${agent ? (big === row.id ? "Show it smaller" : "Show it bigger") : "Show it on the photo"}`}
+                aria-describedby={who.length > 0 ? `${where} ${whom}` : where}
                 aria-expanded={agent ? big === row.id : undefined}
                 disabled={!agent && !onShowSpot}
-                onClick={() => (agent ? setBig(big === row.id ? null : row.id) : onShowSpot?.(row.spot))}
+                onClick={(event) => (agent ? setBig(big === row.id ? null : row.id) : onShowSpot?.(row.spot, event.detail === 0))}
                 className="-mx-2 flex min-h-16 w-[calc(100%+1rem)] items-center gap-3 rounded-xl px-2 py-1.5 text-left hover:bg-stone-50 disabled:cursor-default disabled:hover:bg-transparent"
               >
                 <Thumb photo={row.photo} at={row.at} tone={row.tone} width={72} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[15px] font-semibold leading-5">{row.name}</span>
-                  <span className="block truncate text-[13px] leading-[18px] text-stone-600">{row.where}</span>
+                  <span id={where} className="block truncate text-[13px] leading-[18px] text-stone-600">
+                    {row.where}
+                  </span>
                   {who.length > 0 && (
-                    <span className="block truncate text-[13px] leading-[18px] text-stone-600">
+                    <span id={whom} className="block truncate text-[13px] leading-[18px] text-stone-600">
                       {share ? who.join(", ") : namesList(who)}
                     </span>
                   )}
@@ -532,7 +588,11 @@ function SpotList({
       {!all && rows.length > SHOWN && (
         <button
           type="button"
-          onClick={() => setAll(true)}
+          onClick={() => {
+            // The button goes; the keyboard moves on to the first row it showed.
+            flushSync(() => setAll(true));
+            list.current?.querySelectorAll<HTMLElement>(":scope > li > button")[SHOWN]?.focus();
+          }}
           className="-mx-2 flex min-h-11 items-center rounded-xl px-2 text-[15px] font-semibold text-brand hover:bg-stone-50"
         >
           Show all {rows.length}
@@ -551,15 +611,19 @@ function Said({
 }: {
   card: Scorecard;
   post: FeedPost;
-  onShowSpot?: (spot: SpotRef) => void;
+  onShowSpot?: (spot: SpotRef, keyboard?: boolean) => void;
   onAllComments?: () => void;
   onCompose?: () => void;
 }) {
   const { top, total, privateMore } = card.said;
+  const chats = `${privateMore} ${privateMore === 1 ? "comment is" : "comments are"} in private chats.`;
   return (
     <div>
       {top.length === 0 ? (
-        <p className="text-[15px] text-stone-600">No one has commented yet.</p>
+        // Said only in private: one plain line, never "yet" and "more" at once.
+        <p className="text-[15px] text-stone-600">
+          {privateMore > 0 ? `No one has commented in public yet. ${chats}` : "No one has commented yet."}
+        </p>
       ) : (
         <ul className="flex flex-col gap-4">
           {top.map((comment) => (
@@ -567,7 +631,7 @@ function Said({
           ))}
         </ul>
       )}
-      {privateMore > 0 && (
+      {top.length > 0 && privateMore > 0 && (
         <p className="mt-3 text-[13px] text-stone-600">
           {privateMore} more in private chats
         </p>
@@ -596,7 +660,15 @@ function Said({
   );
 }
 
-function SaidItem({ comment, post, onShowSpot }: { comment: TimelineComment; post: FeedPost; onShowSpot?: (spot: SpotRef) => void }) {
+function SaidItem({
+  comment,
+  post,
+  onShowSpot,
+}: {
+  comment: TimelineComment;
+  post: FeedPost;
+  onShowSpot?: (spot: SpotRef, keyboard?: boolean) => void;
+}) {
   const spot = comment.spot;
   return (
     <li className="flex gap-3">
@@ -619,7 +691,15 @@ function SaidItem({ comment, post, onShowSpot }: { comment: TimelineComment; pos
 }
 
 // "the porch", to go there.
-function SpotChip({ listing, spot, onShowSpot }: { listing: FeedPost["listing"]; spot: SpotRef; onShowSpot?: (spot: SpotRef) => void }) {
+function SpotChip({
+  listing,
+  spot,
+  onShowSpot,
+}: {
+  listing: FeedPost["listing"];
+  spot: SpotRef;
+  onShowSpot?: (spot: SpotRef, keyboard?: boolean) => void;
+}) {
   const name = spotName(listing, spot);
   const body = (
     <>
@@ -630,7 +710,7 @@ function SpotChip({ listing, spot, onShowSpot }: { listing: FeedPost["listing"];
   const chip = "mt-1 inline-flex min-h-7 items-center gap-1 rounded-full bg-stone-100 px-2 text-[12px] font-semibold text-stone-700";
   if (!onShowSpot) return <span className={chip}>{body}</span>;
   return (
-    <button type="button" onClick={() => onShowSpot(spot)} className={cn(chip, "hit-44 hover:bg-stone-200")}>
+    <button type="button" onClick={(event) => onShowSpot(spot, event.detail === 0)} className={cn(chip, "hit-44 hover:bg-stone-200")}>
       <span className="sr-only">About </span>
       {body}
       <span className="sr-only">: show it</span>
@@ -649,12 +729,27 @@ function Take({
   onPass?: () => void;
   onOpenMore?: () => void;
 }) {
-  const { line, reacted, forYou } = card.take;
+  const { verdict, liked, disliked, reacted, forYou } = card.take;
   const button = "flex min-h-11 items-center justify-center gap-2 rounded-full px-5 text-[15px] font-semibold";
+  // The first button stays the same button as it changes from "I like it"
+  // to "Change your take", so the keyboard stays on it.
+  const first = reacted ? onOpenMore : onLike;
   return (
     <div className="flex flex-col gap-3">
-      {line ? (
-        <p className="text-[15px] leading-6">{line}</p>
+      {verdict || liked.length > 0 || disliked.length > 0 ? (
+        <div className="flex flex-col gap-1 text-[15px] leading-6">
+          {verdict && <p>{verdict}</p>}
+          {liked.length > 0 && (
+            <p>
+              <span className="font-semibold">What you liked:</span> {liked.join(" · ")}
+            </p>
+          )}
+          {disliked.length > 0 && (
+            <p>
+              <span className="font-semibold">What you didn&apos;t like:</span> {disliked.join(" · ")}
+            </p>
+          )}
+        </div>
       ) : (
         <p className="text-[15px] leading-6 text-stone-600">You haven&apos;t weighed in yet.</p>
       )}
@@ -664,32 +759,41 @@ function Take({
           For you: {forYou.join(" · ")}
         </p>
       )}
-      {reacted
-        ? onOpenMore && (
-            <button type="button" onClick={onOpenMore} className={cn(button, "self-start border border-stone-300 hover:border-stone-500")}>
-              Change your take
-            </button>
-          )
-        : (onLike || onPass) && (
-            <div className="flex flex-wrap gap-2">
-              {onLike && (
-                <button type="button" onClick={onLike} className={cn(button, "bg-rose-50 text-rose-800 ring-1 ring-rose-200 hover:bg-rose-100")}>
+      {(first || (!reacted && onPass)) && (
+        <div className="flex flex-wrap gap-2">
+          {first && (
+            <button
+              type="button"
+              onClick={first}
+              className={cn(
+                button,
+                reacted
+                  ? "border border-stone-300 hover:border-stone-500"
+                  : "bg-rose-50 text-rose-800 ring-1 ring-rose-200 hover:bg-rose-100",
+              )}
+            >
+              {reacted ? (
+                "Change your take"
+              ) : (
+                <>
                   <Heart aria-hidden size={17} />I like it
-                </button>
+                </>
               )}
-              {onPass && (
-                <button type="button" onClick={onPass} className={cn(button, "border border-stone-300 hover:border-stone-500")}>
-                  <ThumbsDown aria-hidden size={17} />
-                  Not for me
-                </button>
-              )}
-            </div>
+            </button>
           )}
+          {!reacted && onPass && (
+            <button type="button" onClick={onPass} className={cn(button, "border border-stone-300 hover:border-stone-500")}>
+              <ThumbsDown aria-hidden size={17} />
+              Not for me
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function Facts({ rows, onOpenFact }: { rows: FactRow[]; onOpenFact?: (tag: FactTag) => void }) {
+function Facts({ rows, onOpenFact }: { rows: FactRow[]; onOpenFact?: (tag: FactTag, keyboard?: boolean) => void }) {
   return (
     <dl className="flex flex-col text-[15px]">
       {rows.map((row) => {
@@ -701,9 +805,12 @@ function Facts({ rows, onOpenFact }: { rows: FactRow[]; onOpenFact?: (tag: FactT
         ].filter(Boolean);
         const value = (
           <>
-            <span className="font-medium text-ink">{row.label === "Price" ? <span className="font-display font-semibold">{row.value}</span> : row.value}</span>
+            {/* (A long address gives way to the counts beside it.) */}
+            <span className="min-w-0 truncate font-medium text-ink">
+              {row.label === "Price" ? <span className="font-display font-semibold">{row.value}</span> : row.value}
+            </span>
             {reacted && (
-              <span aria-hidden className="flex items-center gap-2 text-[13px] text-stone-600">
+              <span aria-hidden className="flex shrink-0 items-center gap-2 text-[13px] text-stone-600">
                 {row.likes > 0 && (
                   <span className="flex items-center gap-0.5 tabular-nums">
                     <Heart size={12} className="fill-rose-500 text-rose-500" />
@@ -728,19 +835,19 @@ function Facts({ rows, onOpenFact }: { rows: FactRow[]; onOpenFact?: (tag: FactT
         );
         return (
           <div key={row.label} className="flex min-h-11 items-center justify-between gap-4 border-b border-stone-100 last:border-b-0">
-            <dt className="text-stone-600">{row.label}</dt>
+            <dt className="shrink-0 text-stone-600">{row.label}</dt>
             <dd className="min-w-0 text-right">
               {reacted && onOpenFact ? (
                 <button
                   type="button"
-                  onClick={() => onOpenFact(row.tag!)}
+                  onClick={(event) => onOpenFact(row.tag!, event.detail === 0)}
                   aria-label={`${row.label}, ${row.value}: ${tally.join(", ")}. Show it`}
                   className="-mr-2 flex min-h-11 items-center gap-3 rounded-xl px-2 hover:bg-stone-50"
                 >
                   {value}
                 </button>
               ) : (
-                <span className="flex items-center justify-end gap-3">{value}</span>
+                <span className="flex min-w-0 items-center justify-end gap-3">{value}</span>
               )}
             </dd>
           </div>
@@ -813,7 +920,7 @@ export function WhatPeopleThink({
   myName?: string | null;
   onOpen: () => void;
 }) {
-  const card = useMemo(() => buildScorecard(post, mode, { viewer }), [post, mode, viewer]);
+  const card = useMemo(() => buildScorecard(post, mode, { viewer, myName }), [post, mode, viewer, myName]);
   if (card.quiet) return null;
   return (
     <div className="mt-4 rounded-2xl bg-stone-50 p-4">
