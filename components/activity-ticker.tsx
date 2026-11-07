@@ -1,13 +1,13 @@
 "use client";
 
-import { ChevronRight, Hand, Pause, Play, User } from "lucide-react";
+import { Hand, Pause, Play, StepForward, User } from "lucide-react";
 import Image from "next/image";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type Ref, type RefObject } from "react";
 import { EventFace, markDot, markOf } from "@/components/spot-highlight";
 import { cn, timeAgo } from "@/lib/format";
 import type { Listing } from "@/lib/listings/types";
-import { mediaKeyOf, tagPosition } from "@/lib/photos";
-import { buildCycle, eventText, onPhoto, spokenAgo, type TickerEvent, type TickerTap } from "@/lib/ticker";
+import { likeId, mediaKeyOf, tagPosition } from "@/lib/photos";
+import { buildCycle, DOT, eventText, onPhoto, spokenAgo, type TickerEvent, type TickerTap } from "@/lib/ticker";
 
 // What people did on a home lately, in the slot above the price, one thing at
 // a time: who and what, then what they said (or where) and when, with their
@@ -77,11 +77,13 @@ export const useReducedMotion = () =>
     () => false,
   );
 
-// Something else has the page just now: a sheet or a prompt is open, someone's
-// typing, or the tab is out of sight. The line waits.
-const busy = () =>
+// Something else has the page just now: a sheet or a prompt is open over the
+// line, someone's typing, or the tab is out of sight. The line waits. (A
+// window the line is itself in, such as a home opened over another page,
+// isn't in its way.)
+const busy = (line: Element | null) =>
   document.visibilityState === "hidden" ||
-  Boolean(document.querySelector("dialog[open]")) ||
+  [...document.querySelectorAll("dialog[open]")].some((dialog) => !line || !dialog.contains(line)) ||
   Boolean(document.activeElement?.closest("input, textarea, select, [contenteditable], [data-composer]"));
 
 // A round of the budget: how many have shown, how many may, and until when.
@@ -99,6 +101,8 @@ export function useTicker({
   held,
   pinHovered = null,
   likes,
+  restOnLikes = true,
+  box,
 }: {
   events: TickerEvent[];
   listing: Listing;
@@ -110,14 +114,25 @@ export function useTicker({
   // Something's over it or under way: a card, a sheet, a finger on the photo,
   // the photo sliding.
   held: boolean;
-  // A pointer on a spot on the photo (its tag): on this one's, it waits.
+  // A pointer on a spot on the photo (its likeId): on this one's, it waits.
   pinHovered?: string | null;
   // How many people liked the home: what it rests on.
   likes: number;
+  // Whether it rests on who liked it (false: where that's said already, just
+  // below, it rests on the first, still).
+  restOnLikes?: boolean;
+  // The line's own box, to tell a window it's in from one over it.
+  box: RefObject<HTMLElement | null>;
 }) {
   const reduced = useReducedMotion();
   const pausedForVisit = useSyncExternalStore(subscribePaused, readPaused, () => false);
-  const cycle = useMemo(() => buildCycle(events, photoKey, mode), [events, photoKey, mode]);
+  // The same list while it says the same: a page that refreshes itself hands
+  // over new copies, and the one showing shouldn't start its time again.
+  const said = JSON.stringify(events);
+  const [kept, setKept] = useState({ said, events });
+  if (kept.said !== said) setKept({ said, events });
+  const steady = kept.said === said ? kept.events : events;
+  const cycle = useMemo(() => buildCycle(steady, photoKey, mode), [steady, photoKey, mode]);
   const [id, setId] = useState<string | null>(null);
   const [resting, setResting] = useState(false);
   // Stopped on this home: by a tap on it, or the keyboard coming in. Until
@@ -132,8 +147,9 @@ export function useTicker({
 
   const found = cycle.findIndex((event) => event.id === id);
   const index = found === -1 ? 0 : found;
-  // Resting with nobody's like to show: the first, still.
-  const summary = resting && likes > 0;
+  // Resting: on who liked it, or with nobody's like to show (or that said
+  // already), the first, still.
+  const summary = resting && restOnLikes && likes > 0;
   const item = summary ? null : (cycle[index] ?? null);
 
   // Off screen, a home shows its first, still, and starts afresh when it's back.
@@ -150,7 +166,7 @@ export function useTicker({
     }
   }
   // Something new at the top (someone just said something): straight to it.
-  const top = events[0]?.id ?? null;
+  const top = steady[0]?.id ?? null;
   const [topSeen, setTopSeen] = useState(top);
   if (top !== topSeen) {
     setTopSeen(top);
@@ -169,14 +185,15 @@ export function useTicker({
   const multi = cycle.length > 1;
   // Going round, unless paused, stopped, resting or still by choice.
   const rotating = multi && !reduced && !pausedForVisit && !stopped && !resting;
-  const running = rotating && active && !held && !hovered && !(pinHovered !== null && item?.spot === pinHovered);
+  const onPin = Boolean(pinHovered && item?.mediaKey && item.spot && likeId(item.mediaKey, item.spot) === pinHovered);
+  const running = rotating && active && !held && !hovered && !onPin;
   const text = item ? eventText(item, listing, { photoKey, ago: timeAgo(item.at) }) : null;
   const dwellMs = text ? dwellFor(text.line1.length + text.line2.length) : DWELL_MS;
 
   useEffect(() => {
     if (!running) return;
     const timer = setTimeout(() => {
-      if (busy()) {
+      if (busy(box.current)) {
         setDwell((n) => n + 1);
         return;
       }
@@ -184,13 +201,14 @@ export function useTicker({
       const most = run.limit ?? ROUNDS * cycle.length;
       if (run.turns >= most || (run.until !== null && now >= run.until)) {
         setResting(true);
+        setId(null);
         return;
       }
       setId(cycle[(index + 1) % cycle.length].id);
       setRun({ turns: run.turns + 1, limit: run.limit, until: run.until ?? now - dwellMs + BUDGET_MS });
     }, dwellMs);
     return () => clearTimeout(timer);
-  }, [running, index, dwell, dwellMs, run, cycle]);
+  }, [running, index, dwell, dwellMs, run, cycle, box]);
 
   const latest = useRef({ cycle, stopped, resting, photoKey, active });
   useLayoutEffect(() => {
@@ -237,6 +255,7 @@ export function useTicker({
     reduced,
     looking,
     shown,
+    active,
     // Play shows in place of Pause: paused, stopped, or resting.
     halted: pausedForVisit || stopped || resting,
     setHovered,
@@ -288,6 +307,8 @@ export function ActivityTicker({
   unseen,
   underline,
   onTap,
+  box,
+  line,
 }: {
   ticker: Ticker;
   listing: Listing;
@@ -303,7 +324,12 @@ export function ActivityTicker({
   // A pointer is on this one's spot on the photo.
   underline: boolean;
   // Unset beside the map, where it's just to read: the first, still.
-  onTap?: (event: TickerEvent, tap: TickerTap, photoIndex: number) => void;
+  // `keyboard`: pressed with a key, so what it opens takes the keyboard.
+  onTap?: (event: TickerEvent, tap: TickerTap, photoIndex: number, keyboard: boolean) => void;
+  // Its box (as given to the ticker) and the item, for the keyboard to come
+  // back to.
+  box?: RefObject<HTMLDivElement | null>;
+  line?: RefObject<HTMLButtonElement | null>;
 }) {
   const { cycle, item, summary, reduced, shown } = ticker;
   const readOnly = !onTap;
@@ -359,8 +385,8 @@ export function ActivityTicker({
       fact: `Show ${event.spot ? `the ${event.spot.toLowerCase()}` : "it"}`,
       home: "See the comments",
     };
-    const where = words.elsewhere ? `, in photo ${words.index + 1}` : words.where ? ", in this photo" : "";
-    name = `${ended(`${words.line1}${where}${event.body ? `: ${event.body}` : ""}`)} ${spokenAgo(ago)}. ${what[words.tap]}.`;
+    const where = words.elsewhere ? `, in photo ${words.index + 1}` : words.where ? `, in ${words.where}` : "";
+    name = `${ended(`${words.sentence}${where}${event.body ? `: ${event.body}` : ""}`)} ${spokenAgo(ago)}. ${what[words.tap]}.`;
   } else if (now?.kind === "rest") {
     name = `${now.text}. See the comments.`;
   }
@@ -370,10 +396,11 @@ export function ActivityTicker({
   const enter = moved && (reduced ? "animate-[fade-in_150ms_linear_both]" : "animate-[ticker-in_300ms_cubic-bezier(0.05,0.7,0.1,1)_120ms_both]");
   const exit = reduced ? "animate-[fade-out_150ms_linear_both]" : "animate-[ticker-out_200ms_cubic-bezier(0.3,0,0.8,0.15)_both]";
   const crossfade = reduced ? { "data-crossfade": true } : {};
-  const row = "-mx-1 flex h-12 min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1 text-left";
+  const row = "-mx-1 flex h-full min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1 text-left";
 
   return (
     <div
+      ref={box}
       role="group"
       aria-label="Recent activity"
       onPointerEnter={() => ticker.setHovered(true)}
@@ -383,7 +410,7 @@ export function ActivityTicker({
         if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
         if ((event.target as HTMLElement).matches(":focus-visible") && ticker.rotating) ticker.stop();
       }}
-      className="flex h-12 min-w-0 flex-1 items-center"
+      className="flex h-12 min-w-0 flex-1 items-center split:h-[76px]"
     >
       {multi && (
         // First for the keyboard, last on screen: under it, which one this
@@ -396,7 +423,8 @@ export function ActivityTicker({
               onClick={ticker.step}
               className="flex size-11 items-center justify-center rounded-full text-white/80 hover:bg-white/10 split:text-stone-600 split:hover:bg-stone-100"
             >
-              <ChevronRight aria-hidden size={18} />
+              {/* A step on, not the photo's arrow. */}
+              <StepForward aria-hidden size={17} />
             </button>
           ) : (
             <button
@@ -408,28 +436,34 @@ export function ActivityTicker({
               {ticker.halted ? <Play aria-hidden size={16} className="fill-current" /> : <Pause aria-hidden size={16} className="fill-current" />}
             </button>
           )}
-          {!summary && (
-            <span aria-hidden className="pointer-events-none absolute bottom-0.5 left-1/2 flex -translate-x-1/2 gap-[3px]">
-              {cycle.map((event, i) => (
-                <span
-                  key={event.id}
-                  className={cn(
-                    "size-1 rounded-full",
-                    i === ticker.index ? "bg-white split:bg-stone-800" : "bg-white/40 split:bg-stone-300",
-                  )}
-                />
-              ))}
-            </span>
-          )}
+          {/* (Resting, none of them: it's about the line, not a video.) */}
+          <span aria-hidden className="pointer-events-none absolute bottom-0.5 left-1/2 flex -translate-x-1/2 gap-[3px]">
+            {cycle.map((event, i) => (
+              <span
+                key={event.id}
+                className={cn(
+                  "size-1 rounded-full",
+                  i === ticker.index && !summary ? "bg-white split:bg-stone-800" : "bg-white/40 split:bg-stone-300",
+                )}
+              />
+            ))}
+          </span>
         </div>
       )}
       <div
-        aria-live={ticker.rotating ? "off" : "polite"}
+        // Said as it changes only when it's moved by hand or stopped, and
+        // only for the home on screen.
+        aria-live={ticker.active && !ticker.rotating ? "polite" : "off"}
         aria-atomic="true"
-        className="relative flex h-12 min-w-0 flex-1 items-center"
+        className="relative flex h-full min-w-0 flex-1 items-center"
       >
         {leaving && (
-          <div aria-hidden {...crossfade} className={cn("pointer-events-none absolute inset-0 flex items-center", exit)}>
+          <div
+            key={`leaving-${shown.n}`}
+            aria-hidden
+            {...crossfade}
+            className={cn("pointer-events-none absolute inset-0 flex items-center", exit)}
+          >
             <span className={row}>
               <Lines shown={leaving} myName={myName} ghost />
             </span>
@@ -443,15 +477,17 @@ export function ActivityTicker({
           ) : (
             <button
               key={shown.key}
+              ref={line}
               type="button"
               aria-label={name}
               {...crossfade}
               // The time is the server's until the page wakes up, as on the line itself.
               suppressHydrationWarning
-              onClick={() => {
+              onClick={(click) => {
                 ticker.stop();
-                if (now.kind === "item") onTap?.(now.event, now.words.tap, now.words.index);
-                else onTap?.(cycle[0], "home", -1);
+                const keyboard = click.detail === 0;
+                if (now.kind === "item") onTap?.(now.event, now.words.tap, now.words.index, keyboard);
+                else onTap?.(cycle[0], "home", -1, keyboard);
               }}
               onPointerEnter={(event) => event.pointerType === "mouse" && ticker.setLooking(true)}
               onPointerLeave={() => ticker.setLooking(false)}
@@ -481,13 +517,25 @@ function thumbOf(listing: Listing, event: TickerEvent): Thumb | null {
 
 // Words drawn rather than written, for the copy that's leaving: the page only
 // ever says (and finds) what's showing.
-function Drawn({ text, className }: { text: string; className?: string }) {
-  return <span data-text={text} className={cn("before:content-[attr(data-text)]", className)} />;
+function Drawn({ text, className, ref }: { text: string; className?: string; ref?: Ref<HTMLSpanElement> }) {
+  return <span ref={ref} data-text={text} className={cn("before:content-[attr(data-text)]", className)} />;
 }
 
 function Lines({ shown, myName, ghost = false, underline = false }: { shown: Shown; myName: string | null; ghost?: boolean; underline?: boolean }) {
-  const say = (text: string, className: string) =>
-    ghost ? <Drawn text={text} className={className} /> : <span className={className}>{text}</span>;
+  const say = (text: string, className?: string, ref?: Ref<HTMLSpanElement>) =>
+    ghost ? <Drawn text={text} className={className} ref={ref} /> : <span ref={ref} className={className}>{text}</span>;
+  // Who and what come first: when they don't fit on their line over what was
+  // said, it all runs on as one, over two lines, so they're read whole.
+  // (Measured again when they change: on another photo, a spot can read
+  // differently.)
+  const first = useRef<HTMLSpanElement>(null);
+  const said = shown.kind === "item" ? shown.words.line1 : null;
+  const [flow, setFlow] = useState({ said, on: false });
+  if (flow.said !== said) setFlow({ said, on: false });
+  useLayoutEffect(() => {
+    const el = first.current;
+    if (el && !flow.on && el.scrollWidth > el.clientWidth + 1) setFlow((now) => ({ ...now, on: true }));
+  }, [flow]);
   if (shown.kind === "rest") {
     return (
       <>
@@ -511,18 +559,44 @@ function Lines({ shown, myName, ghost = false, underline = false }: { shown: Sho
     );
   }
   const { event, words, thumb } = shown;
-  const { line1, line2 } = words;
+  const strong = cn("font-semibold", underline && "underline underline-offset-2");
+  // Where and when, after the words (kept whole) or the sentence.
+  const meta = (whole: boolean) =>
+    words.meta && (
+      <span
+        className={cn("text-[13px] font-normal text-white/75 split:text-stone-600", whole && "shrink-0 whitespace-pre")}
+        suppressHydrationWarning
+      >
+        {ghost ? <Drawn text={`${DOT}${words.meta}`} /> : `${DOT}${words.meta}`}
+      </span>
+    );
   return (
     <>
       <EventFace event={event} myName={myName} ghost={ghost} />
-      <span className="min-w-0 flex-1">
-        {say(line1, cn("block truncate text-[15px] font-semibold leading-5", underline && "underline underline-offset-2"))}
-        <span className="block truncate text-[13px] leading-[18px] text-white/75 split:text-stone-600" suppressHydrationWarning>
-          {ghost ? <Drawn text={line2} /> : line2}
+      {words.words && !flow.on ? (
+        // Who, on what; under it, what they said (cut short, but never when
+        // they said it). Side by side, each gets two lines.
+        <span className="min-w-0 flex-1">
+          {say(words.line1, cn("block truncate text-[15px] leading-5 split:line-clamp-2 split:whitespace-normal", strong), first)}
+          <span className="flex min-w-0 items-end text-[13px] leading-[18px] text-white/75 split:text-stone-600">
+            {say(words.words, "min-w-0 truncate split:line-clamp-2 split:whitespace-normal")}
+            {meta(true)}
+          </span>
         </span>
-      </span>
+      ) : (
+        // Who did what, in full, over two lines when it needs them, then
+        // where and when, quieter.
+        <span className="line-clamp-2 min-w-0 flex-1 text-[15px] leading-5 split:line-clamp-3">
+          {say(words.line1, strong)}
+          {words.words && (
+            <span className="text-[13px] text-white/75 split:text-stone-600"> {ghost ? <Drawn text={words.words} /> : words.words}</span>
+          )}
+          {meta(false)}
+        </span>
+      )}
       {thumb && (
-        <span aria-hidden className="relative size-8 shrink-0 overflow-hidden rounded-md bg-stone-800">
+        // Only with room to spare: the line already says which photo.
+        <span aria-hidden className="relative hidden size-8 shrink-0 overflow-hidden rounded-md bg-stone-800 roomy:block">
           <Image src={thumb.url} alt="" fill sizes="32px" className="object-contain" />
           <span
             style={{

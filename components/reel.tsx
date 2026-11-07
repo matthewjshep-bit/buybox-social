@@ -374,6 +374,8 @@ function Feed({
     key: string;
     spot?: SpotRef;
     photoFoot?: number;
+    // Opened on one comment (from the line above the price).
+    commentId?: string;
   } | null>(null);
   // Each sheet closes only itself: one can open another without the first's
   // closing shutting the second.
@@ -562,7 +564,9 @@ function Feed({
   const openComments = (key: string, compose = false, spot?: SpotRef, commentId?: string) => {
     const home = frame.current?.querySelector(`[data-home="${CSS.escape(key)}"]`);
     dock.current = wordsOf(key);
-    flushSync(() => setSheet({ kind: "comments", key, spot, photoFoot: home ? photoFootIn(home, frame.current!) : undefined }));
+    flushSync(() =>
+      setSheet({ kind: "comments", key, spot, commentId, photoFoot: home ? photoFootIn(home, frame.current!) : undefined }),
+    );
     if (compose) {
       frame.current?.ownerDocument
         .querySelector<HTMLElement>("dialog[open] [data-composer]")
@@ -653,6 +657,7 @@ function Feed({
               onPhotoSeen={onPhotoSeen}
               counter={mode === "share" && posts.length > 1 ? `Home ${i + 1} of ${posts.length}` : undefined}
               active={active === offset + i}
+              wide={wide}
               near={Math.abs(active - (offset + i)) <= 1}
               nudge={active === offset + i ? nudges.showing : null}
               onSwipe={active === offset + i ? nudges.onSwipe : undefined}
@@ -755,6 +760,7 @@ function Feed({
       <CommentsSheet
         post={sheet?.kind === "comments" ? (sheetPost ?? null) : null}
         spot={sheet?.kind === "comments" ? sheet.spot : undefined}
+        opened={sheet?.kind === "comments" ? sheet.commentId : undefined}
         mode={mode}
         agentName={agentName}
         canShare={sheetPost ? reactions.states[sheetPost.listing.ListingKey]?.reaction === "like" : false}
@@ -875,6 +881,7 @@ function Panel({
   onPhotoSeen,
   counter,
   active,
+  wide,
   near,
   nudge,
   onSwipe,
@@ -917,6 +924,8 @@ function Panel({
   // "Home 1 of 3", on an agent's link with several.
   counter?: string;
   active: boolean;
+  // The feed is wide enough to lay a home out side by side.
+  wide: boolean;
   // Close enough to load its photos.
   near: boolean;
   nudge: Nudge | null;
@@ -1138,27 +1147,45 @@ function Panel({
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
   };
-  // A pointer on a spot on the photo, and whether the line's spot can be
-  // pointed at there.
+  // A pointer on a spot on the photo (its likeId), and whether the line's
+  // spot can be pointed at there.
   const [pinHover, setPinHover] = useState<string | null>(null);
   const [lightPlace, setLightPlace] = useState<{ tag: string; clear: boolean } | null>(null);
   const settledKey = listing.Media[settled] ? mediaKeyOf(listing.Media[settled]) : undefined;
+  // The line's box, and the item in it.
+  const tickerBox = useRef<HTMLDivElement>(null);
+  const tickerLine = useRef<HTMLButtonElement>(null);
   const ticker = useTicker({
+    box: tickerBox,
     events,
     listing,
     photoKey: settledKey,
     mode,
     // Beside the map it's just a look: the first, still.
     active: active && !onOpen,
-    held: Boolean(picked) || sheetOver || docked || Boolean(nudge) || hidden || settled !== photo || touching,
+    // (The nudge to swipe through the photos sits over the photo, so the
+    // line waits for it; the one for the next home, at the photo's foot,
+    // shows beside it.)
+    held: Boolean(picked) || sheetOver || docked || nudge === "photos" || hidden || settled !== photo || touching,
     pinHovered: pinHover,
     likes,
+    // Side by side, who liked it is said just below, under "Listed by".
+    restOnLikes: !(split && wide),
   });
   const shownEvent = ticker.item;
   // Its face on the photo, where they did it: only on the photo at rest, with
   // nothing over it.
   const light: SpotLight | null =
-    shownEvent && onPhoto(shownEvent) && shownEvent.mediaKey === settledKey && active && !onOpen && !hidden && !picked && !sheetOver && !docked && !nudge
+    shownEvent &&
+    onPhoto(shownEvent) &&
+    shownEvent.mediaKey === settledKey &&
+    active &&
+    !onOpen &&
+    !hidden &&
+    !picked &&
+    !sheetOver &&
+    !docked &&
+    nudge !== "photos"
       ? {
           event: shownEvent,
           ripples: ticker.shown.first ? 2 : 1,
@@ -1173,14 +1200,15 @@ function Panel({
   const unseen = Boolean(light && lightPlace && lightPlace.tag === light.event.spot && !lightPlace.clear);
 
   // A tap on the line: to where it happened. After it, the line stays put on
-  // this home until you move on.
-  const tapActivity = (event: TickerEvent, tap: TickerTap, index: number) => {
+  // this home until you move on. From the keyboard, a spot's card takes it,
+  // and gives it back to the line when it closes.
+  const tapActivity = (event: TickerEvent, tap: TickerTap, index: number, keyboard: boolean) => {
     const spot = event.mediaKey && event.spot ? { mediaKey: event.mediaKey, tag: event.spot } : null;
     if (tap === "comment" && event.commentId) return onCommentAt(event.commentId);
     if (!spot || tap === "home" || tap === "comment") return onComments();
     if (spot.mediaKey === FACTS) {
       if (tap === "spot-comments") return onCommentsAbout(spot);
-      return setPicked({ ...spot, x: 0, y: 0 });
+      return setPicked({ ...spot, x: 0, y: 0, keyboard, fromLine: true });
     }
     const target = listing.Media[index];
     const at = target && tagPosition(target, spot.tag);
@@ -1190,9 +1218,19 @@ function Panel({
       setPhoto(index);
       setSettled(index);
     }
-    setPicked({ ...spot, ...at });
+    setPicked({ ...spot, ...at, keyboard, fromLine: true });
     if (tap === "spot-comments") onCommentsAbout(spot);
   };
+  // A card opened from the line, closed: the keyboard goes back to the line
+  // (unless it's gone somewhere else meanwhile).
+  const lastPicked = useRef(picked);
+  useLayoutEffect(() => {
+    const was = lastPicked.current;
+    lastPicked.current = picked;
+    if (!was?.fromLine || picked || !active) return;
+    const now = document.activeElement;
+    if (!now || now === document.body) tickerLine.current?.focus({ preventScroll: true });
+  }, [picked, active]);
 
   const likeWhatsShown = (shown: ListingMedia) => {
     onDoubleTapLike();
@@ -1434,15 +1472,22 @@ function Panel({
               "split:min-h-0 split:flex-1 split:overflow-y-auto split:overscroll-contain split:pb-5 split:pl-5 split:pr-5 split:pt-3 split:[text-shadow:none]",
             )}
           >
-            <div className="flex h-12 items-center">
+            <div className="flex h-12 items-center split:h-[76px]">
               <ActivityTicker
                 ticker={ticker}
+                box={tickerBox}
+                line={tickerLine}
                 listing={listing}
                 photoKey={settledKey}
                 myName={myName}
                 liked={{ count: likes, names: post.likers, you: liked || photos.hasAny }}
                 unseen={unseen}
-                underline={Boolean(shownEvent?.spot && pinHover === shownEvent.spot && shownEvent.mediaKey === settledKey)}
+                underline={Boolean(
+                  shownEvent?.mediaKey &&
+                    shownEvent.spot &&
+                    shownEvent.mediaKey === settledKey &&
+                    pinHover === likeId(shownEvent.mediaKey, shownEvent.spot),
+                )}
                 // Beside the map, just to read; a tap there opens the home.
                 onTap={onOpen ? undefined : tapActivity}
                 hint={
@@ -1566,6 +1611,7 @@ function Panel({
           }}
           highlight={light}
           myName={myName}
+          nudge={nudge}
           onHighlightClear={(tag, clear) =>
             setLightPlace((now) => (now?.tag === tag && now.clear === clear ? now : { tag, clear }))
           }
@@ -2144,6 +2190,7 @@ const NO_ITEMS: FeedPost["timeline"] = [];
 function CommentsSheet({
   post,
   spot,
+  opened,
   mode,
   agentName,
   canShare,
@@ -2157,6 +2204,8 @@ function CommentsSheet({
   post: FeedPost | null;
   // Only the comments about this spot in a photo, and a box to add one.
   spot?: SpotRef;
+  // Opened on this comment: if it's a reply, its replies show.
+  opened?: string;
   mode: "public" | "share";
   agentName?: string;
   canShare: boolean;
@@ -2247,6 +2296,7 @@ function CommentsSheet({
           <Timeline
             listingKey={post.listing.ListingKey}
             items={items}
+            opened={opened}
             canShare={canShare}
             onReply={(target) => {
               setReplyTo(target);

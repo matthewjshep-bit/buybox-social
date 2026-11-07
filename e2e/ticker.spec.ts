@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
-import { createShare, homeIn, joinAs, openComments, openMore, pick, settle, signInAgent, tapPhoto } from "./helpers";
+import { createShare, heartOf, homeIn, joinAs, openComments, openMore, pick, settle, signInAgent, tapPhoto } from "./helpers";
 
 // The line above the price: what people did lately, one at a time, each
 // pointing at the spot on the photo where they did it. Timers run on the
@@ -71,6 +71,8 @@ test.beforeAll(async ({ browser }) => {
     [1, ["the big windows"]],
   ]);
   await likeThings(browser, "SAMPLE-1007", WEXFORD, "Bo", [[0, ["the front entry"]]]);
+  // Another home with a few things going round, to move on to.
+  await likeThings(browser, "SAMPLE-1006", "2205 Brackenfield Ct NW", "Di", [[0, ["the brick front", "the lawn"]]]);
 });
 
 test("it holds on the newest, then goes round what's on the photo, its face right on the spot, in a slot that never changes size", async ({
@@ -167,7 +169,10 @@ test("with reduced motion, nothing moves on its own: it steps by hand", async ({
 });
 
 test("a tap on something done in another photo turns to that photo and opens its spot", async ({ browser, page }) => {
-  await likeThings(browser, "SAMPLE-1004", FERNHOLLOW, "Cy", [[2, ["the natural light"]]]);
+  await likeThings(browser, "SAMPLE-1004", FERNHOLLOW, "Cy", [
+    [0, ["the evergreens"]],
+    [2, ["the natural light"]],
+  ]);
   await page.goto("/homes/SAMPLE-1004");
   const home = homeIn(page, FERNHOLLOW);
   await settled(home);
@@ -224,6 +229,67 @@ test("after three rounds it rests on who liked the home; a photo with more on it
     .toMatch(/liked this$/);
 });
 
+test("side by side, where who liked it is said just below, it rests on the newest instead", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const page = await stillPage(browser, DESKTOP);
+  await page.goto("/homes/SAMPLE-1007");
+  const home = homeIn(page, WEXFORD);
+  await expect(lineOf(home)).toHaveAccessibleName(/^Bo liked the front entry/);
+  await expect
+    .poll(
+      async () => {
+        await tick(page, 8000);
+        return activityOf(home).getByRole("button", { name: "Play activity" }).count();
+      },
+      { timeout: 60_000, intervals: [0] },
+    )
+    .toBe(1);
+  await expect(lineOf(home)).toHaveAccessibleName(/^Bo liked the front entry/);
+  await expect(activityOf(home)).not.toContainText("liked this");
+});
+
+test("a pointer on its spot holds it; once that spot's card has come and gone, it goes on", async ({ browser }) => {
+  const page = await stillPage(browser, DESKTOP);
+  await page.goto("/homes/SAMPLE-1007");
+  const home = homeIn(page, WEXFORD);
+  await settled(home);
+  await expect(lineOf(home)).toHaveAccessibleName(/^Bo liked the front entry/);
+  const pin = home.getByRole("button", { name: /^Front entry: /i });
+  await expect(pin).toBeInViewport();
+  // (Once it has popped in.)
+  await page.waitForTimeout(500);
+  await pin.hover();
+  await expect(activityOf(home).locator(".underline")).toHaveCount(1);
+  await tick(page, 9000);
+  await expect(lineOf(home)).toHaveAccessibleName(/^Bo liked the front entry/);
+  // Its card opens over the spot, and closes.
+  await pin.click();
+  const card = home.locator("[data-spot-card]");
+  await expect(card).toBeVisible();
+  await card.getByRole("button", { name: "Close" }).click();
+  await expect(card).toBeHidden();
+  await page.mouse.move(700, 20);
+  await tick(page, 8000);
+  await expect(activityOf(home).locator(".underline")).toHaveCount(0);
+  await expect(lineOf(home)).not.toHaveAccessibleName(/^Bo liked the front entry/);
+});
+
+test("opened over another page (from someone's profile), it still goes round", async ({ browser }) => {
+  const page = await (await browser.newContext()).newPage();
+  await page.clock.install();
+  const html = await (await page.request.get("/homes/SAMPLE-1007")).text();
+  const profile = /profileId\\?":\\?"([0-9a-f-]{36})/.exec(html)?.[1];
+  expect(profile).toBeTruthy();
+  await page.goto(`/people/${profile}`);
+  await page.locator('a[href="/homes/SAMPLE-1007"]').first().click();
+  const home = page.locator("dialog[open]").getByRole("article", { name: WEXFORD });
+  await expect(home).toBeVisible();
+  await expect(activityOf(home).getByRole("button", { name: "Pause activity" })).toBeVisible();
+  const before = (await lineOf(home).getAttribute("aria-label"))!;
+  await page.clock.runFor(8000);
+  await expect(lineOf(home)).not.toHaveAttribute("aria-label", before);
+});
+
 test("beside the map it's only to read: the newest, still, not a button", async ({ browser }) => {
   const page = await (await browser.newContext(DESKTOP)).newPage();
   await page.clock.install();
@@ -269,6 +335,10 @@ test("isolation: what's private on an agent's link never reaches the public line
   await about.getByRole("textbox").fill(SPOT_SECRET);
   await about.getByRole("button", { name: "Post", exact: true }).click();
   await expect(about).toBeHidden();
+  // Where it was left, exactly ("@80,45"), as the link has it.
+  const spot = yaraHome.locator('[data-pin^="@"]');
+  await expect(spot).toHaveCount(1);
+  const spotTag = (await spot.getAttribute("data-pin"))!;
   const chat = await openComments(yara, yaraHome);
   await chat.getByLabel("Add a comment").fill(SECRET);
   await chat.getByRole("button", { name: "Post", exact: true }).click();
@@ -292,6 +362,10 @@ test("isolation: what's private on an agent's link never reaches the public line
   for (let i = 0; i < 8; i++) {
     const text = (await home.textContent())!;
     for (const never of ["didn't like", "passed", SECRET, SPOT_SECRET, "Yara"]) expect(text).not.toContain(never);
+    // Nor what the line says aloud: never a comment "on" anything here.
+    const said = (await lineOf(home).getAttribute("aria-label")) ?? "";
+    for (const never of ["didn't like", "passed", "commented on", SECRET, SPOT_SECRET, "Yara"]) expect(said).not.toContain(never);
+    expect(await activityOf(home).textContent()).not.toMatch(/, on /);
     for (const face of await home.locator("[data-spot-highlight] [data-face]").all()) {
       const drawn = (await face.boundingBox())!;
       const [x, y] = [drawn.x + drawn.width / 2, drawn.y + drawn.height / 2];
@@ -301,6 +375,53 @@ test("isolation: what's private on an agent's link never reaches the public line
   }
   for (const path of ["/", "/homes/SAMPLE-1008"]) {
     const html = await (await page.request.get(path)).text();
-    for (const never of [SECRET, SPOT_SECRET, "Yara"]) expect(html).not.toContain(never);
+    for (const never of [SECRET, SPOT_SECRET, "Yara", spotTag]) expect(html).not.toContain(never);
   }
+});
+
+test("isolation: a comment on a spot shared from a link shows its words in public, never where it was left", async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const WORDS = "Love how the light falls on this side.";
+  const agent = await signInAgent(browser, "tess@example.com", "Tess Agent");
+  const { url } = await createShare(agent, ["719 Saltmarsh"], ["Zoe"]);
+  const zoe = await (await browser.newContext()).newPage();
+  await zoe.goto(url);
+  const zoeHome = homeIn(zoe, SALTMARSH);
+  await zoeHome.scrollIntoViewIfNeeded();
+  await settled(zoeHome);
+  // Sharing is offered once you like the home.
+  await heartOf(zoeHome).click();
+  await expect(heartOf(zoeHome)).toHaveAttribute("aria-pressed", "true");
+  const SPOT = { x: 0.8, y: 0.45 };
+  await tapPhoto(zoeHome, COTTAGE, SPOT.x, SPOT.y);
+  const card = zoeHome.locator("[data-spot-card]");
+  await expect(card).toBeVisible();
+  await settle(card);
+  await card.getByRole("button", { name: /^Comment on/ }).click();
+  const about = zoe.getByRole("dialog", { name: "Comments" });
+  await expect(about.getByRole("heading", { name: "On a spot in photo 1" })).toBeVisible();
+  await about.getByLabel(/share this anonymously/).check();
+  await about.getByRole("textbox").fill(WORDS);
+  await about.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(about).toBeHidden();
+  const spot = zoeHome.locator('[data-pin^="@"]');
+  await expect(spot).toHaveCount(1);
+  const spotTag = (await spot.getAttribute("data-pin"))!;
+
+  // In public: what she said, by "A buyer", on no spot at all.
+  const page = await (await browser.newContext()).newPage();
+  await page.goto("/homes/SAMPLE-1008");
+  const home = homeIn(page, SALTMARSH);
+  await settled(home);
+  await expect(activityOf(home)).toContainText(`A buyer commented\u201c${WORDS}\u201d`);
+  expect(await lineOf(home).getAttribute("aria-label")).toMatch(/^A buyer commented: Love how the light falls on this side\. .+\. See it in the comments\.$/);
+  await expect(home.locator(`[data-pin="${spotTag}"]`)).toHaveCount(0);
+  const sheet = await openComments(page, home);
+  await expect(sheet.getByText(WORDS)).toBeVisible();
+  await expect(sheet.getByRole("button", { name: /: show it$/ })).toHaveCount(0);
+  const html = await (await page.request.get("/homes/SAMPLE-1008")).text();
+  expect(html).toContain(WORDS);
+  expect(html).not.toContain(spotTag);
 });

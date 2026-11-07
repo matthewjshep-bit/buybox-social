@@ -193,6 +193,7 @@ export function NameGate({
 export function Timeline({
   listingKey,
   items,
+  opened,
   canShare = false,
   onReply,
   spots,
@@ -200,6 +201,8 @@ export function Timeline({
 }: {
   listingKey: string;
   items: TimelineItem[];
+  // Opened to show this comment: a reply shows with the others under its comment.
+  opened?: string;
   // Private threads only, once someone likes the home: they may share a comment publicly.
   canShare?: boolean;
   // Reply points the comment box below at that comment.
@@ -234,6 +237,7 @@ export function Timeline({
           replies={items.filter(
             (reply): reply is TimelineComment => reply.kind === "comment" && reply.parentId === item.id,
           )}
+          opened={opened}
           canShare={canShare}
           onReply={onReply}
           spots={spots}
@@ -352,6 +356,7 @@ function CommentItem({
   listingKey,
   comment,
   replies = [],
+  opened,
   canShare,
   onReply,
   spots,
@@ -359,6 +364,8 @@ function CommentItem({
   listingKey: string;
   comment: TimelineComment;
   replies?: TimelineComment[];
+  // A comment someone came to see: if it's one of these replies, they show.
+  opened?: string;
   canShare: boolean;
   onReply?: (target: ReplyTarget) => void;
   spots?: SpotLinks;
@@ -370,8 +377,15 @@ function CommentItem({
   const canToggle = comment.mine && actions.setSharing && (comment.sharedPublicly || canShare);
   const likeable = Boolean(actions.likeComment) && !comment.fromPrivateChat;
 
-  // Replies open when you add one, so you see it land.
-  const [open, setOpen] = useState(false);
+  // Replies open when you add one, so you see it land, or when you came to
+  // see one of them.
+  const asked = Boolean(opened && replies.some((child) => child.id === opened));
+  const [open, setOpen] = useState(asked);
+  const [wasAsked, setWasAsked] = useState(asked);
+  if (asked !== wasAsked) {
+    setWasAsked(asked);
+    if (asked) setOpen(true);
+  }
   const [count, setCount] = useState(replies.length);
   if (replies.length !== count) {
     setCount(replies.length);

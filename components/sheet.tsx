@@ -21,12 +21,13 @@ function notch() {
 
 // The keyboard goes back to what opened a sheet, as soon as that can take it
 // (it may still be fading back in from under the sheet), unless something
-// else has taken the keyboard meanwhile.
-function giveFocusBack(to: HTMLElement | null) {
+// else has taken the keyboard meanwhile. (Just shut, the sheet can still
+// hold it for a moment: that's nothing else.)
+function giveFocusBack(to: HTMLElement | null, sheet: HTMLElement) {
   let tries = 0;
   const attempt = () => {
     const now = document.activeElement;
-    if (!to?.isConnected || (now && now !== document.body)) return;
+    if (!to?.isConnected || (now && now !== document.body && !sheet.contains(now))) return;
     to.focus({ preventScroll: true });
     if (document.activeElement !== to && ++tries < 30) requestAnimationFrame(attempt);
   };
@@ -162,7 +163,7 @@ export function Sheet({
       // and if that's still out of sight, it follows once it's back.
       if (openedDocked.current && inside) opener.current?.focus({ preventScroll: true });
       el.close();
-      if (inside || !openedDocked.current) giveFocusBack(opener.current);
+      if (inside || !openedDocked.current) giveFocusBack(opener.current, el);
     };
     if (!open) {
       if (el.open) shut();

@@ -2,6 +2,7 @@
 
 import { Heart, MessageCircle, ThumbsDown, X } from "lucide-react";
 import {
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -18,6 +19,7 @@ import { SpotHighlight } from "@/components/spot-highlight";
 import { cn } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
 import {
+  likeId,
   mediaKeyOf,
   photoTags,
   spotLabel,
@@ -39,8 +41,9 @@ import type { TimelineComment, TimelineItem } from "@/lib/timeline";
 // spot when you ask to see it (or open the comments).
 
 // The spot whose card is open. `keyboard`: it was picked by keyboard, so the
-// card takes focus.
-export type PickedSpot = PhotoSpot & { keyboard?: boolean };
+// card takes focus. `fromLine`: opened from the activity line, which takes
+// the keyboard back when it closes.
+export type PickedSpot = PhotoSpot & { keyboard?: boolean; fromLine?: boolean };
 
 export type Photos = ReturnType<typeof usePhotoLikes>;
 
@@ -207,6 +210,7 @@ export function SpotLayer({
   myName = null,
   onHighlightClear,
   onPinHover,
+  nudge = null,
 }: {
   listingKey: string;
   // The photo on screen, once it's settled; undefined hides everything.
@@ -230,8 +234,10 @@ export function SpotLayer({
   // Whether that spot can be pointed at, or is under the words, the buttons
   // or the comments toggle (the line then says "this photo").
   onHighlightClear?: (tag: string, clear: boolean) => void;
-  // A pointer on a spot, or off it (null).
-  onPinHover?: (tag: string | null) => void;
+  // A pointer on a spot (its likeId), or off it (null).
+  onPinHover?: (spot: string | null) => void;
+  // A walkthrough nudge showing on the photo: the face stays clear of it.
+  nudge?: string | null;
 }) {
   const fine = useFinePointer();
   const layer = useRef<HTMLDivElement>(null);
@@ -253,19 +259,19 @@ export function SpotLayer({
     const box = shape.photo;
     const [x, y] = [box.left + at.x * (box.right - box.left), box.top + at.y * (box.bottom - box.top)];
     const origin = el.getBoundingClientRect();
-    const toggle = el.querySelector("[data-pins-toggle]")?.getBoundingClientRect();
-    const underToggle =
-      toggle &&
-      isNear(
-        { left: toggle.left - origin.left, top: toggle.top - origin.top, right: toggle.right - origin.left, bottom: toggle.bottom - origin.top },
-        x,
-        y,
-        FACE_MARGIN,
+    // (The nudge for the next home, at the photo's foot, too, while it shows.)
+    const over = [el.querySelector("[data-pins-toggle]"), nudge ? el.closest("article")?.querySelector("[data-nudge]") : null];
+    const underSomething = over.some((it) => {
+      const box = it?.getBoundingClientRect();
+      return (
+        box &&
+        isNear({ left: box.left - origin.left, top: box.top - origin.top, right: box.right - origin.left, bottom: box.bottom - origin.top }, x, y, FACE_MARGIN)
       );
-    const clear = !underToggle && !shape.words.some((word) => isNear(word, x, y, CLEAR_MARGIN + FACE_MARGIN));
+    });
+    const clear = !underSomething && !shape.words.some((word) => isNear(word, x, y, CLEAR_MARGIN + FACE_MARGIN));
     setLitClear((now) => (now?.tag === litTag && now.clear === clear ? now : { tag: litTag, clear }));
     reportClear.current?.(litTag, clear);
-  }, [litTag, photo, shape, items]);
+  }, [litTag, photo, shape, items, nudge]);
   // Gathered spots someone asked to see one by one, on this photo, until
   // another photo shows.
   const [spread, setSpread] = useState<{ mediaKey: string; tags: string[] } | null>(null);
@@ -274,11 +280,12 @@ export function SpotLayer({
   // just spread out, or the one whose card was opened from it and is closed.
   const [focusTo, setFocusTo] = useState<{ tag: string; n: number } | null>(null);
   const focusOn = (tag: string) => setFocusTo((now) => ({ tag, n: (now?.n ?? 0) + 1 }));
+  // (One opened from the activity line gives it back there instead.)
   const openTag = picked?.mediaKey === photoKey ? picked?.tag : undefined;
-  const [wasOpen, setWasOpen] = useState(openTag);
-  if (openTag !== wasOpen) {
-    setWasOpen(openTag);
-    if (wasOpen && !openTag && picked === null) focusOn(wasOpen);
+  const [wasOpen, setWasOpen] = useState({ tag: openTag, fromLine: Boolean(picked?.fromLine) });
+  if (openTag !== wasOpen.tag) {
+    setWasOpen({ tag: openTag, fromLine: Boolean(picked?.fromLine) });
+    if (wasOpen.tag && !openTag && picked === null && !wasOpen.fromLine) focusOn(wasOpen.tag);
   }
   const focused = useRef(0);
   useLayoutEffect(() => {
@@ -383,6 +390,16 @@ export function SpotLayer({
     else groups.push([pin]);
   }
   const place = photoPlace(photo);
+  // A comment whose words show beside its spot already: those words are what
+  // stand out, rather than a second face beside them.
+  const litWords = Boolean(
+    lit &&
+      pinsShown &&
+      lit.event.kind === "comment" &&
+      litTag &&
+      !underWords.includes(litTag) &&
+      groups.some((group) => group.length === 1 && group[0].tag === litTag && group[0].comments.length > 0),
+  );
 
   return (
     // Over the words and buttons, so a card is never under the description;
@@ -440,7 +457,8 @@ export function SpotLayer({
               expanded={pinsShown}
               underWords={pinsShown && !isMine(group[0]) && underWords.includes(group[0].tag)}
               dim={Boolean(lit?.dim) && group[0].tag !== lit?.event.spot}
-              onHover={onPinHover}
+              lit={litWords && group[0].tag === litTag}
+              onHover={onPinHover && ((on) => onPinHover(on ? likeId(mediaKey, group[0].tag) : null))}
               // From the keyboard, the card takes it (and gives it back here).
               onOpen={(keyboard) =>
                 onPick({ mediaKey, tag: group[0].tag, x: group[0].x, y: group[0].y, keyboard })
@@ -458,7 +476,7 @@ export function SpotLayer({
           ),
         )}
 
-        {lit && litAt && (
+        {lit && litAt && !litWords && (
           <SpotHighlight
             event={lit.event}
             x={litAt.x}
@@ -527,6 +545,7 @@ function SpotPin({
   expanded,
   underWords = false,
   dim = false,
+  lit = false,
   onHover,
   onOpen,
 }: {
@@ -537,11 +556,25 @@ function SpotPin({
   underWords?: boolean;
   // Another spot is being pointed out: this one steps back.
   dim?: boolean;
-  // A pointer on it (its tag), or off it (null).
-  onHover?: (tag: string | null) => void;
+  // The activity line is on what was said here: its words ringed.
+  lit?: boolean;
+  // A pointer on it, or off it.
+  onHover?: (on: boolean) => void;
   // `keyboard`: pressed with a key, rather than tapped.
   onOpen: (keyboard: boolean) => void;
 }) {
+  // A pointer that was on it when it went (its card opened over it) is off it.
+  const hovering = useRef(false);
+  const hover = useRef(onHover);
+  useLayoutEffect(() => {
+    hover.current = onHover;
+  });
+  useEffect(
+    () => () => {
+      if (hovering.current) hover.current?.(false);
+    },
+    [],
+  );
   const latest = pin.comments.at(-1);
   const said = latest
     ? `${latest.name}: ${latest.body}${pin.comments.length > 1 ? `, and ${pin.comments.length - 1} more` : ""}`
@@ -558,8 +591,14 @@ function SpotPin({
         data-pin={pin.tag}
         data-like-only={pin.comments.length === 0 || undefined}
         onClick={(event) => onOpen(event.detail === 0)}
-        onPointerEnter={() => onHover?.(pin.tag)}
-        onPointerLeave={() => onHover?.(null)}
+        onPointerEnter={() => {
+          hovering.current = true;
+          onHover?.(true);
+        }}
+        onPointerLeave={() => {
+          hovering.current = false;
+          onHover?.(false);
+        }}
         aria-label={`${label}: ${[said, likes, dislikes].filter(Boolean).join(", ")}`}
         // A fingertip to tap; a small frosted dot to see, taking on the photo's
         // colours behind it.
@@ -599,7 +638,10 @@ function SpotPin({
           onClick={() => onOpen(false)}
           style={{ translate: away(pin.x, pin.y, "1.25rem") }}
           // Over any dot beside it: the words come first.
-          className="pointer-events-auto absolute left-0 top-0 z-10 flex w-max max-w-[13rem] items-center gap-1.5 rounded-full bg-white/95 py-1 pl-1 pr-2.5 text-[13px] text-ink shadow-lg animate-[nudge-in_250ms_ease-out_both] hover:bg-white"
+          className={cn(
+            "pointer-events-auto absolute left-0 top-0 z-10 flex w-max max-w-[13rem] items-center gap-1.5 rounded-full bg-white/95 py-1 pl-1 pr-2.5 text-[13px] text-ink shadow-lg animate-[nudge-in_250ms_ease-out_both] hover:bg-white",
+            lit && "ring-2 ring-brand",
+          )}
         >
           <span
             className={cn(

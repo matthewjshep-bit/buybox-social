@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
 import { likeId, mediaKeyOf, tagNameIn, type PhotoLikes } from "./photos";
@@ -26,6 +27,9 @@ export type TimelineComment = {
   profileId?: string;
   // The spot in a photo it's about ("the front door"), if it's about one.
   spot?: { mediaKey: string; tag: string };
+  // On an agent's link: who said it, as a key that stays the same and gives
+  // nothing away, so two people of the same first name stay two people.
+  personKey?: string;
 };
 
 export type TimelineReaction = {
@@ -45,6 +49,8 @@ export type TimelineReaction = {
   fromPrivateChat?: boolean;
   // Their public profile, on public pages.
   profileId?: string;
+  // On an agent's link: who, as a key that stays the same and gives nothing away.
+  personKey?: string;
 };
 
 // One thing liked (or not) in a photo or the facts: what it reads as ("Front
@@ -66,7 +72,12 @@ function reactionItems(
   reactions: ReactionRow[],
   photos: PhotoRow[],
   dislikes: PhotoRow[],
-  options: { me: string | null; anonymous: (who: string) => boolean; profiles?: boolean },
+  options: {
+    me: string | null;
+    anonymous: (who: string) => boolean;
+    profiles?: boolean;
+    personKey?: (who: string) => string;
+  },
 ): TimelineReaction[] {
   const url = (mediaKey: string) => listing.Media.find((m) => mediaKeyOf(m) === mediaKey)?.MediaURL ?? null;
   const people = new Map<string, TimelineReaction>();
@@ -83,6 +94,7 @@ function reactionItems(
       photoDislikes: [],
       ...(anonymous && { fromPrivateChat: true }),
       ...(options.profiles && who.startsWith("v:") && { profileId: who.slice(2) }),
+      ...(options.personKey && { personKey: options.personKey(who) }),
     };
     if (at.toISOString() > item.at) item.at = at.toISOString();
     people.set(who, item);
@@ -146,8 +158,8 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
           where cl.comment_id = c.id and cl.visitor_id = ${visitorId}::uuid) as liked_by_me
       from public_comments c join visitors v on v.id = c.visitor_id
       where c.listing_key in ${sql(keys)}`,
-    sql<{ id: string; listing_key: string; body: string; created_at: Date; media_key: string | null; spot: string | null }[]>`
-      select id, listing_key, body, created_at, media_key, spot from comments
+    sql<{ id: string; listing_key: string; body: string; created_at: Date }[]>`
+      select id, listing_key, body, created_at from comments
       where shared_publicly and listing_key in ${sql(keys)}`,
     sql<ReactionRow[]>`
       select r.listing_key, 'v:' || r.visitor_id as who, v.first_name as name,
@@ -214,7 +226,7 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
             likes: 0,
             likedByMe: false,
             fromPrivateChat: true,
-            ...spotOf(c),
+            // Never where in the photo: a private comment's spot stays on its link.
           }),
         ),
       ...reactionItems(listing, [...publicReactions, ...privateLikes], [...publicPhotos, ...privatePhotos], publicDislikes, {
@@ -234,6 +246,8 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
   const timelines = new Map<string, TimelineItem[]>();
   if (listings.length === 0) return timelines;
   const me = participantId ? `p:${participantId}` : null;
+  // Who someone is on this link, without their id: the same on every load.
+  const personKey = (who: string) => createHash("md5").update(`${shareId}:${who}`).digest("hex").slice(0, 16);
 
   const [comments, reactions, photos, dislikes] = await Promise.all([
     sql<
@@ -291,10 +305,11 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
             likes: 0,
             likedByMe: false,
             sharedPublicly: c.shared_publicly,
+            personKey: personKey(c.participant_id ? `p:${c.participant_id}` : "agent"),
             ...spotOf(c),
           }),
         ),
-      ...reactionItems(listing, reactions, photos, dislikes, { me, anonymous: () => false }),
+      ...reactionItems(listing, reactions, photos, dislikes, { me, anonymous: () => false, personKey }),
     ];
     timelines.set(key, items.sort(byTime));
   }

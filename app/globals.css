@@ -16,6 +16,9 @@
    the side get a little smaller. */
 @custom-variant short (@container reel (height < 520px));
 @custom-variant compact (@container reel (height < 700px));
+/* Wider than a phone held upright (26.25rem, 420px): room for small extras
+   beside a line, such as the activity line's photo in miniature. */
+@custom-variant roomy (@container reel (width >= 26.25rem));
 
 /* Wide (64rem across and up), a home laid out side by side: the photo on a
    stage of its own, the buttons in a column beside it, the words in a white
