@@ -40,7 +40,7 @@ export function Empty({ children }: { children: ReactNode }) {
 const STATUS = {
   lead: { label: "Lead", className: "bg-amber-100 text-amber-900" },
   buyer: { label: "Buyer", className: "bg-sky-100 text-sky-900" },
-  agent: { label: "Agent", className: "bg-emerald-100 text-emerald-900" },
+  agent: { label: "Agent", className: "bg-ink text-white" },
 } satisfies Record<PersonStatus, { label: string; className: string }>;
 
 export const statusLabel = (status: PersonStatus) => STATUS[status].label;
@@ -86,8 +86,8 @@ export function Avatar({ name }: { name: string }) {
 export function ContactLinks({ name, phone, email, compact = false }: { name: string; phone: string; email: string; compact?: boolean }) {
   const dial = phone.replace(/[^\d+]/g, "");
   const link = cn(
-    "flex min-h-9 items-center gap-1.5 rounded-lg font-semibold ring-1 ring-stone-300 hover:bg-stone-100",
-    compact ? "px-2.5 text-xs" : "px-3 text-sm",
+    "flex min-h-11 items-center gap-1.5 rounded-full font-semibold ring-1 ring-stone-300 hover:bg-stone-100",
+    compact ? "px-3 text-xs" : "px-3.5 text-sm",
   );
   const who = name || email;
   return (
@@ -125,7 +125,7 @@ export function SearchBox({ q, placeholder, keep }: { q?: string; placeholder: s
           className="h-11 w-full rounded-xl border border-stone-300 bg-white pl-10 pr-3 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
         />
       </label>
-      <button type="submit" className="min-h-11 rounded-xl bg-ink px-4 text-sm font-semibold text-white">
+      <button type="submit" className="min-h-11 rounded-full bg-ink px-5 text-sm font-semibold text-white">
         Search
       </button>
     </form>
@@ -142,7 +142,7 @@ export function Chips({ label, items }: { label: string; items: { href: string; 
           href={item.href}
           aria-current={item.current ? "page" : undefined}
           className={cn(
-            "flex min-h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium",
+            "flex min-h-11 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium",
             item.current ? "bg-ink text-white" : "bg-white text-stone-700 ring-1 ring-stone-300 hover:ring-stone-500",
           )}
         >
@@ -161,7 +161,7 @@ export function Pager({ page, total, href }: { page: number; total: number; href
   if (total === 0) return null;
   const first = (page - 1) * PAGE_SIZE + 1;
   const last = Math.min(total, page * PAGE_SIZE);
-  const button = "flex min-h-10 items-center gap-1 rounded-lg px-3 text-sm font-semibold ring-1 ring-stone-300 hover:bg-white";
+  const button = "flex min-h-11 items-center gap-1 rounded-full px-4 text-sm font-semibold ring-1 ring-stone-300 hover:bg-white";
   return (
     <div className="mt-4 flex items-center justify-between gap-3 text-sm text-stone-600">
       <p className="tabular-nums">

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 import {
+  commentIn,
   createShare,
   heartOf,
   homeIn,
@@ -670,4 +671,93 @@ test("something liked in one home and passed on in another depends on the home, 
   await expect(want).toContainText(`Both like: Layout (${CORBEL})`);
   await expect(want).not.toContainText("Only Ann");
   await expect(person("Bob")).toContainText(/Depends on the home\s*Layout/);
+});
+
+test("an agent hearts what a client said: their thread says Liked by, in stone, and it never leaves the link", async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const SALTMARSH = "719 Saltmarsh Ln";
+  const IVY_SAYS = "Is the garage heated? I'd use it as a workshop.";
+  const agent = await signInAgent(browser, "hal-hearts@example.com", "Hal Hearts");
+  const { urls, dashboardUrl } = await createShare(agent, ["719 Saltmarsh"], ["Ivy"]);
+
+  // Ivy likes the home, and says something, shared on the public page too.
+  const ivy = await (await browser.newContext()).newPage();
+  await ivy.goto(urls.Ivy);
+  const home = homeIn(ivy, SALTMARSH);
+  await heartOf(home).click();
+  await expect(heartOf(home)).toHaveAttribute("aria-pressed", "true");
+  let sheet = await openComments(ivy, home);
+  await sheet.getByLabel("Add a comment").fill(IVY_SAYS);
+  await sheet.getByLabel(/share this anonymously/).check();
+  await sheet.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(commentIn(sheet, "Ivy", IVY_SAYS)).toBeVisible();
+  await expect(sheet.getByText(/^Liked by/)).toHaveCount(0);
+  // The thread's small buttons each take a fingertip.
+  for (const small of [sheet.getByRole("button", { name: "Post", exact: true }), sheet.getByRole("button", { name: "Make private" })]) {
+    expect(await small.evaluate((el) => getComputedStyle(el, "::after").height)).toBe("44px");
+  }
+
+  // The agent answers, and hearts what she said; never their own words.
+  await agent.goto(dashboardUrl);
+  const panel = agent.getByRole("region", { name: SALTMARSH });
+  await panel.getByRole("textbox", { name: "Reply to your client" }).fill("It is, and wired for 240V.");
+  await panel.getByRole("button", { name: "Reply", exact: true }).click();
+  const reply = panel.getByRole("listitem").filter({ hasText: "It is, and wired for 240V." });
+  await expect(reply).toBeVisible();
+  await expect(reply.getByRole("button", { name: /^Like/ })).toHaveCount(0);
+  const said = panel.getByRole("listitem").filter({ hasText: IVY_SAYS });
+  const like = said.getByRole("button", { name: "Like Ivy's comment" });
+  await expect(like).toHaveAttribute("aria-pressed", "false");
+  expect(await like.evaluate((el) => getComputedStyle(el, "::after").height)).toBe("44px");
+  await like.click();
+  await expect(like).toHaveAttribute("aria-pressed", "true");
+  await expect(like.locator(".lucide-heart")).toHaveClass(/fill-rose-600/);
+  // It stays.
+  await agent.reload();
+  await expect(like).toHaveAttribute("aria-pressed", "true");
+
+  // On her link: "Liked by Hal" under her words, in stone, not the agent's colour.
+  await ivy.reload();
+  sheet = await openComments(ivy, homeIn(ivy, SALTMARSH));
+  const chip = commentIn(sheet, "Ivy", IVY_SAYS).getByText("Liked by Hal", { exact: true });
+  await expect(chip).toBeVisible();
+  await expect(chip).toHaveClass(/bg-stone-100/);
+  const colours = await chip.evaluate((el) => {
+    const brand = document.createElement("span");
+    brand.style.color = "var(--brand)";
+    el.append(brand);
+    const value = getComputedStyle(brand).color;
+    brand.remove();
+    return { brand: value, background: getComputedStyle(el).backgroundColor, text: getComputedStyle(el).color };
+  });
+  expect(colours.background).not.toBe(colours.brand);
+  expect(colours.text).not.toBe(colours.brand);
+  // Only hers.
+  await expect(sheet.getByText(/^Liked by/)).toHaveCount(1);
+
+  // In public her words show, as a buyer's, and the agent's heart never does.
+  const visitor = await (await browser.newContext()).newPage();
+  await visitor.goto("/homes/SAMPLE-1008");
+  const outside = await openComments(visitor, homeIn(visitor, SALTMARSH));
+  const shared = commentIn(outside, "A buyer", IVY_SAYS);
+  await expect(shared).toBeVisible();
+  await expect(shared).not.toContainText("Liked by");
+  await expect(outside.getByText(/Liked by Hal/)).toHaveCount(0);
+  const html = await (await visitor.request.get("/homes/SAMPLE-1008")).text();
+  expect(html).toContain("Is the garage heated?");
+  for (const never of ["Liked by Hal", "Hal Hearts"]) expect(html).not.toContain(never);
+  // (Not even the field: "likedByMe" is a public comment's own.)
+  expect(html).not.toMatch(/likedBy(?!Me)/);
+
+  // Taken back, it's gone from her thread too.
+  await like.click();
+  await expect(like).toHaveAttribute("aria-pressed", "false");
+  await agent.reload();
+  await expect(like).toHaveAttribute("aria-pressed", "false");
+  await ivy.reload();
+  sheet = await openComments(ivy, homeIn(ivy, SALTMARSH));
+  await expect(commentIn(sheet, "Ivy", IVY_SAYS)).toBeVisible();
+  await expect(sheet.getByText(/^Liked by/)).toHaveCount(0);
 });

@@ -35,7 +35,7 @@ export function AdminNav({ superAdmin }: { superAdmin: boolean }) {
                 href={href}
                 aria-current={current ? "page" : undefined}
                 className={cn(
-                  "flex min-h-11 items-center gap-2.5 rounded-xl px-3 text-sm font-medium",
+                  "flex min-h-11 items-center gap-2.5 rounded-full px-3.5 text-sm font-medium",
                   current ? "bg-ink text-white" : "text-stone-700 hover:bg-stone-200/70",
                 )}
               >
@@ -71,7 +71,7 @@ export function ConfirmAction({
         type="button"
         onClick={() => setAsking(true)}
         className={cn(
-          "min-h-9 rounded-lg px-3 text-sm font-semibold text-red-700 hover:bg-red-50",
+          "min-h-11 rounded-full px-4 text-sm font-semibold text-red-700 hover:bg-red-50",
           className,
         )}
       >
@@ -86,7 +86,7 @@ export function ConfirmAction({
         autoFocus
         disabled={pending}
         onClick={() => start(async () => await action())}
-        className="min-h-9 rounded-lg bg-red-700 px-3 text-sm font-semibold text-white disabled:opacity-60"
+        className="min-h-11 rounded-full bg-red-700 px-4 text-sm font-semibold text-white disabled:opacity-60"
       >
         {pending ? "One moment…" : confirm}
       </button>
@@ -94,7 +94,7 @@ export function ConfirmAction({
         type="button"
         disabled={pending}
         onClick={() => setAsking(false)}
-        className="min-h-9 rounded-lg px-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+        className="min-h-11 rounded-full px-4 text-sm font-semibold text-stone-700 hover:bg-stone-100"
       >
         Cancel
       </button>
@@ -162,7 +162,7 @@ export function PersonForm({
         <button
           type="submit"
           disabled={pending}
-          className="min-h-11 rounded-xl bg-brand px-5 font-semibold text-white disabled:opacity-60"
+          className="min-h-11 rounded-full bg-brand px-5 font-semibold text-white disabled:opacity-60"
         >
           {pending ? "Saving…" : "Save changes"}
         </button>
@@ -200,7 +200,7 @@ export function AddAdminForm({ action }: { action: (state: AdminFormState, form:
         <button
           type="submit"
           disabled={pending}
-          className="min-h-11 rounded-xl bg-brand px-5 font-semibold text-white disabled:opacity-60"
+          className="min-h-11 rounded-full bg-brand px-5 font-semibold text-white disabled:opacity-60"
         >
           {pending ? "Adding…" : "Add admin"}
         </button>

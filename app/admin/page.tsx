@@ -37,7 +37,7 @@ export default async function AdminOverview() {
         title="Follow up"
         className="mt-6"
         action={
-          <Link href="/admin/people?status=lead" className="text-sm font-semibold text-brand hover:underline">
+          <Link href="/admin/people?status=lead" className="-my-3 -mr-2 flex min-h-11 items-center px-2 text-sm font-semibold text-brand hover:underline">
             All leads
           </Link>
         }
@@ -53,7 +53,7 @@ export default async function AdminOverview() {
               <li key={lead.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
                 <Avatar name={lead.name} />
                 <div className="min-w-0 flex-1">
-                  <Link href={`/admin/people/${lead.id}`} className="font-semibold hover:underline">
+                  <Link href={`/admin/people/${lead.id}`} className="font-semibold hit-44 hover:underline">
                     {lead.name}
                   </Link>
                   <p className="truncate text-sm text-stone-600">
@@ -91,7 +91,7 @@ export default async function AdminOverview() {
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">{home.data.UnparsedAddress}</p>
                       <p className="text-sm text-stone-600">
-                        {formatPrice(home.data.ListPrice)} · {home.data.City}
+                        <span className="font-display text-base text-ink">{formatPrice(home.data.ListPrice)}</span> · {home.data.City}
                       </p>
                     </div>
                     <p className="shrink-0 text-sm tabular-nums text-stone-600">
@@ -107,7 +107,7 @@ export default async function AdminOverview() {
         <Card
           title="Latest comments"
           action={
-            <Link href="/admin/comments" className="text-sm font-semibold text-brand hover:underline">
+            <Link href="/admin/comments" className="-my-3 -mr-2 flex min-h-11 items-center px-2 text-sm font-semibold text-brand hover:underline">
               All comments
             </Link>
           }
@@ -123,7 +123,7 @@ export default async function AdminOverview() {
                     <span className="text-stone-500"> on </span>
                     <Link
                       href={`/admin/homes/${encodeURIComponent(comment.listing_key)}`}
-                      className="font-medium hover:underline"
+                      className="font-medium hit-44 hover:underline"
                     >
                       {comment.address}
                     </Link>

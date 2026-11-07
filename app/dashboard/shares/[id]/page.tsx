@@ -30,6 +30,7 @@ import { Opened } from "../../opened";
 import {
   AddPersonForm,
   ClientNameEditor,
+  CommentLike,
   CommentMenu,
   HomeScorecards,
   MarkSeen,
@@ -88,6 +89,10 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
     getShareTimelines(share.id, listings, null),
     getSharePhotoLikes(share.id, listings.map((listing) => listing.ListingKey), null),
   ]);
+  // The clients' comments the agent has hearted, as their thread shows them.
+  const liked = new Set(
+    [...timelines.values()].flat().flatMap((item) => (item.kind === "comment" && item.likedBy ? [item.id] : [])),
+  );
   const oneHome = active.length === 1 ? { address: active[0].UnparsedAddress, price: active[0].ListPrice } : undefined;
   // Every photo on their link, for "saw 3 of 4 photos".
   const photos = active.reduce((sum, listing) => sum + listing.Media.length, 0);
@@ -221,7 +226,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
             ) : (
               <div className="mt-3 flex flex-col gap-5">
                 {active.map((listing) => (
-                  <HomePanel key={listing.ListingKey} shareId={share.id} listing={listing} thread={thread} />
+                  <HomePanel key={listing.ListingKey} shareId={share.id} listing={listing} thread={thread} liked={liked} />
                 ))}
               </div>
             )}
@@ -236,7 +241,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
                 </p>
                 <div className="mt-3 flex flex-col gap-5">
                   {removed.map((listing) => (
-                    <HomePanel key={listing.ListingKey} shareId={share.id} listing={listing} thread={thread} />
+                    <HomePanel key={listing.ListingKey} shareId={share.id} listing={listing} thread={thread} liked={liked} />
                   ))}
                 </div>
               </section>
@@ -708,7 +713,18 @@ function CommentSpot({ listing, spot }: { listing: Listing; spot: NonNullable<Th
   );
 }
 
-function HomePanel({ shareId, listing, thread }: { shareId: string; listing: Listing; thread: Thread }) {
+function HomePanel({
+  shareId,
+  listing,
+  thread,
+  liked,
+}: {
+  shareId: string;
+  listing: Listing;
+  thread: Thread;
+  // The comments the agent has hearted.
+  liked: Set<string>;
+}) {
   // One line per person: their reaction plus what they liked, and didn't, in
   // the photos and the facts.
   const lines = new Map<string, { name: string; state: ReactionState; likes: TakeMark[]; dislikes: TakeMark[]; tags: string[] }>();
@@ -829,6 +845,10 @@ function HomePanel({ shareId, listing, thread }: { shareId: string; listing: Lis
                 </p>
                 {comment.spot && <CommentSpot listing={listing} spot={comment.spot} />}
                 <p className="mt-0.5 whitespace-pre-line break-words text-[15px] leading-snug">{comment.body}</p>
+                {/* A client's words on a home still on their link: they'd see the heart. */}
+                {!comment.isAgent && !isRemoved && (
+                  <CommentLike commentId={comment.id} name={comment.name} liked={liked.has(comment.id)} />
+                )}
               </div>
               <CommentMenu commentId={comment.id} name={comment.name} />
             </li>

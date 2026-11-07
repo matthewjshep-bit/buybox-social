@@ -82,16 +82,16 @@ export default async function AdminHomes({ searchParams }: Props) {
                       </span>
                     </p>
                     <p className="truncate text-sm text-stone-600">
-                      {formatPrice(listing.ListPrice)} · {listing.BedroomsTotal} bd · {listing.BathroomsTotalInteger} ba ·{" "}
+                      <span className="font-display text-base text-ink">{formatPrice(listing.ListPrice)}</span> · {listing.BedroomsTotal} bd · {listing.BathroomsTotalInteger} ba ·{" "}
                       {listing.LivingArea.toLocaleString("en-US")} sq ft · {listing.City}
                     </p>
                     <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm tabular-nums text-stone-600">
                       <span className="flex items-center gap-1" title="Likes">
-                        <Heart aria-hidden size={14} /> {publicTotals.likes + privateTotals.likes}
+                        <Heart aria-hidden size={14} className="text-rose-600" /> {publicTotals.likes + privateTotals.likes}
                         <span className="sr-only">likes,</span>
                       </span>
                       <span className="flex items-center gap-1" title="Passes">
-                        <ThumbsDown aria-hidden size={14} /> {publicTotals.dislikes + privateTotals.dislikes}
+                        <ThumbsDown aria-hidden size={14} className="text-amber-800" /> {publicTotals.dislikes + privateTotals.dislikes}
                         <span className="sr-only">passes,</span>
                       </span>
                       <span className="flex items-center gap-1" title="Comments">

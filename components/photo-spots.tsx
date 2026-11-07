@@ -861,7 +861,7 @@ export function ReactCard({
           <button
             type="button"
             onClick={onComment}
-            className="flex min-h-10 w-full items-center gap-2 rounded-full bg-stone-100 pl-4 pr-3 text-left text-sm text-stone-500 hover:bg-stone-200"
+            className="flex min-h-10 w-full items-center gap-2 rounded-full bg-stone-100 pl-4 pr-3 text-left text-sm text-stone-500 hit-44 hover:bg-stone-200"
           >
             <span className="min-w-0 flex-1 truncate">Comment on {phrase}…</span>
             {comments.length > 0 && (

@@ -17,7 +17,7 @@ export function CommentList({ comments, showHome = true }: { comments: CommentRo
           <div className="min-w-0 flex-1">
             <p className="text-sm">
               {comment.accountId ? (
-                <Link href={`/admin/people/${comment.accountId}`} className="font-semibold hover:underline">
+                <Link href={`/admin/people/${comment.accountId}`} className="font-semibold hit-44 hover:underline">
                   {comment.name}
                 </Link>
               ) : (
@@ -31,7 +31,7 @@ export function CommentList({ comments, showHome = true }: { comments: CommentRo
                   <span className="text-stone-500"> on </span>
                   <Link
                     href={`/admin/homes/${encodeURIComponent(comment.listing_key)}`}
-                    className="font-medium hover:underline"
+                    className="font-medium hit-44 hover:underline"
                   >
                     {comment.address}
                   </Link>
@@ -48,7 +48,7 @@ export function CommentList({ comments, showHome = true }: { comments: CommentRo
             )}
             <p className="mt-1 whitespace-pre-line break-words text-[15px]">{comment.body}</p>
           </div>
-          <div className="-ml-3 shrink-0 sm:ml-0">
+          <div className="-ml-4 shrink-0 sm:ml-0">
             {comment.kind === "public" ? (
               <ConfirmAction
                 action={deleteComment.bind(null, comment.id)}

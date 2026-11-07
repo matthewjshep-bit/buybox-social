@@ -45,7 +45,7 @@ export default async function AdminPeople({ searchParams }: Props) {
           <a
             href={hrefWith("/admin/people/export", { status, q })}
             download
-            className="flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold ring-1 ring-stone-300 hover:ring-stone-500"
+            className="flex min-h-11 items-center gap-2 rounded-full bg-white px-4 text-sm font-semibold ring-1 ring-stone-300 hover:ring-stone-500"
           >
             <Download aria-hidden size={16} /> Download CSV
           </a>
@@ -109,7 +109,7 @@ export default async function AdminPeople({ searchParams }: Props) {
                   <span className="col-span-3 flex flex-wrap items-center gap-3 pl-12 text-sm text-stone-600 md:col-span-1 md:pl-0">
                     {person.phone && <span className="md:hidden">{person.phone}</span>}
                     <span className="flex items-center gap-1" title="Homes liked">
-                      <Heart aria-hidden size={14} /> {person.likes}
+                      <Heart aria-hidden size={14} className="text-rose-600" /> {person.likes}
                       <span className="sr-only">homes liked,</span>
                     </span>
                     <span className="flex items-center gap-1" title="Comments">

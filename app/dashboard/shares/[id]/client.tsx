@@ -1,6 +1,17 @@
 "use client";
 
-import { Check, ClipboardList, Copy, ExternalLink, MessageSquare, MoreHorizontal, Pencil, Share, UserPlus } from "lucide-react";
+import {
+  Check,
+  ClipboardList,
+  Copy,
+  ExternalLink,
+  Heart,
+  MessageSquare,
+  MoreHorizontal,
+  Pencil,
+  Share,
+  UserPlus,
+} from "lucide-react";
 import Image from "next/image";
 import {
   createContext,
@@ -9,6 +20,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useOptimistic,
   useRef,
   useState,
   useSyncExternalStore,
@@ -22,6 +34,7 @@ import type { FeedPost } from "@/lib/feed";
 import { cn } from "@/lib/format";
 import { addPerson, markShareSeen, removeComment, renameClient, replyAsAgent, type FormState } from "../../actions";
 import { HOME_MESSAGE_TITLE, homeMessage } from "../../message";
+import { likeClientComment } from "./actions";
 
 // Looking at this page counts as seeing what's on it, so the dashboard stops
 // marking the link as new; something that arrives while it's open counts too.
@@ -176,7 +189,7 @@ export function SendLink({
         readOnly
         value={url}
         onFocus={(event) => event.target.select()}
-        className="mt-2 w-full rounded-xl bg-stone-100 px-3 py-2.5 text-sm"
+        className="mt-2 w-full rounded-xl bg-stone-100 px-3 py-3 text-sm"
       />
       <div className={cn("mt-3 grid gap-2 text-sm font-semibold", share ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")}>
         <a href={`sms:?&body=${encodeURIComponent(message)}`} className={cn(button, "bg-brand text-white")}>
@@ -384,6 +397,33 @@ export function SpotChip({
         </figure>
       )}
     </div>
+  );
+}
+
+// A heart under a client's comment, as a creator hearts one on a reel: their
+// thread then says "Liked by" the agent's first name under it.
+export function CommentLike({ commentId, name, liked }: { commentId: string; name: string; liked: boolean }) {
+  const [shown, setShown] = useOptimistic(liked);
+  const [, startTransition] = useTransition();
+  return (
+    <button
+      type="button"
+      aria-pressed={shown}
+      onClick={() =>
+        startTransition(async () => {
+          setShown(!shown);
+          await likeClientComment(commentId, !shown);
+        })
+      }
+      className={cn(
+        "-ml-1.5 mt-0.5 flex min-h-8 w-fit items-center gap-1.5 rounded-full px-1.5 text-[13px] font-semibold hit-44 hover:bg-stone-100",
+        shown ? "text-rose-700" : "text-stone-600 hover:text-ink",
+      )}
+    >
+      <Heart aria-hidden size={15} className={cn(shown && "fill-rose-600 text-rose-600")} />
+      Like
+      <span className="sr-only"> {name}&apos;s comment</span>
+    </button>
   );
 }
 

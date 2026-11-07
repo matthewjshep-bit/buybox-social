@@ -1,4 +1,4 @@
-import { expect, test, type Browser } from "@playwright/test";
+import { expect, test, type Browser, type Page } from "@playwright/test";
 import { homeIn, openComments, signUpBuyer } from "./helpers";
 
 // The phone settings carry over to new contexts, touch included; a desktop has none.
@@ -7,8 +7,8 @@ const BRACKENFIELD = "2205 Brackenfield Ct NW";
 
 const OWNER = "matt@shepflips.com";
 
-async function signIn(browser: Browser, email: string) {
-  const page = await (await browser.newContext(DESKTOP)).newPage();
+async function signIn(browser: Browser, email: string, device: Parameters<Browser["newContext"]>[0] = DESKTOP) {
+  const page = await (await browser.newContext(device)).newPage();
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Continue" }).click();
@@ -127,4 +127,41 @@ test("the owner alone decides who else is an admin", async ({ browser }) => {
   await helperRow.getByRole("button", { name: /^Remove / }).click();
   await expect(owner.getByRole("listitem").filter({ hasText: "helper@example.com" })).toHaveCount(0);
   expect((await helper.goto("/admin/people"))!.status()).toBe(404);
+});
+
+// Every link, button and field on the page that's smaller than a fingertip,
+// counting the touch area a small one gets around it (44px either way).
+const tooSmall = (page: Page) =>
+  page.getByRole("main").evaluate((main) =>
+    [...main.querySelectorAll("a, button, select, input:not([type=hidden]), summary")].flatMap((el) => {
+      const box = el.getBoundingClientRect();
+      if (box.width === 0 && box.height === 0) return [];
+      const around = getComputedStyle(el, "::after");
+      const padded = around.position === "absolute" && around.content !== "none";
+      const height = Math.max(box.height, padded ? parseFloat(around.height) : 0);
+      const width = Math.max(box.width, padded ? parseFloat(around.width) : 0);
+      return height < 43.5 || width < 43.5 ? [`${el.textContent?.trim() || el.outerHTML.slice(0, 60)}: ${width}x${height}`] : [];
+    }),
+  );
+
+test("on a phone, everything in the admin takes a fingertip, and likes are hearts, never green", async ({ browser }) => {
+  // (The default device: a phone.)
+  const admin = await signIn(browser, OWNER, {});
+  for (const path of ["/admin", "/admin/people", "/admin/homes", "/admin/homes/SAMPLE-1006", "/admin/comments", "/admin/team"]) {
+    await admin.goto(path);
+    await expect(admin.getByRole("heading", { level: 1 })).toBeVisible();
+    expect(await tooSmall(admin), path).toEqual([]);
+    await expect(admin.locator(".lucide-thumbs-up")).toHaveCount(0);
+  }
+  // The way back from a home or a person, most of all.
+  await admin.goto("/admin/people?q=casey");
+  await admin.getByRole("link", { name: /Casey Buyer/ }).click();
+  await expect(admin.getByRole("heading", { level: 1 })).toHaveText("Casey Buyer");
+  expect(await tooSmall(admin)).toEqual([]);
+  const back = admin.getByRole("main").getByRole("link", { name: "People", exact: true });
+  expect((await back.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  // An agent is marked in ink, as everywhere else; green is for what's for sale.
+  await expect(admin.getByText("Agent", { exact: true }).first()).toHaveClass(/bg-ink/);
+  await admin.goto("/admin/people?status=agent");
+  await expect(admin.getByRole("main").locator("[class*='emerald']")).toHaveCount(0);
 });
