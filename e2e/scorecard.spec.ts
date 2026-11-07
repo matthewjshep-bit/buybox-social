@@ -467,3 +467,83 @@ test("someone who passed on the kitchen doesn't like the kitchen, whatever they 
   ]);
   expect(card.say?.sentences).toEqual(["Ben didn't like the kitchen."]);
 });
+
+test("the numbers agree: a pass with a heart in the photos is among the likes, and the line under the bar says only who passed", () => {
+  const fan = (name: string) => personOf(name, { reaction: "like", liked: [], disliked: [] });
+  const fans = ["Ann", "Bea", "Cy", "Di", "Ed"].map(fan);
+  // Ben hearts the marble counters, then passes; Cal just passes. On the
+  // public page, Ben's heart counts among the likes: six liked it, two passed.
+  const ben = personOf("Ben", { reaction: "dislike", liked: [], disliked: [] }, [liked("Marble counters")]);
+  const cal = personOf("Cal", { reaction: "dislike", liked: [], disliked: [] });
+  const card = buildScorecard({ ...linkPost([...fans, ben, cal]), likes: 6, dislikes: 2 }, "public");
+  expect([card.feel.likes, card.feel.passes, card.feel.people]).toEqual([6, 2, 7]);
+  // Not "5 liked it" under "6 liked it".
+  expect(card.feel.split).toBe("2 of 7 passed");
+
+  // Nobody passed: how many of them liked it.
+  const all = buildScorecard({ ...linkPost(fans), likes: 5 }, "public");
+  expect(all.feel.split).toBe("5 of 5 liked it");
+  // Under five people, no line at all.
+  expect(buildScorecard({ ...linkPost(fans.slice(1)), likes: 4 }, "public").feel.split).toBeNull();
+});
+
+test("a spot on nothing named reads as where it is, as the line above the price says it: outside, in the kitchen, or in photo 3", () => {
+  // A corner of the front photo and of the kitchen photo, on nothing named.
+  const corners = ["SAMPLE-1001-1", KITCHEN_PHOTO].map(
+    (mediaKey): PhotoThing => ({ tag: "@97,3", mediaUrl: null, mediaKey, spot: "@97,3", at: AT }),
+  );
+  const post = {
+    ...linkPost([personOf("Ben", { reaction: "like", liked: [], disliked: [] }, corners)]),
+    photoLikes: { ...NO_PHOTO_LIKES, counts: Object.fromEntries(corners.map((t) => [likeId(t.mediaKey!, t.spot!), 1])) },
+  };
+  const names = (p: FeedPost) => buildScorecard(p, "agent").photos?.loved.map((row) => row.name).sort();
+  expect(names(post)).toEqual(["A spot in the kitchen", "A spot outside"]);
+  // A photo nobody has said the room of: which photo it is.
+  const unnamed = { ...LARKMOOR, Media: LARKMOOR.Media.map((m) => ({ ...m, ImageOf: undefined })) };
+  expect(names({ ...post, listing: unnamed })).toEqual(["A spot in photo 1", "A spot in photo 3"]);
+});
+
+test("a heart on a comment in the public feed stays once it's saved, and the count with it", async ({ browser }) => {
+  const SAYS = "The porch light at dusk sold me.";
+  const page = await page$(browser, IPHONE);
+  await page.goto("/homes/SAMPLE-1011");
+  let chat = await openComments(page, homeIn(page, ALDER));
+  await chat.getByLabel("Add a comment").fill(SAYS);
+  await chat.getByRole("button", { name: "Post", exact: true }).click();
+  await joinAs(page, "Lior");
+  await expect(chat.getByText(SAYS)).toBeVisible();
+
+  // From a fresh page, so the comment is the one the server has.
+  const open = async () => {
+    await page.goto("/homes/SAMPLE-1011");
+    chat = await openComments(page, homeIn(page, ALDER));
+    const item = chat.locator("li[data-comment]").filter({ hasText: SAYS });
+    return { item, heart: item.getByRole("button", { name: /^Like your comment/ }), id: await item.getAttribute("data-comment") };
+  };
+  // Tap the heart and wait for that like to be saved (not just shown), then a beat.
+  const tap = async (heart: Locator, id: string | null) => {
+    const saved = page.waitForResponse(
+      (r) => r.request().method() === "POST" && (r.request().postData() ?? "").includes(id ?? "none"),
+    );
+    await heart.click();
+    await saved;
+    await page.waitForTimeout(500);
+  };
+
+  let { item, heart, id } = await open();
+  await expect(heart).toHaveAttribute("aria-pressed", "false");
+  await tap(heart, id);
+  await expect(heart).toHaveAttribute("aria-pressed", "true");
+  await expect(heart).toHaveAccessibleName("Like your comment, 1 like");
+  await expect(item.getByText("1 like", { exact: true })).toBeVisible();
+
+  ({ item, heart, id } = await open());
+  await expect(heart).toHaveAttribute("aria-pressed", "true");
+  await tap(heart, id);
+  await expect(heart).toHaveAttribute("aria-pressed", "false");
+  await expect(heart).toHaveAccessibleName("Like your comment");
+  await expect(item.getByText(/^\d+ likes?$/)).toHaveCount(0);
+
+  ({ heart } = await open());
+  await expect(heart).toHaveAttribute("aria-pressed", "false");
+});

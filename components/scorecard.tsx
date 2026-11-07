@@ -363,7 +363,7 @@ function Factoids({ card }: { card: Scorecard }) {
 }
 
 function Feel({ card, myName }: { card: Scorecard; myName?: string | null }) {
-  const { named, passes, people, likedOnly, bar, comments, yours } = card.feel;
+  const { named, passes, likedOnly, bar, split, comments, yours } = card.feel;
   if (named) {
     const faces = [...named.liked, ...named.passed].slice(0, 4);
     return (
@@ -412,14 +412,7 @@ function Feel({ card, myName }: { card: Scorecard; myName?: string | null }) {
           {passes > 0 && <span style={{ flex: passes }} className="bg-amber-500" />}
         </div>
       )}
-      {/* With passes, every one of them is said: someone who passed but
-          liked a thing in the photos counts above among the likes, and here
-          among the passes, so the numbers add up. */}
-      {people >= 5 && (
-        <p className="mt-1.5 text-meta text-muted">
-          {passes > 0 ? `Of ${people} people, ${likedOnly} liked it and ${passes} passed` : `${likedOnly} of ${people} liked it`}
-        </p>
-      )}
+      {split && <p className="mt-1.5 text-meta text-muted">{split}</p>}
     </div>
   );
 }

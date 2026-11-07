@@ -112,10 +112,13 @@ export type Scorecard = {
     // Said in private chats, and not among those shown (a count only).
     privateMore: number;
     // How many people, and how many of them liked it without passing, for
-    // "5 of 7 liked it" and the bar.
+    // the bar.
     people: number;
     likedOnly: number;
     bar: boolean;
+    // Under the bar, with five people or more: "5 of 7 liked it", or, with
+    // passes, "2 of 7 passed".
+    split: string | null;
     // On an agent's link with a few people: who, by name.
     named: { liked: string[]; passed: string[]; notYet: string[] } | null;
   };
@@ -190,7 +193,10 @@ const thingsList = (things: string[]) => namesList(things.map((thing) => `the ${
 function spotName(listing: Listing, photo: ListingMedia | undefined, index: number, tag: string) {
   const thing = photo ? thingOf(photo, tag) : tag;
   if (thing) return capital(thing);
-  if (photo?.ImageOf) return `A spot in the ${photo.ImageOf.toLowerCase()}`;
+  // As the line above the price says it: "A spot outside", not "in the exterior".
+  const room = photo?.ImageOf;
+  if (room && /exterior|front|facade/i.test(room)) return "A spot outside";
+  if (room) return `A spot in the ${room.toLowerCase()}`;
   return index >= 0 ? `A spot in photo ${index + 1}` : "A spot in a photo";
 }
 
@@ -385,6 +391,10 @@ export function buildScorecard(
     people: total,
     likedOnly,
     bar: likes + passes >= 3,
+    // With passes, only how many passed: someone who passed but liked a thing
+    // in the photos counts among the likes above, so a second "liked it" here
+    // would give a different number. The bar shows the rest.
+    split: total < 5 ? null : passes > 0 ? `${passes} of ${total} passed` : `${likedOnly} of ${total} liked it`,
     named: few
       ? {
           liked: people.filter(likedIt).map((person) => person.name),

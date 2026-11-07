@@ -351,6 +351,7 @@ function CommentItem({
   // Taking a comment back is always allowed; sharing it needs a like.
   const canToggle = comment.mine && actions.setSharing && (comment.sharedPublicly || canShare);
   const likeable = Boolean(actions.likeComment) && !comment.fromPrivateChat;
+  const like = useCommentLike(comment);
 
   // Replies open when you add one, so you see it land, or when you came to
   // see one of them.
@@ -421,9 +422,9 @@ function CommentItem({
               <span className="sr-only"> to {comment.mine ? "your comment" : comment.name}</span>
             </button>
           )}
-          {comment.likes > 0 && likeable && (
+          {like.count > 0 && likeable && (
             <span>
-              {comment.likes} {comment.likes === 1 ? "like" : "likes"}
+              {like.count} {like.count === 1 ? "like" : "likes"}
             </span>
           )}
           {comment.fromPrivateChat && (
@@ -473,34 +474,52 @@ function CommentItem({
           </>
         )}
       </div>
-      {likeable && <CommentHeart comment={comment} />}
+      {likeable && <CommentHeart comment={comment} like={like} />}
     </li>
   );
 }
 
-function CommentHeart({ comment }: { comment: TimelineComment }) {
+type CommentLike = { liked: boolean; count: number; toggle: () => Promise<void> };
+
+// Your like on a comment shows at once and stays once it's saved, even where
+// the page doesn't reload after it (the home page feed); a fresh copy of the
+// comment from the server takes over when one comes.
+function useCommentLike(comment: TimelineComment): CommentLike {
   const { actions, ensureName } = useThread();
-  const [state, setState] = useOptimistic({ liked: comment.likedByMe, count: comment.likes });
+  const server = { liked: comment.likedByMe, count: comment.likes };
+  const [saved, setSaved] = useState(server);
+  const [from, setFrom] = useState(server);
+  if (from.liked !== server.liked || from.count !== server.count) {
+    setFrom(server);
+    setSaved(server);
+  }
+  const [state, setState] = useOptimistic(saved);
   const [, startTransition] = useTransition();
+  const toggle = async () => {
+    if (!(await ensureName())) return;
+    const next = { liked: !state.liked, count: Math.max(0, state.count + (state.liked ? -1 : 1)) };
+    startTransition(async () => {
+      setState(next);
+      const result = await actions.likeComment!(comment.id, next.liked);
+      if (result.ok) startTransition(() => setSaved(next));
+    });
+  };
+  return { ...state, toggle };
+}
+
+function CommentHeart({ comment, like }: { comment: TimelineComment; like: CommentLike }) {
   return (
     <button
       type="button"
-      aria-pressed={state.liked}
-      aria-label={`Like ${comment.mine ? "your" : `${comment.name}'s`} comment${state.count ? `, ${state.count} ${state.count === 1 ? "like" : "likes"}` : ""}`}
-      onClick={async () => {
-        if (!(await ensureName())) return;
-        const liked = !state.liked;
-        startTransition(async () => {
-          setState({ liked, count: state.count + (liked ? 1 : -1) });
-          await actions.likeComment!(comment.id, liked);
-        });
-      }}
+      aria-pressed={like.liked}
+      aria-label={`Like ${comment.mine ? "your" : `${comment.name}'s`} comment${like.count ? `, ${like.count} ${like.count === 1 ? "like" : "likes"}` : ""}`}
+      onClick={like.toggle}
       className={cn(
         "-mr-1 flex size-9 shrink-0 flex-col items-center justify-center rounded-full text-tiny font-semibold tabular-nums hit-44 hover:bg-stone-100",
-        state.liked ? "text-rose-600" : "text-stone-500",
+        like.liked ? "text-rose-600" : "text-stone-500",
       )}
     >
-      <Heart aria-hidden size={15} className={cn(state.liked && "fill-current")} />
+      <Heart aria-hidden size={15} className={cn(like.liked && "fill-current")} />
     </button>
   );
 }
