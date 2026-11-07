@@ -92,7 +92,10 @@ export type FactRow = {
   comments: number;
 };
 
-export type CompareRow = { aspect: Aspect; label: string; cells: { likes: number; passes: number }[] };
+export type CompareCell = { likes: number; passes: number };
+export type CompareRow = { aspect: Aspect; label: string; cells: CompareCell[] };
+// A home in the comparison: this one first, then the others on the link.
+export type CompareHome = { key: string; address: string; photo: ListingMedia | null };
 
 export type Scorecard = {
   mode: ScorecardMode;
@@ -125,16 +128,24 @@ export type Scorecard = {
   about: { remarks: string | null; listedBy: string | null; sample: boolean };
   // Public pages: views, sends and private conversations, never passes.
   activity: string | null;
-  compare: { homes: string[]; rows: CompareRow[] } | null;
+  // The homes on a link side by side: liked it or passed overall, then each
+  // aspect, a count per home.
+  compare: { homes: CompareHome[]; overall: CompareCell[]; rows: CompareRow[] } | null;
 };
 
 // Agent mode: what each person on the link thinks.
 export type PersonTake = {
   key: string;
   name: string;
+  // "Liked it", "Passed", "Hasn't weighed in yet"
   verdict: string;
+  // How it reads at a glance: rose, amber, or neither.
+  tone: "like" | "pass" | null;
+  // The first few, and how many more.
   likes: string[];
+  moreLikes: number;
   passes: string[];
+  morePasses: number;
   comment: TimelineComment | null;
 };
 
@@ -229,15 +240,30 @@ const passedIt = (person: ScorecardPerson) => person.state.reaction === "dislike
 
 // The things a person liked (or didn't), by name: specifics (picked, or what
 // a like in a photo counts toward) and named things in the photos and facts,
-// each once.
+// each once. Someone who hearted the gas range but passed on the kitchen
+// doesn't like the kitchen: what they picked when they passed wins over what
+// a heart in a photo counts toward (the gas range itself still shows).
 function thingsOf(listing: Listing, person: ScorecardPerson, tone: "like" | "dislike") {
-  const aspects = [...aspectsOf(listing, person, tone)].map(aspectLabel) as string[];
+  const passedOn = new Set<Aspect>(person.state.disliked);
+  const aspects = [...aspectsOf(listing, person, tone)]
+    .filter((aspect) => tone === "dislike" || !passedOn.has(aspect))
+    .map(aspectLabel) as string[];
   const named = (tone === "like" ? person.liked : person.disliked).map((thing) => thing.tag).filter((tag) => !isPointTag(tag));
   const seen = new Set<string>();
   return [...aspects, ...named].filter((thing) => {
     const key = thing.toLowerCase();
     return seen.has(key) ? false : (seen.add(key), true);
   });
+}
+
+// One person's likes (or passes) for the agent, most telling first: what they
+// picked, then the things they tapped, then what those count toward.
+function takeThings(listing: Listing, person: ScorecardPerson, tone: "like" | "dislike") {
+  const picked = new Set<string>((tone === "like" ? person.state.liked : person.state.disliked).map(aspectLabel));
+  const things = thingsOf(listing, person, tone);
+  const named = new Set((tone === "like" ? person.liked : person.disliked).map((thing) => thing.tag.toLowerCase()));
+  const rank = (thing: string) => (picked.has(thing) ? 0 : named.has(thing.toLowerCase()) ? 1 : 2);
+  return [...things].sort((a, b) => rank(a) - rank(b));
 }
 
 // Each person's aspects, once each: picked, or liked in a photo or fact. What
@@ -464,7 +490,7 @@ export function buildScorecard(
           .join(" · ") || null
       : null;
 
-  return {
+  const card: Scorecard = {
     mode,
     header: {
       address: `${listing.UnparsedAddress}, ${listing.City}`,
@@ -493,14 +519,16 @@ export function buildScorecard(
           }
         : null,
     said: {
-      top: [...top]
+      // (The agent sees what their clients said: their own replies are in the thread.)
+      top: top
+        .filter((c) => mode !== "agent" || !c.isAgent)
         .sort((a, b) => b.likes - a.likes || b.at.localeCompare(a.at))
         .slice(0, 3),
       total: comments.length,
       privateMore,
     },
     take,
-    people: mode === "agent" ? peopleTakes(listing, people, post.timeline) : null,
+    people: mode === "agent" ? peopleTakes(listing, people, post.timeline, notYet) : null,
     facts,
     about: {
       remarks: listing.PublicRemarks?.trim() || null,
@@ -511,8 +539,11 @@ export function buildScorecard(
       sample: isSampleListing(listing),
     },
     activity,
-    compare: siblings && siblings.length > 0 ? compareOf([post, ...siblings], mode, agentName) : null,
+    compare: null,
   };
+  // Never on public pages: only a link has other homes to set beside this one.
+  if (mode !== "public" && siblings && siblings.length > 0) card.compare = compareOf(card, post, siblings, mode, agentName);
+  return card;
 }
 
 // You, as the page had you when it loaded (public pages count you in their totals).
@@ -757,53 +788,104 @@ function agreeOf(listing: Listing, people: ScorecardPerson[]): Scorecard["agree"
 }
 
 // The agent's view: one line per person, with their verdict, what they liked
-// and passed on, and the last thing they said.
-function peopleTakes(listing: Listing, people: ScorecardPerson[], timeline: TimelineItem[]): PersonTake[] {
+// and passed on, and the last thing they said; then who's on the link and
+// hasn't said anything about this home yet.
+function peopleTakes(listing: Listing, people: ScorecardPerson[], timeline: TimelineItem[], notYet: string[]): PersonTake[] {
   const said = topComments(timeline).filter((c) => !c.isAgent);
-  const lastOf = (person: ScorecardPerson) =>
-    said.filter((c) => (c.personKey ? c.personKey === person.key : c.name === person.name)).sort((a, b) => b.at.localeCompare(a.at))[0] ??
-    null;
+  const whose = (c: TimelineComment, person: ScorecardPerson) => (c.personKey ? c.personKey === person.key : c.name === person.name);
+  const newest = (comments: TimelineComment[]) => [...comments].sort((a, b) => b.at.localeCompare(a.at))[0] ?? null;
   // People who only commented have a line too.
-  const talkers = said
-    .filter((c) => !people.some((person) => (c.personKey ? c.personKey === person.key : c.name === person.name)))
-    .reduce<Map<string, TimelineComment>>((map, c) => map.set(c.personKey ?? c.name, c), new Map());
+  const talkers = new Map<string, TimelineComment[]>();
+  for (const c of said) {
+    if (people.some((person) => whose(c, person))) continue;
+    const key = c.personKey ?? c.name;
+    talkers.set(key, [...(talkers.get(key) ?? []), c]);
+  }
   return [
-    ...people.map((person) => ({
-      key: person.key,
-      name: person.name,
-      verdict: passedIt(person) ? "Passed" : person.state.reaction === "like" ? "Liked it" : likedIt(person) ? "Liked things in the photos" : "No verdict yet",
-      likes: thingsOf(listing, person, "like").slice(0, 3),
-      passes: thingsOf(listing, person, "dislike").slice(0, 3),
-      comment: lastOf(person),
-    })),
-    ...[...talkers.values()].map((c) => ({
-      key: c.personKey ?? c.name,
-      name: c.name,
+    ...people.map((person): PersonTake => {
+      const passed = passedIt(person);
+      const liked = !passed && likedIt(person);
+      const likes = takeThings(listing, person, "like");
+      const passes = takeThings(listing, person, "dislike");
+      return {
+        key: person.key,
+        name: person.name,
+        verdict: passed
+          ? "Passed"
+          : person.state.reaction === "like"
+            ? "Liked it"
+            : liked
+              ? "Liked things in the photos"
+              : person.disliked.length > 0
+                ? "Didn't like some things"
+                : "No verdict yet",
+        tone: passed || (!liked && person.disliked.length > 0) ? "pass" : liked ? "like" : null,
+        likes: likes.slice(0, 3),
+        moreLikes: Math.max(0, likes.length - 3),
+        passes: passes.slice(0, 3),
+        morePasses: Math.max(0, passes.length - 3),
+        comment: newest(said.filter((c) => whose(c, person))),
+      };
+    }),
+    ...[...talkers].map(([key, comments]): PersonTake => ({
+      key,
+      name: comments[0].name,
       verdict: "No verdict yet",
+      tone: null,
       likes: [],
+      moreLikes: 0,
       passes: [],
-      comment: said.filter((s) => (s.personKey ?? s.name) === (c.personKey ?? c.name)).sort((a, b) => b.at.localeCompare(a.at))[0] ?? c,
+      morePasses: 0,
+      comment: newest(comments),
     })),
+    ...notYet
+      // (Someone who only commented isn't "not yet".)
+      .filter((name) => ![...talkers.values()].some((comments) => comments[0].name.toLowerCase() === name.trim().toLowerCase()))
+      .map((name): PersonTake => ({
+        key: `not-yet:${name}`,
+        name,
+        verdict: "Hasn't weighed in yet",
+        tone: null,
+        likes: [],
+        moreLikes: 0,
+        passes: [],
+        morePasses: 0,
+        comment: null,
+      })),
   ];
 }
 
-// The homes on a link side by side: each aspect, a heart or pass count per home.
-function compareOf(posts: FeedPost[], mode: ScorecardMode, agentName?: string): Scorecard["compare"] {
-  const cards = posts.map((post) => buildScorecard(post, mode, { agentName }));
+// The homes on a link side by side: whether people liked it or passed, then
+// each aspect anyone has a view on, a heart or pass count per home. This
+// home's column is the card itself (what you've just tapped counts at once);
+// the others are as the page has them.
+function compareOf(
+  card: Scorecard,
+  post: FeedPost,
+  siblings: FeedPost[],
+  mode: ScorecardMode,
+  agentName?: string,
+): Scorecard["compare"] {
+  const cards = [card, ...siblings.map((sibling) => buildScorecard(sibling, mode, { agentName }))];
+  const posts = [post, ...siblings];
+  const overall = cards.map((c) => ({ likes: c.feel.likes, passes: c.feel.passes }));
   const aspects = new Set<Aspect>(
-    cards.flatMap((card) => [...card.aspects.liked, ...(card.aspects.disliked ?? [])].map((row) => row.aspect)),
+    cards.flatMap((c) => [...c.aspects.liked, ...(c.aspects.disliked ?? [])].map((row) => row.aspect)),
   );
-  if (aspects.size === 0) return null;
+  if (aspects.size === 0 && overall.every((cell) => cell.likes + cell.passes === 0)) return null;
   const rows = [...aspects].map((aspect) => ({
     aspect,
     label: aspectLabel(aspect),
-    cells: cards.map((card) => ({
-      likes: card.aspects.liked.find((row) => row.aspect === aspect)?.count ?? 0,
-      passes: card.aspects.disliked?.find((row) => row.aspect === aspect)?.count ?? 0,
+    cells: cards.map((c) => ({
+      likes: c.aspects.liked.find((row) => row.aspect === aspect)?.count ?? 0,
+      passes: c.aspects.disliked?.find((row) => row.aspect === aspect)?.count ?? 0,
     })),
   }));
+  // What people have the most to say about first, across the homes.
+  const said = (row: CompareRow) => row.cells.reduce((sum, cell) => sum + cell.likes + cell.passes, 0);
   return {
-    homes: posts.map((post) => post.listing.UnparsedAddress),
-    rows: rows.sort((a, b) => b.cells[0].likes - a.cells[0].likes || a.label.localeCompare(b.label)),
+    homes: posts.map((p) => ({ key: p.listing.ListingKey, address: p.listing.UnparsedAddress, photo: p.listing.Media[0] ?? null })),
+    overall,
+    rows: rows.sort((a, b) => said(b) - said(a) || a.label.localeCompare(b.label)),
   };
 }

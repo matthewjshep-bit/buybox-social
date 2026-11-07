@@ -689,6 +689,12 @@ function Feed({
         : undefined,
     [sheetPost, sheetState, sheetYours],
   );
+  // On an agent's link with a few homes, the others, for the Scorecard to set
+  // this one beside.
+  const sheetSiblings = useMemo(
+    () => (mode === "share" && sheetPost && posts.length > 1 ? posts.filter((post) => post !== sheetPost) : undefined),
+    [mode, posts, sheetPost],
+  );
   // A home's own button on the rail (the Scorecard's, More's), for the
   // keyboard to go back to.
   const railButton = (key: string, which: "scorecard" | "more") =>
@@ -865,6 +871,7 @@ function Feed({
         mode={mode}
         agentName={agentName}
         viewer={sheetViewer}
+        siblings={sheetSiblings}
         alone={alone}
         myName={myName}
         canShare={sheetPost ? reactions.states[sheetPost.listing.ListingKey]?.reaction === "like" : false}
@@ -2448,6 +2455,7 @@ function HomeSheet({
   mode,
   agentName,
   viewer,
+  siblings,
   myName,
   alone,
   canShare,
@@ -2475,6 +2483,8 @@ function HomeSheet({
   mode: "public" | "share";
   agentName?: string;
   viewer?: ScorecardViewer;
+  // The other homes on an agent's link, to compare with.
+  siblings?: FeedPost[];
   myName: string | null;
   // On an agent's link known to be this person's alone.
   alone: boolean;
@@ -2651,6 +2661,7 @@ function HomeSheet({
               mode={mode}
               agentName={agentName}
               viewer={viewer}
+              siblings={siblings}
               myName={myName}
               alone={alone}
               onShowSpot={(at, keyboard) => onScorecardSpot(post.listing.ListingKey, at, keyboard)}

@@ -9,6 +9,7 @@ import { NO_PHOTO_LIKES } from "@/lib/photos";
 import { NO_REACTION } from "@/lib/reactions";
 import { getParticipant, getShareByToken, getShareListings, getShareMembers, isPrivateTo } from "@/lib/shares";
 import { headlineFromTimeline, type FeedPost } from "@/lib/feed";
+import { eventsFromTimeline } from "@/lib/ticker";
 import { getSharePhotoLikes, getShareTimelines, type TimelineReaction } from "@/lib/timeline";
 import { addComment, askToSee, joinThread, likePhotoInShare, setCommentSharing, setReaction } from "./actions";
 import { ShareEnd, ShareReel, ShareWelcome } from "./client";
@@ -110,6 +111,13 @@ export default async function SharePage({ params }: Props) {
       // One home opens straight on it, so the agent's greeting and note are its caption.
       ...(count === 1 && { greeting, note: share.note || undefined }),
       members,
+      // The agent on their own link: what they said there is theirs, so the
+      // line above the price says "You", as it does for anyone's own.
+      ...(agentViewing && {
+        events: eventsFromTimeline(timeline).map((event) =>
+          event.who.tone === "agent" ? { ...event, who: { tone: "you" as const, name: null } } : event,
+        ),
+      }),
     };
   });
 

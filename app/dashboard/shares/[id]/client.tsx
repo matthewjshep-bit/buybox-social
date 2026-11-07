@@ -1,17 +1,24 @@
 "use client";
 
-import { Check, Copy, ExternalLink, MessageSquare, MoreHorizontal, Pencil, Share, UserPlus } from "lucide-react";
+import { Check, ClipboardList, Copy, ExternalLink, MessageSquare, MoreHorizontal, Pencil, Share, UserPlus } from "lucide-react";
 import Image from "next/image";
 import {
+  createContext,
   useActionState,
+  useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
   useTransition,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
+import { ScorecardBody } from "@/components/scorecard";
+import { Sheet } from "@/components/sheet";
+import type { FeedPost } from "@/lib/feed";
 import { cn } from "@/lib/format";
 import { addPerson, markShareSeen, removeComment, renameClient, replyAsAgent, type FormState } from "../../actions";
 import { HOME_MESSAGE_TITLE, homeMessage } from "../../message";
@@ -504,5 +511,118 @@ export function CommentMenu({ commentId, name }: { commentId: string; name: stri
         </div>
       )}
     </div>
+  );
+}
+
+// Wide enough for the Scorecard to sit beside the page rather than over it.
+const WIDE = "(min-width: 1024px)";
+const subscribeWide = (onChange: () => void) => {
+  const query = matchMedia(WIDE);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+};
+const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const OpenScorecard = createContext<(listingKey: string) => void>(() => {});
+
+// Each home's Scorecard, as the people on the link see it, with what each of
+// them thinks: a sheet from the bottom on a phone; on a wide screen, a panel
+// down the right that leaves the page free to scroll and use. One at a time,
+// opened from the button on each home.
+export function HomeScorecards({
+  posts,
+  offLink,
+  agentName,
+  children,
+}: {
+  // Every home the link has had, each built from the link's own conversation.
+  posts: FeedPost[];
+  // The ones the agent has taken off it.
+  offLink: string[];
+  agentName: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState<string | null>(null);
+  const wide = useSyncExternalStore(subscribeWide, () => matchMedia(WIDE).matches, () => false);
+  const dock = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const post = posts.find((p) => p.listing.ListingKey === open) ?? null;
+  const removed = Boolean(open && offLink.includes(open));
+  // Set beside the homes still on the link.
+  const siblings = posts.filter((p) => p !== post && !offLink.includes(p.listing.ListingKey));
+
+  // Each home's Scorecard opens where the agent left it, while the page is open.
+  const kept = useRef(new Map<string, number>());
+  useLayoutEffect(() => {
+    const el = body.current;
+    if (!el || !open) return;
+    el.scrollTop = kept.current.get(open) ?? 0;
+    const keep = () => kept.current.set(open, el.scrollTop);
+    el.addEventListener("scroll", keep, { passive: true });
+    return () => el.removeEventListener("scroll", keep);
+  }, [open]);
+
+  // Off the sheet, to a place on the page: it shuts first, so the page can
+  // take the keyboard, and the place comes into view.
+  const goTo = (target: HTMLElement | null, scrollTo?: HTMLElement | null) => {
+    flushSync(() => setOpen(null));
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    (scrollTo ?? target).scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
+  };
+
+  return (
+    <OpenScorecard value={setOpen}>
+      {children}
+      {/* The panel's place on a wide screen; on a phone the sheet rises over
+          the whole page instead. Never in the way of a tap when it's shut. */}
+      <div ref={dock} className="pointer-events-none fixed inset-y-3 right-3 z-40 w-[min(28rem,calc(100vw-1.5rem))]">
+        <Sheet
+          open={Boolean(post)}
+          onClose={() => setOpen(null)}
+          label="Scorecard"
+          title="Scorecard"
+          anchor={wide ? dock : undefined}
+          docked={wide}
+          bodyRef={body}
+          className="pointer-events-auto"
+        >
+          {post && (
+            <ScorecardBody
+              post={post}
+              mode="agent"
+              agentName={agentName}
+              siblings={siblings.length > 0 ? siblings : undefined}
+              offLink={removed}
+              onReply={
+                removed
+                  ? undefined
+                  : () => goTo(document.getElementById(`reply-${post.listing.ListingKey}`))
+              }
+              onAllComments={() => {
+                const home = document.getElementById(`home-${post.listing.ListingKey}`);
+                goTo(home?.querySelector<HTMLElement>("h3") ?? null, home?.querySelector<HTMLElement>("[aria-label='Comments']"));
+              }}
+            />
+          )}
+        </Sheet>
+      </div>
+    </OpenScorecard>
+  );
+}
+
+// "Scorecard" on a home: everything the people on the link think of it.
+export function ScorecardButton({ listingKey, address }: { listingKey: string; address: string }) {
+  const open = useContext(OpenScorecard);
+  return (
+    <button
+      type="button"
+      onClick={() => open(listingKey)}
+      className="flex min-h-11 items-center gap-1.5 rounded-full border border-stone-300 bg-white px-4 text-sm font-semibold hover:bg-stone-50"
+    >
+      <ClipboardList aria-hidden size={16} />
+      Scorecard
+      <span className="sr-only"> for {address}</span>
+    </button>
   );
 }

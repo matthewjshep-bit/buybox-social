@@ -201,6 +201,8 @@ test("public and private: a link's people, passes and words stay on the link, an
   await expect(umaCard.getByText(UMA_SAYS)).toBeVisible();
   await expect(umaCard).not.toContainText(/\bWes\b|front walk is lovely/);
   await expect(umaCard.getByRole("button", { name: "Message Sage" })).toBeVisible();
+  // One home on the link: nothing to compare it with.
+  await expect(umaCard.getByRole("heading", { name: /^Compare/ })).toHaveCount(0);
   const linkHtml = await (await uma.request.get(urls.Uma)).text();
   expect(linkHtml).not.toContain(WES_SAYS);
   expect(linkHtml).not.toMatch(/\bWes\b/);
@@ -275,4 +277,75 @@ test("on a desktop, the Scorecard is a tab beside the comments, and the panel sa
   await expect(spot).toBeHidden();
   await expect(card).toBeVisible();
   await expect(row).toBeFocused();
+});
+
+test("on a link with more than one home, the Scorecard sets this one beside the others, from the link alone", async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const QUILLAN = "1204 Quillan St SE";
+  const LAKEVIEW = "5902 Lakeview Terrace SE";
+  const agent = await signInAgent(browser, "cleo-compare@example.com", "Cleo Compare");
+  const { urls } = await createShare(agent, ["1204 Quillan", "5902 Lakeview"], ["Ana", "Bo"]);
+  const pass = async (more: Locator, aspect: string) => {
+    await more.getByRole("button", { name: "Not for me" }).click();
+    const why = more.getByRole("group", { name: "What made you pass?" });
+    await why.getByRole("button", { name: aspect }).click();
+    await expect(why.getByRole("button", { name: aspect })).toHaveAttribute("aria-pressed", "true");
+  };
+
+  // Ana likes the first for where it is, and passes on the second's price.
+  const ana = await page$(browser);
+  await ana.goto(urls.Ana);
+  const quillan = homeIn(ana, QUILLAN);
+  await heartOf(quillan).click();
+  await expect(heartOf(quillan)).toHaveAttribute("aria-pressed", "true");
+  let more = await openMore(ana, quillan);
+  const likes = more.getByRole("group", { name: "What else do you like?" });
+  await likes.getByRole("button", { name: "Location" }).click();
+  await expect(likes.getByRole("button", { name: "Location" })).toHaveAttribute("aria-pressed", "true");
+  await ana.keyboard.press("Escape");
+  await expect(more).toBeHidden();
+  more = await openMore(ana, homeIn(ana, LAKEVIEW));
+  await pass(more, "Price");
+  await ana.keyboard.press("Escape");
+  await expect(more).toBeHidden();
+
+  // Bo passes on the first, for its price too.
+  const bo = await page$(browser);
+  await bo.goto(urls.Bo);
+  more = await openMore(bo, homeIn(bo, QUILLAN));
+  await pass(more, "Price");
+
+  // The first home's Scorecard: each home a column, this one first; whether
+  // people liked it, then each aspect anyone has a view on.
+  await ana.reload();
+  const card = await openScorecard(ana, homeIn(ana, QUILLAN));
+  await expect(card.getByRole("heading", { name: "Compare with the other home" })).toBeVisible();
+  const table = card.getByRole("table", { name: /^This home beside the other home/ });
+  await expect(table.getByRole("columnheader")).toHaveText(["Aspect", `This home, ${QUILLAN}`, LAKEVIEW]);
+  const cells = (label: string) =>
+    table.getByRole("row").filter({ has: ana.getByRole("rowheader", { name: label, exact: true }) }).getByRole("cell");
+  // [P] From the link alone: both homes have likes in public, and none of them count here.
+  await expect(cells("Overall")).toHaveText([/^1 like 1 pass$/, /^\s*1 pass$/]);
+  await expect(cells("Location")).toHaveText([/^1 like\s*$/, /None$/]);
+  await expect(cells("Price")).toHaveText([/^\s*1 pass$/, /^\s*1 pass$/]);
+  await expect(table.getByRole("rowheader")).toHaveText(["Overall", "Price", "Location"]);
+
+  // What you've just done counts at once, in this home's column.
+  await card.getByRole("button", { name: "Change your take" }).click();
+  more = ana.getByRole("dialog", { name: "More" });
+  await more.getByRole("button", { name: "Not for me" }).click();
+  await expect(more.getByRole("button", { name: "Not for me" })).toHaveAttribute("aria-pressed", "true");
+  await ana.keyboard.press("Escape");
+  const again = await openScorecard(ana, homeIn(ana, QUILLAN));
+  await expect(
+    again.getByRole("row").filter({ has: ana.getByRole("rowheader", { name: "Overall", exact: true }) }).getByRole("cell").first(),
+  ).toHaveText(/^\s*2 passes$/);
+
+  // A home's own page is no link: nothing to compare.
+  const page = await page$(browser);
+  await page.goto("/homes/SAMPLE-1009");
+  const card2 = await openScorecard(page, homeIn(page, QUILLAN));
+  await expect(card2.getByRole("heading", { name: /^Compare/ })).toHaveCount(0);
 });

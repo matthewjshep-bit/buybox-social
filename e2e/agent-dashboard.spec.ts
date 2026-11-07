@@ -1,6 +1,17 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, openComments, openMore, pick, settle, signInAgent, tapPhoto } from "./helpers";
+import {
+  createShare,
+  heartOf,
+  homeIn,
+  likeInPhoto,
+  openComments,
+  openMore,
+  pick,
+  settle,
+  signInAgent,
+  tapPhoto,
+} from "./helpers";
 
 const emailsTo = (address: string) =>
   readFileSync("test-results-server.log", "utf8")
@@ -407,4 +418,137 @@ test("the agent's page about a client reads like the product: a card per home, s
   const handed = await agent.evaluate(() => (window as unknown as { shared: ShareData }).shared);
   expect(handed.title).toBe("A home for you");
   expect(handed.text).toMatch(/^Hi \w+, I picked a home for you: 5902 Lakeview Terrace SE, \$2,450,000\. Tell me what you think\.$/);
+});
+
+test("the agent's Scorecard on a home: what each person thinks, the exact spot they meant, and nothing from anywhere else", async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const SALTMARSH = "719 Saltmarsh Ln";
+  const BEA_SAYS = "Are the shutters original?";
+  const DOT_SAYS = "Too close to the road for me.";
+  const agent = await signInAgent(browser, "remy-scores@example.com", "Remy Scores");
+  // The same home on another of the agent's links: none of that may show on this one.
+  const elsewhere = await createShare(agent, ["719 Saltmarsh"], ["Dot"]);
+  const { urls, dashboardUrl } = await createShare(agent, ["719 Saltmarsh", "1204 Quillan"], ["Bea", "Cal", "Pat"]);
+
+  const dot = await (await browser.newContext()).newPage();
+  await dot.goto(elsewhere.url);
+  const dotHome = homeIn(dot, SALTMARSH);
+  await heartOf(dotHome).click();
+  await expect(heartOf(dotHome)).toHaveAttribute("aria-pressed", "true");
+  const dotChat = await openComments(dot, dotHome);
+  await dotChat.getByLabel("Add a comment").fill(DOT_SAYS);
+  await dotChat.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(dotChat.getByText(DOT_SAYS)).toBeVisible();
+
+  // Bea likes the home and its blue shutters, and asks about them.
+  const bea = await (await browser.newContext()).newPage();
+  await bea.addInitScript(() => localStorage.setItem("buybox:nudges", JSON.stringify({ photos: true, next: true })));
+  await bea.goto(urls.Bea);
+  const beaHome = homeIn(bea, SALTMARSH);
+  await heartOf(beaHome).click();
+  await expect(heartOf(beaHome)).toHaveAttribute("aria-pressed", "true");
+  const shutters = await likeInPhoto(beaHome, "the blue shutters");
+  await shutters.getByRole("button", { name: "Comment" }).click();
+  const sheet = bea.getByRole("dialog", { name: "Comments" });
+  await sheet.getByLabel("Comment on the blue shutters").fill(BEA_SAYS);
+  await sheet.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(sheet).toBeHidden();
+
+  // Cal passes on it, for its price. Pat hasn't looked yet.
+  const cal = await (await browser.newContext()).newPage();
+  await cal.goto(urls.Cal);
+  const more = await openMore(cal, homeIn(cal, SALTMARSH));
+  await more.getByRole("button", { name: "Not for me" }).click();
+  const why = more.getByRole("group", { name: "What made you pass?" });
+  await why.getByRole("button", { name: "Price" }).click();
+  await expect(why.getByRole("button", { name: "Price" })).toHaveAttribute("aria-pressed", "true");
+
+  // On a phone: a Scorecard button on the home, and the Scorecard rises over the page.
+  await agent.setViewportSize({ width: 393, height: 852 });
+  await agent.goto(dashboardUrl);
+  const home = agent.getByRole("region", { name: SALTMARSH });
+  const open = home.getByRole("button", { name: `Scorecard for ${SALTMARSH}` });
+  expect((await open.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await open.click();
+  const card = agent.getByRole("dialog", { name: "Scorecard" });
+  await expect(card).toBeVisible();
+  expect(await card.evaluate((el) => el.matches(":modal"))).toBe(true);
+  await expect(card).toContainText("From the people on this link · only they and you see this");
+  await expect(card).toContainText("Bea liked it · Cal passed");
+  await expect(card).toContainText("Not yet: Pat");
+
+  // What each person thinks: a verdict each, what they liked or didn't, and what they said.
+  const people = card.locator("section").filter({ has: agent.getByRole("heading", { name: "What each person thinks" }) });
+  const person = (name: string) => people.getByRole("listitem").filter({ has: agent.getByText(name, { exact: true }) });
+  await expect(person("Bea")).toContainText("Liked it");
+  await expect(person("Bea")).toContainText("Blue shutters");
+  await expect(person("Bea")).toContainText(`“${BEA_SAYS}”`);
+  await expect(person("Cal")).toContainText("Passed");
+  await expect(person("Cal")).toContainText("Price");
+  await expect(person("Pat")).toContainText("Hasn't weighed in yet");
+  await expect(card.getByRole("heading", { name: "Your take" })).toHaveCount(0);
+
+  // [P] Only this link: nobody from the agent's other link, and nothing public.
+  await expect(card).not.toContainText(/\bDot\b|Too close to the road|A buyer/);
+
+  // The exact spot: a tap shows the photo bigger, here, with the dot where
+  // the shutters are (34% across, 52% down).
+  const row = card.getByRole("button", { name: /^Blue shutters, photo 1, 1 like\. Show it (bigger|smaller)$/ });
+  await expect(row).toHaveAccessibleName("Blue shutters, photo 1, 1 like. Show it bigger");
+  await row.click();
+  await expect(row).toHaveAttribute("aria-expanded", "true");
+  await expect(row).toHaveAccessibleName("Blue shutters, photo 1, 1 like. Show it smaller");
+  const peek = card.locator("[data-spot-peek]");
+  await expect(peek).toBeVisible();
+  await expect(row).toHaveAttribute("aria-controls", (await peek.getAttribute("id"))!);
+  await expect(peek).toContainText("Photo 1, where Bea tapped");
+  const photo = peek.getByRole("img", { name: "Blue cottage behind a white picket fence" });
+  await expect(photo).toBeVisible();
+  const big = (await photo.boundingBox())!;
+  expect(Math.round(big.width)).toBe(320);
+  const dotBox = (await peek.locator("[data-spot-dot]").boundingBox())!;
+  expect(Math.abs(dotBox.x + dotBox.width / 2 - (big.x + big.width * 0.34))).toBeLessThan(2);
+  expect(Math.abs(dotBox.y + dotBox.height / 2 - (big.y + big.height * 0.52))).toBeLessThan(2);
+  await row.click();
+  await expect(peek).toHaveCount(0);
+  // What she said about them opens the same way.
+  const said = card.getByRole("button", { name: /^About the blue shutters ?: show it in the photo$/ });
+  await said.click();
+  await expect(card.locator("[data-spot-peek]")).toContainText("Photo 1, where Bea tapped");
+
+  // Beside the link's other home: how each went down, aspect by aspect.
+  const table = card.getByRole("table", { name: /^This home beside the other home/ });
+  const cells = (label: string) =>
+    table.getByRole("row").filter({ has: agent.getByRole("rowheader", { name: label, exact: true }) }).getByRole("cell");
+  await expect(cells("Overall")).toHaveText([/^1 like 1 pass$/, /None$/]);
+  await expect(cells("Price")).toHaveText([/^\s*1 pass$/, /None$/]);
+
+  // Reply: the Scorecard goes, and the keyboard is in the home's reply box.
+  await card.getByRole("button", { name: "Reply to your client" }).click();
+  await expect(card).toBeHidden();
+  await expect(home.getByRole("textbox", { name: "Reply to your client" })).toBeFocused();
+
+  // Wide: a panel down the right, the page still free to use, and Escape
+  // puts it away with the keyboard back on the button.
+  await agent.setViewportSize({ width: 1440, height: 900 });
+  await agent.reload();
+  await open.click();
+  await expect(card).toBeVisible();
+  expect(await card.evaluate((el) => el.matches(":modal"))).toBe(false);
+  const panel = (await card.boundingBox())!;
+  expect(panel.x + panel.width).toBeGreaterThan(1400);
+  expect(panel.width).toBeLessThanOrEqual(448);
+  await expect(card.getByRole("heading", { name: "Scorecard", exact: true })).toBeFocused();
+  await agent.keyboard.press("Escape");
+  await expect(card).toBeHidden();
+  await expect(open).toBeFocused();
+
+  // Another agent can't open it at all.
+  const stranger = await signInAgent(browser, "nosy-agent@example.com", "Nora Nosy");
+  const response = await stranger.goto(dashboardUrl);
+  expect(response?.status()).toBe(404);
+  await expect(stranger.getByText(BEA_SAYS)).toHaveCount(0);
+  await expect(stranger.getByRole("button", { name: /^Scorecard/ })).toHaveCount(0);
 });
