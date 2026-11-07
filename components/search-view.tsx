@@ -1,13 +1,22 @@
 "use client";
 
-import { Heart, Home, Map as MapIcon, Search } from "lucide-react";
+import { ArrowLeft, Heart, Home, Map as MapIcon, Search } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition, type ReactNode } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  useEffect,
+  useMemo,
+  useOptimistic,
+  useRef,
+  useState,
+  useTransition,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import type { ThreadActions } from "@/components/listing-thread";
 import type { MapHome } from "@/components/listing-map";
-import { SendPill, sendHomeFrom, useQuickSend } from "@/components/quick-send";
+import { QuickSendReel, SendPill, sendHomeFrom, useQuickSend } from "@/components/quick-send";
 import { ReelFeed } from "@/components/reel";
 import { HomeThumb } from "@/components/ui";
 import type { FeedPost } from "@/lib/feed";
@@ -102,7 +111,7 @@ export function SearchView({
   filters: SearchFilters;
   count: number;
   posts: FeedPost[];
-  // Opened from a home's address: start on it.
+  // Opened from a home's address (or back from full screen): start on it.
   startKey: string | null;
   actions: ThreadActions;
   myName: string | null;
@@ -118,8 +127,12 @@ export function SearchView({
   // The controls show a change at once, while the new results load.
   const [shown, setShown] = useOptimistic(filters);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
-  const [activeKey, setActiveKey] = useState<string | null>(startKey ?? posts[0]?.listing.ListingKey ?? null);
-  const [focus, setFocus] = useState(startKey ? { key: startKey, n: 0 } : null);
+  // Back from full screen, the page can come back as it first was: the
+  // address, which follows the home showing, says which one that was.
+  const asked = useSearchParams().get("home");
+  const start = asked && posts.some((post) => post.listing.ListingKey === asked) ? asked : startKey;
+  const [activeKey, setActiveKey] = useState<string | null>(start ?? posts[0]?.listing.ListingKey ?? null);
+  const [focus, setFocus] = useState(start ? { key: start, n: 0 } : null);
   const [mobileMap, setMobileMap] = useState(false);
   // Filters as of the last change, which may still be loading. Building on these
   // rather than the rendered ones means two quick changes don't undo each other.
@@ -161,6 +174,17 @@ export function SearchView({
   const pick = (key: string) => {
     setFocus((current) => ({ key, n: (current?.n ?? 0) + 1 }));
     setMobileMap(false);
+  };
+
+  // The address keeps the home showing (picked on the map or in the list, or
+  // scrolled to), so a reload, or Back from full screen, comes back to it.
+  // Not while new results load: the address is already changing for them.
+  const keepInAddress = (key: string | null) => {
+    if (!key || pending || !posts.some((post) => post.listing.ListingKey === key)) return;
+    const url = new URL(window.location.href);
+    if ((url.searchParams.get("home") ?? posts[0]?.listing.ListingKey) === key) return;
+    url.searchParams.set("home", key);
+    window.history.replaceState(null, "", url);
   };
 
   // The list keeps the home showing in view as the homes scroll by.
@@ -430,10 +454,14 @@ export function SearchView({
             myName={myName}
             prompt={prompt}
             focus={focus}
-            onActiveChange={setActiveKey}
+            onActiveChange={(key) => {
+              setActiveKey(key);
+              keepInAddress(key);
+            }}
             // Just a look here: a tap opens it full screen, with the rest of
             // this search to scroll through.
             onOpen={(key) => {
+              keepInAddress(key);
               const query = filtersQuery(latest.current);
               router.push(`/homes?${query ? `${query}&` : ""}home=${encodeURIComponent(key)}`);
             }}
@@ -463,4 +491,100 @@ export function SearchView({
       {sender && quick.ui}
     </div>
   );
+}
+
+// The homes a map search found, full screen (`/homes?home=…`). The address
+// follows the home on screen, so the way back to the map, a reload and the
+// browser's Back all come back to it. Escape goes back to the map too.
+export function SearchReel({
+  query,
+  start,
+  siteHeader,
+  sender,
+  ...feed
+}: Omit<ComponentProps<typeof ReelFeed>, "header" | "end" | "focus" | "onActiveChange" | "onSend" | "sendBusy"> & {
+  // The search's filters, as in its address.
+  query: string;
+  // The home picked beside the map, to open on.
+  start: string | null;
+  siteHeader: ReactNode;
+  // A signed-in agent, whose share button sends the home to a client.
+  sender: { profileComplete: boolean } | null;
+}) {
+  const router = useRouter();
+  const has = (key: string | null): key is string =>
+    Boolean(key) && feed.initial.some((post) => post.listing.ListingKey === key);
+  // Forward to it again, the page can come back as it first was: the
+  // address says which home was showing.
+  const asked = useSearchParams().get("home");
+  const [begin] = useState(() => (has(asked) ? asked : start));
+  const [focus] = useState(begin ? { key: begin, n: 0 } : null);
+  const [shown, setShown] = useState(begin);
+  // The feed starts at the top, then goes to the home picked: until it gets
+  // there, the homes it passes aren't the one on screen.
+  const arrived = useRef(!has(begin));
+  const at = (path: string, key: string | null) => {
+    const params = new URLSearchParams(query);
+    if (key) params.set("home", key);
+    const search = params.toString();
+    return search ? `${path}?${search}` : path;
+  };
+  const map = at("/search", shown);
+
+  // Escape goes back to the map, as the link at the top does, unless it's
+  // for something open over the homes: a sheet, a menu, a card about a spot.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+      if ((event.target as Element | null)?.closest?.("input, textarea, select, [contenteditable]")) return;
+      if (document.querySelector("dialog[open], [popover]:popover-open, [data-spot-card]")) return;
+      router.push(map);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [router, map]);
+
+  const reel = {
+    ...feed,
+    focus,
+    onActiveChange: (key: string | null) => {
+      // (At the end, still the last home.)
+      if (!key) return;
+      if (!arrived.current) {
+        if (key !== begin) return;
+        arrived.current = true;
+      }
+      setShown(key);
+      if (new URL(window.location.href).searchParams.get("home") !== key) {
+        window.history.replaceState(null, "", at("/homes", key));
+      }
+    },
+    header: (
+      <>
+        {siteHeader}
+        {/* Side by side, on the photo's stage, at its top right: clear of the
+            white panel and of the comments that open in its place. */}
+        <Link
+          href={map}
+          className={cn(
+            button({ kind: "glass" }),
+            "absolute right-3 top-[calc(env(safe-area-inset-top)_+_3.75rem)] sm:right-6 split:right-[480px] split:top-[calc(var(--stage-top)+12px)] split-xl:right-[520px]",
+          )}
+        >
+          <ArrowLeft aria-hidden size={16} /> Back to map
+        </Link>
+      </>
+    ),
+    end: (
+      <div className="max-w-sm">
+        <h2 className="font-display text-2xl">That&apos;s every home in this search</h2>
+        <p className="mt-2 text-white/80">Change the filters on the map to see more.</p>
+        <Link href={map} className={cn(button({ kind: "light", size: "lg" }), "mt-6")}>
+          <ArrowLeft aria-hidden size={17} /> Back to the map
+        </Link>
+      </div>
+    ),
+  };
+  // An agent's share button sends the home to a client.
+  return sender ? <QuickSendReel {...reel} profileComplete={sender.profileComplete} /> : <ReelFeed {...reel} />;
 }

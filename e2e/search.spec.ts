@@ -52,6 +52,8 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await expect(page.getByRole("button", { name: "10421 Halvard Way NE, $1,349,000" })).toHaveAttribute("aria-pressed", "true");
   await expect(halvardCard).toHaveAttribute("aria-current", "true");
   await expect(page.getByRole("button", { name: /\$\d[\d,]*$/, pressed: true })).toHaveCount(1);
+  // The address keeps the home showing, so a reload comes back to it.
+  await expect(page).toHaveURL(/\/search\?home=SAMPLE-1005$/);
 
   // Each filter narrows the homes and the map, and lands in the URL.
   await page.getByLabel("Bedrooms").selectOption("5");
@@ -88,12 +90,14 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await tapPin(page, "4127 Larkmoor Ave NE, $985,000");
   await expect(homeIn(page, "4127 Larkmoor Ave NE")).toBeInViewport({ ratio: 0.9 });
   await expect(larkmoorPin).toHaveAttribute("aria-pressed", "true");
+  await expect(page).toHaveURL(/\/search\?sort=price-desc&home=SAMPLE-1001$/);
 
   // Scrolling to the next home moves the lit pin along (once the glide to the picked home ends).
   await page.waitForTimeout(800);
   await page.locator("[data-reel]").evaluate((reel) => reel.scrollBy({ top: reel.clientHeight }));
   await expect(larkmoorPin).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByRole("button", { name: /\$\d[\d,]*$/, pressed: true })).toHaveCount(1);
+  await expect(page).toHaveURL(/\/search\?sort=price-desc&home=SAMPLE-(?!1001$)\d+$/);
 
   // Beside the map, a home is just a look: nothing to like, say or tap on it.
   await page.goto("/search?beds=4");
@@ -116,6 +120,33 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await heartOf(full).click();
   await joinAs(page, "Remy");
   await expect(heartOf(full)).toHaveAttribute("aria-pressed", "true");
+
+  // On to another home: the address, and the way back to the map, follow it.
+  const order = await page.locator("article[data-home]").evaluateAll((homes) => homes.map((home) => home.getAttribute("data-home")!));
+  const at = order.indexOf("SAMPLE-1005");
+  const down = at < order.length - 1;
+  const next = order[down ? at + 1 : at - 1];
+  await page.keyboard.press(down ? "ArrowDown" : "ArrowUp");
+  await expect(page.locator(`article[data-home="${next}"]`)).toBeInViewport({ ratio: 0.9 });
+  await expect(page).toHaveURL(new RegExp(`/homes\\?beds=4&home=${next}$`));
+  await expect(page.getByRole("link", { name: "Back to map" })).toHaveAttribute("href", `/search?beds=4&home=${next}`);
+  // Escape goes back to the map, on that home.
+  await page.keyboard.press("Escape");
+  await expect(page).toHaveURL(new RegExp(`/search\\?beds=4&home=${next}$`));
+  await expect(page.locator(`article[data-home="${next}"]`)).toBeInViewport({ ratio: 0.9 });
+  // The browser's Back goes to that home full screen, and back again to the
+  // map as it was, on the home picked there.
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`/homes\\?beds=4&home=${next}$`));
+  await expect(page.locator(`article[data-home="${next}"]`)).toBeInViewport({ ratio: 0.9 });
+  await page.goBack();
+  await expect(page).toHaveURL(/\/search\?beds=4&home=SAMPLE-1005$/);
+  await expect(homeIn(page, "10421 Halvard Way NE")).toBeInViewport({ ratio: 0.9 });
+  await expect(page.getByRole("button", { name: "10421 Halvard Way NE, $1,349,000" })).toHaveAttribute("aria-pressed", "true");
+
+  // Full screen again, to the end of the search.
+  await page.goForward();
+  await expect(page).toHaveURL(new RegExp(`/homes\\?beds=4&home=${next}$`));
   await expect(async () => {
     await page.evaluate(() => {
       const reel = document.querySelector<HTMLElement>("[data-reel]")!;
@@ -125,10 +156,12 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   }).toPass({ timeout: 20_000 });
   await expect(page.getByRole("article")).toHaveCount(found);
 
-  // Back to the map as it was.
+  // Back to the map, on the last home shown.
+  const last = new URL(page.url()).searchParams.get("home");
+  expect(last).toMatch(/^SAMPLE-\d+$/);
   await page.getByRole("link", { name: "Back to map" }).click();
-  await expect(page).toHaveURL(/\/search\?beds=4&home=SAMPLE-1005$/);
-  await expect(homeIn(page, "10421 Halvard Way NE")).toBeInViewport({ ratio: 0.9 });
+  await expect(page).toHaveURL(new RegExp(`/search\\?beds=4&home=${last}$`));
+  await expect(page.locator(`article[data-home="${last}"]`)).toBeInViewport({ ratio: 0.9 });
 
   // "Liked by buyers" keeps only homes with likes. A like is a heart here too.
   await expect(page.locator("label").filter({ hasText: "Liked by buyers" }).locator(".lucide-heart")).toBeVisible();

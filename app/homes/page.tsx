@@ -1,21 +1,15 @@
-import { ArrowLeft } from "lucide-react";
-import Link from "next/link";
 import { connection } from "next/server";
-import type { ComponentProps } from "react";
 import { loadSearchReel } from "@/app/homes/actions";
 import { PUBLIC_PROMPT, publicReelActions } from "@/components/listing-detail";
-import { QuickSendReel } from "@/components/quick-send";
-import { ReelFeed } from "@/components/reel";
+import { SearchReel } from "@/components/search-view";
 import { SiteHeader } from "@/components/site-header";
 import { getCurrentUser } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
 import { getReel, REEL_PAGE } from "@/lib/feed";
-import { cn } from "@/lib/format";
 import { getPublicIdentity } from "@/lib/public";
 import { searchHomes } from "@/lib/search";
 import { filtersQuery, parseFilters } from "@/lib/search-options";
 import { getTaste } from "@/lib/taste";
-import { button } from "@/lib/ui";
 
 export const metadata = { title: "Homes · BuyBox Social" };
 
@@ -23,7 +17,8 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 
 // The homes a map search found, full screen like the home page's feed, in the
 // map's order: opened on the one picked beside the map, with those before it
-// above and the rest below, for as long as you scroll.
+// above and the rest below, for as long as you scroll. The address follows
+// the home on screen (`SearchReel`).
 export default async function SearchFeed({ searchParams }: Props) {
   await connection();
   const params = await searchParams;
@@ -41,50 +36,19 @@ export default async function SearchFeed({ searchParams }: Props) {
   const posts = first.length ? await getReel(viewer, device, taste, { only: first, limit: first.length }) : [];
 
   const query = filtersQuery(filters);
-  const map = `/search?${new URLSearchParams([...new URLSearchParams(query), ...(start ? [["home", start]] : [])])}`;
-
-  const feed: ComponentProps<typeof ReelFeed> = {
-    initial: posts,
-    mode: "public",
-    infinite: keys.length > first.length,
-    loadMore: loadSearchReel.bind(null, query),
-    actions: publicReelActions,
-    myName: name,
-    prompt: PUBLIC_PROMPT,
-    focus: start ? { key: start, n: 0 } : null,
-    header: (
-      <>
-        <SiteHeader overlay />
-        {/* Side by side, on the photo's stage, at its top right: clear of the
-            white panel and of the comments that open in its place. */}
-        <Link
-          href={map}
-          className={cn(
-            button({ kind: "glass" }),
-            "absolute right-3 top-[calc(env(safe-area-inset-top)_+_3.75rem)] sm:right-6 split:right-[480px] split:top-[calc(var(--stage-top)+12px)] split-xl:right-[520px]",
-          )}
-        >
-          <ArrowLeft aria-hidden size={16} /> Back to map
-        </Link>
-      </>
-    ),
-    end: (
-      <div className="max-w-sm">
-        <h2 className="font-display text-2xl">That&apos;s every home in this search</h2>
-        <p className="mt-2 text-white/80">Change the filters on the map to see more.</p>
-        <Link
-          href={map}
-          className={cn(button({ kind: "light", size: "lg" }), "mt-6")}
-        >
-          <ArrowLeft aria-hidden size={17} /> Back to the map
-        </Link>
-      </div>
-    ),
-  };
-  // An agent's share button sends the home to a client.
-  return viewer?.role === "agent" ? (
-    <QuickSendReel {...feed} profileComplete={Boolean(viewer.full_name)} />
-  ) : (
-    <ReelFeed {...feed} />
+  return (
+    <SearchReel
+      query={query}
+      start={start}
+      siteHeader={<SiteHeader overlay />}
+      sender={viewer?.role === "agent" ? { profileComplete: Boolean(viewer.full_name) } : null}
+      initial={posts}
+      mode="public"
+      infinite={keys.length > first.length}
+      loadMore={loadSearchReel.bind(null, query)}
+      actions={publicReelActions}
+      myName={name}
+      prompt={PUBLIC_PROMPT}
+    />
   );
 }
