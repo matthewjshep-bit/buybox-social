@@ -305,6 +305,50 @@ test("beside the map it's only to read: the newest, still, not a button", async 
   await expect(activity).toContainText("Bo liked the front entry");
 });
 
+test("on a link, what you said is \"You\", and the agent's own words keep their face in ink", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const agent = await signInAgent(browser, "vera@example.com", "Vera Agent");
+  const { url, dashboardUrl } = await createShare(agent, ["719 Saltmarsh"], ["Kit"]);
+  const kit = await (await browser.newContext()).newPage();
+  await kit.goto(url);
+  const home = homeIn(kit, SALTMARSH);
+  await home.scrollIntoViewIfNeeded();
+  await settled(home);
+  const chat = await openComments(kit, home);
+  await chat.getByLabel("Add a comment").fill("Is the roof new?");
+  await chat.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(chat.getByText("Is the roof new?")).toBeVisible();
+  await kit.keyboard.press("Escape");
+  // Hers, as her likes are: "You", with her own initial on the brand colour.
+  const face = activityOf(home).locator("[data-face]").last();
+  await expect(lineOf(home)).toHaveAccessibleName(/^You commented: Is the roof new\? /);
+  await expect(face).toHaveText("K");
+  await expect(face).toHaveClass(/\bbg-brand\b/);
+
+  // The agent answers from their dashboard, and on their own link it's
+  // theirs: "You", with their face in ink, as an agent's always is.
+  await agent.goto(dashboardUrl);
+  const panel = agent.getByRole("region", { name: SALTMARSH });
+  await panel.getByLabel("Reply to your client").fill("New in 2021.");
+  await panel.getByRole("button", { name: "Reply" }).click();
+  await expect(panel.getByText("New in 2021.")).toBeVisible();
+  await agent.goto(url);
+  const own = homeIn(agent, SALTMARSH);
+  await own.scrollIntoViewIfNeeded();
+  await settled(own);
+  const agentFace = activityOf(own).locator("[data-face]").last();
+  await expect(lineOf(own)).toHaveAccessibleName(/^You commented: New in 2021\. /);
+  await expect(agentFace).toHaveText("V");
+  await expect(agentFace).toHaveClass(/\bbg-ink\b/);
+
+  // To Kit, the same words are her agent's, in the same ink.
+  await kit.reload();
+  await settled(home);
+  await expect(lineOf(home)).toHaveAccessibleName(/^Vera \(your agent\) commented: New in 2021\. /);
+  await expect(face).toHaveText("V");
+  await expect(face).toHaveClass(/\bbg-ink\b/);
+});
+
 test("isolation: what's private on an agent's link never reaches the public line, by words, name, pass or spot", async ({
   browser,
 }) => {

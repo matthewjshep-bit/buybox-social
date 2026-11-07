@@ -92,7 +92,8 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await expect(thread).toContainText("You liked the exterior");
   await buyer.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
-  await expect(post).toContainText("Bea commented");
+  // The line above the price says it was you, as it does for your likes.
+  await expect(post).toContainText("You commented");
   await expect(post.getByRole("button", { name: "Comments, 1" })).toBeVisible();
 
   // More: what else you like, which photos can't show.

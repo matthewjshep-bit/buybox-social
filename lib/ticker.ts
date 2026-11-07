@@ -24,8 +24,9 @@ export type TickerEvent = {
     | "anon-likes"
     | "sent";
   // `key`: on an agent's link, who it is, the same on every load and giving
-  // nothing away (two people can share a first name).
-  who: { tone: TickerTone; name: string | null; profileId?: string; key?: string };
+  // nothing away (two people can share a first name). `agent`: "You" is the
+  // agent, on their own link, so their face stays in ink, with their `name`.
+  who: { tone: TickerTone; name: string | null; profileId?: string; key?: string; agent?: boolean };
   at: string;
   // The photo it's in, or the facts (FACTS).
   mediaKey?: string;
@@ -74,9 +75,10 @@ export const onFact = (event: TickerEvent) =>
 const newestFirst = (a: TickerEvent, b: TickerEvent) => b.at.localeCompare(a.at) || a.id.localeCompare(b.id);
 
 // On an agent's link, where there's no feed query: what's in the home's own
-// thread, already only the link's. Comments go by their author's name, likes
-// and passes by "You" when they're yours, as in the comments.
-export function eventsFromTimeline(items: TimelineItem[]): TickerEvent[] {
+// thread, already only the link's. What you did or said is "You", like
+// everyone's own; `agentViewing`: the agent on their own link, whose words
+// there are theirs ("You", with their face in ink).
+export function eventsFromTimeline(items: TimelineItem[], { agentViewing = false } = {}): TickerEvent[] {
   const events: TickerEvent[] = [];
   for (const item of items) {
     if (item.kind === "comment") {
@@ -84,15 +86,19 @@ export function eventsFromTimeline(items: TimelineItem[]): TickerEvent[] {
         id: `comment:${item.id}`,
         kind: "comment",
         who: item.isAgent
-          ? { tone: "agent", name: item.name, ...(item.personKey && { key: item.personKey }) }
-          : item.fromPrivateChat
-            ? { tone: "anonymous", name: null }
-            : {
-                tone: "person",
-                name: item.name,
-                ...(item.profileId && { profileId: item.profileId }),
-                ...(item.personKey && { key: item.personKey }),
-              },
+          ? agentViewing
+            ? { tone: "you", name: item.name, agent: true }
+            : { tone: "agent", name: item.name, ...(item.personKey && { key: item.personKey }) }
+          : item.mine
+            ? { tone: "you", name: null }
+            : item.fromPrivateChat
+              ? { tone: "anonymous", name: null }
+              : {
+                  tone: "person",
+                  name: item.name,
+                  ...(item.profileId && { profileId: item.profileId }),
+                  ...(item.personKey && { key: item.personKey }),
+                },
         at: item.at,
         ...(item.spot && { mediaKey: item.spot.mediaKey, spot: item.spot.tag }),
         body: clipWords(item.body),

@@ -136,6 +136,60 @@ test("on a desktop, the comment box opens right where you click, and what's said
   await expect(card.getByRole("button", { name: "Like the covered porch", exact: true })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(card).toBeHidden();
+
+  // Something said at a spot right beside the first (just above it, clear of
+  // its words): each one's words stay whole, never under the other's.
+  await tapPhoto(home, PHOTO, 0.79, 0.21);
+  const near = home.locator("[data-spot-card]");
+  await expect(near).toBeVisible();
+  await near.getByLabel(/^Comment on/).fill("Shade all afternoon");
+  await near.getByLabel(/^Comment on/).press("Enter");
+  await expect(near).toBeHidden();
+  const said = home.locator("[data-photo-frame]").getByText("Shade all afternoon");
+  await expect(said).toBeVisible();
+  await expect(words).toBeVisible();
+  await expect
+    .poll(() =>
+      home.locator("[data-pin-words]:not([data-no-room])").evaluateAll((all) => {
+        const boxes = all.map((el) => el.getBoundingClientRect());
+        return boxes.some((a, i) =>
+          boxes.slice(i + 1).some((b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom),
+        );
+      }),
+    )
+    .toBe(false);
+});
+
+test("from the keyboard, each thing's name shows beside it, inside the photo and clear of the spot", async ({
+  page,
+  browser,
+}) => {
+  const desk = await (await browser.newContext(DESKTOP)).newPage();
+  for (const at of [page, desk]) {
+    await at.goto("/homes/SAMPLE-1001");
+    const home = homeIn(at, LARKMOOR);
+    await expect(home).toBeInViewport({ ratio: 0.9 });
+    const photo = (await home.getByRole("img", { name: PHOTO }).boundingBox())!;
+    // In the middle, and at the top right corner, where a name centred on it
+    // would run off the photo.
+    for (const [thing, x, y] of [
+      ["the front door", 0.62, 0.68],
+      ["the mature trees", 0.85, 0.22],
+    ] as const) {
+      const name = home.getByRole("button", { name: `Select ${thing}` });
+      await name.focus();
+      await at.keyboard.press("Shift+Tab");
+      await at.keyboard.press("Tab");
+      await expect(name).toBeFocused();
+      const box = (await name.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(photo.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(photo.x + photo.width);
+      // Above or below the spot, never over a heart there (20px across).
+      const spot = photo.y + photo.height * y;
+      expect(box.y >= spot + 10 || box.y + box.height <= spot - 10).toBe(true);
+      expect(photo.x + photo.width * x).toBeGreaterThan(box.x);
+    }
+  }
 });
 
 test("nothing on a photo shows under the words or the buttons, and a tap on the words isn't a tap on the photo", async ({

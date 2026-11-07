@@ -143,8 +143,9 @@ function pinsOf(photo: ListingMedia, items: TimelineItem[], photos: Photos): Pin
 
 // Which way from a point a card or bubble opens, so it stays on screen. For
 // something placed at the point itself (left and top 0 in a box there).
-const away = (x: number, y: number, gap: string) =>
-  `${x < 0.3 ? "-1.25rem" : x > 0.7 ? "calc(-100% + 1.25rem)" : "-50%"} ${y < 0.42 ? gap : `calc(-100% - ${gap})`}`;
+// `shift`: moved on this many pixels down (or up), clear of another's words.
+const away = (x: number, y: number, gap: string, shift = 0) =>
+  `${x < 0.3 ? "-1.25rem" : x > 0.7 ? "calc(-100% + 1.25rem)" : "-50%"} calc(${y < 0.42 ? gap : `-100% - ${gap}`} + ${shift}px)`;
 
 // A card's width: its own, or the screen's, less a margin.
 const CARD = "min(19rem, 100cqw - 1.5rem)";
@@ -159,6 +160,23 @@ const side = (x: number, y: number): CSSProperties => {
     top: `${y * 100}%`,
     translate: `0 ${y < 0.42 ? "1.4rem" : "calc(-100% - 1.4rem)"}`,
   };
+};
+
+// Where a thing's name shows when the keyboard reaches it: just above the
+// spot (below it, within 5rem of the photo's top, clear of the photo's
+// number there), so a heart there stays clear of the words, and never past
+// the photo's edges: running right from a spot on the left, left from one on
+// the right, centred between. `height`: the photo's, in pixels, once measured.
+const labelOf = (x: number, y: number, height: number | null): CSSProperties => {
+  const edge = (from: number) => `max(0.5rem, ${from * 100}% - 1.25rem)`;
+  const across: CSSProperties =
+    x < 0.4
+      ? { left: edge(x), maxWidth: `calc(100% - ${edge(x)} - 0.5rem)` }
+      : x > 0.6
+        ? { right: edge(1 - x), maxWidth: `calc(100% - ${edge(1 - x)} - 0.5rem)` }
+        : { left: `${x * 100}%`, translate: "-50% 0", maxWidth: `calc(${Math.min(x, 1 - x) * 200}% - 1rem)` };
+  const below = height ? y * height < 80 : y < 0.25;
+  return { ...across, ...(below ? { top: `calc(${y * 100}% + 1rem)` } : { bottom: `calc(${(1 - y) * 100}% + 1rem)` }) };
 };
 
 // The photo, and the words and buttons over it, in the layer's own terms. Kept
@@ -307,6 +325,43 @@ export function SpotLayer({
       if (at && document.activeElement === at) break;
     }
   }, [focusTo]);
+  // Words beside spots close together would cover each other: each one that
+  // would moves on past those before it (the most liked first), away from its
+  // spot, or to the spot's other side. With no room left on the photo, it
+  // waits, unseen, until the others are put away; its spot still says it.
+  const [stack, setStack] = useState<Record<string, number | null>>({});
+  useLayoutEffect(() => {
+    const el = layer.current;
+    const frame = el?.querySelector<HTMLElement>("[data-photo-frame]");
+    const next: Record<string, number | null> = {};
+    const keep = () => setStack((now) => (JSON.stringify(now) === JSON.stringify(next) ? now : next));
+    if (el && frame && pinsShown) {
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      const [width, height, gap, space] = [frame.offsetWidth, frame.offsetHeight, 1.25 * rem, 4];
+      const placed: Box[] = [];
+      for (const words of el.querySelectorAll<HTMLElement>("[data-pin-words]")) {
+        const [x, y, w, h] = [Number(words.dataset.x), Number(words.dataset.y), words.offsetWidth, words.offsetHeight];
+        const left = x * width + (x < 0.3 ? -gap : x > 0.7 ? gap - w : -w / 2);
+        const down = y < 0.42;
+        const start = (below: boolean) => y * height + (below ? gap : -gap - h);
+        const settle = (below: boolean) => {
+          let top = start(below);
+          for (let i = 0; i <= placed.length; i++) {
+            const hit = placed.find(
+              (box) => box.left < left + w && box.right > left && box.top < top + h + space && box.bottom + space > top,
+            );
+            if (!hit) break;
+            top = below ? hit.bottom + space : hit.top - space - h;
+          }
+          return top === start(down) || (top >= 0 && top + h <= height) ? top : null;
+        };
+        const top = settle(down) ?? settle(!down);
+        next[words.dataset.pinWords!] = top === null ? null : Math.round(top - start(down));
+        if (top !== null) placed.push({ left, right: left + w, top, bottom: top + h });
+      }
+    }
+    keep();
+  }, [pinsShown, shape, photoKey, items, photos, spread, openTag]);
   // Like dots that would sit under someone's words while those show step
   // aside (they stay in place, unseen, so they can be measured again).
   const [underWords, setUnderWords] = useState<string[]>([]);
@@ -314,7 +369,7 @@ export function SpotLayer({
     const el = layer.current;
     if (!el || !pinsShown) return setUnderWords((now) => (now.length ? [] : now));
     const measure = () => {
-      const pills = [...el.querySelectorAll("[data-pin-words]")].map((pill) => pill.getBoundingClientRect());
+      const pills = [...el.querySelectorAll("[data-pin-words]:not([data-no-room])")].map((pill) => pill.getBoundingClientRect());
       const under = [...el.querySelectorAll<HTMLElement>("[data-pin][data-like-only]")]
         .filter((pin) => {
           // The dot drawn (20px), not the fingertip around it.
@@ -336,7 +391,7 @@ export function SpotLayer({
     return () => {
       live = false;
     };
-  }, [pinsShown, shape, photoKey, items, photos]);
+  }, [pinsShown, shape, photoKey, items, photos, stack]);
   if (!photo || !photoKey) return null;
   const mediaKey = photoKey;
   const pins = pinsOf(photo, items, photos);
@@ -403,6 +458,7 @@ export function SpotLayer({
       lit.event.kind === "comment" &&
       litTag &&
       !underWords.includes(litTag) &&
+      stack[litTag] !== null &&
       groups.some((group) => group.length === 1 && group[0].tag === litTag && group[0].comments.length > 0),
   );
 
@@ -446,8 +502,8 @@ export function SpotLayer({
             type="button"
             data-thing={thing.tag}
             onClick={() => onPick({ mediaKey, tag: thing.tag, x: thing.x, y: thing.y, keyboard: true })}
-            style={{ left: `${thing.x * 100}%`, top: `${thing.y * 100}%` }}
-            className="pointer-events-none absolute size-px -translate-x-1/2 -translate-y-1/2 overflow-hidden whitespace-nowrap opacity-0 focus-visible:size-auto focus-visible:rounded-full focus-visible:bg-black/60 focus-visible:px-3 focus-visible:py-1.5 focus-visible:text-meta focus-visible:font-semibold focus-visible:text-white focus-visible:opacity-100"
+            style={labelOf(thing.x, thing.y, shape && shape.photo.bottom - shape.photo.top)}
+            className="pointer-events-none absolute size-px overflow-hidden text-ellipsis whitespace-nowrap opacity-0 focus-visible:z-30 focus-visible:size-auto focus-visible:rounded-full focus-visible:bg-black/60 focus-visible:px-3 focus-visible:py-1.5 focus-visible:text-meta focus-visible:font-semibold focus-visible:text-white focus-visible:opacity-100"
           >
             Select {tagPhrase(thing.tag)}
           </button>
@@ -463,6 +519,7 @@ export function SpotLayer({
               underWords={pinsShown && !isMine(group[0]) && underWords.includes(group[0].tag)}
               dim={Boolean(lit?.dim) && group[0].tag !== lit?.event.spot}
               lit={litWords && group[0].tag === litTag}
+              shift={stack[group[0].tag]}
               onHover={onPinHover && ((on) => onPinHover(on ? likeId(mediaKey, group[0].tag) : null))}
               // From the keyboard, the card takes it (and gives it back here).
               onOpen={(keyboard) =>
@@ -551,6 +608,7 @@ function SpotPin({
   underWords = false,
   dim = false,
   lit = false,
+  shift = 0,
   onHover,
   onOpen,
 }: {
@@ -563,6 +621,9 @@ function SpotPin({
   dim?: boolean;
   // The activity line is on what was said here: its words ringed.
   lit?: boolean;
+  // Its words, moved on this many pixels, clear of another spot's words
+  // (null: no room for them on the photo just now).
+  shift?: number | null;
   // A pointer on it, or off it.
   onHover?: (on: boolean) => void;
   // `keyboard`: pressed with a key, rather than tapped.
@@ -641,13 +702,17 @@ function SpotPin({
           type="button"
           aria-hidden
           tabIndex={-1}
-          data-pin-words
+          data-pin-words={pin.tag}
+          data-x={pin.x}
+          data-y={pin.y}
+          data-no-room={shift === null || undefined}
           onClick={() => onOpen(false)}
-          style={{ translate: away(pin.x, pin.y, "1.25rem") }}
+          style={{ translate: away(pin.x, pin.y, "1.25rem", shift ?? 0) }}
           // Over any dot beside it: the words come first.
           className={cn(
             "pointer-events-auto absolute left-0 top-0 z-10 flex w-max max-w-[13rem] items-center gap-1.5 rounded-full bg-white/95 py-1 pl-1 pr-2.5 text-meta text-ink shadow-lg animate-[nudge-in_250ms_ease-out_both] hover:bg-white",
             lit && "ring-2 ring-brand",
+            shift === null && "invisible",
           )}
         >
           <Avatar
@@ -862,7 +927,7 @@ export function ReactCard({
           <button
             type="button"
             onClick={onComment}
-            className="flex min-h-10 w-full items-center gap-2 rounded-full bg-stone-100 pl-4 pr-3 text-left text-sm text-stone-500 hit-44 hover:bg-stone-200"
+            className="flex min-h-10 w-full items-center gap-2 rounded-full bg-stone-100 pl-4 pr-3 text-left text-sm text-muted hit-44 hover:bg-stone-200"
           >
             <span className="min-w-0 flex-1 truncate">Comment on {phrase}…</span>
             {comments.length > 0 && (
@@ -894,7 +959,8 @@ export function ReactCard({
         >
           <Heart aria-hidden size={16} className={cn(reaction === "like" && "fill-rose-500 text-rose-500")} />
           {reaction === "like" ? "Liked" : "Like"}
-          {likes > 0 && <span className="tabular-nums text-stone-500">{likes}</span>}
+          {/* (Liked, in the button's own rose: grey on the pink is too faint to read.) */}
+          {likes > 0 && <span className={cn("tabular-nums", reaction !== "like" && "text-stone-500")}>{likes}</span>}
         </button>
         <button
           type="button"

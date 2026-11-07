@@ -111,12 +111,13 @@ export function EventFace({
   ghost?: boolean;
   className?: string;
 }) {
-  const { tone, name } = event.who;
-  const initial = (tone === "you" ? myName : tone === "anonymous" ? null : name)?.trim()[0]?.toUpperCase();
+  const { tone, name, agent } = event.who;
+  // (Yours by your own name; the agent's own, on their link, by theirs, in ink.)
+  const initial = (tone === "you" ? (name ?? myName) : tone === "anonymous" ? null : name)?.trim()[0]?.toUpperCase();
   return (
     <MarkFace
       initial={initial}
-      agent={tone === "agent"}
+      agent={tone === "agent" || Boolean(agent)}
       mark={markOf(event)}
       plane={event.kind === "sent" && tone !== "you"}
       pin={pin}

@@ -117,11 +117,7 @@ export default async function SharePage({ params }: Props) {
       members,
       // The agent on their own link: what they said there is theirs, so the
       // line above the price says "You", as it does for anyone's own.
-      ...(agentViewing && {
-        events: eventsFromTimeline(timeline).map((event) =>
-          event.who.tone === "agent" ? { ...event, who: { tone: "you" as const, name: null } } : event,
-        ),
-      }),
+      ...(agentViewing && { events: eventsFromTimeline(timeline, { agentViewing }) }),
     };
   });
 

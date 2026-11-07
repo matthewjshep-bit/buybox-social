@@ -349,10 +349,10 @@ function toHeadline(row: Row): Headline | null {
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-// One home's recent activity as the page gets it. Your own likes are "You"
-// (and keyed so the one you just made matches what comes back); your own
-// comments go by your name, as in the comments. Several strangers' plain
-// likes this week fold into one: "4 buyers liked this home".
+// One home's recent activity as the page gets it. What you did or said is
+// "You" (your likes keyed so the one you just made matches what comes back),
+// and a home an agent sent is "You" to them, with their face in ink. Several
+// strangers' plain likes this week fold into one: "4 buyers liked this home".
 function toEvents(rows: EventRow[]): TickerEvent[] {
   const events: TickerEvent[] = [];
   const folded: TickerEvent[] = [];
@@ -360,7 +360,7 @@ function toEvents(rows: EventRow[]): TickerEvent[] {
     const at = row.at.toISOString();
     const named = (row.source === "public" || row.source === "client") && row.name;
     const who: TickerEvent["who"] =
-      row.mine && row.kind !== "comment"
+      row.mine
         ? { tone: "you", name: null }
         : named
           ? {
@@ -397,7 +397,9 @@ function toEvents(rows: EventRow[]): TickerEvent[] {
     } else if (row.kind === "private-comment") {
       events.push({ id: row.id, kind: "private-comment", who: { tone: "anonymous", name: null }, at });
     } else if (row.kind === "sent") {
-      events.push({ id: row.id, kind: "sent", who: { tone: row.source === "self" ? "you" : "anonymous", name: null }, at });
+      const sender: TickerEvent["who"] =
+        row.source === "self" ? { tone: "you", name: null, agent: true } : { tone: "anonymous", name: null };
+      events.push({ id: row.id, kind: "sent", who: sender, at });
     }
   }
   if (folded.length >= 2) {
