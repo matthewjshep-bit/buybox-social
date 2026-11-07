@@ -1,19 +1,19 @@
-import { ArrowUp } from "lucide-react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { AgentAvatar } from "@/components/agent-avatar";
-import { ReelFeed } from "@/components/reel";
-import { SiteHeader } from "@/components/site-header";
+import { homeFacts } from "@/app/homes/[key]/preview";
 import { LiveRefresh } from "@/components/live-refresh";
+import { getCurrentUser } from "@/lib/auth";
+import { agentFirstName } from "@/lib/format";
 import { readDevice } from "@/lib/engagement";
 import { isSampleListing } from "@/lib/listings/types";
 import { NO_PHOTO_LIKES } from "@/lib/photos";
 import { NO_REACTION } from "@/lib/reactions";
-import { getParticipant, getShareByToken, getShareListings } from "@/lib/shares";
+import { getParticipant, getShareByToken, getShareListings, getShareMembers, isPrivateTo } from "@/lib/shares";
 import { headlineFromTimeline, type FeedPost } from "@/lib/feed";
+import { eventsFromTimeline } from "@/lib/ticker";
 import { getSharePhotoLikes, getShareTimelines, type TimelineReaction } from "@/lib/timeline";
-import { addComment, joinThread, likePhotoInShare, setCommentSharing, setReaction } from "./actions";
-import { InviteButton } from "./client";
+import { addComment, askToSee, joinThread, likePhotoInShare, setCommentSharing, setReaction } from "./actions";
+import { ShareEnd, ShareReel, ShareWelcome } from "./client";
 
 type Props = { params: Promise<{ token: string }> };
 
@@ -25,7 +25,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const title = `${found.agent.full_name || "Your agent"} picked ${
     listings.length === 1 ? listings[0].UnparsedAddress : `${listings.length} homes`
   } for you`;
-  const description = "Take a look and tell me what you think.";
+  // The home's facts, for one; never the client's name, the note or anything said.
+  const facts = listings.length === 1 ? homeFacts(listings[0], { city: true }) : "";
+  const description = `${facts ? `${facts}. ` : ""}Take a look and tell me what you think.`;
   return {
     title,
     description,
@@ -41,7 +43,20 @@ export default async function SharePage({ params }: Props) {
   if (!found) notFound();
   const { share, agent, person } = found;
 
-  const [listings, device] = await Promise.all([getShareListings(share.id), readDevice()]);
+  const [listings, device, members, viewer, alone] = await Promise.all([
+    getShareListings(share.id),
+    readDevice(),
+    getShareMembers(share.id),
+    getCurrentUser(),
+    // Only you and the agent read what's said here: worked out here, never
+    // guessed from who has joined, since the package's own link may be out.
+    person ? isPrivateTo(share.id, person.id) : false,
+  ]);
+  // The agent looking at their own link (Preview, on the client's page): never
+  // taken for the client. The header says so, and nothing they do here is
+  // saved as anyone (actions.ts).
+  const agentViewing = viewer?.id === share.agent_id;
+  const preview = agentViewing ? `Viewing as ${person?.first_name || share.client_name || "your client"}` : undefined;
   // Someone's own link is them; otherwise it's whoever this device joined as.
   const me = person ?? (await getParticipant(share.id, device));
   const keys = listings.map((listing) => listing.ListingKey);
@@ -55,6 +70,25 @@ export default async function SharePage({ params }: Props) {
     NO_REACTION;
   const agentName = agent.full_name || "Your agent";
   const count = listings.length;
+  const greeting = `${person ? `${person.first_name}, I` : share.client_name ? `${share.client_name}, I` : "I"} picked ${
+    count === 1 ? "this home" : `these ${count} homes`
+  } for you`;
+  // A link the agent made for one person, opened before anyone has said who
+  // they are on it, is most likely theirs: the name prompt starts with it.
+  const expected =
+    !agentViewing &&
+    !person &&
+    !me &&
+    members.length === 0 &&
+    share.client_name &&
+    !/[&,]| and /i.test(share.client_name)
+      ? share.client_name
+      : undefined;
+  const agentFirst = agentFirstName(agent.full_name, "Your agent");
+  // Who else can open this link. Someone's own link opens as them, so it's theirs alone.
+  const whoCanSee = person
+    ? `This link is just for you, ${person.first_name}. Ask ${agentName} if someone else should see ${count > 1 ? "these" : "it"}.`
+    : "Anyone with this link can see and join this conversation.";
 
   // Each home as a post in the feed, from this link's own conversation only.
   const posts: FeedPost[] = listings.map((listing) => {
@@ -78,18 +112,31 @@ export default async function SharePage({ params }: Props) {
       mine: mineFor(listing.ListingKey),
       buzz: { sends: 0, views: 0, lastActivityAt: null, trending: false },
       reasons: [],
+      // One home opens straight on it, so the agent's greeting and note are its caption.
+      ...(count === 1 && { greeting, note: share.note || undefined }),
+      members,
+      // The agent on their own link: what they said there is theirs, so the
+      // line above the price says "You", as it does for anyone's own.
+      ...(agentViewing && { events: eventsFromTimeline(timeline, { agentViewing }) }),
     };
   });
 
   return (
     <div style={{ "--brand": agent.brand_color } as React.CSSProperties}>
       <LiveRefresh />
-      <ReelFeed
+      <ShareReel
+        token={token}
         initial={posts}
-        mode="share"
-        agentName={agentName}
+        agent={agent}
+        note={share.note}
+        whoCanSee={whoCanSee}
+        askToSee={askToSee.bind(null, token)}
+        preview={preview}
+        // (No name: the feed says "your agent".)
+        agentName={agent.full_name || undefined}
         // A personal link opens as its owner, so it isn't one to pass around.
         canInvite={!person}
+        alone={alone}
         actions={{
           join: joinThread.bind(null, token),
           react: setReaction.bind(null, token),
@@ -97,62 +144,29 @@ export default async function SharePage({ params }: Props) {
           setSharing: setCommentSharing.bind(null, token),
           likePhoto: likePhotoInShare.bind(null, token),
         }}
-        myName={me?.first_name ?? null}
+        // (The agent's own look is never asked a name: nothing there is saved.)
+        myName={me?.first_name ?? (agentViewing ? agentFirstName(agent.full_name, "You") : null)}
         prompt={`So ${agentName} and anyone else on this link know who's talking. No account or password needed.`}
-        header={<SiteHeader overlay />}
+        suggestedName={expected}
+        nameHint={expected && `${agentFirst} sent this to ${expected}. Not ${expected}? Type your name.`}
+        // Several homes start with a word from the agent over the first one's photo.
         intro={
-          <div className="flex h-full flex-col justify-end bg-brand px-6 pb-14 pt-28 sm:px-10">
-            <div className="mx-auto w-full max-w-2xl">
-              <div className="flex items-center gap-3">
-                <AgentAvatar agent={agent} size={56} className="ring-2 ring-white/70" />
-                <div className="min-w-0 leading-snug">
-                  <p className="truncate font-semibold">{agentName}</p>
-                  {agent.brokerage && <p className="truncate text-sm text-white/85">{agent.brokerage}</p>}
-                </div>
-              </div>
-              <h1 className="mt-6 font-display text-4xl leading-tight sm:text-5xl">
-                {person ? `${person.first_name}, I` : share.client_name ? `${share.client_name}, I` : "I"} picked{" "}
-                {count === 1 ? "this home" : `these ${count} homes`} for you
-              </h1>
-              {share.note && (
-                <p className="mt-4 whitespace-pre-line text-lg leading-relaxed text-white/90">{share.note}</p>
-              )}
-              <p className="mt-10 flex items-center gap-2 font-semibold">
-                <ArrowUp aria-hidden size={20} className="animate-bounce motion-reduce:animate-none" />
-                Swipe up to see {count === 1 ? "it" : "them"}
-              </p>
-              <p className="mt-6 text-xs leading-relaxed text-white/75">
-                Tap the heart on anything you like, even something in a photo.{" "}
-                {listings.some(isSampleListing) && "Sample listings, fictional and not for sale. "}
-                Anyone with this link can see and join this conversation.
-              </p>
-            </div>
-          </div>
+          count > 1 ? (
+            <ShareWelcome
+              key="welcome"
+              agent={agent}
+              greeting={greeting}
+              note={share.note}
+              count={count}
+              photo={listings[0].Media[0]}
+              sample={listings.some(isSampleListing)}
+              whoCanSee={whoCanSee}
+            />
+          ) : undefined
         }
-        end={
-          <div className="w-full max-w-md">
-            <h2 className="font-display text-3xl">That&apos;s every home</h2>
-            <p className="mt-2 text-white/85">
-              {agentName} sees what you liked and said. Change your mind any time.
-            </p>
-            <div className="mt-8 rounded-2xl bg-white p-5 text-ink">
-              <h3 className="font-semibold">Deciding with someone?</h3>
-              {person ? (
-                <p className="mt-1 text-sm text-stone-600">
-                  Ask {agentName} to add them. They&apos;ll get their own link, so you each pick what you like
-                  and {agentName} can see where you agree.
-                </p>
-              ) : (
-                <>
-                  <p className="mt-1 text-sm text-stone-600">
-                    Send them this link so you can all weigh in here, together with {agentName}.
-                  </p>
-                  <InviteButton token={token} />
-                </>
-              )}
-            </div>
-          </div>
-        }
+        // Keyed: the feed sets it among its own children, and a screen that
+        // streams in later can't otherwise show React it was written in place.
+        end={<ShareEnd key="end" agentName={agentName} count={count} personal={!!person} token={token} />}
       />
     </div>
   );

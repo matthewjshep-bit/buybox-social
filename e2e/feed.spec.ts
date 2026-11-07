@@ -10,6 +10,7 @@ import {
   photoList,
   pick,
   scrollToEnd,
+  settle,
   signInAgent,
   signUpBuyer,
 } from "./helpers";
@@ -34,14 +35,17 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await expect(heartOf(clientHome)).toHaveAttribute("aria-pressed", "true");
   await likeInPhoto(clientHome, "the evergreens");
 
-  // That agent's feed names their own client, and says what they liked.
-  await agent.goto("/");
+  // That agent's feed names their own client, and says what they liked. (Each
+  // home here is opened by its own link, which opens the feed on it: where it
+  // falls on the home page depends on what every earlier spec liked.)
+  await agent.goto("/homes/SAMPLE-1004");
   await expect(homeIn(agent, "96 Fernhollow Ln")).toContainText("Toby, your client, liked the evergreens");
 
   // A buyer signs up and sees the same activity anonymously.
   const buyer = await signUpBuyer(browser, "bea@example.com", "Bea Buyer");
   const pageErrors: string[] = [];
   buyer.on("pageerror", (error) => pageErrors.push(error.message));
+  await buyer.goto("/homes/SAMPLE-1004");
   const post = homeIn(buyer, "96 Fernhollow Ln");
   await expect(post).toContainText("A buyer liked the evergreens");
   await expect(post).toContainText("$839,000");
@@ -65,6 +69,13 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   // Double-tapping a photo likes what it shows, too.
   await post.scrollIntoViewIfNeeded();
   await post.getByRole("group", { name: /Photos of/ }).dblclick();
+  // Its heart pops in the middle of the photo, not down behind the words.
+  const burst = post.locator("[data-photo-frame] [class*='heart-pop']");
+  await expect(burst).toHaveCount(1);
+  await settle(burst);
+  const popped = (await burst.boundingBox())!;
+  const tapped = (await burst.locator("xpath=ancestor::*[@data-photo-frame][1]").boundingBox())!;
+  expect(Math.abs(popped.y + popped.height / 2 - (tapped.y + tapped.height / 2))).toBeLessThan(2);
   // Hovering the heart lists everything in the photo; the double-tap liked the exterior.
   const list = await photoList(post);
   await expect(list.getByRole("button", { name: /^Like the exterior/ })).toHaveAttribute("aria-pressed", "true");
@@ -81,7 +92,8 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await expect(thread).toContainText("You liked the exterior");
   await buyer.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
-  await expect(post).toContainText("Bea commented");
+  // The line above the price says it was you, as it does for your likes.
+  await expect(post).toContainText("You commented");
   await expect(post.getByRole("button", { name: "Comments, 1" })).toBeVisible();
 
   // More: what else you like, which photos can't show.
@@ -93,6 +105,7 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await buyer.keyboard.press("Escape");
 
   // ...or "not for me", and why.
+  await buyer.goto("/homes/SAMPLE-1005");
   const other = homeIn(buyer, "10421 Halvard Way NE");
   more = await openMore(buyer, other);
   await more.getByRole("button", { name: "Not for me" }).click();
@@ -112,7 +125,8 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await expect(buyer.getByRole("article")).toHaveCount(13);
 
   // The buyer's activity is tied to their account, and on a desktop screen
-  // the home spreads across it, with the buttons down the right.
+  // the home spreads across it: the photo on the left, the words in a panel
+  // on the right, and the buttons between them.
   const elsewhere = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   await elsewhere.goto("/login");
   await elsewhere.getByLabel("Email").fill("bea@example.com");
@@ -124,9 +138,13 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await expect(heartOf(again)).toHaveAttribute("aria-pressed", "true");
   await again.scrollIntoViewIfNeeded();
   expect((await again.boundingBox())!.width).toBeGreaterThan(1400);
-  const price = await again.getByText("$839,000").boundingBox();
-  const heart = await heartOf(again).boundingBox();
-  expect(heart!.x).toBeGreaterThan(price!.x + 600);
+  const price = (await again.getByText("$839,000").boundingBox())!;
+  const heart = (await heartOf(again).boundingBox())!;
+  const photo = (await again.locator("[data-photo-frame] img").first().boundingBox())!;
+  const panel = (await again.locator("[data-words]").boundingBox())!;
+  expect(price.x).toBeGreaterThan(1000);
+  expect(heart.x).toBeGreaterThanOrEqual(photo.x + photo.width - 1);
+  expect(heart.x + heart.width).toBeLessThanOrEqual(panel.x + 1);
 
   // Buyers don't get the agent dashboard, and the old picks page goes home.
   await buyer.goto("/dashboard");

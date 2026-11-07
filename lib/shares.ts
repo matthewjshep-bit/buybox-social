@@ -1,16 +1,22 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
-import { tagNameIn } from "./photos";
-import type { Aspect, ReactionState } from "./reactions";
+import { isPointTag, tagNameIn } from "./photos";
+import { describeReaction, spotPlace, spotsIn, type Aspect, type ReactionState } from "./reactions";
 
 export type CommentTag = "like" | "dislike";
 
+// What a link shows of its agent. The contact fields are only what the agent
+// chose to show clients, never their login email or sign-up phone.
 export type ShareAgent = {
   full_name: string;
   brokerage: string;
   photo_data_url: string | null;
   brand_color: string;
+  // Digits only, or empty.
+  contact_phone: string;
+  // Empty unless the agent set one.
+  contact_email: string;
 };
 
 export type Share = {
@@ -38,11 +44,98 @@ export type ThreadComment = {
   body: string;
   createdAt: string;
   sharedPublicly: boolean;
+  // The spot in a photo it's about ("@62.3,68.1" or "Covered porch"), or one of
+  // the facts (media key "facts", tag "Price").
+  spot?: { mediaKey: string; tag: string } | null;
 };
 
 export const newShareToken = () => randomBytes(24).toString("base64url");
 
 export const isShareToken = (token: string) => /^[\w-]{32}$/.test(token);
+
+// Everything clients have done on links, one row each: a reaction (when last
+// changed), a comment, a like or dislike in a photo or on a fact. The agent's
+// own replies aren't in it. Columns: share_id, listing_key, participant_id, at.
+export const clientActivity = () => sql`
+  select share_id, listing_key, participant_id, updated_at as at from reactions
+  union all
+  select share_id, listing_key, participant_id, created_at from comments where participant_id is not null
+  union all
+  select share_id, listing_key, participant_id, created_at from photo_likes
+  union all
+  select share_id, listing_key, participant_id, created_at from photo_dislikes`;
+
+// A device, as one link knows it when counting opens: hashed with the link, so
+// the stored value can't be matched to the device's own token or across links.
+export const deviceHashFor = (device: string, shareId: string) =>
+  createHash("sha256").update(device + shareId).digest("base64url");
+
+export type ShareOpen = {
+  // The person's first name on the link, once they've given it.
+  name: string | null;
+  // Null stands for everyone who hasn't given a name yet, together.
+  participantId: string | null;
+  lastAt: string;
+  // The most photos one of their devices has looked at on the link.
+  photosSeen: number;
+};
+
+// "saw 3 of 4 photos", "saw all 4 photos" ("saw the photo", for a link with
+// one): how much of a link someone looked at, of the photos on it now. Null
+// before they've looked at any.
+export function photosSeenLine(seen: number, photos: number) {
+  const n = Math.min(seen, photos);
+  if (n <= 0) return null;
+  if (photos === 1) return "saw the photo";
+  return `saw ${n === photos ? `all ${photos}` : `${n} of ${photos}`} photos`;
+}
+
+// Who has had a link open, and when they last did, newest first: for the agent
+// only. Anything someone did on it counts too, so a link sent before opens
+// were counted still shows who has been on it.
+export async function getShareOpens(shareId: string) {
+  const rows = await sql<
+    { participant_id: string | null; first_name: string | null; last_at: Date; photos_seen: number }[]
+  >`
+    select x.participant_id, p.first_name, max(x.at) as last_at, max(x.photos_seen)::int as photos_seen
+    from (
+      select participant_id, last_at as at, photos_seen from share_opens where share_id = ${shareId}
+      union all
+      select participant_id, at, 0 from (${clientActivity()}) a where a.share_id = ${shareId}
+    ) x
+    left join participants p on p.id = x.participant_id
+    group by x.participant_id, p.first_name
+    order by last_at desc`;
+  return rows.map(
+    (row): ShareOpen => ({
+      name: row.first_name,
+      participantId: row.participant_id,
+      lastAt: row.last_at.toISOString(),
+      photosSeen: row.photos_seen,
+    }),
+  );
+}
+
+// The most link names one agent's open pages can hold at once, waiting for Send.
+const POOL_SIZE = 20;
+
+// A link name for an agent's next Send, made here so the browser never picks
+// one. It's no link until Send claims it (claimQuickShare), and a name left
+// unused for a day goes, as do the oldest when there are too many.
+export async function reserveSendTokenFor(agentId: string) {
+  const token = newShareToken();
+  await sql.begin(async (tx) => {
+    await tx`
+      delete from share_token_pool
+      where agent_id = ${agentId} and created_at <= now() - interval '24 hours'`;
+    await tx`
+      delete from share_token_pool where token in (
+        select token from share_token_pool where agent_id = ${agentId}
+        order by created_at desc offset ${POOL_SIZE - 1})`;
+    await tx`insert into share_token_pool (token, agent_id) values (${token}, ${agentId})`;
+  });
+  return token;
+}
 
 // A link opens a package two ways: the package's own link (anyone can join
 // by giving a first name), or one person's own link (it opens as them).
@@ -50,7 +143,7 @@ export async function getShareByToken(token: string) {
   if (!isShareToken(token)) return null;
   const [row] = await sql<(Share & ShareAgent & { person_id: string | null; person_name: string | null })[]>`
     select s.id, s.token, s.agent_id, s.client_name, s.note,
-           a.full_name, a.brokerage, a.photo_data_url, a.brand_color,
+           a.full_name, a.brokerage, a.photo_data_url, a.brand_color, a.contact_phone, a.contact_email,
            p.id as person_id, p.first_name as person_name
     from shares s
     join accounts a on a.id = s.agent_id
@@ -58,10 +151,20 @@ export async function getShareByToken(token: string) {
     where s.token = ${token} or s.id = (select share_id from participants where token = ${token})
     limit 1`;
   if (!row) return null;
-  const { full_name, brokerage, photo_data_url, brand_color, person_id, person_name, ...share } = row;
+  const {
+    full_name,
+    brokerage,
+    photo_data_url,
+    brand_color,
+    contact_phone,
+    contact_email,
+    person_id,
+    person_name,
+    ...share
+  } = row;
   return {
     share: share as Share,
-    agent: { full_name, brokerage, photo_data_url, brand_color } as ShareAgent,
+    agent: { full_name, brokerage, photo_data_url, brand_color, contact_phone, contact_email } as ShareAgent,
     // Set when the link is someone's own.
     person: person_id ? { id: person_id, first_name: person_name! } : null,
   };
@@ -73,6 +176,47 @@ export async function getInvitees(shareId: string) {
     select id, first_name, token from participants
     where share_id = ${shareId} and token is not null
     order by invited_at, first_name`;
+}
+
+// Everyone on a link, by first name: the people the agent added, and anyone
+// who joined through the link anyone can open. Only ever shown on the link
+// itself, to the people on it.
+export async function getShareMembers(shareId: string) {
+  const rows = await sql<{ first_name: string }[]>`
+    select first_name from participants
+    where share_id = ${shareId}
+    order by invited_at nulls last, created_at, first_name`;
+  return rows.map((row) => row.first_name);
+}
+
+// Whether what one person says on their own link is between them and the agent
+// alone: nobody else is on it, and the package's own link (which anyone holding
+// it can read without joining) was never out. That's so only for a link the
+// agent made with this person on it from the start, never a quick send, and
+// never once anyone has opened the package's own link.
+export async function isPrivateTo(shareId: string, personId: string) {
+  const [row] = await sql<{ alone: boolean }[]>`
+    select (
+      not s.quick
+      and p.invited_at is not null and p.invited_at <= s.created_at
+      and not exists (select 1 from participants o where o.share_id = s.id and o.id <> p.id)
+      and not exists (
+        select 1 from share_opens o left join participants q on q.id = o.participant_id
+        where o.share_id = s.id and (o.participant_id is null or q.token is null))
+    ) as alone
+    from shares s join participants p on p.share_id = s.id and p.id = ${personId}
+    where s.id = ${shareId}`;
+  return row?.alone ?? false;
+}
+
+// The one person on a link who has been told that what they say there is
+// between them and the agent alone (isPrivateTo), while that's still so.
+// Anyone added after them would see all of it, so the agent is asked first.
+export async function confidantOf(shareId: string) {
+  const people = await sql<{ id: string; first_name: string }[]>`
+    select id, first_name from participants where share_id = ${shareId} limit 2`;
+  if (people.length !== 1) return null;
+  return (await isPrivateTo(shareId, people[0].id)) ? people[0] : null;
 }
 
 // Adds someone to a package with their own link. Returns their link token.
@@ -119,10 +263,12 @@ export async function getThread(shareId: string) {
       body: string;
       created_at: Date;
       shared_publicly: boolean;
+      media_key: string | null;
+      spot: string | null;
     }[]
   >`
     select c.id, c.listing_key, c.participant_id, p.first_name,
-           a.full_name as agent_name, c.tag, c.body, c.created_at, c.shared_publicly
+           a.full_name as agent_name, c.tag, c.body, c.created_at, c.shared_publicly, c.media_key, c.spot
     from comments c
     left join participants p on p.id = c.participant_id
     left join accounts a on a.id = c.agent_id
@@ -153,6 +299,7 @@ export async function getThread(shareId: string) {
       participantId: l.participant_id,
       name: l.first_name,
       tag: tagNameIn(l.data, l.media_key, l.tag),
+      mediaKey: l.media_key,
     })),
     // What each person liked in the photos.
     photoLikes: photoLikes.map((l) => ({
@@ -162,6 +309,7 @@ export async function getThread(shareId: string) {
       // A spot reads as the thing it's on ("the front door").
       tag: tagNameIn(l.data, l.media_key, l.tag),
       aspect: l.aspect,
+      mediaKey: l.media_key,
     })),
     reactions: reactions.map(
       (r): ThreadReaction => ({
@@ -182,6 +330,7 @@ export async function getThread(shareId: string) {
         body: c.body,
         createdAt: c.created_at.toISOString(),
         sharedPublicly: c.shared_publicly,
+        spot: c.media_key && c.spot ? { mediaKey: c.media_key, tag: c.spot } : null,
       }),
     ),
   };
@@ -200,4 +349,25 @@ export async function shareHasListing(shareId: string, listingKey: string) {
     select 1 from share_listings
     where share_id = ${shareId} and listing_key = ${listingKey} and removed_at is null`;
   return Boolean(row);
+}
+
+// Something one person liked or didn't in a home: a tag in a photo (or on the
+// facts), as it was saved.
+export type TakeMark = { mediaKey: string; tag: string };
+
+// "a spot outside", "2 spots in the kitchen": the spots with no name among
+// someone's marks on a home, one phrase per place.
+export const spotsWhere = (listing: Listing, spots: TakeMark[]) =>
+  spotsIn(spots.map((spot) => spotPlace(listing, spot.mediaKey)));
+
+// One person's take on a home, for the agent, worded as the link words it,
+// except that a spot with no name says where it is ("liked the kitchen and a
+// spot outside"): the agent has no photo open beside it.
+export function describeTake(listing: Listing, state: ReactionState, likes: TakeMark[], dislikes: TakeMark[]) {
+  const words = (marks: TakeMark[]) =>
+    marks.map((mark) => {
+      const tag = tagNameIn(listing, mark.mediaKey, mark.tag);
+      return isPointTag(tag) ? { place: spotPlace(listing, mark.mediaKey) } : tag;
+    });
+  return describeReaction(state, words(likes), words(dislikes));
 }

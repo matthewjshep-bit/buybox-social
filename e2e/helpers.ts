@@ -15,7 +15,7 @@ export async function signInAgent(browser: Browser, email: string, name: string)
   await page.getByRole("button", { name: "Continue" }).click();
   await page.waitForURL("**/dashboard/profile");
   await page.getByLabel("Full name").fill(name);
-  await page.getByLabel("Company (brokerage)").fill("Harbor & Pine Realty");
+  await page.getByLabel("Company (optional)").fill("Harbor & Pine Realty");
   await page.getByRole("button", { name: "Merlot" }).click();
   await page.getByLabel("Your photo").setInputFiles({
     name: "me.png",
@@ -56,7 +56,7 @@ export async function signUpBuyer(browser: Browser, email: string, name: string,
   await form.getByLabel("Phone").fill(phone);
   await form.getByLabel("Email").fill(email);
   await form.getByRole("button", { name: "Sign up free" }).click();
-  await expect(page.getByRole("link", { name: "Your profile" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Your profile" })).toBeVisible();
   await expect(page.getByRole("form", { name: "Sign up" })).toHaveCount(0);
   return page;
 }
@@ -78,6 +78,14 @@ export function commentIn(thread: Locator, name: string, body: string) {
 export async function openComments(page: Page, home: Locator) {
   await home.getByRole("button", { name: /^Comments/ }).click();
   const sheet = page.getByRole("dialog", { name: "Comments" });
+  await expect(sheet).toBeVisible();
+  return sheet;
+}
+
+// A home's Scorecard: what everyone thinks of it, from the button on its rail.
+export async function openScorecard(page: Page, home: Locator) {
+  await home.getByRole("button", { name: "Scorecard", exact: true }).click();
+  const sheet = page.getByRole("dialog", { name: "Scorecard" });
   await expect(sheet).toBeVisible();
   return sheet;
 }
@@ -118,6 +126,23 @@ export const settle = (card: Locator) =>
       new Promise((done) => setTimeout(done, 1000)),
     ]),
   );
+
+// Where taps miss across a fingertip (a 44px circle) centred on a control:
+// each point that lands on something else, as "dx,dy". It counts a touch area
+// grown around a small control (hit-44) only where a tap really reaches it, so
+// one clipped by a line clamp, or covered by something else, shows up here.
+// (A circle, not a square: a round pill's own corners aren't part of it.)
+export const missedTaps = (control: Locator) =>
+  control.evaluate((el) => {
+    el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+    const box = el.getBoundingClientRect();
+    const [x, y] = [box.left + box.width / 2, box.top + box.height / 2];
+    const points = [[0, 0], [-20, 0], [20, 0], [0, -20], [0, 20], [-14, -14], [14, -14], [-14, 14], [14, 14]];
+    return points.flatMap(([dx, dy]) => {
+      const hit = document.elementFromPoint(x + dx, y + dy);
+      return hit && el.contains(hit) ? [] : [`${dx},${dy}`];
+    });
+  });
 
 // Picks something in the photo on screen ("the floating staircase") the way a
 // keyboard does, which opens the same card a tap on it opens. Returns the card.

@@ -1,67 +1,55 @@
 import { ChevronLeft, ChevronRight, Mail, MessageSquareText, Phone, Search } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { Badge, EmptyState, type BadgeTone } from "@/components/ui";
 import { PAGE_SIZE, type PersonStatus } from "@/lib/admin";
 import { cn } from "@/lib/format";
+import { button, card, field } from "@/lib/ui";
 
 // The admin pages' building blocks: the same few patterns everywhere, so
-// each page reads the same way.
+// each page reads the same way. (The card is the one every light page uses.)
+export { Card } from "@/components/ui";
 
 export function PageTitle({ title, children, actions }: { title: string; children?: ReactNode; actions?: ReactNode }) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
         <h1 className="font-display text-3xl">{title}</h1>
-        {children && <p className="mt-1 text-stone-600">{children}</p>}
+        {children && <p className="mt-1 text-muted">{children}</p>}
       </div>
       {actions}
     </div>
   );
 }
 
-export function Card({ title, action, children, className }: { title?: string; action?: ReactNode; children: ReactNode; className?: string }) {
-  return (
-    <section className={cn("rounded-2xl bg-white p-4 ring-1 ring-stone-200 sm:p-5", className)}>
-      {title && (
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="font-semibold">{title}</h2>
-          {action}
-        </div>
-      )}
-      {children}
-    </section>
-  );
-}
-
+// An empty list inside a card, in a line.
 export function Empty({ children }: { children: ReactNode }) {
-  return <p className="py-6 text-center text-sm text-stone-500">{children}</p>;
+  return <EmptyState compact title={children} />;
 }
 
+// A lead in stone (amber means a pass everywhere else), a buyer in blue, an
+// agent in ink, as agents are marked across the site.
 const STATUS = {
-  lead: { label: "Lead", className: "bg-amber-100 text-amber-900" },
-  buyer: { label: "Buyer", className: "bg-sky-100 text-sky-900" },
-  agent: { label: "Agent", className: "bg-emerald-100 text-emerald-900" },
-} satisfies Record<PersonStatus, { label: string; className: string }>;
+  lead: { label: "Lead", tone: "neutral" },
+  buyer: { label: "Buyer", tone: "info" },
+  agent: { label: "Agent", tone: "ink" },
+} satisfies Record<PersonStatus, { label: string; tone: BadgeTone }>;
 
 export const statusLabel = (status: PersonStatus) => STATUS[status].label;
 
 export function StatusBadge({ status }: { status: PersonStatus }) {
-  return (
-    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-semibold", STATUS[status].className)}>
-      {STATUS[status].label}
-    </span>
-  );
+  return <Badge tone={STATUS[status].tone}>{STATUS[status].label}</Badge>;
 }
 
 export function Stat({ label, value, note, href }: { label: string; value: number; note?: string; href?: string }) {
   const body = (
     <>
-      <p className="text-sm text-stone-600">{label}</p>
+      <p className="text-sm text-muted">{label}</p>
       <p className="mt-1 font-display text-3xl tabular-nums">{value.toLocaleString("en-US")}</p>
       {note && <p className="mt-0.5 text-xs text-stone-500">{note}</p>}
     </>
   );
-  const className = "block rounded-2xl bg-white p-4 ring-1 ring-stone-200";
+  const className = cn(card, "block p-4");
   return href ? (
     <Link href={href} className={cn(className, "hover:ring-stone-400")}>
       {body}
@@ -71,24 +59,10 @@ export function Stat({ label, value, note, href }: { label: string; value: numbe
   );
 }
 
-export function Avatar({ name }: { name: string }) {
-  return (
-    <span
-      aria-hidden
-      className="flex size-9 shrink-0 items-center justify-center rounded-full bg-stone-200 text-sm font-semibold text-stone-700"
-    >
-      {name.trim()[0]?.toUpperCase() ?? "?"}
-    </span>
-  );
-}
-
 // One tap to call, text or email someone.
-export function ContactLinks({ name, phone, email, compact = false }: { name: string; phone: string; email: string; compact?: boolean }) {
+export function ContactLinks({ name, phone, email }: { name: string; phone: string; email: string }) {
   const dial = phone.replace(/[^\d+]/g, "");
-  const link = cn(
-    "flex min-h-9 items-center gap-1.5 rounded-lg font-semibold ring-1 ring-stone-300 hover:bg-stone-100",
-    compact ? "px-2.5 text-xs" : "px-3 text-sm",
-  );
+  const link = button({ kind: "secondary" });
   const who = name || email;
   return (
     <div className="flex flex-wrap gap-2">
@@ -122,10 +96,11 @@ export function SearchBox({ q, placeholder, keep }: { q?: string; placeholder: s
           name="q"
           defaultValue={q}
           placeholder={placeholder}
-          className="h-11 w-full rounded-xl border border-stone-300 bg-white pl-10 pr-3 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
+          className={cn(field(), "pl-10")}
         />
       </label>
-      <button type="submit" className="min-h-11 rounded-xl bg-ink px-4 text-sm font-semibold text-white">
+      {/* As tall as the box beside it, with no more width than its word needs. */}
+      <button type="submit" className={button({ kind: "neutral" })}>
         Search
       </button>
     </form>
@@ -141,10 +116,7 @@ export function Chips({ label, items }: { label: string; items: { href: string; 
           key={item.href}
           href={item.href}
           aria-current={item.current ? "page" : undefined}
-          className={cn(
-            "flex min-h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium",
-            item.current ? "bg-ink text-white" : "bg-white text-stone-700 ring-1 ring-stone-300 hover:ring-stone-500",
-          )}
+          className={button({ kind: item.current ? "neutral" : "secondary" })}
         >
           {item.label}
           {item.count !== undefined && (
@@ -161,21 +133,21 @@ export function Pager({ page, total, href }: { page: number; total: number; href
   if (total === 0) return null;
   const first = (page - 1) * PAGE_SIZE + 1;
   const last = Math.min(total, page * PAGE_SIZE);
-  const button = "flex min-h-10 items-center gap-1 rounded-lg px-3 text-sm font-semibold ring-1 ring-stone-300 hover:bg-white";
+  const link = button({ kind: "secondary" });
   return (
-    <div className="mt-4 flex items-center justify-between gap-3 text-sm text-stone-600">
+    <div className="mt-4 flex items-center justify-between gap-3 text-sm text-muted">
       <p className="tabular-nums">
         {first.toLocaleString("en-US")}–{last.toLocaleString("en-US")} of {total.toLocaleString("en-US")}
       </p>
       {total > PAGE_SIZE && (
         <div className="flex gap-2">
           {page > 1 && (
-            <Link href={href(page - 1)} className={button}>
+            <Link href={href(page - 1)} className={link}>
               <ChevronLeft aria-hidden size={16} /> Previous
             </Link>
           )}
           {last < total && (
-            <Link href={href(page + 1)} className={button}>
+            <Link href={href(page + 1)} className={link}>
               Next <ChevronRight aria-hidden size={16} />
             </Link>
           )}

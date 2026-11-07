@@ -1,10 +1,12 @@
 "use client";
 
-import { Check } from "lucide-react";
-import { useActionState, useState } from "react";
+import { Camera, Check } from "lucide-react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
+import { formatPhone, isContactPhone, phoneDigits } from "@/lib/contact";
 import { BRAND_COLORS, cn } from "@/lib/format";
-import { saveProfile, type FormState } from "../actions";
+import { button, field } from "@/lib/ui";
+import { saveProfile, type ContactField, type ProfileState } from "../actions";
 
 const PHOTO_SIZE = 256;
 
@@ -30,39 +32,65 @@ async function resizePhoto(file: File) {
   return canvas.toDataURL("image/jpeg", 0.82);
 }
 
-const inputClass =
-  "mt-1 w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30";
+const inputClass = cn(field(), "mt-1");
 
 export function ProfileForm(props: {
   fullName: string;
   brokerage: string;
   brandColor: string;
   photo: string | null;
+  // Digits, or empty.
+  contactPhone: string;
+  contactEmail: string;
+  // The phone they gave when they signed up, offered but never filled in for them.
+  suggestedPhone: string;
 }) {
-  const [state, action, pending] = useActionState<FormState, FormData>(saveProfile, {});
+  const [state, action, pending] = useActionState<ProfileState, FormData>(saveProfile, {});
   const [photo, setPhoto] = useState(props.photo);
   const [color, setColor] = useState(props.brandColor);
   const [fullName, setFullName] = useState(props.fullName);
+  const [phone, setPhone] = useState(formatPhone(props.contactPhone));
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const suggested = phoneDigits(props.suggestedPhone);
+  const suggestion = !phone && isContactPhone(suggested) ? formatPhone(suggested) : null;
+  const phoneField = useRef<HTMLInputElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const form = useRef<HTMLFormElement>(null);
+  // After a save that didn't go through, the cursor goes to what needs fixing,
+  // rather than being lost with the Save button while it was busy.
+  useEffect(() => {
+    if (!state.error) return;
+    form.current?.querySelector<HTMLInputElement>(`#${state.field ?? "fullName"}`)?.focus();
+  }, [state]);
+  // A mistake in one of the contact fields shows under that field.
+  const invalid = (field: ContactField) =>
+    state.field === field
+      ? { "aria-invalid": true as const, "aria-describedby": `${field}-error contact-hint` }
+      : { "aria-describedby": "contact-hint" };
 
   return (
-    <form action={action} className="mt-6 flex flex-col gap-5">
+    <form ref={form} action={action} className="mt-6 flex flex-col gap-5">
       <input type="hidden" name="photo" value={photo ?? ""} />
       <input type="hidden" name="brandColor" value={color} />
 
       <div className="flex items-center gap-4 rounded-2xl p-4 text-white" style={{ background: color }}>
         <AgentAvatar agent={{ full_name: fullName, photo_data_url: photo }} size={64} className="ring-2 ring-white/70" />
-        <div>
+        <div className="min-w-0 flex-1">
           <label htmlFor="photo-file" className="block text-sm font-semibold">
             Your photo
           </label>
+          {/* The browser's own file box says "Choose File" and "No file
+              chosen", even beside a photo; this button says it in our words. */}
           <input
+            ref={fileInput}
             id="photo-file"
             type="file"
             accept="image/*"
-            className="mt-1 max-w-full text-sm file:mr-3 file:min-h-10 file:rounded-lg file:border-0 file:bg-white file:px-3 file:font-semibold file:text-stone-900"
+            hidden
             onChange={async (event) => {
               const file = event.target.files?.[0];
+              // So picking the same file again still counts.
+              event.target.value = "";
               if (!file) return;
               try {
                 setPhoto(await resizePhoto(file));
@@ -72,6 +100,14 @@ export function ProfileForm(props: {
               }
             }}
           />
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            className={cn(button({ kind: "light" }), "mt-1.5")}
+          >
+            <Camera aria-hidden size={16} />
+            {photo ? "Change photo" : "Upload a photo"}
+          </button>
           {photoError && <p role="alert" className="mt-1 text-sm">{photoError}</p>}
         </div>
       </div>
@@ -94,19 +130,80 @@ export function ProfileForm(props: {
 
       <div>
         <label htmlFor="brokerage" className="text-sm font-medium">
-          Company (brokerage)
+          Company (optional)
         </label>
         <input
           id="brokerage"
           name="brokerage"
           maxLength={80}
           autoComplete="organization"
-          defaultValue={props.brokerage}
+          defaultValue={state.values?.brokerage ?? props.brokerage}
           aria-describedby="brokerage-hint"
           className={inputClass}
         />
-        <p id="brokerage-hint" className="mt-1 text-sm text-stone-600">
-          Optional. A brokerage, team or company, if you work with one.
+        <p id="brokerage-hint" className="mt-1 text-sm text-muted">
+          A brokerage, team or company, if you work with one.
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="contactPhone" className="text-sm font-medium">
+          Phone for clients (optional)
+        </label>
+        <input
+          ref={phoneField}
+          id="contactPhone"
+          name="contactPhone"
+          type="tel"
+          inputMode="tel"
+          maxLength={30}
+          autoComplete="tel"
+          value={phone}
+          onChange={(event) => setPhone(event.target.value)}
+          {...invalid("contactPhone")}
+          className={inputClass}
+        />
+        {suggestion && (
+          <button
+            type="button"
+            onClick={() => {
+              setPhone(suggestion);
+              // The button goes once it's used; the cursor carries on in the field.
+              phoneField.current?.focus();
+            }}
+            className={cn(button({ kind: "ghost", flush: true }), "mt-1 text-brand")}
+          >
+            Use {suggestion}
+          </button>
+        )}
+        {state.field === "contactPhone" && (
+          <p id="contactPhone-error" role="alert" className="mt-1 text-sm text-red-700">
+            {state.error}
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label htmlFor="contactEmail" className="text-sm font-medium">
+          Email for clients (optional)
+        </label>
+        <input
+          id="contactEmail"
+          name="contactEmail"
+          type="email"
+          maxLength={254}
+          autoComplete="email"
+          defaultValue={state.values?.contactEmail ?? props.contactEmail}
+          {...invalid("contactEmail")}
+          className={inputClass}
+        />
+        {state.field === "contactEmail" && (
+          <p id="contactEmail-error" role="alert" className="mt-1 text-sm text-red-700">
+            {state.error}
+          </p>
+        )}
+        <p id="contact-hint" className="mt-1 text-sm text-muted">
+          Shown on your links so clients can text, call or email you.
         </p>
       </div>
 
@@ -123,7 +220,7 @@ export function ProfileForm(props: {
               style={{ background: option.value }}
               className={cn(
                 "flex size-11 items-center justify-center rounded-full text-white",
-                color === option.value && "ring-2 ring-stone-900 ring-offset-2",
+                color === option.value && "ring-2 ring-ink ring-offset-2",
               )}
             >
               {color === option.value && <Check aria-hidden size={18} />}
@@ -132,7 +229,7 @@ export function ProfileForm(props: {
         </div>
       </fieldset>
 
-      {state.error && (
+      {state.error && !state.field && (
         <p role="alert" className="text-sm text-red-700">
           {state.error}
         </p>
@@ -140,8 +237,9 @@ export function ProfileForm(props: {
       <button
         type="submit"
         disabled={pending}
+        // In the colour picked, before it's saved.
         style={{ background: color }}
-        className="min-h-12 rounded-xl font-semibold text-white disabled:opacity-60"
+        className={button({ kind: "primary", size: "lg" })}
       >
         {pending ? "Saving…" : "Save"}
       </button>

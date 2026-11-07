@@ -37,8 +37,9 @@ async function getAuthUser(): Promise<{ id: string; email: string } | null> {
   return null;
 }
 
-export const firstName = (account: Pick<Account, "full_name">) =>
-  account.full_name.trim().split(/\s+/)[0] || "Someone";
+// Their first name, or "" until they've said it (signed in with just an
+// email). Never a stand-in: each page says that in its own words.
+export const firstName = (account: Pick<Account, "full_name">) => account.full_name.trim().split(/\s+/)[0] ?? "";
 
 // The signed-in person, if any. Their account is made on their first sign-in,
 // as whatever they signed up as: an agent if they came in through "For

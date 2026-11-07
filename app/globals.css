@@ -7,6 +7,71 @@
   --color-ink: var(--ink);
   --font-sans: var(--font-body);
   --font-display: var(--font-heading);
+  /* The dark ground the reel's photos and words sit on. */
+  --color-night: #0c0a09;
+  /* Words that sit back (a time, a hint, the line under a title): one grey,
+     readable on white and on the sand colour alike (stone-600). */
+  --color-muted: oklch(44.4% 0.011 73.639);
+  /* The small sizes words come in, besides Tailwind's own: a comment or a
+     list row (body), the line under it (meta), a count in a badge (tiny). */
+  --text-body: 15px;
+  --text-meta: 13px;
+  --text-tiny: 11px;
+}
+
+/* Nothing moves on its own for long: a loading shape breathes twice, then
+   holds still. (A spinner keeps turning while it waits: that's its meaning.) */
+@theme {
+  --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) 2;
+  @keyframes pulse {
+    50% {
+      opacity: 0.5;
+    }
+  }
+}
+
+/* The full-screen reel's own size decides its layout. Short (a phone on its
+   side): the words go back over the photo. Under 700px tall: the buttons down
+   the side get a little smaller. */
+@custom-variant short (@container reel (height < 520px));
+@custom-variant compact (@container reel (height < 700px));
+/* Wider than a phone held upright (26.25rem, 420px): room for small extras
+   beside a line, such as the activity line's photo in miniature. */
+@custom-variant roomy (@container reel (width >= 26.25rem));
+
+/* Wide (64rem across and up), a home laid out side by side: the photo on a
+   stage of its own, the buttons in a column beside it, the words in a white
+   panel on the right. Only inside a home marked `data-split` (the reel's
+   SPLIT_WIDE switch). After `short`, so a short, wide window stays side by
+   side. `split-xl`: 80rem and up, for the roomier sizes. */
+@custom-variant split {
+  @container reel (width >= 64rem) {
+    &:where([data-split], [data-split] *) {
+      @slot;
+    }
+  }
+}
+@custom-variant split-xl {
+  @container reel (width >= 80rem) {
+    &:where([data-split], [data-split] *) {
+      @slot;
+    }
+  }
+}
+
+/* A small control still takes a fingertip: its touch area grows to 44px
+   around it, without moving anything. */
+@utility hit-44 {
+  position: relative;
+  &::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
 }
 
 :root {
@@ -33,8 +98,29 @@ a {
 }
 
 :focus-visible {
-  outline: 2px solid var(--brand);
+  outline: 2px solid var(--ring, var(--brand));
   outline-offset: 2px;
+}
+
+/* On the reel, focus is white with a dark halo, so it shows on any photo.
+   Inside light things over it (cards, sheets, forms), the brand ring. A light
+   thing around the reel (the map's pop-out) doesn't count: the reel inside it
+   is still dark. */
+[data-dark-ground] {
+  --ring: white;
+}
+[data-dark-ground] :focus-visible:not([data-dark-ground] :is(dialog, [data-light], .bg-white) *) {
+  box-shadow: 0 0 0 4px rgb(0 0 0 / 0.55);
+}
+[data-dark-ground] :is(dialog, [data-light], .bg-white) :focus-visible {
+  outline-color: var(--brand);
+}
+/* Wide, the words sit in a white panel beside the photo: the brand ring there. */
+@container reel (width >= 64rem) {
+  [data-dark-ground] [data-split] [data-words] :focus-visible {
+    outline-color: var(--brand);
+    box-shadow: none;
+  }
 }
 
 /* Places focus is moved to (a card, the end of the stream), not controls: no ring. */
@@ -47,18 +133,8 @@ a {
   outline: none;
 }
 
-@keyframes rise-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-/* Sheets: up from the bottom on phones, in from the right on wide screens. */
+/* Sheets rise from the bottom. One docked beside the photo on a wide screen
+   (the comments, the Scorecard) slides in from the right instead. */
 @keyframes sheet-up {
   from {
     transform: translateY(100%);
@@ -74,16 +150,6 @@ a {
   }
   to {
     transform: none;
-  }
-}
-
-/* The photo on screen drifts in slowly, so a still photo feels alive. */
-@keyframes ken-burns {
-  from {
-    transform: scale(1);
-  }
-  to {
-    transform: scale(1.07);
   }
 }
 
@@ -120,6 +186,87 @@ a {
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+/* The activity line above the price: the old line lifts away as the next
+   rises into its place. */
+@keyframes ticker-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes ticker-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* With reduced motion on, the activity line steps by hand, crossfading. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* A comment the activity line points to, when the comments open on it. */
+@keyframes comment-flash {
+  from {
+    background-color: color-mix(in srgb, var(--brand) 10%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+[data-flash] {
+  border-radius: 0.75rem;
+  animation: comment-flash 2s ease-in both;
+}
+
+/* Who did something, appearing on the photo where they did it. */
+@keyframes pin-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* A ring that spreads from that spot and fades, to catch the eye. */
+@keyframes spot-ripple {
+  from {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(2.2);
   }
 }
 
@@ -173,5 +320,13 @@ a {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+  /* A fade isn't motion: the activity line still crossfades as it steps,
+     and a comment pointed to still shows which. */
+  [data-crossfade] {
+    animation-duration: 150ms !important;
+  }
+  [data-flash] {
+    animation-duration: 2s !important;
   }
 }

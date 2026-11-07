@@ -1,11 +1,12 @@
 import { Eye, Heart, MessageCircle, Send, ThumbsDown } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { connection } from "next/server";
 import { Chips, Empty, hrefWith, PageTitle, pageParam, Pager, SearchBox } from "@/components/admin-ui";
 import { HOME_SORTS, homeStatuses, listHomes, type HomeSort } from "@/lib/admin";
 import { requireAdmin } from "@/lib/auth";
+import { Badge, HomeThumb } from "@/components/ui";
 import { cn, formatPrice } from "@/lib/format";
+import { card } from "@/lib/ui";
 
 export const metadata = { title: "Homes · Admin" };
 
@@ -30,7 +31,7 @@ export default async function AdminHomes({ searchParams }: Props) {
       <PageTitle title="Homes">Every listing on the site, and how people are taking to it.</PageTitle>
 
       <div className="flex flex-col gap-3">
-        <SearchBox q={q} placeholder="Search by address, city or ZIP" keep={{ status, sort: sort === "liked" ? undefined : sort }} />
+        <SearchBox q={q} placeholder="Address, city or ZIP" keep={{ status, sort: sort === "liked" ? undefined : sort }} />
         <Chips
           label="Status"
           items={[
@@ -53,7 +54,7 @@ export default async function AdminHomes({ searchParams }: Props) {
         />
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-2xl bg-white ring-1 ring-stone-200">
+      <div className={cn(card, "mt-4 overflow-hidden")}>
         {rows.length === 0 ? (
           <Empty>{q ? `No homes match “${q}”.` : "No homes here."}</Empty>
         ) : (
@@ -64,34 +65,23 @@ export default async function AdminHomes({ searchParams }: Props) {
                   href={`/admin/homes/${encodeURIComponent(listing.ListingKey)}`}
                   className="flex items-center gap-3 px-3 py-3 hover:bg-stone-50 sm:gap-4 sm:px-4"
                 >
-                  <div className="relative h-16 w-20 shrink-0 overflow-hidden rounded-lg bg-stone-200">
-                    {listing.Media[0] && (
-                      <Image src={listing.Media[0].MediaURL} alt="" fill sizes="80px" className="object-cover" />
-                    )}
-                  </div>
+                  <HomeThumb src={listing.Media[0]?.MediaURL} sizes="80px" className="h-16 w-20" />
                   <div className="min-w-0 flex-1">
                     <p className="flex flex-wrap items-center gap-x-2">
                       <span className="truncate font-semibold">{listing.UnparsedAddress}</span>
-                      <span
-                        className={cn(
-                          "rounded-full px-2 py-0.5 text-xs font-semibold",
-                          homeStatus === "Active" ? "bg-emerald-100 text-emerald-900" : "bg-stone-200 text-stone-700",
-                        )}
-                      >
-                        {homeStatus}
-                      </span>
+                      <Badge tone={homeStatus === "Active" ? "success" : "neutral"}>{homeStatus}</Badge>
                     </p>
-                    <p className="truncate text-sm text-stone-600">
-                      {formatPrice(listing.ListPrice)} · {listing.BedroomsTotal} bd · {listing.BathroomsTotalInteger} ba ·{" "}
+                    <p className="truncate text-sm text-muted">
+                      <span className="font-display text-base text-ink">{formatPrice(listing.ListPrice)}</span> · {listing.BedroomsTotal} bd · {listing.BathroomsTotalInteger} ba ·{" "}
                       {listing.LivingArea.toLocaleString("en-US")} sq ft · {listing.City}
                     </p>
-                    <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm tabular-nums text-stone-600">
+                    <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm tabular-nums text-muted">
                       <span className="flex items-center gap-1" title="Likes">
-                        <Heart aria-hidden size={14} /> {publicTotals.likes + privateTotals.likes}
+                        <Heart aria-hidden size={14} className="text-rose-600" /> {publicTotals.likes + privateTotals.likes}
                         <span className="sr-only">likes,</span>
                       </span>
                       <span className="flex items-center gap-1" title="Passes">
-                        <ThumbsDown aria-hidden size={14} /> {publicTotals.dislikes + privateTotals.dislikes}
+                        <ThumbsDown aria-hidden size={14} className="text-amber-800" /> {publicTotals.dislikes + privateTotals.dislikes}
                         <span className="sr-only">passes,</span>
                       </span>
                       <span className="flex items-center gap-1" title="Comments">

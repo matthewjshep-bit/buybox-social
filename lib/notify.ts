@@ -17,15 +17,29 @@ async function sendEmail(to: string, subject: string, text: string) {
 }
 
 // At most one email per share every 10 minutes, so a busy thread can't flood the
-// agent's inbox. The dashboard always has the full activity.
-export async function notifyAgent(shareId: string, summary: string) {
+// agent's inbox. The dashboard always has the full activity. Something the agent
+// should act on straight away (a client asking to see a home) goes out `now`,
+// and still counts as the latest email. A link being opened (`open`) keeps its
+// own 10 minutes, so it never holds back the email about what the client does next.
+export async function notifyAgent(
+  shareId: string,
+  summary: string,
+  { now = false, open = false }: { now?: boolean; open?: boolean } = {},
+) {
   try {
-    const [row] = await sql<{ email: string }[]>`
-      update shares s set last_notified_at = now()
-      from accounts a
-      where s.id = ${shareId} and a.id = s.agent_id
-        and (s.last_notified_at is null or s.last_notified_at < now() - interval '10 minutes')
-      returning a.email`;
+    const [row] = open
+      ? await sql<{ email: string }[]>`
+          update shares s set last_open_notified_at = now()
+          from accounts a
+          where s.id = ${shareId} and a.id = s.agent_id
+            and (s.last_open_notified_at is null or s.last_open_notified_at < now() - interval '10 minutes')
+          returning a.email`
+      : await sql<{ email: string }[]>`
+          update shares s set last_notified_at = now()
+          from accounts a
+          where s.id = ${shareId} and a.id = s.agent_id
+            and (${now} or s.last_notified_at is null or s.last_notified_at < now() - interval '10 minutes')
+          returning a.email`;
     if (!row) return;
     const link = `${appUrl()}/dashboard/shares/${shareId}`;
     await sendEmail(row.email, summary, `${summary}\n\nSee all the activity: ${link}`);

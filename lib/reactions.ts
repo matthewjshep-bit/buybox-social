@@ -1,6 +1,9 @@
 // How people react to a home: like or dislike it overall, plus any specifics
 // they want to call out. Free of server code, so the browser can use it too.
 
+import type { Listing } from "./listings/types";
+import { mediaKeyOf } from "./photos";
+
 export type Sentiment = "like" | "dislike";
 
 export const ASPECTS = [
@@ -30,8 +33,12 @@ export const NO_REACTION: ReactionState = { reaction: null, liked: [], disliked:
 
 export type AspectCounts = Partial<Record<Aspect, number>>;
 
-// A home is "trending" with this many reactions or comments in the past week.
+// A home is "trending" with this many reactions or comments in the past week,
+// from at least this many people (one person tapping three things isn't a
+// trend), and only if that puts it among the busiest few homes for sale.
 export const TRENDING_MIN_THIS_WEEK = 3;
+export const TRENDING_MIN_PEOPLE = 2;
+export const TRENDING_TOP = 3;
 
 // Tapping Like or Dislike itself: on, or off again.
 export function toggleOverall(state: ReactionState, sentiment: Sentiment): ReactionState {
@@ -59,11 +66,39 @@ export function toggleAspect(state: ReactionState, sentiment: Sentiment, aspect:
   };
 }
 
-// "the kitchen", "the kitchen and natural light", "the yard, vibe and price".
-const listOf = (things: string[]) => {
-  const labels = things.map((thing) => thing.toLowerCase());
-  if (labels.length <= 1) return `the ${labels[0] ?? ""}`;
-  return `the ${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+// A spot someone tapped that isn't on any named thing, said by where it is
+// (spotPlace): "outside", "in the kitchen", "in photo 3".
+export type PlacedSpot = { place: string };
+
+// Where in a home a spot with no name is, as the ticker says it: "outside"
+// for the outside or front of the house, "in the kitchen" for a room, and
+// "in photo 3" only when the photo doesn't say what it shows.
+export function spotPlace(listing: Pick<Listing, "Media">, mediaKey: string) {
+  const index = listing.Media.findIndex((photo) => mediaKeyOf(photo) === mediaKey);
+  const room = listing.Media[index]?.ImageOf;
+  if (room && /exterior|front|facade/i.test(room)) return "outside";
+  if (room) return `in the ${room.toLowerCase()}`;
+  return index >= 0 ? `in photo ${index + 1}` : "in a photo";
+}
+
+// "a spot outside", "2 spots in the kitchen": spots with no name, one phrase
+// per place, in the order they were tapped. Null is a place nobody said
+// ("@42,61" on its own): "a spot in a photo", "2 spots in the photos".
+export function spotsIn(places: (string | null)[]) {
+  const counts = new Map<string | null, number>();
+  for (const place of places) counts.set(place, (counts.get(place) ?? 0) + 1);
+  return [...counts].map(([place, n]) =>
+    n === 1 ? `a spot ${place ?? "in a photo"}` : `${n} spots ${place ?? "in the photos"}`,
+  );
+}
+
+// "the kitchen", "the kitchen and natural light", "the yard, vibe and price";
+// what wasn't liked takes "or": "the yard or price". Spots come last, in the
+// same list: "the deck and a spot outside".
+const listOf = (named: string[], spots: string[], joiner: "and" | "or") => {
+  const items = [...named.map((thing, i) => `${i === 0 ? "the " : ""}${thing.toLowerCase()}`), ...spots];
+  if (items.length <= 1) return items[0] ?? null;
+  return `${items.slice(0, -1).join(", ")} ${joiner} ${items.at(-1)}`;
 };
 
 // Specifics plus anything liked in the photos, without repeats ("Kitchen" twice).
@@ -76,27 +111,26 @@ const likedThings = (liked: Aspect[], photoTags: string[]) => {
 };
 
 // "liked the kitchen and vibe", "passed on this", "passed, didn't like the yard",
-// "liked the marble counters" (from a photo). The negative choice is called
-// Pass everywhere, so it's worded that way.
+// "liked the marble counters" (from a photo), "liked the deck and a spot in
+// the kitchen". The negative choice is called Pass everywhere, so it's
+// worded that way.
 export function describeReaction(
   { reaction, liked, disliked }: ReactionState,
-  photoTags: string[] = [],
+  // Things liked in the photos: their names, a spot with no name as it was
+  // saved ("@42,61"), or one said by where it is ({ place: "outside" }).
+  photoTags: (string | PlacedSpot)[] = [],
   // Things not liked in the photos, or facts: "the price".
-  photoDislikes: string[] = [],
+  photoDislikes: (string | PlacedSpot)[] = [],
 ): string {
-  // Specifics and named things listed; spots that aren't named things
-  // ("@42,61") counted. Null when there are none.
-  const things = (aspects: Aspect[], tags: string[]) => {
-    const spots = tags.filter((tag) => tag.startsWith("@")).length;
-    const named = likedThings(
-      aspects,
-      tags.filter((tag) => !tag.startsWith("@")),
-    );
-    const spotText = spots === 0 ? null : spots === 1 ? "a spot in a photo" : `${spots} spots in the photos`;
-    return [named.length ? listOf(named) : null, spotText].filter(Boolean).join(" and ") || null;
+  // Specifics and named things listed, then spots that aren't on a named
+  // thing, by where they are. Null when there are none.
+  const things = (aspects: Aspect[], tags: (string | PlacedSpot)[], joiner: "and" | "or") => {
+    const names = tags.filter((tag): tag is string => typeof tag === "string" && !tag.startsWith("@"));
+    const places = tags.flatMap((tag) => (typeof tag !== "string" ? [tag.place] : tag.startsWith("@") ? [null] : []));
+    return listOf(likedThings(aspects, names), spotsIn(places), joiner);
   };
-  const likes = things(liked, photoTags);
-  const dislikes = things(disliked, photoDislikes);
+  const likes = things(liked, photoTags, "and");
+  const dislikes = things(disliked, photoDislikes, "or");
   if (reaction === "like") {
     if (likes && dislikes) return `liked ${likes} but not ${dislikes}`;
     if (likes) return `liked ${likes}`;

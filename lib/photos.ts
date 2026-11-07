@@ -98,6 +98,16 @@ export const spotPhrase = (photo: ListingMedia | undefined, tag: string) => {
   return thing ? tagPhrase(thing) : "this spot";
 };
 
+// A spot named in a sentence anywhere on the page: "the front door"; "a spot
+// in photo 3"; "the price"
+export function spotName(listing: Listing, spot: { mediaKey: string; tag: string }) {
+  if (spot.mediaKey === FACTS) return tagPhrase(spot.tag);
+  const index = listing.Media.findIndex((m) => mediaKeyOf(m) === spot.mediaKey);
+  const thing = thingOf(listing.Media[index], spot.tag);
+  if (thing) return tagPhrase(thing);
+  return index >= 0 ? `a spot in photo ${index + 1}` : "a spot in a photo";
+}
+
 // Which broad specific a photo like counts toward, for taste and totals.
 const ROOM_ASPECTS: [RegExp, Aspect][] = [
   [/kitchen/i, "kitchen"],

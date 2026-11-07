@@ -10,6 +10,7 @@ import { getHome } from "@/lib/admin";
 import { requireAdmin } from "@/lib/auth";
 import { cn, formatPrice, timeAgo } from "@/lib/format";
 import { aspectLabel } from "@/lib/reactions";
+import { button } from "@/lib/ui";
 
 type Props = { params: Promise<{ key: string }> };
 
@@ -30,7 +31,7 @@ export default async function AdminHome({ params }: Props) {
 
   return (
     <>
-      <Link href="/admin/homes" className="mb-4 inline-flex min-h-9 items-center gap-1.5 text-sm font-semibold text-stone-600 hover:text-ink">
+      <Link href="/admin/homes" className="mb-2 flex min-h-11 w-fit items-center gap-1.5 text-sm font-semibold text-muted hover:text-ink">
         <ArrowLeft aria-hidden size={16} /> Homes
       </Link>
 
@@ -39,27 +40,27 @@ export default async function AdminHome({ params }: Props) {
           {photos[0] && <Image src={photos[0].MediaURL} alt="" fill sizes="(max-width: 640px) 100vw, 288px" className="object-cover" priority />}
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-stone-500">
+          <p className="text-sm font-semibold text-muted">
             {home.status} · {listing.ListingId}
           </p>
           <h1 className="font-display text-3xl">{listing.UnparsedAddress}</h1>
-          <p className="text-stone-600">
+          <p className="text-muted">
             {listing.City}, {listing.StateOrProvince} {listing.PostalCode}
           </p>
-          <p className="mt-2 text-xl font-semibold tabular-nums">{formatPrice(listing.ListPrice)}</p>
-          <p className="text-sm text-stone-600">
+          <p className="mt-2 font-display text-2xl tabular-nums">{formatPrice(listing.ListPrice)}</p>
+          <p className="text-sm text-muted">
             {listing.BedroomsTotal} beds · {listing.BathroomsTotalInteger} baths · {listing.LivingArea.toLocaleString("en-US")} sq ft
             {listing.YearBuilt && ` · Built ${listing.YearBuilt}`}
           </p>
           {listing.ListAgentFullName && (
-            <p className="mt-1 text-sm text-stone-500">
+            <p className="mt-1 text-sm text-muted">
               Listed by {listing.ListAgentFullName}
               {listing.ListOfficeName && `, ${listing.ListOfficeName}`}
             </p>
           )}
           <Link
             href={`/homes/${encodeURIComponent(listing.ListingKey)}`}
-            className="mt-3 inline-flex min-h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold ring-1 ring-stone-300 hover:bg-white"
+            className={cn(button({ kind: "secondary" }), "mt-3")}
           >
             <ExternalLink aria-hidden size={15} /> See it on the site
           </Link>
@@ -93,7 +94,7 @@ export default async function AdminHome({ params }: Props) {
                     <Link href={`/admin/people/${link.agent_id}`} className="font-semibold hover:underline">
                       {link.agent_name}
                     </Link>
-                    <span className="text-stone-600"> to {link.client_name || "a client"}</span>
+                    <span className="text-muted"> to {link.client_name || "a client"}</span>
                     <span className="text-stone-500"> · {timeAgo(link.created_at.toISOString())}</span>
                     {link.removed && <span className="text-stone-500"> · since taken off the link</span>}
                   </p>
@@ -137,7 +138,7 @@ export default async function AdminHome({ params }: Props) {
                   </span>
                 )}
                 {[...person.liked, ...person.disliked].length > 0 && (
-                  <span className="text-stone-600">
+                  <span className="text-muted">
                     {person.liked.map((a) => `+ ${aspectLabel(a)}`).concat(person.disliked.map((a) => `– ${aspectLabel(a)}`)).join(", ")}
                   </span>
                 )}

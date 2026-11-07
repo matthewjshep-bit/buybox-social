@@ -1,7 +1,7 @@
-import Image from "next/image";
 import Link from "next/link";
 import { connection } from "next/server";
-import { Avatar, Card, ContactLinks, Empty, PageTitle, Stat } from "@/components/admin-ui";
+import { Card, ContactLinks, Empty, PageTitle, Stat } from "@/components/admin-ui";
+import { Avatar, HomeThumb } from "@/components/ui";
 import { getOverview } from "@/lib/admin";
 import { requireAdmin } from "@/lib/auth";
 import { formatPrice, timeAgo } from "@/lib/format";
@@ -37,12 +37,16 @@ export default async function AdminOverview() {
         title="Follow up"
         className="mt-6"
         action={
-          <Link href="/admin/people?status=lead" className="text-sm font-semibold text-brand hover:underline">
+          // (Over the top edge of the line under it, so its whole 44px is the link.)
+          <Link
+            href="/admin/people?status=lead"
+            className="relative -my-3 -mr-2 flex min-h-11 items-center px-2 text-sm font-semibold text-brand hover:underline"
+          >
             All leads
           </Link>
         }
       >
-        <p className="-mt-1 mb-3 text-sm text-stone-600">
+        <p className="-mt-1 mb-3 text-sm text-muted">
           Everyone who signed up on the home page in the last 30 days, newest first.
         </p>
         {followUps.length === 0 ? (
@@ -52,11 +56,13 @@ export default async function AdminOverview() {
             {followUps.map((lead) => (
               <li key={lead.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
                 <Avatar name={lead.name} />
-                <div className="min-w-0 flex-1">
+                {/* Who they are keeps room to be read; on a phone, Call, Text
+                    and Email go on their own line under the name. */}
+                <div className="min-w-0 grow basis-48">
                   <Link href={`/admin/people/${lead.id}`} className="font-semibold hover:underline">
                     {lead.name}
                   </Link>
-                  <p className="truncate text-sm text-stone-600">
+                  <p className="truncate text-sm text-muted">
                     {lead.phone} · {lead.email}
                   </p>
                   <p className="text-xs text-stone-500">
@@ -64,14 +70,18 @@ export default async function AdminOverview() {
                     {lead.signed_in ? "Signed in" : "Hasn't opened their sign-in link"}
                   </p>
                 </div>
-                <ContactLinks name={lead.name} phone={lead.phone} email={lead.email} compact />
+                <div className="w-full pl-13 sm:w-auto sm:pl-0">
+                  <ContactLinks name={lead.name} phone={lead.phone} email={lead.email} />
+                </div>
               </li>
             ))}
           </ul>
         )}
       </Card>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      {/* One column on a phone, as wide as the screen and no wider: long
+          addresses truncate inside their card. */}
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card title="Busiest homes this week">
           {hot.length === 0 ? (
             <Empty>No likes or comments this week yet.</Empty>
@@ -83,20 +93,20 @@ export default async function AdminOverview() {
                     href={`/admin/homes/${encodeURIComponent(home.listing_key)}`}
                     className="flex items-center gap-3 py-2.5 hover:bg-stone-50"
                   >
-                    <div className="relative size-12 shrink-0 overflow-hidden rounded-lg bg-stone-200">
-                      {home.data.Media[0] && (
-                        <Image src={home.data.Media[0].MediaURL} alt="" fill sizes="48px" className="object-cover" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{home.data.UnparsedAddress}</p>
-                      <p className="text-sm text-stone-600">
-                        {formatPrice(home.data.ListPrice)} · {home.data.City}
+                    <HomeThumb src={home.data.Media[0]?.MediaURL} sizes="48px" className="size-12" />
+                    {/* On a phone the count goes under the price, so the
+                        address keeps its room. */}
+                    <div className="min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
+                      <div className="min-w-0 sm:flex-1">
+                        <p className="truncate font-medium">{home.data.UnparsedAddress}</p>
+                        <p className="text-sm text-muted">
+                          <span className="font-display text-base text-ink">{formatPrice(home.data.ListPrice)}</span> · {home.data.City}
+                        </p>
+                      </div>
+                      <p className="text-sm tabular-nums text-muted sm:shrink-0">
+                        {home.n} {home.n === 1 ? "like or comment" : "likes and comments"}
                       </p>
                     </div>
-                    <p className="shrink-0 text-sm tabular-nums text-stone-600">
-                      {home.n} {home.n === 1 ? "like or comment" : "likes and comments"}
-                    </p>
                   </Link>
                 </li>
               ))}
@@ -107,7 +117,7 @@ export default async function AdminOverview() {
         <Card
           title="Latest comments"
           action={
-            <Link href="/admin/comments" className="text-sm font-semibold text-brand hover:underline">
+            <Link href="/admin/comments" className="-my-3 -mr-2 flex min-h-11 items-center px-2 text-sm font-semibold text-brand hover:underline">
               All comments
             </Link>
           }

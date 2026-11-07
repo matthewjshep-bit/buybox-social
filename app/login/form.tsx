@@ -1,6 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
+import { cn } from "@/lib/format";
+import { button, card, field } from "@/lib/ui";
 import { requestSignIn, type LoginState } from "./actions";
 
 export function LoginForm({ devMode, asAgent = false }: { devMode: boolean; asAgent?: boolean }) {
@@ -8,7 +10,7 @@ export function LoginForm({ devMode, asAgent = false }: { devMode: boolean; asAg
 
   if (state.sent) {
     return (
-      <p role="status" className="mt-6 rounded-xl bg-white p-4 ring-1 ring-stone-200">
+      <p role="status" className={cn(card, "mt-6 p-4")}>
         Check your email for your sign-in link.
       </p>
     );
@@ -26,17 +28,19 @@ export function LoginForm({ devMode, asAgent = false }: { devMode: boolean; asAg
         type="email"
         required
         autoComplete="email"
-        className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
+        aria-invalid={state.error ? true : undefined}
+        aria-describedby={state.error ? "email-error" : undefined}
+        className={cn(field(), "mt-1")}
       />
       {state.error && (
-        <p role="alert" className="mt-2 text-sm text-red-700">
+        <p id="email-error" role="alert" className="mt-2 text-sm text-red-700">
           {state.error}
         </p>
       )}
       <button
         type="submit"
         disabled={pending}
-        className="mt-4 min-h-12 w-full rounded-xl bg-brand font-semibold text-white disabled:opacity-60"
+        className={cn(button({ kind: "primary", size: "lg", block: true }), "mt-4")}
       >
         {pending ? "One moment…" : devMode ? "Continue" : "Email me a link"}
       </button>

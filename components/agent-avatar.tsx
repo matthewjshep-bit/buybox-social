@@ -1,13 +1,22 @@
 import { cn } from "@/lib/format";
+import { avatarColor } from "@/lib/ui";
 
+// An agent's own face: their photo, or their initials, in ink as an agent's
+// face is everywhere (frosted white over a photo or their colour).
 export function AgentAvatar({
   agent,
   size,
   className,
+  decorative = false,
+  light = false,
 }: {
   agent: { full_name: string; photo_data_url: string | null };
   size: number;
   className?: string;
+  // Their name is right beside it, so a screen reader needn't hear it twice.
+  decorative?: boolean;
+  // On a white card, rather than over a photo or the brand colour.
+  light?: boolean;
 }) {
   if (agent.photo_data_url) {
     return (
@@ -15,7 +24,7 @@ export function AgentAvatar({
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={agent.photo_data_url}
-        alt={agent.full_name}
+        alt={decorative ? "" : agent.full_name}
         width={size}
         height={size}
         style={{ width: size, height: size }}
@@ -34,7 +43,8 @@ export function AgentAvatar({
       aria-hidden
       style={{ width: size, height: size }}
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full bg-white/20 font-semibold text-white",
+        "flex shrink-0 items-center justify-center rounded-full font-semibold",
+        light ? avatarColor("agent") : "bg-white/20 text-white",
         className,
       )}
     >

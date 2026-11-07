@@ -1,9 +1,7 @@
-import { ArrowLeft } from "lucide-react";
-import Link from "next/link";
 import { connection } from "next/server";
 import { loadSearchReel } from "@/app/homes/actions";
 import { PUBLIC_PROMPT, publicReelActions } from "@/components/listing-detail";
-import { ReelFeed } from "@/components/reel";
+import { SearchReel } from "@/components/search-view";
 import { SiteHeader } from "@/components/site-header";
 import { getCurrentUser } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
@@ -19,7 +17,8 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 
 // The homes a map search found, full screen like the home page's feed, in the
 // map's order: opened on the one picked beside the map, with those before it
-// above and the rest below, for as long as you scroll.
+// above and the rest below, for as long as you scroll. The address follows
+// the home on screen (`SearchReel`).
 export default async function SearchFeed({ searchParams }: Props) {
   await connection();
   const params = await searchParams;
@@ -37,10 +36,12 @@ export default async function SearchFeed({ searchParams }: Props) {
   const posts = first.length ? await getReel(viewer, device, taste, { only: first, limit: first.length }) : [];
 
   const query = filtersQuery(filters);
-  const map = `/search?${new URLSearchParams([...new URLSearchParams(query), ...(start ? [["home", start]] : [])])}`;
-
   return (
-    <ReelFeed
+    <SearchReel
+      query={query}
+      start={start}
+      siteHeader={<SiteHeader overlay />}
+      sender={viewer?.role === "agent" ? { profileComplete: Boolean(viewer.full_name) } : null}
       initial={posts}
       mode="public"
       infinite={keys.length > first.length}
@@ -48,30 +49,6 @@ export default async function SearchFeed({ searchParams }: Props) {
       actions={publicReelActions}
       myName={name}
       prompt={PUBLIC_PROMPT}
-      focus={start ? { key: start, n: 0 } : null}
-      header={
-        <>
-          <SiteHeader overlay />
-          <Link
-            href={map}
-            className="absolute right-3 top-[calc(env(safe-area-inset-top)_+_3.75rem)] flex min-h-10 items-center gap-1.5 rounded-full bg-black/45 px-3.5 text-sm font-semibold text-white backdrop-blur-md hover:bg-black/60 sm:right-6"
-          >
-            <ArrowLeft aria-hidden size={16} /> Back to map
-          </Link>
-        </>
-      }
-      end={
-        <div className="max-w-sm">
-          <h2 className="font-display text-2xl">That&apos;s every home in this search</h2>
-          <p className="mt-2 text-white/80">Change the filters on the map to see more.</p>
-          <Link
-            href={map}
-            className="mt-6 inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-white px-5 font-semibold text-ink"
-          >
-            <ArrowLeft aria-hidden size={17} /> Back to the map
-          </Link>
-        </div>
-      }
     />
   );
 }

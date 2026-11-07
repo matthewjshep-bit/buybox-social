@@ -37,15 +37,21 @@ test("tap anywhere on a photo to like that spot or comment on it, and it shows w
   await expect(sheet).toBeHidden();
 
   // It shows where it was said: the heart exactly where the tap was (not
-  // moved onto the door's middle), the comment beside it.
+  // moved onto the door's middle), the comment beside it. The photo and the
+  // pin are measured together each time, so a page still settling (the sheet
+  // going, the words popping in) is waited out, not measured halfway.
   const pin = home.getByRole("button", { name: /^Front door: Avery: Love this door color, 1 like$/ });
   await expect(pin).toBeVisible();
-  const box = (await home.getByRole("img", { name: PHOTO }).boundingBox())!;
-  const centre = async () => {
-    const at = (await pin.boundingBox())!;
-    return [at.x + at.width / 2 - (box.x + box.width * 0.6), at.y + at.height / 2 - (box.y + box.height * 0.66)];
+  const photo = home.getByRole("img", { name: PHOTO });
+  const offBy = async (target: typeof pin, x: number, y: number) => {
+    const [box, at] = await Promise.all([photo.boundingBox(), target.boundingBox()]);
+    if (!box || !at) return Infinity;
+    return Math.max(
+      Math.abs(at.x + at.width / 2 - (box.x + box.width * x)),
+      Math.abs(at.y + at.height / 2 - (box.y + box.height * y)),
+    );
   };
-  await expect.poll(async () => Math.max(...(await centre()).map(Math.abs))).toBeLessThan(2);
+  await expect.poll(() => offBy(pin, 0.6, 0.66), { timeout: 15_000 }).toBeLessThan(2);
 
   // Tapping the heart again is that heart, liked.
   await tapPhoto(home, PHOTO, 0.6, 0.66);
@@ -57,6 +63,7 @@ test("tap anywhere on a photo to like that spot or comment on it, and it shows w
   await tapPhoto(home, PHOTO, 0.1, 0.3);
   const spot = home.getByRole("group", { name: "This spot" });
   await expect(spot).toBeVisible();
+  await settle(spot);
   await spot.getByRole("button", { name: "Like this spot", exact: true }).click();
   await expect(spot.getByRole("button", { name: "Like this spot, 1 like", exact: true })).toHaveAttribute("aria-pressed", "true");
   await spot.getByRole("button", { name: "Close" }).click();
@@ -64,15 +71,7 @@ test("tap anywhere on a photo to like that spot or comment on it, and it shows w
   const second = home.getByRole("button", { name: "A spot: 1 like" });
   await expect(second).toBeVisible();
   // (Once it's done popping in.)
-  await expect
-    .poll(async () => {
-      const at = (await second.boundingBox())!;
-      return Math.max(
-        Math.abs(at.x + at.width / 2 - (box.x + box.width * 0.1)),
-        Math.abs(at.y + at.height / 2 - (box.y + box.height * 0.3)),
-      );
-    })
-    .toBeLessThan(2);
+  await expect.poll(() => offBy(second, 0.1, 0.3), { timeout: 15_000 }).toBeLessThan(2);
   await expect(pin).toHaveAccessibleName(/1 like$/);
 
   // In the comments, it says which spot, and takes you there.
@@ -111,7 +110,8 @@ test("on a desktop, the comment box opens right where you click, and what's said
   await expect(trees).toBeHidden();
   // Right where it was said, with who said it.
   const pin = home.getByRole("button", { name: /^Mature trees: Jordan: These trees make the whole street/ });
-  const words = home.getByText("These trees make the whole street");
+  // (On the photo: the line above the price may be quoting them too.)
+  const words = home.locator("[data-photo-frame]").getByText("These trees make the whole street");
   await expect(pin).toBeVisible();
   await expect(words).toBeVisible();
 
@@ -136,56 +136,138 @@ test("on a desktop, the comment box opens right where you click, and what's said
   await expect(card.getByRole("button", { name: "Like the covered porch", exact: true })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(card).toBeHidden();
+
+  // Something said at a spot right beside the first (just above it, clear of
+  // its words): each one's words stay whole, never under the other's.
+  await tapPhoto(home, PHOTO, 0.79, 0.21);
+  const near = home.locator("[data-spot-card]");
+  await expect(near).toBeVisible();
+  await near.getByLabel(/^Comment on/).fill("Shade all afternoon");
+  await near.getByLabel(/^Comment on/).press("Enter");
+  await expect(near).toBeHidden();
+  const said = home.locator("[data-photo-frame]").getByText("Shade all afternoon");
+  await expect(said).toBeVisible();
+  await expect(words).toBeVisible();
+  await expect
+    .poll(() =>
+      home.locator("[data-pin-words]:not([data-no-room])").evaluateAll((all) => {
+        const boxes = all.map((el) => el.getBoundingClientRect());
+        return boxes.some((a, i) =>
+          boxes.slice(i + 1).some((b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom),
+        );
+      }),
+    )
+    .toBe(false);
 });
 
-test("nothing on a photo shows under the words over it, and a tap on the words isn't a tap on the photo", async ({
+test("from the keyboard, each thing's name shows beside it, inside the photo and clear of the spot", async ({
+  page,
   browser,
 }) => {
-  // On a wide screen the photo goes on under the words.
-  const page = await (await browser.newContext(DESKTOP)).newPage();
-  await page.goto("/homes/SAMPLE-1001");
-  const home = homeIn(page, LARKMOOR);
+  const desk = await (await browser.newContext(DESKTOP)).newPage();
+  for (const at of [page, desk]) {
+    await at.goto("/homes/SAMPLE-1001");
+    const home = homeIn(at, LARKMOOR);
+    await expect(home).toBeInViewport({ ratio: 0.9 });
+    const photo = (await home.getByRole("img", { name: PHOTO }).boundingBox())!;
+    // In the middle, and at the top right corner, where a name centred on it
+    // would run off the photo.
+    for (const [thing, x, y] of [
+      ["the front door", 0.62, 0.68],
+      ["the mature trees", 0.85, 0.22],
+    ] as const) {
+      const name = home.getByRole("button", { name: `Select ${thing}` });
+      await name.focus();
+      await at.keyboard.press("Shift+Tab");
+      await at.keyboard.press("Tab");
+      await expect(name).toBeFocused();
+      const box = (await name.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(photo.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(photo.x + photo.width);
+      // Above or below the spot, never over a heart there (20px across).
+      const spot = photo.y + photo.height * y;
+      expect(box.y >= spot + 10 || box.y + box.height <= spot - 10).toBe(true);
+      expect(photo.x + photo.width * x).toBeGreaterThan(box.x);
+    }
+  }
+});
+
+test("nothing on a photo shows under the words or the buttons, and a tap on the words isn't a tap on the photo", async ({
+  page,
+  browser,
+}) => {
+  const CORBEL = "812 N Corbel St";
+  const SHINGLED = "Shingled home with a wraparound porch and green lawn";
+  // On a phone the words sit below the photo; the buttons down the right
+  // reach over its bottom corner.
+  await page.goto("/homes/SAMPLE-1003");
+  const home = homeIn(page, CORBEL);
   // Scrolled all the way to it, so where things are stays put.
   await expect.poll(async () => Math.abs((await home.boundingBox())?.y ?? 99)).toBeLessThan(1);
-  const more = home.getByRole("button", { name: "more", exact: true });
-  const column = home.locator("[data-keep-clear]").filter({ has: page.getByRole("button", { name: "more", exact: true }) });
-  const remarks = home.getByText(/^A warm Ravenna-area Craftsman/);
+  const photo = (await home.getByRole("img", { name: SHINGLED }).boundingBox())!;
+  const rail = (await home.locator("[data-keep-clear]").filter({ has: home.page().getByRole("button", { name: /^Like (?!the )/ }) }).boundingBox())!;
+  const photoBottom = photo.y + photo.height;
+  expect(rail.y).toBeLessThan(photoBottom - 20);
 
-  // A heart just above the words.
-  const top = (await column.boundingBox())!;
-  const [x, y] = [top.x + 60, top.y - 18];
+  // Hearts at a point, by where they're drawn.
+  const heartsAt = (where: typeof home, [px, py]: number[]) =>
+    where.evaluate(
+      (el, [x, y]) =>
+        [...el.querySelectorAll("button[aria-label$='1 like']")].filter((pin) => {
+          const box = pin.getBoundingClientRect();
+          return Math.abs(box.x + box.width / 2 - x) < 3 && Math.abs(box.y + box.height / 2 - y) < 3;
+        }).length,
+      [px, py],
+    );
+
+  // A heart left (on a desktop, where nothing covers it) right where a
+  // phone's buttons are: on the phone, it isn't drawn under them.
+  const under = { x: (rail.x + rail.width / 2 - photo.x) / photo.width, y: (photoBottom - 12 - photo.y) / photo.height };
+  const desk = await (await browser.newContext(DESKTOP)).newPage();
+  await desk.goto("/homes/SAMPLE-1003");
+  const deskHome = homeIn(desk, CORBEL);
+  await expect.poll(async () => Math.abs((await deskHome.boundingBox())?.y ?? 99)).toBeLessThan(1);
+  await tapPhoto(deskHome, SHINGLED, under.x, under.y);
+  const deskCard = deskHome.getByRole("group").and(deskHome.locator("[data-spot-card]"));
+  await expect(deskCard).toBeVisible();
+  await settle(deskCard);
+  await deskCard.getByRole("button", { name: /^Like / }).click();
+  await joinAs(desk, "Rowan");
+  await expect(deskCard.getByRole("button", { name: /^Like .*, 1 like$/ })).toHaveAttribute("aria-pressed", "true");
+  await page.reload();
+  await expect.poll(async () => Math.abs((await home.boundingBox())?.y ?? 99)).toBeLessThan(1);
+  await expect(home.getByRole("button", { name: /^Comments/ })).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(await heartsAt(home, [photo.x + photo.width * under.x, photo.y + photo.height * under.y])).toBe(0);
+
+  // Just left of the buttons is the photo: a tap there is a heart there.
+  const [x, y] = [rail.x - 18, photoBottom - 25];
   await page.mouse.click(x, y);
-  // (The photos are a group too.)
   const card = home.getByRole("group").and(home.locator("[data-spot-card]"));
   await expect(card).toBeVisible();
   await settle(card);
   await card.getByRole("button", { name: /^Like / }).click();
-  await joinAs(page, "Rowan");
+  await joinAs(page, "Sky");
   await expect(card.getByRole("button", { name: /^Like .*, 1 like$/ })).toHaveAttribute("aria-pressed", "true");
 
   // A tap on the words is on them: it puts the card away, rather than
   // starting a new one under them.
-  const words = (await remarks.boundingBox())!;
-  await page.mouse.click(words.x + 40, words.y + words.height / 2);
+  const listedBy = (await home.getByText(/^Listed by/).boundingBox())!;
+  await page.mouse.click(listedBy.x + 40, listedBy.y + listedBy.height / 2);
   await expect(card).toBeHidden();
-  // Its heart, right there (others' are elsewhere on this photo).
-  const heartsThere = () =>
-    home.evaluate(
-      (el, [px, py]) =>
-        [...el.querySelectorAll("button[aria-label$='1 like']")].filter((pin) => {
-          const box = pin.getBoundingClientRect();
-          return Math.abs(box.x + box.width / 2 - px) < 3 && Math.abs(box.y + box.height / 2 - py) < 3;
-        }).length,
-      [x, y],
-    );
-  await expect.poll(heartsThere).toBe(1);
+  await page.waitForTimeout(500);
+  await expect(home.locator("[data-spot-card]")).toHaveCount(0);
+  await expect.poll(() => heartsAt(home, [x, y])).toBe(1);
 
-  // The whole description reaches over it, so it steps out of the way, and
-  // comes back when the description's put away.
-  await more.click();
-  await expect.poll(heartsThere).toBe(0);
-  await home.getByRole("button", { name: "less", exact: true }).click();
-  await expect.poll(heartsThere).toBe(1);
+  // The whole description is in the Scorecard, at "About this home"; the
+  // heart is back where it was when that's put away.
+  await home.getByRole("button", { name: "more", exact: true }).click();
+  const scorecard = page.getByRole("dialog", { name: "Scorecard" });
+  await expect(scorecard).toBeVisible();
+  await expect(scorecard.getByRole("heading", { name: "About this home" })).toBeInViewport();
+  await page.keyboard.press("Escape");
+  await expect(scorecard).toBeHidden();
+  await expect.poll(() => heartsAt(home, [x, y])).toBe(1);
 });
 
 test("dislike a spot or a fact as easily as liking it, and say something about the price", async ({ page }) => {

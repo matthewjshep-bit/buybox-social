@@ -13,6 +13,9 @@ const nextConfig: NextConfig = {
     },
   },
   async headers() {
+    // A link preview's picture is the same for everyone who opens the link,
+    // and a chat app may ask for it again with every paste: kept for a day.
+    const keepADay = [{ key: "Cache-Control", value: "public, max-age=86400" }];
     // A share link's token is its only credential: keep it out of search
     // engines and out of Referer headers.
     return [
@@ -23,6 +26,8 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "no-referrer" },
         ],
       },
+      { source: "/s/:token/opengraph-image/:id", headers: keepADay },
+      { source: "/homes/:key/opengraph-image", headers: keepADay },
     ];
   },
 };

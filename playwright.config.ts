@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = 3100;
-const DB_PORT = 54330;
+// E2E_PORT and E2E_DB_PORT let two copies of the app run their tests at once.
+const PORT = Number(process.env.E2E_PORT ?? 3100);
+const DB_PORT = Number(process.env.E2E_DB_PORT ?? 54330);
 const DATABASE_URL = `postgres://postgres:postgres@127.0.0.1:${DB_PORT}/postgres`;
 
 // Set PLAYWRIGHT_CHROMIUM to reuse a browser you already have installed.
@@ -38,6 +39,10 @@ export default defineConfig({
         ALLOW_DEV_LOGIN: "true",
         SUPABASE_URL: "",
         SUPABASE_PUBLISHABLE_KEY: "",
+        // Never the model, even with a key in the shell: taste descriptions come from the template.
+        ANTHROPIC_API_KEY: "",
+        // A home that's sold, beside the sample homes for sale (scripts/db-setup.ts).
+        E2E_FIXTURES: "true",
       },
     },
   ],

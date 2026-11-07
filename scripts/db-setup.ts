@@ -37,9 +37,33 @@ async function syncListings() {
   console.log(`synced ${count} listings from ${source.name}`);
 }
 
+// For the tests only: one home that has sold, so they can check nothing sold
+// goes on a new link. A copy of the first sample home under its own key and
+// address, never in any feed or search (those show homes for sale).
+const SOLD_KEY = "SAMPLE-SOLD";
+async function addTestFixtures() {
+  for await (const listing of activeListingSource().fetchListings()) {
+    const sold = {
+      ...listing,
+      ListingKey: SOLD_KEY,
+      ListingId: SOLD_KEY,
+      StandardStatus: "Closed",
+      UnparsedAddress: "9 Sold Example Ct",
+    };
+    await sql`
+      insert into listings (listing_key, standard_status, data, updated_at)
+      values (${SOLD_KEY}, ${sold.StandardStatus}, ${sql.json(sold as never)}, now())
+      on conflict (listing_key) do update
+        set standard_status = excluded.standard_status, data = excluded.data, updated_at = now()`;
+    console.log(`added the sold test home ${SOLD_KEY}`);
+    return;
+  }
+}
+
 async function main() {
   await migrate();
   await syncListings();
+  if (process.env.E2E_FIXTURES === "true") await addTestFixtures();
   await sql.end();
 }
 

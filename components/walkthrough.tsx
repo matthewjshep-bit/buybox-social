@@ -3,6 +3,7 @@
 import { ArrowUp, ChevronDown, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/format";
+import { glass } from "@/lib/ui";
 
 // The first time someone opens an agent's link, two gentle nudges show how it
 // works: swipe sideways through a home's photos, then move on to the next
@@ -92,28 +93,31 @@ export function NudgeHint({ nudge }: { nudge: Nudge }) {
     <div
       aria-hidden
       className={cn(
-        "pointer-events-none absolute inset-x-0 top-(--photo-top) bottom-(--photo-bottom) z-10 flex justify-center px-4",
+        "pointer-events-none absolute left-(--photo-left,0px) right-(--photo-right,0px) top-(--photo-top) bottom-(--photo-bottom) z-10 flex justify-center px-4",
         nudge === "photos" ? "items-center" : "items-end pb-3",
       )}
     >
       <p
         key={nudge}
         data-nudge={nudge}
-        className="flex items-center gap-1.5 rounded-full bg-black/45 py-2 pl-4 pr-3 text-sm font-semibold text-white shadow-lg backdrop-blur-md animate-[nudge-in_450ms_ease-out_both]"
+        className={cn(glass, "flex items-center gap-1.5 rounded-full py-2 pl-4 pr-3 text-sm font-semibold shadow-lg animate-[nudge-in_450ms_ease-out_both]")}
       >
         {nudge === "photos" ? (
           <>
-            Swipe for more photos
-            <ChevronRight size={18} strokeWidth={2.5} className="animate-[nudge-right_1.4s_ease-in-out_infinite]" />
+            {/* A mouse or trackpad has the arrows on the photo too. */}
+            <span>
+              Swipe for more photos<span className="hidden pointer-fine:inline">, or use the arrows</span>
+            </span>
+            <ChevronRight size={18} strokeWidth={2.5} className="animate-[nudge-right_1.4s_ease-in-out_3]" />
           </>
         ) : (
           <>
             {/* Phones swipe up; a mouse or trackpad scrolls down. */}
-            <ArrowUp size={16} strokeWidth={2.5} className="animate-[nudge-up_1.4s_ease-in-out_infinite] pointer-fine:hidden" />
+            <ArrowUp size={16} strokeWidth={2.5} className="animate-[nudge-up_1.4s_ease-in-out_3] pointer-fine:hidden" />
             <ChevronDown
               size={18}
               strokeWidth={2.5}
-              className="hidden animate-[nudge-down_1.4s_ease-in-out_infinite] pointer-fine:block"
+              className="hidden animate-[nudge-down_1.4s_ease-in-out_3] pointer-fine:block"
             />
             <span className="pointer-fine:hidden">Swipe up for the next home</span>
             <span className="hidden pointer-fine:inline">Scroll for the next home</span>

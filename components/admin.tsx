@@ -3,9 +3,11 @@
 import { Building2, LayoutGrid, MessageSquare, ShieldCheck, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useActionState, useId, useState, useTransition } from "react";
+import { useActionState, useId, useRef, useState, useTransition } from "react";
+import { flushSync } from "react-dom";
 import type { AdminFormState, PersonFormState } from "@/app/admin/actions";
 import { cn } from "@/lib/format";
+import { button, field, pill } from "@/lib/ui";
 
 // The admin's interactive pieces. The pages themselves are server-rendered.
 
@@ -35,8 +37,9 @@ export function AdminNav({ superAdmin }: { superAdmin: boolean }) {
                 href={href}
                 aria-current={current ? "page" : undefined}
                 className={cn(
-                  "flex min-h-11 items-center gap-2.5 rounded-xl px-3 text-sm font-medium",
-                  current ? "bg-ink text-white" : "text-stone-700 hover:bg-stone-200/70",
+                  "flex min-h-11 items-center gap-2.5 rounded-full px-3.5 text-sm font-medium",
+                  // Marked as the header and the dashboard mark where you are.
+                  current ? "bg-stone-200 font-semibold text-ink" : "text-stone-700 hover:bg-stone-200/60",
                 )}
               >
                 <Icon aria-hidden size={17} className="max-sm:hidden" />
@@ -65,15 +68,14 @@ export function ConfirmAction({
 }) {
   const [asking, setAsking] = useState(false);
   const [pending, start] = useTransition();
+  const first = useRef<HTMLButtonElement>(null);
   if (!asking) {
     return (
       <button
+        ref={first}
         type="button"
         onClick={() => setAsking(true)}
-        className={cn(
-          "min-h-9 rounded-lg px-3 text-sm font-semibold text-red-700 hover:bg-red-50",
-          className,
-        )}
+        className={cn(pill(), "text-red-700 hover:bg-red-50", className)}
       >
         {label}
       </button>
@@ -86,15 +88,19 @@ export function ConfirmAction({
         autoFocus
         disabled={pending}
         onClick={() => start(async () => await action())}
-        className="min-h-9 rounded-lg bg-red-700 px-3 text-sm font-semibold text-white disabled:opacity-60"
+        className={button({ kind: "danger" })}
       >
         {pending ? "One moment…" : confirm}
       </button>
       <button
         type="button"
         disabled={pending}
-        onClick={() => setAsking(false)}
-        className="min-h-9 rounded-lg px-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+        onClick={() => {
+          // Back on the button that asked, not the top of the page.
+          flushSync(() => setAsking(false));
+          first.current?.focus();
+        }}
+        className={cn(button({ kind: "ghost" }), "text-stone-700")}
       >
         Cancel
       </button>
@@ -102,8 +108,7 @@ export function ConfirmAction({
   );
 }
 
-const input =
-  "mt-1 h-11 w-full rounded-xl border border-stone-300 bg-white px-3.5 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30";
+const input = cn(field(), "mt-1");
 
 // Fix someone's name or number, or make a buyer an agent (or back).
 export function PersonForm({
@@ -159,11 +164,7 @@ export function PersonForm({
         </p>
       )}
       <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={pending}
-          className="min-h-11 rounded-xl bg-brand px-5 font-semibold text-white disabled:opacity-60"
-        >
+        <button type="submit" disabled={pending} className={button({ kind: "primary", size: "lg" })}>
           {pending ? "Saving…" : "Save changes"}
         </button>
         {state.saved && !pending && (
@@ -195,13 +196,9 @@ export function AddAdminForm({ action }: { action: (state: AdminFormState, form:
           autoComplete="off"
           aria-invalid={state.error ? true : undefined}
           aria-describedby={state.error ? `${id}-error` : undefined}
-          className={cn(input, "mt-0 min-w-0 flex-1 basis-60")}
+          className={cn(field(), "min-w-0 flex-1 basis-60")}
         />
-        <button
-          type="submit"
-          disabled={pending}
-          className="min-h-11 rounded-xl bg-brand px-5 font-semibold text-white disabled:opacity-60"
-        >
+        <button type="submit" disabled={pending} className={button({ kind: "primary", size: "lg" })}>
           {pending ? "Adding…" : "Add admin"}
         </button>
       </div>

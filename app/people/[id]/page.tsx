@@ -1,190 +1,297 @@
-import { Heart, MessageCircle, ThumbsDown } from "lucide-react";
+import { Heart, Home, Lock, MessageCircle, ThumbsDown, X } from "lucide-react";
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AspectSummary } from "@/components/aspect-summary";
+import { after } from "next/server";
+import { cache, type CSSProperties } from "react";
+import { Toast } from "@/app/people/[id]/client";
+import { ProfileFeed } from "@/components/profile-feed";
+import { ProfileHeader } from "@/components/profile-header";
+import { TasteControls } from "@/components/taste-controls";
+import { TasteStoryCard } from "@/components/taste-story-card";
+import { EmptyState } from "@/components/ui";
 import { getCurrentUser } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
-import { cn, formatPrice, timeAgo } from "@/lib/format";
-import { getProfile, type ProfileHome } from "@/lib/profile";
+import { cn } from "@/lib/format";
+import {
+  getProfileFeed,
+  getProfilePerson,
+  getProfileRows,
+  getProfileSummary,
+  isProfileShow,
+  isTopicSide,
+  parseAbout,
+  parseBefore,
+  PROFILE_FILTERS,
+  type ProfilePerson,
+  type ProfileShow,
+  type TopicSide,
+} from "@/lib/profile";
 import { getPublicIdentity } from "@/lib/public";
-import { describeReaction } from "@/lib/reactions";
+import { readStory, refreshStory, shownStory, storyOf, storyWriting, type TasteStory } from "@/lib/taste-story";
+import { ANONYMOUS_BUYER } from "@/lib/timeline";
+import { button, pill } from "@/lib/ui";
 
 type Props = {
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-const TABS = { liked: "Liked", passed: "Passed", comments: "Comments" } as const;
-type Tab = keyof typeof TABS;
+// Who's looking: their own visitor row, if they have one. Once per request,
+// for the page and its metadata alike.
+const viewer = cache(async () => {
+  const [account, device] = await Promise.all([getCurrentUser(), readDevice()]);
+  const { visitor } = await getPublicIdentity(account?.role ? account : null, device);
+  return visitor;
+});
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const profile = await getProfile((await params).id);
-  return { title: profile ? `${profile.name} · BuyBox Social` : "Not found · BuyBox Social" };
+// What their page calls them. Someone who signed in with just an email has no
+// name yet: on their own page it's "You" (the heading says "Your page" and asks
+// for one), with the initial the header shows, from their email; to anyone
+// else they're "A buyer", a plain figure. Never a stand-in like "Someone".
+async function nameOf(person: ProfilePerson, isMe: boolean) {
+  if (person.name.trim()) return { name: person.name, face: person.name, unnamed: false };
+  if (!isMe) return { name: person.isAgent ? "An agent" : ANONYMOUS_BUYER, face: "", unnamed: true };
+  return { name: "You", face: (await getCurrentUser())?.email ?? "", unnamed: true };
 }
 
-// Someone's homes, Instagram-style: a grid of what they've liked (and passed
-// on), and what they've said. Public activity only.
+// What their page says about their taste, from everything public they've
+// done (read with the feed's first page), less anything they've switched off.
+const tasteOf = cache(async (person: ProfilePerson, mine: boolean) =>
+  storyOf(await getProfileRows(person.id, mine), { hidden: person.tasteHidden, hidePasses: person.hidePasses }),
+);
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { id } = await params;
+  const person = id.length > 64 ? null : await getProfilePerson(id);
+  if (!person) return { title: "Not found · BuyBox Social" };
+  const visitor = await viewer();
+  const isMe = visitor?.id === person.id;
+  const story = await tasteOf(person, isMe);
+  const { name, unnamed } = await nameOf(person, isMe);
+  const title = `${unnamed && isMe ? "Your page" : name} · BuyBox Social`;
+  // The headline is from what everyone can see, whoever is looking, and it's
+  // what a shared link to the page says under its title.
+  const description =
+    story.headline ??
+    (unnamed ? `What ${isMe ? "you like" : "they like"} in homes, on BuyBox Social.` : `What ${name} likes in homes, on BuyBox Social.`);
+  return { title, description, openGraph: { title, description } };
+}
+
+// The words to show, from the database (never the model): the model's, if
+// it wrote some that still hold, else the template. If it should write them
+// again, that starts once the page has gone out. Only this page ever asks.
+async function storyNow(personId: string, story: TasteStory) {
+  try {
+    const shown = shownStory(await readStory(personId), story);
+    if (shown?.refresh) after(() => refreshStory(personId, story));
+    return shown;
+  } catch (error) {
+    console.error("[taste] couldn't read the taste summary", error);
+    return shownStory(null, story, false);
+  }
+}
+
+// Someone's page, Facebook-style: who they are and what they keep liking,
+// then everything they've done in public, one card per home per day, newest
+// first. Filters and paging are plain links, so it all works without scripts.
 export default async function ProfilePage({ params, searchParams }: Props) {
   const { id } = await params;
   if (id.length > 64) notFound();
-  const profile = await getProfile(id);
-  if (!profile) notFound();
-  const requested = (await searchParams).tab;
-  const tab: Tab = typeof requested === "string" && requested in TABS ? (requested as Tab) : "liked";
-  const [account, device] = await Promise.all([getCurrentUser(), readDevice()]);
-  const { visitor } = await getPublicIdentity(account?.role ? account : null, device);
-  const isMe = visitor?.id === profile.id;
-  const counts = { liked: profile.liked.length, passed: profile.passed.length, comments: profile.comments.length };
+  const person = await getProfilePerson(id);
+  if (!person) notFound();
+  const query = await searchParams;
+  const before = parseBefore(query.before);
+  const visitor = await viewer();
+  const isMe = visitor?.id === person.id;
+  const { name, face, unnamed } = await nameOf(person, isMe);
+  // What they pass on is theirs to keep from everyone else.
+  const passes = isMe || !person.hidePasses;
+  const show: ProfileShow = isProfileShow(query.show) ? query.show : "all";
+  // Their passes, asked for by someone they keep them from.
+  const keptPrivate = show === "passed" && !passes;
+  const summary = await getProfileSummary(person.id, isMe, passes);
+  // Only a specific, or a thing they've done something with, can be a topic.
+  const topic = parseAbout(query.about);
+  const label = topic ? summary.topics.get(topic.toLowerCase()) : undefined;
+  const about = label ? topic : null;
+  const side: TopicSide | null =
+    about && isTopicSide(query.side) && (passes || query.side === "like") ? query.side : null;
+  const feed = keptPrivate
+    ? { cards: [], earlier: null }
+    : await getProfileFeed(person.id, { show, about, side, before, mine: isMe, passes });
+  const story = await tasteOf(person, isMe);
+
+  // The same page with other filters; paging starts over.
+  const href = (next: { show?: ProfileShow; about?: string | null; side?: TopicSide; before?: string | null }) => {
+    const params = new URLSearchParams();
+    const nextShow = next.show ?? show;
+    const nextAbout = next.about === undefined ? about : next.about;
+    const nextSide = next.about === undefined ? side : next.side;
+    if (nextShow !== "all") params.set("show", nextShow);
+    if (nextAbout) params.set("about", nextAbout);
+    if (nextAbout && nextSide) params.set("side", nextSide);
+    if (next.before) params.set("before", next.before);
+    const search = params.toString();
+    return `/people/${person.id}${search ? `?${search}` : ""}`;
+  };
+
+  const nothingYet = summary.counts.homes === 0 && feed.cards.length === 0 && !before;
+  const chipHref = (key: string, side: TopicSide) => href({ about: key, side });
+  const current = about ? { key: about.toLowerCase(), side } : null;
+  // Everyone else sees only what they've kept on; they see it all, marked,
+  // and counted from everything they've done (as their feed shows it).
+  const loves = isMe ? story.own.loves : story.loves.filter((chip) => !chip.hidden);
+  const passChips = isMe ? story.own.passes : passes ? story.passes.filter((chip) => !chip.hidden) : [];
+  const showTaste =
+    loves.length > 0 ||
+    passChips.length > 0 ||
+    Boolean(story.headline || story.template) ||
+    (isMe && summary.counts.homes > 0);
+  // Their own card with nothing to say yet says how to get there.
+  const prompt =
+    isMe && (!story.enough || (!story.headline && !story.template && loves.length === 0 && passChips.length === 0));
+  // Anything to switch: a chip, or passes (kept private or not) even when no chip shows them.
+  const controllable = isMe && (loves.length > 0 || passChips.length > 0 || story.hasPasses || person.hidePasses);
+  const filters = (Object.keys(PROFILE_FILTERS) as ProfileShow[]).filter((key) => key !== "passed" || passes);
 
   return (
-    <main className="mx-auto max-w-3xl pb-16">
-      <header className="flex items-center gap-5 px-4 pt-6 sm:px-6">
-        <span
-          aria-hidden
-          className="flex size-20 shrink-0 items-center justify-center rounded-full bg-brand font-display text-3xl font-semibold text-white sm:size-24"
-        >
-          {profile.name[0]?.toUpperCase()}
-        </span>
-        <div className="min-w-0">
-          <h1 className="truncate font-display text-3xl">{isMe ? `${profile.name} (you)` : profile.name}</h1>
-          <p className="mt-1 flex flex-wrap gap-x-4 text-sm text-stone-700">
-            <span>
-              <strong className="tabular-nums">{counts.liked}</strong> liked
-            </span>
-            <span>
-              <strong className="tabular-nums">{counts.passed}</strong> passed
-            </span>
-            <span>
-              <strong className="tabular-nums">{counts.comments}</strong>{" "}
-              {counts.comments === 1 ? "comment" : "comments"}
-            </span>
-          </p>
-        </div>
-      </header>
-
-      {(profile.taste.loved.length > 0 || Object.keys(profile.taste.likes).length > 0) && (
-        <section aria-label="Taste" className="mt-5 flex flex-col gap-2 px-4 sm:px-6">
-          {profile.taste.loved.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 text-sm">
-              <span className="flex items-center gap-1 font-semibold text-rose-800">
-                <Heart aria-hidden size={14} /> Loves
-              </span>
-              {profile.taste.loved.map(([tag, n]) => (
-                <span
-                  key={tag}
-                  className="rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-900 ring-1 ring-rose-200"
-                >
-                  {tag} <span className="tabular-nums">{n}</span>
-                </span>
-              ))}
-            </div>
-          )}
-          <AspectSummary
-            liked={profile.taste.likes}
-            disliked={profile.taste.passes}
-            likeLabel="Likes"
-            dislikeLabel="Passes on"
-            limit={6}
+    <main
+      className="mx-auto max-w-xl px-4 pb-16 pt-4 lg:grid lg:max-w-6xl lg:grid-cols-[360px_minmax(0,600px)] lg:items-start lg:justify-center lg:gap-8 lg:px-6 lg:pt-6"
+      // Whatever is focused in the feed scrolls clear of the filters stuck above it.
+      style={{ "--filters": about ? "8rem" : "5rem" } as CSSProperties}
+    >
+      {/* It stays put beside the feed only on screens tall enough to hold it (and then scrolls on
+          its own if it still runs long); on shorter ones it scrolls away with the page, so nothing
+          in it ever sits below the fold out of reach. */}
+      <div className="flex flex-col gap-3 *:shrink-0 lg:-m-1 lg:p-1 [@media(min-width:64rem)_and_(min-height:860px)]:sticky [@media(min-width:64rem)_and_(min-height:860px)]:top-2 [@media(min-width:64rem)_and_(min-height:860px)]:max-h-[calc(100dvh-1rem)] [@media(min-width:64rem)_and_(min-height:860px)]:overflow-y-auto [@media(min-width:64rem)_and_(min-height:860px)]:overscroll-contain">
+        <ProfileHeader
+          name={name}
+          face={face}
+          isMe={isMe}
+          unnamed={unnamed}
+          agent={person.isAgent}
+          since={person.since}
+          homes={summary.counts.homes}
+          counts={summary.counts}
+          cover={summary.cover}
+          showPassed={passes}
+        />
+        {showTaste && (
+          <TasteStoryCard
+            name={name}
+            isMe={isMe}
+            headline={story.headline}
+            prompt={prompt}
+            loves={loves}
+            passes={passChips}
+            passesPrivate={isMe && person.hidePasses}
+            shown={storyWriting() && story.template ? storyNow(person.id, story) : shownStory(null, story, false)}
+            template={shownStory(null, story, false)}
+            updated={story.updated}
+            counts={{
+              likes: summary.counts.liked,
+              passes: person.hidePasses ? 0 : summary.counts.passed,
+              comments: summary.counts.comments,
+            }}
+            current={current}
+            chipHref={chipHref}
+            controls={
+              controllable ? (
+                <TasteControls loves={story.own.loves} passes={story.own.passes} hidePasses={person.hidePasses} />
+              ) : undefined
+            }
           />
-        </section>
-      )}
+        )}
+      </div>
 
-      <nav aria-label="Their homes" className="mt-6 grid grid-cols-3 border-b border-stone-200">
-        {(Object.keys(TABS) as Tab[]).map((key) => (
-          <Link
-            key={key}
-            href={key === "liked" ? `/people/${profile.id}` : `/people/${profile.id}?tab=${key}`}
-            aria-current={tab === key ? "page" : undefined}
-            scroll={false}
-            className={cn(
-              "flex min-h-12 items-center justify-center gap-1.5 border-b-2 text-sm font-semibold",
-              tab === key ? "border-ink text-ink" : "border-transparent text-stone-500 hover:text-stone-800",
-            )}
-          >
-            {key === "liked" ? (
-              <Heart aria-hidden size={15} />
-            ) : key === "passed" ? (
-              <ThumbsDown aria-hidden size={15} />
-            ) : (
-              <MessageCircle aria-hidden size={15} />
-            )}
-            {TABS[key]}
-          </Link>
-        ))}
-      </nav>
-
-      {tab === "comments" ? (
-        profile.comments.length === 0 ? (
-          <Empty>No comments yet.</Empty>
-        ) : (
-          <ul className="divide-y divide-stone-200">
-            {profile.comments.map((comment) => (
-              <li key={comment.id}>
-                <Link
-                  href={`/homes/${encodeURIComponent(comment.listing.ListingKey)}`}
-                  className="flex gap-3 px-4 py-3 hover:bg-white sm:px-6"
-                >
-                  <span className="relative size-14 shrink-0 overflow-hidden rounded-lg bg-stone-200">
-                    {comment.listing.Media[0] && (
-                      <Image src={comment.listing.Media[0].MediaURL} alt="" fill sizes="56px" className="object-cover" />
-                    )}
-                  </span>
-                  <span className="min-w-0 text-[15px] leading-snug">
-                    <span className="block break-words">{comment.body}</span>
-                    <span className="mt-0.5 block truncate text-xs text-stone-600">
-                      {comment.isReply ? "Replied on" : "On"} {comment.listing.UnparsedAddress} ·{" "}
-                      <time dateTime={comment.at}>{timeAgo(comment.at)}</time>
-                    </span>
-                  </span>
+      <div className="mt-3 min-w-0 lg:mt-0">
+        {nothingYet ? (
+          isMe ? (
+            <EmptyState
+              icon={Home}
+              title="Your page fills up as you go"
+              action={
+                <Link href="/" className={button({ kind: "primary" })}>
+                  See homes
                 </Link>
-              </li>
-            ))}
-          </ul>
-        )
-      ) : (
-        <HomeGrid homes={tab === "liked" ? profile.liked : profile.passed} passed={tab === "passed"} />
-      )}
-    </main>
-  );
-}
-
-function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="px-4 py-16 text-center text-stone-600">{children}</p>;
-}
-
-// Three across, like a profile grid. Each tile shows the photo of what they
-// liked, and says what it was.
-function HomeGrid({ homes, passed }: { homes: ProfileHome[]; passed: boolean }) {
-  if (homes.length === 0) return <Empty>{passed ? "Nothing passed on yet." : "No likes yet."}</Empty>;
-  return (
-    <ul className="grid grid-cols-3 gap-0.5">
-      {homes.map((home) => (
-        <li key={home.listing.ListingKey}>
-          <Link
-            href={`/homes/${encodeURIComponent(home.listing.ListingKey)}`}
-            aria-label={`${home.listing.UnparsedAddress}: ${describeReaction(home.state, home.tags)}`}
-            className="group relative block aspect-square overflow-hidden bg-stone-200"
-          >
-            {home.cover && (
-              <Image
-                src={home.cover}
-                alt=""
-                fill
-                sizes="(max-width: 768px) 33vw, 256px"
-                className="object-cover transition-transform duration-300 group-hover:scale-105 motion-reduce:transition-none"
+              }
+            >
+              Like homes, tap what you love in their photos and say what you think. It all shows up here.
+            </EmptyState>
+          ) : (
+            <EmptyState icon={Home} title="Nothing to show yet">
+              {name} hasn&apos;t liked anything yet.
+            </EmptyState>
+          )
+        ) : (
+          <>
+            {/* Its own edge and background reach past the cards' rings, so nothing shows round it once it sticks. */}
+            <nav
+              aria-label="Show"
+              className="sticky top-0 z-30 -mx-4 bg-surface px-4 py-3 shadow-[0_1px_0_var(--color-stone-200)] lg:-mx-2 lg:-mt-3 lg:px-2"
+            >
+              {/* One row, even on the narrowest phones. */}
+              <ul className="-m-1 flex gap-1.5 overflow-x-auto p-1 [scrollbar-width:none] min-[400px]:gap-2">
+                {filters.map((key) => (
+                  <li key={key} className="shrink-0">
+                    <Link
+                      href={href({ show: key })}
+                      aria-current={show === key ? "page" : undefined}
+                      className={button({ kind: show === key ? "neutral" : "secondary" })}
+                    >
+                      {PROFILE_FILTERS[key]}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              {/* A topic from a chip gets a line of its own, so it's never cut off. */}
+              {about && label && (
+                <div className="mt-2 flex">
+                  <Link
+                    href={href({ about: null })}
+                    aria-label={`Remove ${label}`}
+                    className={cn(pill(), "min-w-0 bg-white text-ink ring-2 ring-ink hover:bg-stone-50")}
+                  >
+                    {side === "like" && <Heart aria-hidden size={14} className="shrink-0 fill-rose-600 text-rose-600" />}
+                    {side === "pass" && <ThumbsDown aria-hidden size={14} className="shrink-0 text-amber-700" />}
+                    <span className="truncate">{label}</span>
+                    <X aria-hidden size={16} className="shrink-0" />
+                  </Link>
+                </div>
+              )}
+            </nav>
+            {keptPrivate ? (
+              <EmptyState icon={Lock} title={`${name} keeps passes private.`} />
+            ) : feed.cards.length > 0 || feed.earlier ? (
+              <ProfileFeed
+                cards={feed.cards}
+                name={name}
+                face={face}
+                isMe={isMe}
+                agent={person.isAgent}
+                earlierHref={feed.earlier ? href({ before: feed.earlier }) : null}
               />
+            ) : before ? (
+              <EmptyState icon={Home} title="That's everything">
+                <Link href={href({})} className="font-semibold text-brand underline-offset-2 hover:underline">
+                  Back to the newest
+                </Link>
+              </EmptyState>
+            ) : label ? (
+              <EmptyState icon={Home} title={`Nothing here about the ${label.toLowerCase()} yet.`} />
+            ) : show === "passed" ? (
+              <EmptyState icon={ThumbsDown} title="Nothing passed on yet." />
+            ) : show === "comments" ? (
+              <EmptyState icon={MessageCircle} title="No comments yet." />
+            ) : (
+              <EmptyState icon={Heart} title="Nothing liked yet." />
             )}
-            <span className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 via-black/40 to-transparent px-2 pb-1.5 pt-6 text-white">
-              <span className="line-clamp-2 text-xs font-semibold leading-tight">
-                {describeReaction(home.state, home.tags).replace(/^liked /, "")}
-              </span>
-              <span className="block text-[11px] tabular-nums opacity-85">{formatPrice(home.listing.ListPrice)}</span>
-            </span>
-          </Link>
-        </li>
-      ))}
-    </ul>
+          </>
+        )}
+      </div>
+      {/* What you just did on your page, said in a word: "Link copied", "Like removed". */}
+      {isMe && <Toast />}
+    </main>
   );
 }

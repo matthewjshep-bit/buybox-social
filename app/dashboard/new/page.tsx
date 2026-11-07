@@ -8,15 +8,16 @@ import { ShareBuilder } from "./builder";
 const escapeLike = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 // Picks homes for a new client link, or (with ?share=) adds homes to an existing one.
+// With ?home=, that home is already picked: the longer way to send one home.
 export default async function NewSharePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; share?: string }>;
+  searchParams: Promise<{ q?: string; share?: string; home?: string }>;
 }) {
   const agent = await requireAgent();
   if (!agent.full_name) redirect("/dashboard/profile");
 
-  const { q, share: shareId } = await searchParams;
+  const { q, share: shareId, home: homeKey } = await searchParams;
   let addTo: { shareId: string; clientName: string } | undefined;
   let onLink: string[] = [];
   if (shareId) {
@@ -30,6 +31,13 @@ export default async function NewSharePage({
         select listing_key from share_listings where share_id = ${share.id} and removed_at is null`
     ).map((r) => r.listing_key);
   }
+
+  // Only a home still for sale; anything else and the usual search shows.
+  const [start] =
+    !addTo && typeof homeKey === "string" && homeKey.length <= 100
+      ? await sql<{ data: Listing }[]>`
+          select data from listings where listing_key = ${homeKey} and standard_status = 'Active'`
+      : [];
 
   const query = (typeof q === "string" ? q : "").trim().slice(0, 100);
   const pattern = `%${escapeLike(query)}%`;
@@ -45,14 +53,20 @@ export default async function NewSharePage({
     limit 24`;
 
   return (
-    <>
-      <h1 className="font-display text-3xl">
-        {addTo ? `Add homes for ${addTo.clientName || "this client"}` : "New share"}
-      </h1>
-      <p className="mt-1 text-stone-700">
-        {addTo ? "Pick up to 3 more homes for their link." : "Pick up to 3 homes to send."}
-      </p>
-      <ShareBuilder results={rows.map((row) => row.data)} initialQuery={query} addTo={addTo} />
-    </>
+    <ShareBuilder
+      // With a home already picked, the builder words its own heading as homes are added.
+      heading={addTo ? `Add homes for ${addTo.clientName || "this client"}` : "New link"}
+      intro={
+        addTo
+          ? "Pick up to 3 more homes for their link."
+          : start
+            ? "Add their name so they open it as themselves."
+            : "Pick up to 3 homes to send."
+      }
+      results={rows.map((row) => row.data)}
+      initialQuery={query}
+      addTo={addTo}
+      start={start?.data}
+    />
   );
 }

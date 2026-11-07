@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { becomeAgent } from "@/app/login/actions";
 import { getCurrentUser } from "@/lib/auth";
+import { button } from "@/lib/ui";
 
 export const metadata = {
   title: "For agents · BuyBox Social",
@@ -25,7 +26,7 @@ const STEPS = [
 
 export default async function ForAgentsPage() {
   const user = await getCurrentUser();
-  const start = "inline-block rounded-xl bg-brand px-6 py-3.5 font-semibold text-white";
+  const start = button({ kind: "primary", size: "lg" });
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
       <section className="grid items-center gap-8 md:grid-cols-2">
@@ -55,7 +56,7 @@ export default async function ForAgentsPage() {
                 </button>
               </form>
             )}
-            <Link href="/" className="inline-block rounded-xl border border-stone-300 bg-white px-6 py-3.5 font-semibold">
+            <Link href="/" className={button({ kind: "secondary", size: "lg" })}>
               See it as a buyer
             </Link>
           </div>
@@ -72,7 +73,7 @@ export default async function ForAgentsPage() {
         </div>
       </section>
       <section aria-labelledby="how-title" className="mt-14">
-        <h2 id="how-title" className="text-sm font-semibold uppercase tracking-wide text-stone-600">
+        <h2 id="how-title" className="text-sm font-semibold uppercase tracking-wide text-muted">
           How it works
         </h2>
         <div className="mt-3 grid gap-6 sm:grid-cols-3">
@@ -80,7 +81,7 @@ export default async function ForAgentsPage() {
             <div key={title}>
               <Icon aria-hidden className="text-brand" size={22} />
               <h3 className="mt-2 font-semibold">{title}</h3>
-              <p className="mt-1 text-[15px] text-stone-700">{text}</p>
+              <p className="mt-1 text-body text-stone-700">{text}</p>
             </div>
           ))}
         </div>

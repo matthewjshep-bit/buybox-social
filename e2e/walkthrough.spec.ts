@@ -33,8 +33,9 @@ test("an agent's link nudges a first-timer: swipe for photos, then on to the nex
   await page.keyboard.press("ArrowDown");
   const first = homeIn(page, "10421 Halvard Way NE");
   await expect(first).toBeInViewport({ ratio: 0.9 });
-  // First: there are more photos, this way.
+  // First: there are more photos, this way. (On a phone, a swipe is the way.)
   await expect(first.getByText("Swipe for more photos")).toBeVisible();
+  await expect(first.getByText(", or use the arrows")).toBeHidden();
 
   // A thumb swipe low on the screen, over the caption's words, turns the photo.
   const caption = await first.getByText(/^Listed by/).boundingBox();
@@ -50,6 +51,10 @@ test("an agent's link nudges a first-timer: swipe for photos, then on to the nex
   await expect(second).toBeInViewport({ ratio: 0.9 });
   await page.waitForTimeout(2500);
   await expect(nudge(page)).toHaveCount(0);
+  // At the end, with nothing liked yet: what to do, not a count of none.
+  const end = page.getByRole("region", { name: "The end" });
+  await expect(end).toContainText("Tap the heart on the ones you like.");
+  await expect(end).not.toContainText("reacted to");
 
   // Learned once, on this device: no nudges next time.
   await page.reload();
@@ -58,12 +63,12 @@ test("an agent's link nudges a first-timer: swipe for photos, then on to the nex
   await page.waitForTimeout(2500);
   await expect(nudge(page)).toHaveCount(0);
 
-  // On a desktop screen it says scroll, not swipe up.
+  // On a desktop screen it says scroll, not swipe up, and points to the arrows.
   const desk = await (await browser.newContext(DESKTOP)).newPage();
   await desk.goto(url);
   await desk.keyboard.press("ArrowDown");
   const deskHome = homeIn(desk, "10421 Halvard Way NE");
-  await expect(deskHome.getByText("Swipe for more photos")).toBeVisible();
+  await expect(deskHome.getByText("Swipe for more photos, or use the arrows")).toBeVisible();
   await deskHome.getByRole("button", { name: "Next photo" }).click();
   await expect(deskHome.getByText("Scroll for the next home")).toBeVisible({ timeout: 5000 });
   await expect(deskHome.getByText("Swipe up for the next home")).toBeHidden();
@@ -75,6 +80,29 @@ test("an agent's link nudges a first-timer: swipe for photos, then on to the nex
   await expect(nudge(page)).toHaveCount(0);
 
   expect(pageErrors).toEqual([]);
+});
+
+test("a link with one home opens on it, and the photo nudge shows there", async ({ browser }) => {
+  const agent = await signInAgent(browser, "nell-one@example.com", "Nell Agent");
+  const { url } = await createShare(agent, ["96 Fernhollow"], ["Ivy"]);
+
+  const page = await (await browser.newContext()).newPage();
+  await page.goto(url);
+  // No welcome screen to get past.
+  await expect(page.getByRole("region", { name: "Welcome" })).toHaveCount(0);
+  const home = homeIn(page, "96 Fernhollow Ln");
+  await expect(home).toBeInViewport({ ratio: 0.9 });
+  await expect(home.getByText("Swipe for more photos")).toBeVisible();
+  // There's no next home to point to.
+  await home.getByRole("button", { name: "Next photo" }).click();
+  await expect(home.getByText("Swipe for more photos")).toBeHidden();
+  await page.waitForTimeout(2500);
+  await expect(nudge(page)).toHaveCount(0);
+  // With one home, the end has nothing to count.
+  const end = page.getByRole("region", { name: "The end" });
+  await expect(end).toBeAttached();
+  await expect(end).not.toContainText("reacted to");
+  await expect(end).not.toContainText("Tap the heart");
 });
 
 test("on a desktop, a sideways trackpad swipe turns the photos and an up-and-down one moves between homes", async ({

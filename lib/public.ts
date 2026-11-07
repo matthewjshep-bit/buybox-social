@@ -2,13 +2,22 @@ import { firstName, type Account } from "./auth";
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
 import { aspectOfFact, aspectOfTag, FACTS, isFactTag, isTagIn, mediaKeyOf, NO_PHOTO_LIKES, thingOf } from "./photos";
-import { NO_REACTION, TRENDING_MIN_THIS_WEEK, type Aspect, type AspectCounts, type ReactionState } from "./reactions";
+import {
+  NO_REACTION,
+  TRENDING_MIN_PEOPLE,
+  TRENDING_MIN_THIS_WEEK,
+  TRENDING_TOP,
+  type Aspect,
+  type AspectCounts,
+  type ReactionState,
+} from "./reactions";
 import { getPublicPhotoLikes, getPublicTimelines } from "./timeline";
 
 export type Totals = { likes: number; dislikes: number; comments: number };
 
 // Signs of life around a listing, drawn from public pages and private shares.
-// `trending` is real: several reactions or comments in the past week.
+// `trending` is real and rare: several reactions or comments in the past week,
+// from more than one person, and among the busiest homes for sale.
 export type Buzz = { sends: number; views: number; lastActivityAt: string | null; trending: boolean };
 
 // Which specifics people call out. Likes come from everywhere, photo likes
@@ -35,6 +44,10 @@ export type TotalsRow = {
   views: number;
   last_activity: Date | null;
   this_week: number;
+  // How many people that week's activity came from, and whether the home is
+  // for sale and among the busiest that week (ties share a place).
+  people_this_week: number;
+  trend_top: boolean;
   liked_aspects: AspectCounts;
   disliked_aspects: AspectCounts;
 };
@@ -46,7 +59,8 @@ export const toTotals = (row: TotalsRow) => ({
     sends: row.sends,
     views: row.views,
     lastActivityAt: row.last_activity?.toISOString() ?? null,
-    trending: row.this_week >= TRENDING_MIN_THIS_WEEK,
+    trending:
+      row.this_week >= TRENDING_MIN_THIS_WEEK && row.people_this_week >= TRENDING_MIN_PEOPLE && row.trend_top,
   },
   aspects: { liked: row.liked_aspects, disliked: row.disliked_aspects },
 });
@@ -59,7 +73,7 @@ export const totalsForListing = () => sql`
     pr.likes as pub_like, pr.dislikes as pub_dislike, pc.n as pub_comments,
     xr.likes as priv_like, xr.dislikes as priv_dislike, xc.n as priv_comments,
     xs.n as sends, v.n as views, la.counts as liked_aspects, da.counts as disliked_aspects,
-    wk.n as this_week,
+    wk.n as this_week, wk.people as people_this_week, tr.top as trend_top,
     greatest(
       (select max(updated_at) from public_reactions where listing_key = l.listing_key),
       (select max(created_at) from public_comments where listing_key = l.listing_key),
@@ -113,21 +127,42 @@ export const totalsForListing = () => sql`
         select unnest(disliked) as aspect from public_reactions where listing_key = l.listing_key) a
       group by aspect) c) da
   cross join lateral (
-    select
-      (select count(*) from public_reactions
-        where listing_key = l.listing_key and updated_at > now() - interval '7 days')
-      + (select count(*) from public_comments
-        where listing_key = l.listing_key and created_at > now() - interval '7 days')
-      + (select count(*) from reactions
-        where listing_key = l.listing_key and updated_at > now() - interval '7 days')
-      + (select count(*) from comments
-        where listing_key = l.listing_key and participant_id is not null
-          and created_at > now() - interval '7 days')
-      + (select count(*) from public_photo_likes
-        where listing_key = l.listing_key and created_at > now() - interval '7 days')
-      + (select count(*) from photo_likes
-        where listing_key = l.listing_key and created_at > now() - interval '7 days')
-      as n) wk`;
+    select count(*)::int as n, count(distinct a.who)::int as people
+    from (${weekActivity()}) a
+    where a.listing_key = l.listing_key) wk
+  cross join lateral (
+    -- Among the busiest homes for sale: at least as busy as the third-busiest
+    -- (ties share a place). The bar doesn't depend on the home, so it's
+    -- worked out once per query, not once per home.
+    select l.standard_status = 'Active' and wk.n >= coalesce((
+      select d.n from (
+        select distinct count(*)::int as n
+        from (${weekActivity()}) a
+        join listings active on active.listing_key = a.listing_key and active.standard_status = 'Active'
+        group by a.listing_key) d
+      order by d.n desc
+      offset ${TRENDING_TOP - 1} limit 1), 0) as top) tr`;
+
+// Every reaction and comment in the past week, public or on a link, with the
+// home and who it came from (a visitor or someone on a link).
+const weekActivity = () => sql`
+  select listing_key, 'v' || visitor_id as who from public_reactions
+  where updated_at > now() - interval '7 days'
+  union all
+  select listing_key, 'v' || visitor_id from public_comments
+  where created_at > now() - interval '7 days'
+  union all
+  select listing_key, 'p' || participant_id from reactions
+  where updated_at > now() - interval '7 days'
+  union all
+  select listing_key, 'p' || participant_id from comments
+  where participant_id is not null and created_at > now() - interval '7 days'
+  union all
+  select listing_key, 'v' || visitor_id from public_photo_likes
+  where created_at > now() - interval '7 days'
+  union all
+  select listing_key, 'p' || participant_id from photo_likes
+  where created_at > now() - interval '7 days'`;
 
 // Shared sort orders, for the listing aliased `l` and its totals `t`.
 export const ORDER_BY = {
@@ -202,12 +237,14 @@ export async function getPublicIdentity(account: Account | null, deviceToken: st
       select id, first_name from visitors where account_id = ${account.id}`;
     // No name yet (they signed in with just an email): asked the first time
     // they like or say something.
-    return { visitor: visitor ?? null, name: account.full_name.trim() ? firstName(account) : null };
+    return { visitor: visitor ?? null, name: firstName(account) || null };
   }
   const visitor = await getVisitor(deviceToken);
   return { visitor, name: visitor?.first_name ?? null };
 }
 
+// Their public self, made the first time it's needed. With no name yet it has
+// none either (older ones were stored as "Someone"), until they give one.
 export async function ensureAccountVisitor(account: Account) {
   const [visitor] = await sql<{ id: string; first_name: string }[]>`
     insert into visitors (device_token, first_name, account_id)

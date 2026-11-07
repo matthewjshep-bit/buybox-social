@@ -43,6 +43,7 @@ export default async function SearchPage({
       actions={publicReelActions}
       myName={name}
       prompt={PUBLIC_PROMPT}
+      sender={viewer?.role === "agent" ? { profileComplete: Boolean(viewer.full_name) } : null}
     />
   );
 }

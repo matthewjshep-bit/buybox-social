@@ -2,7 +2,6 @@ import { Download, Heart, Link2, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import { connection } from "next/server";
 import {
-  Avatar,
   Chips,
   Empty,
   hrefWith,
@@ -15,7 +14,9 @@ import {
 } from "@/components/admin-ui";
 import { countPeople, listPeople, STATUSES, type PersonStatus } from "@/lib/admin";
 import { requireAdmin } from "@/lib/auth";
-import { timeAgo } from "@/lib/format";
+import { Avatar } from "@/components/ui";
+import { cn, timeAgo } from "@/lib/format";
+import { button, card } from "@/lib/ui";
 
 export const metadata = { title: "People · Admin" };
 
@@ -45,7 +46,7 @@ export default async function AdminPeople({ searchParams }: Props) {
           <a
             href={hrefWith("/admin/people/export", { status, q })}
             download
-            className="flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold ring-1 ring-stone-300 hover:ring-stone-500"
+            className={button({ kind: "secondary" })}
           >
             <Download aria-hidden size={16} /> Download CSV
           </a>
@@ -64,10 +65,10 @@ export default async function AdminPeople({ searchParams }: Props) {
             count: filter.status ? counts[filter.status] : counts.all,
           }))}
         />
-        <SearchBox q={q} placeholder="Search by name, email or phone" keep={{ status }} />
+        <SearchBox q={q} placeholder="Name, email or phone" keep={{ status }} />
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-2xl bg-white ring-1 ring-stone-200">
+      <div className={cn(card, "mt-4 overflow-hidden")}>
         <div
           aria-hidden
           className="hidden grid-cols-[minmax(0,2.2fr)_minmax(0,1.2fr)_5.5rem_minmax(0,1.3fr)_minmax(0,1fr)] gap-4 border-b border-stone-100 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-stone-500 md:grid"
@@ -89,10 +90,10 @@ export default async function AdminPeople({ searchParams }: Props) {
                   className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-1 px-4 py-3 hover:bg-stone-50 md:grid-cols-[minmax(0,2.2fr)_minmax(0,1.2fr)_5.5rem_minmax(0,1.3fr)_minmax(0,1fr)] md:gap-4"
                 >
                   <span className="col-span-2 flex min-w-0 items-center gap-3 md:col-span-1">
-                    <Avatar name={person.name || person.email} />
+                    <Avatar name={person.name || person.email} tone={person.status === "agent" ? "agent" : "person"} />
                     <span className="min-w-0">
                       <span className="block truncate font-semibold">{person.name || "No name yet"}</span>
-                      <span className="block truncate text-sm text-stone-600">{person.email}</span>
+                      <span className="block truncate text-sm text-muted">{person.email}</span>
                     </span>
                   </span>
                   <span className="col-start-3 row-start-1 md:col-auto md:row-auto md:order-none">
@@ -106,10 +107,10 @@ export default async function AdminPeople({ searchParams }: Props) {
                   <span className="hidden md:block">
                     <StatusBadge status={person.status} />
                   </span>
-                  <span className="col-span-3 flex flex-wrap items-center gap-3 pl-12 text-sm text-stone-600 md:col-span-1 md:pl-0">
+                  <span className="col-span-3 flex flex-wrap items-center gap-3 pl-12 text-sm text-muted md:col-span-1 md:pl-0">
                     {person.phone && <span className="md:hidden">{person.phone}</span>}
                     <span className="flex items-center gap-1" title="Homes liked">
-                      <Heart aria-hidden size={14} /> {person.likes}
+                      <Heart aria-hidden size={14} className="text-rose-600" /> {person.likes}
                       <span className="sr-only">homes liked,</span>
                     </span>
                     <span className="flex items-center gap-1" title="Comments">
