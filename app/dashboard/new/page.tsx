@@ -53,23 +53,20 @@ export default async function NewSharePage({
     limit 24`;
 
   return (
-    <>
-      <h1 className="font-display text-3xl">
-        {addTo ? `Add homes for ${addTo.clientName || "this client"}` : start ? "Send this home" : "New share"}
-      </h1>
-      <p className="mt-1 text-stone-700">
-        {addTo
+    <ShareBuilder
+      // With a home already picked, the builder words its own heading as homes are added.
+      heading={addTo ? `Add homes for ${addTo.clientName || "this client"}` : "New share"}
+      intro={
+        addTo
           ? "Pick up to 3 more homes for their link."
           : start
             ? "Add their name so they open it as themselves."
-            : "Pick up to 3 homes to send."}
-      </p>
-      <ShareBuilder
-        results={rows.map((row) => row.data)}
-        initialQuery={query}
-        addTo={addTo}
-        start={start?.data}
-      />
-    </>
+            : "Pick up to 3 homes to send."
+      }
+      results={rows.map((row) => row.data)}
+      initialQuery={query}
+      addTo={addTo}
+      start={start?.data}
+    />
   );
 }

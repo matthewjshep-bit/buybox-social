@@ -15,11 +15,15 @@ const inputClass =
   "w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30";
 
 export function ShareBuilder({
+  heading,
+  intro,
   results,
   initialQuery,
   addTo,
   start,
 }: {
+  heading: string;
+  intro: string;
   results: Listing[];
   initialQuery: string;
   // Adding to an existing client's link rather than starting a new one.
@@ -39,6 +43,17 @@ export function ShareBuilder({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const debounce = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Sent from a home: what's picked so far leads each set of results, so the
+  // home it started with stays in view. Fixed per search, so a card doesn't
+  // jump away from the finger that picked it.
+  const [order, setOrder] = useState({ results, first: picked });
+  if (order.results !== results) setOrder({ results, first: picked });
+  const shown = start
+    ? [
+        ...order.first,
+        ...results.filter((listing) => !order.first.some((first) => first.ListingKey === listing.ListingKey)),
+      ]
+    : results;
 
   useEffect(() => () => clearTimeout(debounce.current), []);
 
@@ -112,126 +127,129 @@ export function ShareBuilder({
   };
 
   return (
-    <div className="mt-5 pb-4">
-      {searching ? (
-        <>
-          <label htmlFor="search" className="sr-only">
-            Search by address, city, ZIP or MLS number
-          </label>
-          <div className="relative">
-            <Search aria-hidden size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-600" />
-            <input
-              id="search"
-              type="search"
-              value={query}
-              // Asked for from "Add another home", so the cursor goes straight there.
-              autoFocus={Boolean(start)}
-              onChange={(event) => onSearch(event.target.value)}
-              placeholder="Address, city, ZIP or MLS number"
-              className={cn(inputClass, "pl-11")}
-            />
-          </div>
-
-          {results.length === 0 ? (
-            <p className="mt-6 text-center text-stone-700">No homes match that search.</p>
-          ) : (
-            <ul className="mt-4 grid gap-3 sm:grid-cols-2">{results.map(card)}</ul>
-          )}
-        </>
-      ) : (
-        <>
-          <ul className="grid gap-3 sm:grid-cols-2">{start && card(start)}</ul>
-          <button
-            type="button"
-            onClick={() => setSearching(true)}
-            className="mt-2 flex min-h-11 items-center gap-1.5 text-sm font-semibold text-brand"
-          >
-            <Plus aria-hidden size={16} /> Add another home
-          </button>
-        </>
-      )}
-
-      <div className="mt-6 flex flex-col gap-4 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
-        {!addTo && (
+    <>
+      <h1 className="font-display text-3xl">
+        {start ? (picked.length > 1 ? "Send these homes" : "Send this home") : heading}
+      </h1>
+      <p className="mt-1 text-stone-700">{intro}</p>
+      <div className="mt-5 pb-4">
+        {searching ? (
           <>
-            <fieldset>
-              <legend className="text-sm font-medium">Who&apos;s it for?</legend>
-              <p className="text-sm text-stone-600">
-                Each person gets their own link, so you can see what each of them likes.
-              </p>
-              <div className="mt-2 flex flex-col gap-2">
-                {people.map((person, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <input
-                      aria-label={`Person ${i + 1}'s first name`}
-                      maxLength={40}
-                      value={person}
-                      autoComplete="off"
-                      placeholder={i === 0 ? "First name" : "Another person's first name"}
-                      onChange={(event) =>
-                        setPeople((current) => current.map((p, j) => (j === i ? event.target.value : p)))
-                      }
-                      className={inputClass}
-                    />
-                    {people.length > 1 && (
-                      <button
-                        type="button"
-                        aria-label={`Remove person ${i + 1}`}
-                        onClick={() => setPeople((current) => current.filter((_, j) => j !== i))}
-                        className="flex size-11 shrink-0 items-center justify-center rounded-xl text-stone-600 hover:bg-stone-100"
-                      >
-                        <X aria-hidden size={18} />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-              {people.length < MAX_PEOPLE && (
-                <button
-                  type="button"
-                  onClick={() => setPeople((current) => [...current, ""])}
-                  className="mt-2 flex min-h-11 items-center gap-1.5 text-sm font-semibold text-brand"
-                >
-                  <Plus aria-hidden size={16} /> Add another person
-                </button>
-              )}
-            </fieldset>
-            <div>
-              <label htmlFor="note" className="text-sm font-medium">
-                Personal note (optional)
-              </label>
-              <textarea
-                id="note"
-                rows={3}
-                maxLength={500}
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-                placeholder="This one has the yard you mentioned."
-                className={cn(inputClass, "mt-1 resize-y")}
+            <label htmlFor="search" className="sr-only">
+              Search by address, city, ZIP or MLS number
+            </label>
+            <div className="relative">
+              <Search aria-hidden size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-600" />
+              <input
+                id="search"
+                type="search"
+                value={query}
+                // Asked for from "Add another home", so the cursor goes straight there.
+                autoFocus={Boolean(start)}
+                onChange={(event) => onSearch(event.target.value)}
+                placeholder="Address, city, ZIP or MLS number"
+                className={cn(inputClass, "pl-11")}
               />
             </div>
+
+            {shown.length > 0 && <ul className="mt-4 grid gap-3 sm:grid-cols-2">{shown.map(card)}</ul>}
+            {results.length === 0 && <p className="mt-6 text-center text-stone-700">No homes match that search.</p>}
+          </>
+        ) : (
+          <>
+            <ul className="grid gap-3 sm:grid-cols-2">{start && card(start)}</ul>
+            <button
+              type="button"
+              onClick={() => setSearching(true)}
+              className="mt-2 flex min-h-11 items-center gap-1.5 text-sm font-semibold text-brand"
+            >
+              <Plus aria-hidden size={16} /> Add another home
+            </button>
           </>
         )}
-        {error && (
-          <p role="alert" className="text-sm text-red-700">
-            {error}
-          </p>
-        )}
-        <button
-          type="button"
-          onClick={submit}
-          disabled={picked.length === 0 || pending}
-          className="min-h-12 rounded-xl bg-brand font-semibold text-white disabled:opacity-50"
-        >
-          {pending
-            ? "Creating…"
-            : picked.length === 0
-              ? "Pick at least 1 home"
-              : addTo
-                ? `Add ${picked.length} ${picked.length === 1 ? "home" : "homes"} to ${addTo.clientName ? `${addTo.clientName}'s` : "their"} link`
-                : `Create link for ${picked.length} ${picked.length === 1 ? "home" : "homes"}`}
-        </button>
+
+        <div className="mt-6 flex flex-col gap-4 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
+          {!addTo && (
+            <>
+              <fieldset>
+                <legend className="text-sm font-medium">Who&apos;s it for?</legend>
+                <p className="text-sm text-stone-600">
+                  Each person gets their own link, so you can see what each of them likes.
+                </p>
+                <div className="mt-2 flex flex-col gap-2">
+                  {people.map((person, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <input
+                        aria-label={`Person ${i + 1}'s first name`}
+                        maxLength={40}
+                        value={person}
+                        autoComplete="off"
+                        placeholder={i === 0 ? "First name" : "Another person's first name"}
+                        onChange={(event) =>
+                          setPeople((current) => current.map((p, j) => (j === i ? event.target.value : p)))
+                        }
+                        className={inputClass}
+                      />
+                      {people.length > 1 && (
+                        <button
+                          type="button"
+                          aria-label={`Remove person ${i + 1}`}
+                          onClick={() => setPeople((current) => current.filter((_, j) => j !== i))}
+                          className="flex size-11 shrink-0 items-center justify-center rounded-xl text-stone-600 hover:bg-stone-100"
+                        >
+                          <X aria-hidden size={18} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {people.length < MAX_PEOPLE && (
+                  <button
+                    type="button"
+                    onClick={() => setPeople((current) => [...current, ""])}
+                    className="mt-2 flex min-h-11 items-center gap-1.5 text-sm font-semibold text-brand"
+                  >
+                    <Plus aria-hidden size={16} /> Add another person
+                  </button>
+                )}
+              </fieldset>
+              <div>
+                <label htmlFor="note" className="text-sm font-medium">
+                  Personal note (optional)
+                </label>
+                <textarea
+                  id="note"
+                  rows={3}
+                  maxLength={500}
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder="This one has the yard you mentioned."
+                  className={cn(inputClass, "mt-1 resize-y")}
+                />
+              </div>
+            </>
+          )}
+          {error && (
+            <p role="alert" className="text-sm text-red-700">
+              {error}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={submit}
+            disabled={picked.length === 0 || pending}
+            className="min-h-12 rounded-xl bg-brand font-semibold text-white disabled:opacity-50"
+          >
+            {pending
+              ? "Creating…"
+              : picked.length === 0
+                ? "Pick at least 1 home"
+                : addTo
+                  ? `Add ${picked.length} ${picked.length === 1 ? "home" : "homes"} to ${addTo.clientName ? `${addTo.clientName}'s` : "their"} link`
+                  : `Create link for ${picked.length} ${picked.length === 1 ? "home" : "homes"}`}
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

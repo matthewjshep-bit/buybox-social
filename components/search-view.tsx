@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import type { ThreadActions } from "@/components/listing-thread";
 import type { MapHome } from "@/components/listing-map";
-import { sendHomeFrom, SendThisHome } from "@/components/quick-send";
+import { SendPill, sendHomeFrom, useQuickSend } from "@/components/quick-send";
 import { ReelFeed } from "@/components/reel";
 import type { FeedPost } from "@/lib/feed";
 import { cn, formatPrice } from "@/lib/format";
@@ -52,6 +52,8 @@ export function SearchView({
 }) {
   const router = useRouter();
   const pane = useRef<HTMLElement>(null);
+  // An agent can send the home showing to a client. Its sheets rise over the pane.
+  const quick = useQuickSend({ profileComplete: Boolean(sender?.profileComplete), anchor: pane });
   const [pending, startTransition] = useTransition();
   // The controls show a change at once, while the new results load.
   const [shown, setShown] = useOptimistic(filters);
@@ -102,9 +104,11 @@ export function SearchView({
   };
 
   const count = `${total} ${total === 1 ? "home" : "homes"}`;
-  const sendable = posts.find(
-    (post) => post.listing.ListingKey === activeKey && post.listing.StandardStatus === "Active",
-  );
+  // Only a home that's still for sale.
+  const sendable = sender
+    ? posts.find((post) => post.listing.ListingKey === activeKey && post.listing.StandardStatus === "Active")
+    : undefined;
+  const sending = sendable ? sendHomeFrom(sendable.listing) : null;
 
   return (
     <div className="flex h-[calc(100dvh-3.5rem-1px)] flex-col">
@@ -262,13 +266,9 @@ export function SearchView({
             pending && "opacity-60",
           )}
         >
-          {sender && (
-            <SendThisHome
-              // Only a home that's still for sale.
-              home={sendable ? sendHomeFrom(sendable.listing) : null}
-              profileComplete={sender.profileComplete}
-              anchor={pane}
-            />
+          {/* Wide screens: over the top of the photo, clear of the words at the bottom. */}
+          {sending && (
+            <SendPill home={sending} quick={quick} className="absolute left-3 top-3 z-30 hidden lg:flex" />
           )}
           {posts.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center bg-surface p-8 text-center">
@@ -306,14 +306,20 @@ export function SearchView({
         </section>
       </div>
 
-      <button
-        type="button"
-        onClick={() => setMobileMap((v) => !v)}
-        className="fixed bottom-5 left-1/2 z-40 flex h-12 -translate-x-1/2 items-center gap-2 rounded-full bg-white px-5 font-semibold text-stone-900 shadow-lg ring-1 ring-stone-200 lg:hidden"
-      >
-        {mobileMap ? <Home aria-hidden size={18} /> : <MapIcon aria-hidden size={18} />}
-        {mobileMap ? "Homes" : "Map"}
-      </button>
+      {/* Phones: along the bottom, in the space the home's words leave for
+          these buttons, so they never cover the words on a short screen. */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-5 z-40 flex justify-center gap-2 px-4 lg:hidden">
+        {sending && !mobileMap && <SendPill home={sending} quick={quick} className="pointer-events-auto" />}
+        <button
+          type="button"
+          onClick={() => setMobileMap((v) => !v)}
+          className="pointer-events-auto flex h-12 items-center gap-2 rounded-full bg-white px-5 font-semibold text-stone-900 shadow-lg ring-1 ring-stone-200"
+        >
+          {mobileMap ? <Home aria-hidden size={18} /> : <MapIcon aria-hidden size={18} />}
+          {mobileMap ? "Homes" : "Map"}
+        </button>
+      </div>
+      {sender && quick.ui}
     </div>
   );
 }

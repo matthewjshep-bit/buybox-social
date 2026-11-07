@@ -154,8 +154,11 @@ test("closing the share sheet unsent leaves no link behind, and a link that didn
     await route.fallback({ postData: body.replace("SAMPLE-1004", "SAMPLE-SOLD") });
   });
   await sendButton(agent, "96 Fernhollow Ln").click();
-  const sheet = agent.getByRole("dialog", { name: "Sent. Who's it for?" });
-  await expect(sheet.getByRole("alert")).toHaveText("That link didn't save. Tap Send again.");
+  // The share sheet has already handed the link over, so the agent is told it won't open.
+  const sheet = agent.getByRole("dialog", { name: "That link didn't save" });
+  await expect(sheet.getByRole("alert")).toHaveText(
+    "The link you just sent won't open. Tap Send again and send the new one.",
+  );
   await expect(sheet.getByRole("button", { name: "Save" })).toHaveCount(0);
   expect((await request.get(`/s/${second}`)).status()).toBe(404);
 });
@@ -170,10 +173,14 @@ test("Undo send takes back an unopened link, and a home meant for an existing cl
   const { seen } = await agentOnHome(agent);
   const sheet = agent.getByRole("dialog", { name: "Sent. Who's it for?" });
 
-  // Undo, before anyone has opened it: the link stops working.
+  // Undo, before anyone has opened it: the link stops working. Changing your
+  // mind first puts the cursor back where it was.
   await sendButton(agent, "96 Fernhollow Ln").click();
   await sheet.getByRole("button", { name: "Undo send" }).click();
   await expect(sheet.getByText("The link will stop working.")).toBeVisible();
+  await sheet.getByRole("button", { name: "Keep it" }).click();
+  await expect(sheet.getByRole("button", { name: "Undo send" })).toBeFocused();
+  await sheet.getByRole("button", { name: "Undo send" }).click();
   await sheet.getByRole("button", { name: "Undo send" }).click();
   await expect(agent.getByRole("status").filter({ hasText: "Undone. The link has stopped working." })).toBeVisible();
   const undone = (await shared(agent))[0].url!;
@@ -184,7 +191,8 @@ test("Undo send takes back an unopened link, and a home meant for an existing cl
   await sendButton(agent, "96 Fernhollow Ln").click();
   await sheet.getByRole("button", { name: "Meant for someone you've already sent homes to?" }).click();
   await expect(sheet.getByText("Their link will show this home. The link you just sent will stop working.")).toBeVisible();
-  await sheet.getByRole("button", { name: "Nina · 1 home" }).click();
+  // Each client once, with the link's first home, so two of them can be told apart.
+  await sheet.getByRole("button", { name: /^Nina · 1 home 4127 Larkmoor Ave NE · Sent / }).click();
   await expect(agent.getByRole("status").filter({ hasText: "Added to Nina's link." })).toBeVisible();
   const moved = (await shared(agent))[1].url!;
   expect(moved).not.toBe(undone);
@@ -207,6 +215,8 @@ test("Undo send takes back an unopened link, and a home meant for an existing cl
   await expect(sheet.getByText("The link will stop working.")).toBeVisible();
   await sheet.getByRole("button", { name: "Undo send" }).click();
   await expect(sheet.getByText("They've opened it. You can remove the home from your dashboard.")).toBeVisible();
+  // The buttons went, so the cursor is on the answer rather than lost.
+  await expect(sheet.getByText("They've opened it. You can remove the home from your dashboard.")).toBeFocused();
   expect((await request.get(kept)).status()).toBe(200);
 });
 
@@ -233,8 +243,11 @@ test("on a computer, Send copies the message and link, and two open tabs never s
 
   await first.bringToFront();
   await sendButton(first, "96 Fernhollow Ln").click();
-  const sheet = first.getByRole("dialog", { name: "Sent. Who's it for?" });
-  await expect(sheet.getByRole("status")).toHaveText("Link copied. Paste it into a text or email.");
+  // Only copied so far, so the sheet doesn't say it's sent, and says (to a
+  // screen reader too, as it opens) what was copied.
+  const sheet = first.getByRole("dialog", { name: "Who's it for?" });
+  await expect(sheet.getByText("Link copied. Paste it into a text or email.")).toBeVisible();
+  await expect(sheet).toHaveAccessibleDescription("Link copied. Paste it into a text or email.");
   expect(await shared(first)).toEqual([]);
   const copied = await first.evaluate(() => navigator.clipboard.readText());
   expect(copied).toBe(
@@ -293,9 +306,115 @@ test("buyers and visitors still share the public page; an agent without a name i
   const [token] = seen.token;
   const homes = agent.getByRole("region", { name: "Homes" });
   const showing = (await homes.getByRole("article").first().getAttribute("aria-label"))!;
-  await homes.getByRole("button", { name: "Send this home" }).click();
+  // On a phone it sits beside the Map button, below the home's words, and
+  // says which home it sends.
+  const pill = agent.getByRole("button", { name: /^Send this home/ });
+  const address = showing.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  await expect(pill).toHaveAccessibleName(new RegExp(`^Send this home\\W+${address}$`));
+  const words = await homes.getByRole("button", { name: /^Open full screen/ }).first().boundingBox();
+  expect((await pill.boundingBox())!.y).toBeGreaterThanOrEqual(words!.y + words!.height);
+  await pill.click();
   await expect(agent.getByRole("dialog", { name: "Sent. Who's it for?" })).toBeVisible();
   const [handed] = await shared(agent);
   expect(handed.url).toContain(`/s/${token}`);
   expect(handed.text).toContain(`I picked a home for you: ${showing}, $`);
+});
+
+test("a page gives back the link it held when it goes, so the map's pop-outs never use up the one beside the map", async ({
+  browser,
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const agent = await signInAgent(browser, "pia-popout@example.com", "Pia Popout");
+  await agent.context().addInitScript(stubShareSheet);
+  const seen = await watchLinkNames(agent);
+  await agent.goto("/search");
+  await expect.poll(() => seen.token.length).toBe(1);
+  const [paneToken] = seen.token;
+
+  // More pop-outs than an agent can hold links at once (20), each with its own.
+  const popout = agent.getByRole("dialog", { name: "Home details" });
+  for (let i = 1; i <= 21; i++) {
+    await agent.evaluate(() => (window as unknown as { next: { router: { push(href: string): void } } }).next.router.push("/homes/SAMPLE-1005"));
+    await expect(popout).toBeVisible();
+    await expect.poll(() => seen.token.length).toBe(i + 1);
+    await agent.goBack();
+    await expect(popout).toBeHidden();
+  }
+
+  // The link beside the map still works.
+  await agent.getByRole("button", { name: /^Send this home/ }).click();
+  await expect(agent.getByRole("dialog", { name: "Sent. Who's it for?" })).toBeVisible();
+  const [handed] = await shared(agent);
+  expect(handed.url).toContain(`/s/${paneToken}`);
+  await expect.poll(async () => (await request.get(handed.url!)).status(), { timeout: 10_000 }).toBe(200);
+});
+
+test("a link held for a day is never handed out: Send this home makes a new one instead", async ({ browser, request }) => {
+  test.setTimeout(90_000);
+  const agent = await signInAgent(browser, "lou-later@example.com", "Lou Later");
+  await agent.clock.install();
+  const { seen, token } = await agentOnHome(agent);
+
+  // The phone tab comes back the next day, as it was.
+  await agent.clock.setSystemTime(Date.now() + 24 * 60 * 60 * 1000);
+  await sendButton(agent, "96 Fernhollow Ln").click();
+  const draft = agent.getByRole("dialog", { name: "Send this home" });
+  await expect(draft).toBeVisible();
+  expect(await shared(agent)).toEqual([]);
+  await expect(draft.getByText("96 Fernhollow Ln")).toBeVisible();
+
+  // Made here, with a fresh tap to send it; the cursor goes to the new link.
+  await draft.getByLabel("Their first name (optional)").fill("Ivy");
+  await draft.getByRole("button", { name: "Create link" }).click();
+  const link = draft.getByLabel("Your link is ready");
+  await expect(link).toBeFocused();
+  // One new name for the page's next Send (asked for at the tap), one for this link.
+  await expect.poll(() => seen.token.length).toBe(3);
+  const url = await link.inputValue();
+  expect(url).toMatch(new RegExp(`/s/${seen.token[2]}$`));
+  expect((await request.get(url)).status()).toBe(200);
+  expect((await request.get(`/s/${token}`)).status()).toBe(404);
+  await draft.getByRole("button", { name: "Close" }).click();
+  await expect(draft).toBeHidden();
+
+  // The next Send uses the page's new one.
+  await sendButton(agent, "96 Fernhollow Ln").click();
+  await expect(agent.getByRole("dialog", { name: "Sent. Who's it for?" })).toBeVisible();
+  expect((await shared(agent))[0].url).toContain(`/s/${seen.token[1]}`);
+});
+
+test("the longer way to send one home starts with it picked, and keeps it in view", async ({ browser }) => {
+  test.setTimeout(90_000);
+  const agent = await signInAgent(browser, "bo-builder@example.com", "Bo Builder");
+
+  await agent.goto("/dashboard/new?home=SAMPLE-1004");
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send this home");
+  const picked = agent.getByRole("button", { pressed: true });
+  await expect(picked).toHaveCount(1);
+  await expect(picked).toContainText("96 Fernhollow Ln");
+  await expect(agent.getByRole("searchbox")).toHaveCount(0);
+  await expect(agent.getByRole("button", { name: "Create link for 1 home" })).toBeVisible();
+
+  // Adding another: the first stays first, and the heading follows.
+  await agent.getByRole("button", { name: "Add another home" }).click();
+  await expect(agent.getByRole("searchbox")).toBeFocused();
+  const cards = agent.getByRole("button", { name: /^\$/ });
+  await expect(cards.first()).toContainText("96 Fernhollow Ln");
+  await expect(cards.first()).toHaveAttribute("aria-pressed", "true");
+  await agent.getByRole("button", { name: /4127 Larkmoor/ }).click();
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send these homes");
+  await agent.getByRole("button", { name: /4127 Larkmoor/ }).click();
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send this home");
+
+  await agent.getByLabel("Person 1's first name").fill("Pat");
+  await agent.getByRole("button", { name: "Create link for 1 home" }).click();
+  await agent.waitForURL("**/dashboard/shares/*");
+  await expect(agent.getByLabel("Pat's link")).toHaveValue(/\/s\/[\w-]{32}$/);
+
+  // A home that isn't for sale: the usual way to start.
+  await agent.goto("/dashboard/new?home=SAMPLE-SOLD");
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("New share");
+  await expect(agent.getByRole("searchbox")).toBeVisible();
+  await expect(agent.getByRole("button", { pressed: true })).toHaveCount(0);
 });

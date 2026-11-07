@@ -3,7 +3,7 @@
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { requireAgent } from "@/lib/auth";
+import { getCurrentUser, requireAgent } from "@/lib/auth";
 import { isContactPhone, phoneDigits } from "@/lib/contact";
 import { sql } from "@/lib/db";
 import { BRAND_COLORS } from "@/lib/format";
@@ -225,15 +225,25 @@ export async function replyAsAgent(
 // One tap on Send, from any home: the phone's share sheet opens on a link the
 // server made before the tap, and then the agent can say who it's for.
 
-export type SendToken = { token: string } | { error: "profile" };
+export type SendToken = { token: string } | { error: "profile" | "signed-out" };
 
 // A link name for this page's next Send. Each page gets its own, so two open
-// tabs never hand out the same link.
+// tabs never hand out the same link. Pages ask in the background, so someone
+// who has signed out meanwhile is told so here, not sent to sign in.
 export async function reserveSendToken(): Promise<SendToken> {
-  const agent = await requireAgent();
+  const agent = await getCurrentUser();
+  if (agent?.role !== "agent") return { error: "signed-out" };
   // Clients should know who it's from.
   if (!agent.full_name) return { error: "profile" };
   return { token: await reserveSendTokenFor(agent.id) };
+}
+
+// A page closed, or was given a newer link, so the name it held goes: it no
+// longer counts towards the agent's 20, and can never become a link.
+export async function dropSendToken(token: string): Promise<void> {
+  const agent = await getCurrentUser();
+  if (agent?.role !== "agent" || typeof token !== "string" || !isShareToken(token)) return;
+  await sql`delete from share_token_pool where token = ${token} and agent_id = ${agent.id}`;
 }
 
 export type ClaimResult = { shareId: string; nextToken: string } | { error: string };
@@ -325,19 +335,40 @@ export async function nameQuickShare(shareId: string, input: { clientName: strin
   return {};
 }
 
-export type RecentShare = { id: string; clientName: string; homes: number };
+export type RecentShare = {
+  id: string;
+  clientName: string;
+  homes: number;
+  // The first home on their link, so two links can be told apart.
+  firstAddress: string | null;
+  sentAt: string;
+};
 
-// The clients a home from Send might really be for: the latest few, by name.
+// The clients a home from Send might really be for: the latest few, one per
+// name. Every Send makes its own link, so one client can have several; the
+// newest is the one they're most likely to have open.
 export async function listRecentShares(): Promise<RecentShare[]> {
   const agent = await requireAgent();
-  const rows = await sql<{ id: string; client_name: string; homes: number }[]>`
-    select s.id, s.client_name,
-      (select count(*)::int from share_listings sl where sl.share_id = s.id and sl.removed_at is null) as homes
-    from shares s
-    where s.agent_id = ${agent.id} and s.client_name <> ''
-    order by s.created_at desc
+  const rows = await sql<{ id: string; client_name: string; homes: number; first_address: string | null; created_at: Date }[]>`
+    select * from (
+      select distinct on (lower(s.client_name)) s.id, s.client_name, s.created_at,
+        (select count(*)::int from share_listings sl where sl.share_id = s.id and sl.removed_at is null) as homes,
+        (select l.data->>'UnparsedAddress'
+           from share_listings sl join listings l on l.listing_key = sl.listing_key
+           where sl.share_id = s.id and sl.removed_at is null order by sl.position limit 1) as first_address
+      from shares s
+      where s.agent_id = ${agent.id} and s.client_name <> ''
+      order by lower(s.client_name), s.created_at desc
+    ) newest
+    order by created_at desc
     limit 6`;
-  return rows.map((row) => ({ id: row.id, clientName: row.client_name, homes: row.homes }));
+  return rows.map((row) => ({
+    id: row.id,
+    clientName: row.client_name,
+    homes: row.homes,
+    firstAddress: row.first_address,
+    sentAt: row.created_at.toISOString(),
+  }));
 }
 
 export type MoveResult = { clientName: string; closed: boolean } | { error: string };
