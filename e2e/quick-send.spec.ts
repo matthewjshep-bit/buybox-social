@@ -34,8 +34,9 @@ const shared = (page: Page) => page.evaluate(() => (window as unknown as Stubbed
 // Every link name the server hands this page, in order: the one waiting for
 // Send ("token") and the one for the Send after ("nextToken"). Read on the way
 // in, since the browser keeps no copy of an answer it streamed.
+// `hold`, while set, keeps back an answer with the next link in it.
 async function watchLinkNames(page: Page) {
-  const seen = { token: [] as string[], nextToken: [] as string[] };
+  const seen = { token: [] as string[], nextToken: [] as string[], hold: null as Promise<void> | null };
   await page.route("**/*", async (route) => {
     const request = route.request();
     if (request.method() !== "POST" || !request.headers()["next-action"]) return route.fallback();
@@ -45,6 +46,7 @@ async function watchLinkNames(page: Page) {
       const found = body.match(new RegExp(`"${field}":"([\\w-]{32})"`));
       if (found) seen[field].push(found[1]);
     }
+    if (body.includes('"nextToken"') && seen.hold) await seen.hold;
     await route.fulfill({ response, body });
   });
   return seen;
@@ -60,7 +62,7 @@ async function agentOnHome(page: Page, key = "SAMPLE-1004") {
 }
 
 const sendButton = (page: Page, address: string) =>
-  homeIn(page, address).getByRole("button", { name: /^(Send to a client|Share)$/ });
+  homeIn(page, address).getByRole("button", { name: "Send to a client", exact: true });
 
 async function visitor(browser: Browser) {
   const page = await (await browser.newContext()).newPage();
@@ -77,10 +79,18 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
   const other = await createShare(agent, ["1880 Tamsen"], ["Pat"]);
   const { seen, token } = await agentOnHome(agent);
 
-  // The share sheet gets the link in the tap itself, with nothing waited for first.
+  // The share sheet gets the link in the tap itself, with nothing waited for
+  // first. Until the link for the next Send is back, Send waits, and says so.
+  let release = () => {};
+  seen.hold = new Promise((done) => (release = done));
   await sendButton(agent, "96 Fernhollow Ln").click();
   const sheet = agent.getByRole("dialog", { name: "Sent. Who's it for?" });
   await expect(sheet).toBeVisible();
+  const waiting = agent.locator('article[aria-label="96 Fernhollow Ln"] button[aria-label="Getting a new link…"]');
+  await expect(waiting).toHaveAttribute("aria-disabled", "true");
+  seen.hold = null;
+  release();
+  await expect(waiting).toHaveCount(0);
   const [handed] = await shared(agent);
   expect(handed.inTap).toBe(true);
   expect(handed.title).toBe("A home for you");
@@ -97,6 +107,7 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
   await client.goto(url);
   await expect(homeIn(client, "96 Fernhollow Ln")).toBeInViewport({ ratio: 0.9 });
   await expect(client.getByRole("heading", { level: 1 })).toHaveText("I picked this home for you");
+  await expect(client.locator("h1")).toHaveCount(1);
   await expect(client.getByRole("banner").getByText("Sam Sender", { exact: true })).toBeVisible();
 
   // Saying who it was for greets them on the link they already have.
@@ -109,6 +120,18 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
   await expect(client.getByRole("heading", { level: 1 })).toHaveText("Toby, I picked this home for you", {
     timeout: 25_000,
   });
+  // Whoever opens it first is most likely Toby: the name prompt starts with
+  // it, ready to type over. Not now leaves nothing behind.
+  await heartOf(homeIn(client, "96 Fernhollow Ln")).click();
+  const prompt = client.getByRole("dialog", { name: "What's your first name?" });
+  const name = prompt.getByRole("textbox", { name: "First name" });
+  await expect(name).toHaveValue("Toby");
+  await expect(name).toBeFocused();
+  expect(await name.evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd])).toEqual([0, 4]);
+  await expect(name).toHaveAccessibleDescription("Sam sent this to Toby. Not Toby? Type your name.");
+  await prompt.getByRole("button", { name: "Not now" }).click();
+  await expect(prompt).toBeHidden();
+  await expect(heartOf(homeIn(client, "96 Fernhollow Ln"))).toHaveAttribute("aria-pressed", "false");
 
   // It's on the dashboard like any other link.
   await agent.goto("/dashboard");
@@ -142,9 +165,9 @@ test("closing the share sheet unsent leaves no link behind, and a link that didn
   await agent.goto("/dashboard");
   await expect(agent.getByRole("link", { name: /96 Fernhollow/ })).toHaveCount(0);
 
-  // The home goes between the tap and the link being made. A test can't mark a
-  // sample home sold, so this asks for a home that isn't listed: the link isn't
-  // made, and the agent is told to send again.
+  // The home sells between the tap and the link being made (the tests' sold
+  // home stands in for it): the link isn't made, and the agent is told to
+  // send again.
   await agent.goto("/homes/SAMPLE-1004");
   await expect.poll(() => seen.token.length).toBe(2);
   const second = seen.token[1];
@@ -161,6 +184,12 @@ test("closing the share sheet unsent leaves no link behind, and a link that didn
   );
   await expect(sheet.getByRole("button", { name: "Save" })).toHaveCount(0);
   expect((await request.get(`/s/${second}`)).status()).toBe(404);
+
+  // A home that has sold isn't one to send: its page keeps plain Share.
+  await agent.goto("/homes/SAMPLE-SOLD");
+  const sold = homeIn(agent, "9 Sold Example Ct");
+  await expect(sold.getByRole("button", { name: "Share", exact: true })).toBeVisible();
+  await expect(sold.getByRole("button", { name: "Send to a client" })).toHaveCount(0);
 });
 
 test("Undo send takes back an unopened link, and a home meant for an existing client goes on their link", async ({

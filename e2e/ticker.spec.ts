@@ -281,7 +281,8 @@ test("opened over another page (from someone's profile), it still goes round", a
   const profile = /profileId\\?":\\?"([0-9a-f-]{36})/.exec(html)?.[1];
   expect(profile).toBeTruthy();
   await page.goto(`/people/${profile}`);
-  await page.locator('a[href="/homes/SAMPLE-1007"]').first().click();
+  // (A card opens on the photo it's about: `?photo=`.)
+  await page.locator('a[href^="/homes/SAMPLE-1007"]').first().click();
   const home = page.locator("dialog[open]").getByRole("article", { name: WEXFORD });
   await expect(home).toBeVisible();
   await expect(activityOf(home).getByRole("button", { name: "Pause activity" })).toBeVisible();

@@ -2,7 +2,7 @@
 
 import { ArrowDown, Check, Phone, Share2 } from "lucide-react";
 import Image from "next/image";
-import { createContext, useContext, useEffect, useState, type ComponentProps } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ComponentProps } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { agentFirstName, focusOnDark, ShareHeader } from "@/components/agent-card";
 import { Backdrop } from "@/components/join";
@@ -27,6 +27,28 @@ function goToFirstHome() {
   first.focus({ preventScroll: true });
 }
 
+// How long after the last new photo the count of photos seen goes to the agent.
+const SEEN_AFTER_MS = 1500;
+
+// The photos this phone has looked at on a link, kept between visits so a
+// second look adds to the first. (Just this browser's own note.)
+function seenBefore(token: string): Set<string> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(`buybox:seen:${token}`) ?? "[]");
+    return new Set(Array.isArray(saved) ? saved.filter((photo): photo is string => typeof photo === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function keepSeen(token: string, seen: Set<string>) {
+  try {
+    localStorage.setItem(`buybox:seen:${token}`, JSON.stringify([...seen]));
+  } catch {
+    // Private windows may not keep it: this visit still counts.
+  }
+}
+
 // Contact, from anywhere on the link (the end screen of an empty one).
 const ContactAgent = createContext<{ open: () => void; first: string }>({ open: () => {}, first: "your agent" });
 
@@ -36,16 +58,13 @@ export function ShareReel({
   token,
   agent,
   note,
-  caption,
   whoCanSee,
   askToSee,
   ...reel
-}: Omit<ReelProps, "mode" | "header" | "onActiveChange"> & {
+}: Omit<ReelProps, "mode" | "header" | "onActiveChange" | "onPhotoSeen"> & {
   token: string;
   agent: ShareAgent;
   note: string;
-  // The greeting and note, when no welcome screen carries them (one home).
-  caption?: { heading: string; note: string };
   whoCanSee: string;
   askToSee: (listingKey: string) => Promise<AskResult>;
 }) {
@@ -53,8 +72,6 @@ export function ShareReel({
   // The home on screen, or the last one seen (from the end screen). Before any,
   // on a link of one home, that home.
   const [seen, setSeen] = useState<string | null>(homes.length === 1 ? homes[0].ListingKey : null);
-  // A link of one home opens on it; one with several, on the welcome screen.
-  const [onHome, setOnHome] = useState(!reel.intro && homes.length > 0);
   const [contact, setContact] = useState(false);
   const home = homes.find((listing) => listing.ListingKey === seen);
 
@@ -75,15 +92,36 @@ export function ShareReel({
     return () => document.removeEventListener("visibilitychange", onShow);
   }, [token]);
 
+  // And how many of the link's photos have been looked at: each new one, a
+  // moment after the last, so swiping through sends one count, not many.
+  const looked = useRef<Set<string> | null>(null);
+  const told = useRef(0);
+  const seenTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(seenTimer.current), []);
+  const photoSeen = (listingKey: string, index: number) => {
+    looked.current ??= seenBefore(token);
+    const photo = `${listingKey}:${index}`;
+    if (looked.current.has(photo)) return;
+    looked.current.add(photo);
+    keepSeen(token, looked.current);
+    clearTimeout(seenTimer.current);
+    seenTimer.current = setTimeout(() => {
+      const count = looked.current?.size ?? 0;
+      if (count <= told.current || document.visibilityState !== "visible") return;
+      told.current = count;
+      recordOpen(token, count).catch(() => {});
+    }, SEEN_AFTER_MS);
+  };
+
   return (
     <ContactAgent.Provider value={{ open: () => setContact(true), first: agentFirstName(agent.full_name) }}>
       <ReelFeed
         {...reel}
         mode="share"
         onActiveChange={(key) => {
-          setOnHome(Boolean(key));
           if (key) setSeen(key);
         }}
+        onPhotoSeen={photoSeen}
         header={
           <ShareHeader
             agent={agent}
@@ -97,8 +135,6 @@ export function ShareReel({
               // Once the sheet has closed and given focus back.
               requestAnimationFrame(goToFirstHome);
             }}
-            caption={caption}
-            showCaption={onHome}
             open={contact}
             onOpenChange={setContact}
           />

@@ -1,7 +1,18 @@
 import { cache } from "react";
 import { sql } from "./db";
 import type { Listing, ListingMedia } from "./listings/types";
-import { aspectOfFact, aspectOfTag, FACTS, isPointTag, mediaKeyOf, tagNameIn, tagPhrase, tagPosition, thingOf } from "./photos";
+import {
+  aspectOfFact,
+  aspectOfTag,
+  FACTS,
+  isPointTag,
+  mediaKeyOf,
+  spotName,
+  tagNameIn,
+  tagPhrase,
+  tagPosition,
+  thingOf,
+} from "./photos";
 import { ASPECTS, aspectLabel, describeReaction, NO_REACTION, type Aspect, type ReactionState, type Sentiment } from "./reactions";
 
 // Someone's public page: everything they've liked, passed on and said in
@@ -188,15 +199,8 @@ export function sinceLabel(at: string, now: Date | number = Date.now()) {
   });
 }
 
-// "the front door"; "a spot in photo 3"; "the price". A copy of `spotName` in
-// components/photo-spots.tsx, which is client-only. (C1: import it from lib/photos.ts.)
-export function spotName(listing: Listing, spot: { mediaKey: string; tag: string }) {
-  if (spot.mediaKey === FACTS) return tagPhrase(spot.tag);
-  const index = listing.Media.findIndex((m) => mediaKeyOf(m) === spot.mediaKey);
-  const thing = thingOf(listing.Media[index], spot.tag);
-  if (thing) return tagPhrase(thing);
-  return index >= 0 ? `a spot in photo ${index + 1}` : "a spot in a photo";
-}
+// "the front door"; "a spot in photo 3"; "the price": as the reel says it.
+export { spotName };
 
 export const isVideo = (photo: ListingMedia) =>
   photo.MediaCategory === "Video" || /\.(mp4|webm|mov)(\?|$)/i.test(photo.MediaURL);

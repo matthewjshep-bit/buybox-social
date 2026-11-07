@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { commentIn, createShare, heartOf, homeIn, joinAs, openComments, signInAgent } from "./helpers";
+import { commentIn, createShare, heartOf, homeIn, joinAs, openComments, openScorecard, signInAgent } from "./helpers";
 
 // The link anyone can join, when no one was named.
 async function packageLink(agent: Page, addresses: string[]) {
@@ -40,10 +40,24 @@ test("one home: the link opens on it, in the agent's space, with a way to text, 
   const home = homeIn(page, "4127 Larkmoor Ave NE");
   await expect(home).toBeInViewport({ ratio: 0.9 });
   await expect(page.getByRole("region", { name: "Welcome" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Owen, I picked this home for you");
-  // The greeting and the start of the note show over the home; the whole note is in Contact.
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  await expect(page.getByRole("banner").getByText("This one has the yard you mentioned.")).toBeVisible();
+  // The agent's greeting and note are the home's caption, under its photo,
+  // in place of the description: the page's one heading.
+  await expect(page.locator("h1")).toHaveCount(1);
+  await expect(home.getByRole("heading", { level: 1 })).toHaveText("Owen, I picked this home for you");
+  await expect(home.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(home.getByText("This one has the yard you mentioned.")).toBeVisible();
+  // The agent's header comes first, as it reads and as Tab goes, though it floats over the home.
+  expect(
+    await page.evaluate(() => {
+      const [header, article] = [document.querySelector("header"), document.querySelector("article")];
+      return Boolean(header && article && header.compareDocumentPosition(article) & Node.DOCUMENT_POSITION_FOLLOWING);
+    }),
+  ).toBe(true);
+  // Owen is the only one on it, so what he says is between him and the agent.
+  const chat = await openComments(page, home);
+  await expect(chat.getByText("Only you and Jordan Rivera see this.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(chat).toBeHidden();
 
   // The agent's header, not the site's.
   const header = page.getByRole("banner");
@@ -209,10 +223,36 @@ test("a link whose homes were all taken off says so, with a way to reach the age
   await expect(heading).toHaveText("There are no homes on this link right now");
   await expect(heading).toBeVisible();
   await expect(page.getByText("Ask Jordan Rivera to send you more.")).toBeVisible();
+  // Nowhere to go back to.
+  await expect(page.getByRole("button", { name: "Back to the top" })).toHaveCount(0);
   await page.getByRole("button", { name: "Contact Jordan" }).click();
   await expect(page.getByRole("dialog", { name: "Contact Jordan Rivera" })).toContainText(
     "This link is just for you, Ruth. Ask Jordan Rivera if someone else should see it.",
   );
+});
+
+test("the Scorecard says who on the link hasn't weighed in yet, never you", async ({ browser }) => {
+  test.setTimeout(60_000);
+  const agent = await signInAgent(browser, "notyet-agent@example.com", "Jordan Rivera");
+  const { urls } = await createShare(agent, ["812 N Corbel"], ["Owen", "Pat"]);
+
+  const owen = await (await browser.newContext()).newPage();
+  await owen.goto(urls.Owen);
+  const home = homeIn(owen, "812 N Corbel St");
+  await heartOf(home).click();
+  await expect(heartOf(home)).toHaveAttribute("aria-pressed", "true");
+  let card = await openScorecard(owen, home);
+  await expect(card).toContainText("You liked it");
+  await expect(card.getByText("Not yet: Pat", { exact: true })).toBeVisible();
+  // Two people on it: never "only you".
+  await expect(card.getByText("From the people on this link · only they and Jordan Rivera see this")).toBeVisible();
+
+  // Pat sees Owen's take, and isn't told he hasn't given his own.
+  const pat = await (await browser.newContext()).newPage();
+  await pat.goto(urls.Pat);
+  card = await openScorecard(pat, homeIn(pat, "812 N Corbel St"));
+  await expect(card).toContainText("Owen liked it");
+  await expect(card.getByText(/^Not yet/)).toHaveCount(0);
 });
 
 test("a link that isn't there says so, with a way home", async ({ page }) => {

@@ -37,15 +37,21 @@ test("tap anywhere on a photo to like that spot or comment on it, and it shows w
   await expect(sheet).toBeHidden();
 
   // It shows where it was said: the heart exactly where the tap was (not
-  // moved onto the door's middle), the comment beside it.
+  // moved onto the door's middle), the comment beside it. The photo and the
+  // pin are measured together each time, so a page still settling (the sheet
+  // going, the words popping in) is waited out, not measured halfway.
   const pin = home.getByRole("button", { name: /^Front door: Avery: Love this door color, 1 like$/ });
   await expect(pin).toBeVisible();
-  const box = (await home.getByRole("img", { name: PHOTO }).boundingBox())!;
-  const centre = async () => {
-    const at = (await pin.boundingBox())!;
-    return [at.x + at.width / 2 - (box.x + box.width * 0.6), at.y + at.height / 2 - (box.y + box.height * 0.66)];
+  const photo = home.getByRole("img", { name: PHOTO });
+  const offBy = async (target: typeof pin, x: number, y: number) => {
+    const [box, at] = await Promise.all([photo.boundingBox(), target.boundingBox()]);
+    if (!box || !at) return Infinity;
+    return Math.max(
+      Math.abs(at.x + at.width / 2 - (box.x + box.width * x)),
+      Math.abs(at.y + at.height / 2 - (box.y + box.height * y)),
+    );
   };
-  await expect.poll(async () => Math.max(...(await centre()).map(Math.abs))).toBeLessThan(2);
+  await expect.poll(() => offBy(pin, 0.6, 0.66), { timeout: 15_000 }).toBeLessThan(2);
 
   // Tapping the heart again is that heart, liked.
   await tapPhoto(home, PHOTO, 0.6, 0.66);
@@ -65,15 +71,7 @@ test("tap anywhere on a photo to like that spot or comment on it, and it shows w
   const second = home.getByRole("button", { name: "A spot: 1 like" });
   await expect(second).toBeVisible();
   // (Once it's done popping in.)
-  await expect
-    .poll(async () => {
-      const at = (await second.boundingBox())!;
-      return Math.max(
-        Math.abs(at.x + at.width / 2 - (box.x + box.width * 0.1)),
-        Math.abs(at.y + at.height / 2 - (box.y + box.height * 0.3)),
-      );
-    })
-    .toBeLessThan(2);
+  await expect.poll(() => offBy(second, 0.1, 0.3), { timeout: 15_000 }).toBeLessThan(2);
   await expect(pin).toHaveAccessibleName(/1 like$/);
 
   // In the comments, it says which spot, and takes you there.

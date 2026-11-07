@@ -30,9 +30,25 @@ export const publicReelActions = {
   likePhoto: likePhotoInStream,
 };
 
+// `?photo=` in a home's address, as a photo to open on (from 0): links from
+// someone's page and the activity bell open on the photo they're about.
+export const photoParam = (value: string | string[] | undefined) => {
+  const n = typeof value === "string" && /^\d{1,3}$/.test(value) ? Number(value) : NaN;
+  return Number.isInteger(n) ? n : undefined;
+};
+
 // One home, full screen, as the first of the feed: a shared link opens on it
-// and keeps going. In the map's pop-out, just that home.
-export async function ListingDetail({ listingKey, embedded = false }: { listingKey: string; embedded?: boolean }) {
+// and keeps going. In the map's pop-out, just that home. `photo`: the photo
+// it opens on.
+export async function ListingDetail({
+  listingKey,
+  embedded = false,
+  photo,
+}: {
+  listingKey: string;
+  embedded?: boolean;
+  photo?: number;
+}) {
   if (listingKey.length > 100) notFound();
   const [account, device] = await Promise.all([getCurrentUser(), readDevice()]);
   const viewer = account?.role ? account : null;
@@ -51,7 +67,8 @@ export async function ListingDetail({ listingKey, embedded = false }: { listingK
     myName: name,
     prompt: PUBLIC_PROMPT,
     header: embedded ? undefined : <SiteHeader overlay />,
-    end: embedded ? undefined : <FeedEnd taste={taste} account={viewer} />,
+    end: embedded ? undefined : <FeedEnd taste={taste} account={viewer} visitorId={visitor?.id ?? null} />,
+    initialPhoto: photo,
   };
   // An agent's share button sends the home to a client.
   return viewer?.role === "agent" ? (

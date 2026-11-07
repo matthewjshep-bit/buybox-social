@@ -10,13 +10,22 @@ export function Modal({ label, children }: { label: string; children: ReactNode 
   const router = useRouter();
   const dialog = useRef<HTMLDialogElement>(null);
 
+  // What opened it (a card's link, a pin on the map), which gets the keyboard
+  // back when it closes, rather than the top of the page.
+  const opener = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
+    const now = document.activeElement;
+    if (!opener.current && now instanceof HTMLElement && now !== document.body && !dialog.current?.contains(now)) {
+      opener.current = now;
+    }
     if (!dialog.current?.open) dialog.current?.showModal();
     const root = document.documentElement;
     const previous = root.style.overflow;
     root.style.overflow = "hidden";
     return () => {
       root.style.overflow = previous;
+      if (opener.current?.isConnected) opener.current.focus({ preventScroll: true });
     };
   }, []);
 

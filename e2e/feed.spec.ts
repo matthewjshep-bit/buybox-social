@@ -34,14 +34,17 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await expect(heartOf(clientHome)).toHaveAttribute("aria-pressed", "true");
   await likeInPhoto(clientHome, "the evergreens");
 
-  // That agent's feed names their own client, and says what they liked.
-  await agent.goto("/");
+  // That agent's feed names their own client, and says what they liked. (Each
+  // home here is opened by its own link, which opens the feed on it: where it
+  // falls on the home page depends on what every earlier spec liked.)
+  await agent.goto("/homes/SAMPLE-1004");
   await expect(homeIn(agent, "96 Fernhollow Ln")).toContainText("Toby, your client, liked the evergreens");
 
   // A buyer signs up and sees the same activity anonymously.
   const buyer = await signUpBuyer(browser, "bea@example.com", "Bea Buyer");
   const pageErrors: string[] = [];
   buyer.on("pageerror", (error) => pageErrors.push(error.message));
+  await buyer.goto("/homes/SAMPLE-1004");
   const post = homeIn(buyer, "96 Fernhollow Ln");
   await expect(post).toContainText("A buyer liked the evergreens");
   await expect(post).toContainText("$839,000");
@@ -93,6 +96,7 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await buyer.keyboard.press("Escape");
 
   // ...or "not for me", and why.
+  await buyer.goto("/homes/SAMPLE-1005");
   const other = homeIn(buyer, "10421 Halvard Way NE");
   more = await openMore(buyer, other);
   await more.getByRole("button", { name: "Not for me" }).click();

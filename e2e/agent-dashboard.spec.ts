@@ -80,16 +80,13 @@ test("an agent's phone and email for clients: checked, kept as digits, and never
   await expect(contact.getByRole("button", { name: "Ask to see it" })).toBeVisible();
 });
 
-test("a home that's gone from the listings can't go on a new link, and nothing is made", async ({ browser }) => {
+test("a home that has sold can't go on a new link, and nothing is made", async ({ browser }) => {
   const agent = await signInAgent(browser, "gone-agent@example.com", "Gale Agent");
   await agent.goto("/dashboard/new");
   await agent.getByRole("button", { name: /812 N Corbel/ }).click();
   await agent.getByLabel("Person 1's first name").fill("Zuri");
-  // The home goes between picking it and creating the link. Every sample home is
-  // for sale and a test can't reach the database to mark one sold, so this asks
-  // for a key that isn't listed: it checks the refusal and that no link is made.
-  // The "for sale" (Active) check itself is read in createShare until C1 adds a
-  // sold sample to point this at.
+  // The home sells between picking it and creating the link: the tests' sold
+  // home (in the listings, but not for sale) stands in for it.
   await agent.route("**/dashboard/new", async (route) => {
     const body = route.request().postData();
     if (route.request().method() !== "POST" || !body?.includes("SAMPLE-1003")) return route.continue();
@@ -111,14 +108,14 @@ test("the dashboard leads with what's new, and says when each link was opened, n
 }) => {
   test.setTimeout(90_000);
   const agent = await signInAgent(browser, "olive-opens@example.com", "Olive Opens");
-  const { url } = await createShare(agent, ["88 Heron Bluff", "719 Saltmarsh"], ["Owen"]);
+  const { url } = await createShare(agent, ["1204 Quillan", "719 Saltmarsh"], ["Owen"]);
   const row = agent.getByRole("region", { name: "Links you've sent" }).getByRole("link", { name: /Owen/ });
   const news = agent.getByRole("region", { name: "What's new" });
 
   // Sent, and nothing since.
   await agent.goto("/dashboard");
   await expect(row).toContainText("Not opened yet");
-  await expect(row.getByRole("listitem").filter({ hasText: "88 Heron Bluff Rd" })).toBeVisible();
+  await expect(row.getByRole("listitem").filter({ hasText: "1204 Quillan St SE" })).toBeVisible();
   // Said once for the link, not under every home.
   await expect(row.getByText("No reactions yet")).toHaveCount(1);
   await expect(row).not.toHaveAccessibleName(/new since you last looked/);
@@ -144,21 +141,21 @@ test("the dashboard leads with what's new, and says when each link was opened, n
 
   // Owen likes one home, passes on the other, and says something. Opening it
   // didn't hold back the email about the first of those.
-  const heron = homeIn(owen, "88 Heron Bluff Rd");
-  await heartOf(heron).click();
-  await expect(heartOf(heron)).toHaveAttribute("aria-pressed", "true");
+  const quillan = homeIn(owen, "1204 Quillan St SE");
+  await heartOf(quillan).click();
+  await expect(heartOf(quillan)).toHaveAttribute("aria-pressed", "true");
   const more = await openMore(owen, homeIn(owen, "719 Saltmarsh Ln"));
   await more.getByRole("button", { name: "Not for me" }).click();
   await expect(more.getByRole("button", { name: "Not for me" })).toHaveAttribute("aria-pressed", "true");
   await owen.keyboard.press("Escape");
-  const chat = await openComments(owen, heron);
+  const chat = await openComments(owen, quillan);
   await chat.getByLabel("Add a comment").fill("Love the porch.");
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   // The box empties once it's saved (its own text would match before then).
   await expect(chat.getByLabel("Add a comment")).toHaveValue("");
   await expect(chat.getByText("Love the porch.")).toBeVisible();
   await expect.poll(() => emailsTo("olive-opens@example.com").length).toBe(2);
-  expect(emailsTo("olive-opens@example.com")[1]).toContain("Owen liked this at 88 Heron Bluff Rd");
+  expect(emailsTo("olive-opens@example.com")[1]).toContain("Owen liked this at 1204 Quillan St SE");
 
   // One load of the dashboard has all of it: what's new first, a verdict on
   // each home, when it was last busy, and a mark that there's something new.
@@ -167,7 +164,7 @@ test("the dashboard leads with what's new, and says when each link was opened, n
   await expect(said).toBeVisible();
   await expect(news.getByRole("link", { name: /^Owen liked this home/ })).toBeVisible();
   await expect(news.getByRole("link", { name: /^Owen passed on this home/ })).toBeVisible();
-  await expect(row.getByRole("listitem").filter({ hasText: "88 Heron Bluff Rd" })).toContainText("1 liked");
+  await expect(row.getByRole("listitem").filter({ hasText: "1204 Quillan St SE" })).toContainText("1 liked");
   await expect(row.getByRole("listitem").filter({ hasText: "719 Saltmarsh Ln" })).toContainText("1 passed");
   await expect(row).toContainText("1 comment");
   await expect(row).toContainText(/Last activity (just now|\d+m ago)/);
@@ -190,6 +187,38 @@ test("the dashboard leads with what's new, and says when each link was opened, n
   await expect(owen.getByRole("heading", { level: 1 })).toHaveText("Owen, I picked these 2 homes for you");
   await owen.waitForTimeout(1000);
   expect(emailsTo("olive-opens@example.com")).toHaveLength(2);
+});
+
+test("the agent sees how much of a link was looked at, and the link never says so", async ({ browser, request }) => {
+  test.setTimeout(60_000);
+  const agent = await signInAgent(browser, "sid-seen@example.com", "Sid Seen");
+  // (Halvard, a home other specs send and like already: Tamsen must stay quiet for core-view.)
+  const { url, dashboardUrl } = await createShare(agent, ["10421 Halvard"], ["Owen"]);
+
+  // Owen looks at three of the home's four photos.
+  const owen = await (await browser.newContext()).newPage();
+  await owen.addInitScript(() => localStorage.setItem("buybox:nudges", JSON.stringify({ photos: true, next: true })));
+  await owen.goto(url);
+  const home = homeIn(owen, "10421 Halvard Way NE");
+  await expect(home).toBeInViewport({ ratio: 0.9 });
+  // Each counts once it has come to rest, when what's in it can be tapped.
+  for (const thing of ["the floating staircase", "the deck"]) {
+    await home.getByRole("button", { name: "Next photo" }).click();
+    await expect(home.getByRole("button", { name: `Select ${thing}` })).toBeAttached();
+  }
+
+  // The agent's page about him says so, under his link, and so does the dashboard.
+  await expect(async () => {
+    await agent.goto(dashboardUrl);
+    await expect(agent.locator("main")).toContainText(/Owen opened it .+ · saw 3 of 4 photos/, { timeout: 1000 });
+  }).toPass({ timeout: 20_000 });
+  await agent.goto("/dashboard");
+  const row = agent.getByRole("region", { name: "Links you've sent" }).getByRole("link", { name: /Owen/ });
+  await expect(row).toContainText(/Opened .+ · saw 3 of 4 photos/);
+
+  // [P] Only the agent: the link itself never says what was looked at.
+  await expect(owen.getByText(/saw \d/)).toHaveCount(0);
+  expect(await (await request.get(url)).text()).not.toMatch(/saw \d/);
 });
 
 test("the agent's page about a client reads like the product: a card per home, spots, a careful delete, two columns", async ({

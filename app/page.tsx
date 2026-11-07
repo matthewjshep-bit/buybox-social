@@ -54,7 +54,7 @@ export default async function Home() {
     myName: name,
     prompt: PUBLIC_PROMPT,
     header: <SiteHeader overlay />,
-    end: <FeedEnd taste={taste} account={user} />,
+    end: <FeedEnd taste={taste} account={user} visitorId={visitor?.id ?? null} />,
   };
   // An agent's share button sends the home to a client.
   return user.role === "agent" ? (

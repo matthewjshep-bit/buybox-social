@@ -39,6 +39,10 @@ export default defineConfig({
         ALLOW_DEV_LOGIN: "true",
         SUPABASE_URL: "",
         SUPABASE_PUBLISHABLE_KEY: "",
+        // Never the model, even with a key in the shell: taste descriptions come from the template.
+        ANTHROPIC_API_KEY: "",
+        // A home that's sold, beside the sample homes for sale (scripts/db-setup.ts).
+        E2E_FIXTURES: "true",
       },
     },
   ],

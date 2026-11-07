@@ -6,7 +6,7 @@ import { readDevice } from "@/lib/engagement";
 import { isSampleListing } from "@/lib/listings/types";
 import { NO_PHOTO_LIKES } from "@/lib/photos";
 import { NO_REACTION } from "@/lib/reactions";
-import { getParticipant, getShareByToken, getShareListings } from "@/lib/shares";
+import { getParticipant, getShareByToken, getShareListings, getShareMembers } from "@/lib/shares";
 import { headlineFromTimeline, type FeedPost } from "@/lib/feed";
 import { getSharePhotoLikes, getShareTimelines, type TimelineReaction } from "@/lib/timeline";
 import { addComment, askToSee, joinThread, likePhotoInShare, setCommentSharing, setReaction } from "./actions";
@@ -40,7 +40,11 @@ export default async function SharePage({ params }: Props) {
   if (!found) notFound();
   const { share, agent, person } = found;
 
-  const [listings, device] = await Promise.all([getShareListings(share.id), readDevice()]);
+  const [listings, device, members] = await Promise.all([
+    getShareListings(share.id),
+    readDevice(),
+    getShareMembers(share.id),
+  ]);
   // Someone's own link is them; otherwise it's whoever this device joined as.
   const me = person ?? (await getParticipant(share.id, device));
   const keys = listings.map((listing) => listing.ListingKey);
@@ -57,6 +61,13 @@ export default async function SharePage({ params }: Props) {
   const greeting = `${person ? `${person.first_name}, I` : share.client_name ? `${share.client_name}, I` : "I"} picked ${
     count === 1 ? "this home" : `these ${count} homes`
   } for you`;
+  // A link the agent made for one person, opened before anyone has said who
+  // they are on it, is most likely theirs: the name prompt starts with it.
+  const expected =
+    !person && !me && members.length === 0 && share.client_name && !/[&,]| and /i.test(share.client_name)
+      ? share.client_name
+      : undefined;
+  const agentFirst = agent.full_name.trim().split(/\s+/)[0] || "Your agent";
   // Who else can open this link. Someone's own link opens as them, so it's theirs alone.
   const whoCanSee = person
     ? `This link is just for you, ${person.first_name}. Ask ${agentName} if someone else should see ${count > 1 ? "these" : "it"}.`
@@ -84,6 +95,9 @@ export default async function SharePage({ params }: Props) {
       mine: mineFor(listing.ListingKey),
       buzz: { sends: 0, views: 0, lastActivityAt: null, trending: false },
       reasons: [],
+      // One home opens straight on it, so the agent's greeting and note are its caption.
+      ...(count === 1 && { greeting, note: share.note || undefined }),
+      members,
     };
   });
 
@@ -95,11 +109,10 @@ export default async function SharePage({ params }: Props) {
         initial={posts}
         agent={agent}
         note={share.note}
-        // One home opens straight on it, so the greeting and note go under the header.
-        caption={count === 1 ? { heading: greeting, note: share.note } : undefined}
         whoCanSee={whoCanSee}
         askToSee={askToSee.bind(null, token)}
-        agentName={agentName}
+        // (No name: the feed says "your agent".)
+        agentName={agent.full_name || undefined}
         // A personal link opens as its owner, so it isn't one to pass around.
         canInvite={!person}
         actions={{
@@ -111,6 +124,8 @@ export default async function SharePage({ params }: Props) {
         }}
         myName={me?.first_name ?? null}
         prompt={`So ${agentName} and anyone else on this link know who's talking. No account or password needed.`}
+        suggestedName={expected}
+        nameHint={expected && `${agentFirst} sent this to ${expected}. Not ${expected}? Type your name.`}
         // Several homes start with a word from the agent over the first one's photo.
         intro={
           count > 1 ? (

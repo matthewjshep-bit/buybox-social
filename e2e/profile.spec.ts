@@ -1,6 +1,7 @@
 // Someone's page: one card per home per day, filters and paging that work
 // without scripts, and nothing from an agent's link, ever. The homes here are
-// ones no later spec counts likes on.
+// ones no later spec counts likes on (the Scorecard's quiet Heron and counted
+// Alder are left alone, or left as they were found).
 import { readFileSync } from "node:fs";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import type { Listing } from "../lib/listings/types";
@@ -39,6 +40,7 @@ import {
   likeInPhoto,
   openComments,
   openMore,
+  openScorecard,
   pick,
   settle,
   signInAgent,
@@ -48,8 +50,8 @@ import { takeBackAll } from "./own-page";
 
 const CORBEL = "812 N Corbel St";
 const HERON = "88 Heron Bluff Rd";
-const ALDER = "16420 NE Alder Crest Way";
 const QUILLAN = "1204 Quillan St SE";
+const LAKEVIEW = "5902 Lakeview Terrace SE";
 const SECRET = "Between us, we'd offer 40 under.";
 
 // A card on the page, found by the link that opens its home.
@@ -91,10 +93,10 @@ test("a profile is one card per home per day, with the photo and the spots picke
   await expect(price.getByRole("button", { name: "Like the price, 1 like", exact: true })).toHaveAttribute("aria-pressed", "true");
 
   // And just a like on another.
-  await lena.goto("/homes/SAMPLE-1010");
-  const heron = homeIn(lena, HERON);
-  await heartOf(heron).click();
-  await expect(heartOf(heron)).toHaveAttribute("aria-pressed", "true");
+  await lena.goto("/homes/SAMPLE-1009");
+  const quillan = homeIn(lena, QUILLAN);
+  await heartOf(quillan).click();
+  await expect(heartOf(quillan)).toHaveAttribute("aria-pressed", "true");
 
   await lena.goto("/people/me");
   await lena.waitForURL(/\/people\/[0-9a-f-]{36}$/);
@@ -109,7 +111,7 @@ test("a profile is one card per home per day, with the photo and the spots picke
   // One card per home, newest first, under "Today".
   await expect(lena.getByRole("heading", { level: 2, name: "Today" })).toBeVisible();
   await expect(cardLinks(lena)).toHaveCount(2);
-  await expect(cardLinks(lena).first()).toHaveAttribute("aria-label", `${HERON}: liked this`);
+  await expect(cardLinks(lena).first()).toHaveAttribute("aria-label", `${QUILLAN}: liked this`);
   // The price they liked is a chip, so the sentence keeps to the photo.
   const sentence = "liked the wraparound porch but not the cedar shingles";
   const link = lena.getByRole("link", { name: `${CORBEL}: ${sentence}`, exact: true });
@@ -195,6 +197,37 @@ test("a profile is one card per home per day, with the photo and the spots picke
   await expect(cardLinks(visitor)).toHaveCount(2);
 });
 
+test("a card opens its home over the page, on the photo it's about with the spot, and closing comes back to it", async ({
+  browser,
+}) => {
+  test.setTimeout(60_000);
+  const noor = await signUpBuyer(browser, "noor@example.com", "Noor Hale");
+  await noor.goto("/homes/SAMPLE-1003");
+  const corbel = homeIn(noor, CORBEL);
+  await expect(corbel).toBeInViewport({ ratio: 0.9 });
+  await corbel.getByRole("button", { name: "Next photo" }).click();
+  await expect(corbel.getByRole("button", { name: "Select the media wall" })).toBeAttached();
+  await corbel.getByRole("button", { name: "Next photo" }).click();
+  await likeInPhoto(corbel, "the subway backsplash");
+
+  await noor.goto("/people/me");
+  await noor.waitForURL(/\/people\/[0-9a-f-]{36}$/);
+  const link = noor.getByRole("link", { name: `${CORBEL}: liked the subway backsplash`, exact: true });
+  await expect(link).toHaveAttribute("href", "/homes/SAMPLE-1003?photo=2");
+  await link.click();
+  const popout = noor.getByRole("dialog", { name: "Home details" });
+  await expect(popout).toBeVisible();
+  const home = popout.getByRole("article", { name: CORBEL });
+  await expect(home.getByText("Kitchen · 3 of 3", { exact: true })).toBeVisible();
+  await expect(home.getByRole("img", { name: "White kitchen with an island and pendant lights" })).toBeInViewport();
+  await expect(home.getByRole("button", { name: /^Subway backsplash: .*\blikes?$/ })).toBeVisible();
+
+  // Closed, the keyboard is back on the card that opened it.
+  await noor.keyboard.press("Escape");
+  await expect(popout).toBeHidden();
+  await expect(link).toBeFocused();
+});
+
 test("an empty page says what will show up there", async ({ browser }) => {
   const jo = await signUpBuyer(browser, "jo@example.com", "Jo Reyes");
   await jo.goto("/people/me");
@@ -225,10 +258,10 @@ test("what someone does on an agent's link never shows on their page", async ({ 
 
   // In public, one like.
   const rowan = await signUpBuyer(browser, "rowan@example.com", "Rowan Vale");
-  await rowan.goto("/homes/SAMPLE-1011");
-  const alder = homeIn(rowan, ALDER);
-  await heartOf(alder).click();
-  await expect(heartOf(alder)).toHaveAttribute("aria-pressed", "true");
+  await rowan.goto("/homes/SAMPLE-1013");
+  const lakeview = homeIn(rowan, LAKEVIEW);
+  await heartOf(lakeview).click();
+  await expect(heartOf(lakeview)).toHaveAttribute("aria-pressed", "true");
 
   // On the agent's link, in the same browser: a like of one spot, words about
   // another, a dislike of it, and a pass.
@@ -261,7 +294,12 @@ test("what someone does on an agent's link never shows on their page", async ({ 
   await expect(async () => {
     await rowan.goto(url);
     const saved = homeIn(rowan, QUILLAN);
-    await expect(saved.getByRole("button", { name: /passed, didn't like the yard/ })).toBeVisible({ timeout: 2000 });
+    // The pass and why, as the Scorecard has them from the server.
+    const take = await openScorecard(rowan, saved);
+    await expect(take.getByText("You passed on this.")).toBeVisible({ timeout: 2000 });
+    await expect(take.locator("p").filter({ hasText: /^What you didn't like:/ })).toContainText("Yard", { timeout: 2000 });
+    await rowan.keyboard.press("Escape");
+    await expect(take).toBeHidden();
     // What's on a photo shows once its home is on screen.
     await saved.scrollIntoViewIfNeeded();
     await expect(saved).toBeInViewport({ ratio: 0.9, timeout: 2000 });
@@ -279,7 +317,7 @@ test("what someone does on an agent's link never shows on their page", async ({ 
   await anon.goto(profileUrl);
   for (const page of [rowan, anon]) {
     const main = page.locator("main");
-    await expect(page.getByRole("link", { name: `${ALDER}: liked this` })).toBeVisible();
+    await expect(page.getByRole("link", { name: `${LAKEVIEW}: liked this` })).toBeVisible();
     await expect(cardLinks(page)).toHaveCount(1);
     await expect(main).toContainText("1 liked · 0 passed · 0 comments");
     await expect(main).toContainText("1 home");
@@ -290,7 +328,7 @@ test("what someone does on an agent's link never shows on their page", async ({ 
     await expect(page.getByText("Nothing passed on yet.")).toBeVisible();
     await page.getByRole("link", { name: "Comments", exact: true }).click();
     await expect(page.getByText("No comments yet.")).toBeVisible();
-    expect(await (await page.request.get(profileUrl)).text()).toContain(ALDER);
+    expect(await (await page.request.get(profileUrl)).text()).toContain(LAKEVIEW);
     for (const path of [profileUrl, `${profileUrl}?show=passed`, `${profileUrl}?show=comments`, `${profileUrl}?show=liked`]) {
       const html = await (await page.request.get(path)).text();
       for (const secret of [SECRET, QUILLAN, "SAMPLE-1009", "Toby", "Red front door", "red front door", "icket fence"]) {
@@ -304,22 +342,22 @@ test("what someone does on an agent's link never shows on their page", async ({ 
 // only theirs, and nowhere on the page anyone else sees.
 test("the comments someone liked show only on their own page", async ({ browser }) => {
   test.setTimeout(90_000);
-  const WORDS = "The heron on the mailbox sold me.";
+  const WORDS = "That red door sold me.";
   const odessa = await signUpBuyer(browser, "odessa@example.com", "Odessa Finch");
-  await odessa.goto("/homes/SAMPLE-1010");
-  const thread = await openComments(odessa, homeIn(odessa, HERON));
+  await odessa.goto("/homes/SAMPLE-1009");
+  const thread = await openComments(odessa, homeIn(odessa, QUILLAN));
   await thread.getByLabel("Add a comment").fill(WORDS);
   await thread.getByRole("button", { name: "Post", exact: true }).click();
   await expect(thread.getByText(WORDS)).toBeVisible();
 
   const kit = await signUpBuyer(browser, "kit@example.com", "Kit Lane");
-  await kit.goto("/homes/SAMPLE-1010");
-  const chat = await openComments(kit, homeIn(kit, HERON));
+  await kit.goto("/homes/SAMPLE-1009");
+  const chat = await openComments(kit, homeIn(kit, QUILLAN));
   await chat.getByRole("button", { name: "Like Odessa's comment" }).click();
   // Saved, not just shown.
   await expect(async () => {
-    await kit.goto("/homes/SAMPLE-1010");
-    const kept = await openComments(kit, homeIn(kit, HERON));
+    await kit.goto("/homes/SAMPLE-1009");
+    const kept = await openComments(kit, homeIn(kit, QUILLAN));
     await expect(kept.getByRole("button", { name: "Like Odessa's comment, 1 like" })).toHaveAttribute("aria-pressed", "true", {
       timeout: 1000,
     });
@@ -328,7 +366,7 @@ test("the comments someone liked show only on their own page", async ({ browser 
   await kit.goto("/people/me");
   await kit.waitForURL(/\/people\/[0-9a-f-]{36}$/);
   const profileUrl = kit.url();
-  await expect(kit.getByRole("link", { name: `${HERON}: liked Odessa's comment` })).toBeVisible();
+  await expect(kit.getByRole("link", { name: `${QUILLAN}: liked Odessa's comment` })).toBeVisible();
   const own = kit.locator("main");
   await expect(own).toContainText("You liked Odessa's comment");
   await expect(own).toContainText("Only you see this");
@@ -341,7 +379,7 @@ test("the comments someone liked show only on their own page", async ({ browser 
     await anon.goto(profileUrl);
     await expect(anon.getByRole("heading", { level: 1 })).toHaveText("Kit");
     await expect(anon.getByText("Kit hasn't liked anything yet.")).toBeVisible();
-    await expect(anon.locator("main")).not.toContainText(/Only you see this|Odessa|heron on the mailbox/);
+    await expect(anon.locator("main")).not.toContainText(/Only you see this|Odessa|red door sold me/);
     const html = await (await anon.request.get(profileUrl)).text();
     for (const secret of ["Only you see this", "Odessa", WORDS]) expect(html).not.toContain(secret);
   }

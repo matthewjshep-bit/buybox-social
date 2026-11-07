@@ -17,6 +17,7 @@ import {
   spotsWhere,
   getShareOpens,
   getThread,
+  photosSeenLine,
   type Share,
   type ShareOpen,
   type TakeMark,
@@ -79,6 +80,8 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
   const comparison = comparePeople(everyone, thread, listings);
   const { suggestions, together } = await suggestHomes(everyone, thread, listings);
   const oneHome = active.length === 1 ? { address: active[0].UnparsedAddress, price: active[0].ListPrice } : undefined;
+  // Every photo on their link, for "saw 3 of 4 photos".
+  const photos = active.reduce((sum, listing) => sum + listing.Media.length, 0);
 
   return (
     <div data-wide>
@@ -107,7 +110,13 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
                       count={active.length}
                       home={oneHome}
                       label={`${person.first_name}'s link`}
-                      status={<OpenedBy opens={opens.filter((o) => o.participantId === person.id)} name={person.first_name} />}
+                      status={
+                        <OpenedBy
+                          opens={opens.filter((o) => o.participantId === person.id)}
+                          name={person.first_name}
+                          photos={photos}
+                        />
+                      }
                     />
                   ))}
                   {/* The package's own link, sent before anyone was added, still
@@ -116,7 +125,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
                     <div className="rounded-2xl bg-white p-4 text-sm ring-1 ring-stone-200">
                       <p className="font-semibold">The link you sent first</p>
                       <p className="mt-0.5 text-stone-600">
-                        <OpenedBy opens={packageOpens} />
+                        <OpenedBy opens={packageOpens} photos={photos} />
                       </p>
                     </div>
                   )}
@@ -127,7 +136,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
                   clientName={share.client_name}
                   count={active.length}
                   home={oneHome}
-                  status={<OpenedBy opens={opens} />}
+                  status={<OpenedBy opens={opens} photos={photos} />}
                 />
               )}
             </div>
@@ -195,21 +204,30 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
   );
 }
 
-// Who has opened a link, and when they last did: "Owen opened it Tuesday,
-// 2:14 pm". On someone's own link, it's them (`name`); on a package's link,
-// whoever has said their name on it, then anyone who hasn't yet.
-function OpenedBy({ opens, name }: { opens: ShareOpen[]; name?: string }) {
+// Who has opened a link, when they last did, and how much of it they looked
+// at: "Owen opened it Tuesday, 2:14 pm · saw 3 of 4 photos". On someone's own
+// link, it's them (`name`); on a package's link, whoever has said their name
+// on it, then anyone who hasn't yet. `photos`: how many the link has.
+function OpenedBy({ opens, name, photos }: { opens: ShareOpen[]; name?: string; photos: number }) {
   if (opens.length === 0) return <>{name ? `${name} hasn't opened it yet` : "Not opened yet"}</>;
-  const lines = opens.filter((open) => open.participantId).map((open) => ({ at: open.lastAt, name: name ?? open.name }));
+  const lines = opens
+    .filter((open) => open.participantId)
+    .map((open) => ({ at: open.lastAt, name: name ?? open.name, seen: open.photosSeen }));
   const unnamed = opens.find((open) => !open.participantId);
-  if (unnamed) lines.push({ at: unnamed.lastAt, name: lines.length ? "Someone else" : name ?? null });
+  if (unnamed) {
+    lines.push({ at: unnamed.lastAt, name: lines.length ? "Someone else" : (name ?? null), seen: unnamed.photosSeen });
+  }
   return (
     <>
-      {lines.map((line, i) => (
-        <span key={i} className="block">
-          <Opened at={line.at} name={line.name} />
-        </span>
-      ))}
+      {lines.map((line, i) => {
+        const seen = photosSeenLine(line.seen, photos);
+        return (
+          <span key={i} className="block">
+            <Opened at={line.at} name={line.name} />
+            {seen && ` · ${seen}`}
+          </span>
+        );
+      })}
     </>
   );
 }

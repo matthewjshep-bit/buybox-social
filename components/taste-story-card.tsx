@@ -122,7 +122,7 @@ export function TasteStoryCard({
 // price range never splits, and the dot before whichever part starts a line
 // is tucked out of sight, so no line starts or ends on one. (Read aloud and
 // copied, the dots are plain text.)
-function Headline({ text }: { text: string }) {
+export function Headline({ text }: { text: string }) {
   return (
     <p className="mt-1 overflow-hidden font-display text-[22px] leading-7 text-ink">
       <span className="-ml-[0.8em] flex flex-wrap">
@@ -216,7 +216,7 @@ function SourceSkeleton() {
 
 // "Loves Covered porch 3 · Kitchen 5", each one showing just those cards. On
 // their own page, a chip they've switched off is marked as only theirs.
-function TasteRow({
+export function TasteRow({
   side,
   chips,
   current,

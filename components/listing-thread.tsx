@@ -143,7 +143,11 @@ export function NameGate({
           className="mx-auto max-w-sm px-1 pb-1"
         >
           <p className="text-center text-sm text-stone-600">{prompt}</p>
-          {nameHint && <p className="mt-3 text-[13px] text-stone-600">{nameHint}</p>}
+          {nameHint && (
+            <p id={`${id}-hint`} className="mt-3 text-[13px] text-stone-600">
+              {nameHint}
+            </p>
+          )}
           <label htmlFor={`${id}-name`} className="sr-only">
             First name
           </label>
@@ -154,6 +158,7 @@ export function NameGate({
             required
             maxLength={40}
             autoComplete="given-name"
+            aria-describedby={nameHint ? `${id}-hint` : undefined}
             defaultValue={suggestedName}
             placeholder="First name"
             className={cn(

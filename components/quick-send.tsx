@@ -300,11 +300,11 @@ export function useQuickSend({
 export function QuickSendReel({
   profileComplete,
   ...reel
-}: Omit<ComponentProps<typeof ReelFeed>, "onSend"> & { profileComplete: boolean }) {
+}: Omit<ComponentProps<typeof ReelFeed>, "onSend" | "sendBusy"> & { profileComplete: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   // In the map's pop-out the sheets rise over the home, not the whole window.
   const quick = useQuickSend({ profileComplete, anchor: reel.embedded ? box : undefined });
-  const feed = <ReelFeed {...reel} onSend={quick.send} />;
+  const feed = <ReelFeed {...reel} onSend={quick.send} sendBusy={quick.waiting} />;
   return (
     <>
       {reel.embedded ? (

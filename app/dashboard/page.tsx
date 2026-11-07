@@ -9,7 +9,7 @@ import { cn, timeAgo } from "@/lib/format";
 import type { Listing } from "@/lib/listings/types";
 import { tagNameIn } from "@/lib/photos";
 import type { ReactionState } from "@/lib/reactions";
-import { clientActivity, describeTake } from "@/lib/shares";
+import { clientActivity, describeTake, photosSeenLine } from "@/lib/shares";
 import { Opened } from "./opened";
 
 // Each home on a link, and how its people came down on it.
@@ -23,6 +23,9 @@ type Row = {
   photo: string | null;
   comment_count: number;
   opened_at: Date | null;
+  // The most photos anyone has looked at on it, of all it has.
+  photos_seen: number;
+  photo_count: number;
   last_activity: Date | null;
   unread: boolean;
 };
@@ -190,6 +193,10 @@ export default async function DashboardPage() {
         -- Doing anything on a link means it was open then, so links sent before
         -- opens were counted don't read "Not opened yet" under their comments.
         greatest((select max(o.last_at) from share_opens o where o.share_id = s.id), activity.at) as opened_at,
+        (select coalesce(max(o.photos_seen), 0)::int from share_opens o where o.share_id = s.id) as photos_seen,
+        (select coalesce(sum(jsonb_array_length(l.data->'Media')), 0)::int
+           from share_listings sl join listings l on l.listing_key = sl.listing_key
+           where sl.share_id = s.id and sl.removed_at is null) as photo_count,
         activity.at as last_activity,
         coalesce(activity.at > s.agent_seen_at, activity.at is not null) as unread
       from shares s
@@ -341,6 +348,9 @@ function ShareRow({ share }: { share: Row }) {
         )}
         <p className="mt-2 text-sm text-stone-700">
           {share.opened_at ? <Opened at={share.opened_at.toISOString()} /> : "Not opened yet"}
+          {share.opened_at && photosSeenLine(share.photos_seen, share.photo_count) && (
+            <>{` · ${photosSeenLine(share.photos_seen, share.photo_count)}`}</>
+          )}
         </p>
         {/* Each part stays whole when the line wraps. */}
         <p className="mt-0.5 text-[13px] text-stone-600 [&>span]:whitespace-nowrap">

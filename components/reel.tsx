@@ -127,7 +127,8 @@ const sendHomeOf = ({ listing }: FeedPost): SendHome => ({
 
 // What the rail's fourth button does: share the page, invite someone onto an
 // agent's link, or (an agent, on a home for sale) send it to a client.
-type ShareKind = "share" | "invite" | "send";
+// "sending": Send, between one send and the new link for the next.
+type ShareKind = "share" | "invite" | "send" | "sending";
 
 // What can rise over a home.
 type SheetKind = "comments" | "more" | "scorecard";
@@ -160,6 +161,7 @@ export function ReelFeed({
   loadMore,
   onOpen,
   onSend,
+  sendBusy = false,
   initialPhoto,
   onPhotoSeen,
   suggestedName,
@@ -198,6 +200,8 @@ export function ReelFeed({
   // Signed-in agents on public pages: the rail's share button sends this home.
   // Called first thing in the tap, with nothing awaited before it.
   onSend?: (home: SendHome) => void;
+  // Send's next link is on its way: the button waits, and says so.
+  sendBusy?: boolean;
   // The photo (from 0) the first home opens on.
   initialPhoto?: number;
   // A photo has settled on screen.
@@ -305,6 +309,7 @@ export function ReelFeed({
         embedded={embedded}
         onOpen={onOpen}
         onSend={onSend}
+        sendBusy={sendBusy}
         initialPhoto={initialPhoto}
         onPhotoSeen={onPhotoSeen}
         agentName={agentName}
@@ -336,6 +341,7 @@ function Feed({
   embedded,
   onOpen,
   onSend,
+  sendBusy,
   initialPhoto,
   onPhotoSeen,
   agentName,
@@ -356,6 +362,7 @@ function Feed({
   embedded: boolean;
   onOpen?: (listingKey: string) => void;
   onSend?: (home: SendHome) => void;
+  sendBusy: boolean;
   initialPhoto?: number;
   onPhotoSeen?: (listingKey: string, index: number) => void;
   agentName?: string;
@@ -628,7 +635,15 @@ function Feed({
 
   const isForSale = (post: FeedPost) => post.listing.StandardStatus === "Active";
   const shareKind = (post: FeedPost): ShareKind | null =>
-    mode === "share" ? (canInvite ? "invite" : null) : onSend && isForSale(post) ? "send" : "share";
+    mode === "share"
+      ? canInvite
+        ? "invite"
+        : null
+      : onSend && isForSale(post)
+        ? sendBusy
+          ? "sending"
+          : "send"
+        : "share";
 
   const share = async (post: FeedPost) => {
     if (onSend && mode === "public" && isForSale(post)) return onSend(sendHomeOf(post));
@@ -692,6 +707,23 @@ function Feed({
       )}
     >
       {mode === "public" && !embedded && !intro && <h1 className="sr-only">Homes for you</h1>}
+      {/* Layers over the homes: the header z-30, a card about a spot or a fact
+          z-40 (so it can always be closed), a toast z-50. Sheets open in the
+          browser's top layer, over all of them. The header comes first in the
+          page, as it reads and as Tab goes, though it floats over the homes. */}
+      {header && (
+        // Out of the way while a photo is cleared to be seen whole. Side by
+        // side, what the page adds to it can line up with the stage (`split:`).
+        <div
+          data-split={SPLIT_WIDE || undefined}
+          className={cn(
+            "absolute inset-x-0 top-0 z-30 transition-[opacity,visibility] duration-300",
+            (clear === active || bare === active) && "invisible opacity-0",
+          )}
+        >
+          {header}
+        </div>
+      )}
       <div
         ref={scroller}
         data-reel
@@ -781,7 +813,7 @@ function Feed({
                 </p>
               )}
               {end}
-              {!embedded && (
+              {!embedded && posts.length > 0 && (
                 <button
                   type="button"
                   onClick={() => goTo(0)}
@@ -795,20 +827,6 @@ function Feed({
         </section>
       </div>
 
-      {/* Layers over the homes: the header z-30, a card about a spot or a fact
-          z-40 (so it can always be closed), a toast z-50. Sheets open in the
-          browser's top layer, over all of them. */}
-      {header && (
-        // Out of the way while a photo is cleared to be seen whole.
-        <div
-          className={cn(
-            "absolute inset-x-0 top-0 z-30 transition-[opacity,visibility] duration-300",
-            (clear === active || bare === active) && "invisible opacity-0",
-          )}
-        >
-          {header}
-        </div>
-      )}
       {/* Which home of the link's few this is: on the photo, and said here. */}
       {mode === "share" && posts.length > 1 && active >= offset && active < offset + posts.length && (
         <p aria-live="polite" className="sr-only">
@@ -1800,6 +1818,7 @@ function RailButton({
   children,
   name,
   follow,
+  busy = false,
   ref,
 }: {
   label: string;
@@ -1810,6 +1829,8 @@ function RailButton({
   name: string;
   // The same button on every home: the keyboard follows it to the next.
   follow?: string;
+  // Waiting on something: it stays put for the keyboard, faded, and a tap does nothing.
+  busy?: boolean;
   ref?: Ref<HTMLButtonElement>;
 }) {
   return (
@@ -1819,8 +1840,12 @@ function RailButton({
       data-follow={follow}
       aria-label={name}
       aria-pressed={pressed}
-      onClick={onClick}
-      className="group flex w-14 flex-col items-center gap-0.5 text-[13px] font-semibold leading-4 [text-shadow:0_1px_3px_rgb(0_0_0/0.6)]"
+      aria-disabled={busy || undefined}
+      onClick={busy ? undefined : onClick}
+      className={cn(
+        "group flex w-14 flex-col items-center gap-0.5 text-[13px] font-semibold leading-4 [text-shadow:0_1px_3px_rgb(0_0_0/0.6)]",
+        busy && "cursor-progress opacity-60",
+      )}
     >
       <span className="flex size-12 items-center justify-center rounded-full bg-black/35 backdrop-blur-md transition-transform group-active:scale-90 compact:size-11 motion-reduce:transition-none motion-reduce:group-active:scale-100 split:bg-white/10 split:ring-1 split:ring-white/15 split:group-hover:bg-white/20">
         {children}
@@ -1904,8 +1929,15 @@ function Rail({
       <RailButton name="Scorecard" label="Scorecard" onClick={onScorecard} follow="scorecard">
         <ClipboardList size={26} {...icon} />
       </RailButton>
-      {onShare && shareAs === "send" && (
-        <RailButton name="Send to a client" label="Send" onClick={onShare}>
+      {/* For a moment after each send, while the link for the next is made,
+          it waits (the same button, so the keyboard comes back to it). */}
+      {onShare && (shareAs === "send" || shareAs === "sending") && (
+        <RailButton
+          name={shareAs === "sending" ? "Getting a new link…" : "Send to a client"}
+          label="Send"
+          onClick={onShare}
+          busy={shareAs === "sending"}
+        >
           <Send size={26} {...icon} />
         </RailButton>
       )}

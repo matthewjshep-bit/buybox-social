@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, CalendarCheck, Check, ChevronRight, Home, Mail, MessageSquare, Phone, type LucideIcon } from "lucide-react";
+import { ArrowDown, CalendarCheck, Check, Home, Mail, MessageSquare, Phone, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import type { AskResult } from "@/app/s/[token]/actions";
@@ -27,7 +27,8 @@ export type HomeInView = { listingKey: string; address: string };
 
 // Across the top of every agent's link, in place of the site's own header, so
 // the client stays in the agent's branded space. It sits inside the feed's
-// name prompt, which "Ask to see it" may need.
+// name prompt, which "Ask to see it" may need. (On a link of one home, the
+// agent's greeting and note are the home's caption, under its photo.)
 export function ShareHeader({
   agent,
   note,
@@ -36,8 +37,6 @@ export function ShareHeader({
   whoCanSee,
   onAsk,
   onSeeHomes,
-  caption,
-  showCaption,
   open,
   onOpenChange,
 }: {
@@ -49,15 +48,9 @@ export function ShareHeader({
   onAsk: (listingKey: string) => Promise<AskResult>;
   // Down to the first home, from a welcome screen.
   onSeeHomes?: () => void;
-  // On a link of one home, the agent's greeting and note, with no welcome
-  // screen to carry them.
-  caption?: { heading: string; note: string };
-  // While that home is on screen.
-  showCaption: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const first = agentFirstName(agent.full_name);
   return (
     <>
       {/* The sheet sits beside the header, not in it, so the header holds just what it shows. */}
@@ -88,10 +81,6 @@ export function ShareHeader({
             Contact
           </button>
         </div>
-        {/* C1: moves to the caption */}
-        {caption && (
-          <Caption {...caption} first={first} shown={showCaption} onOpen={() => onOpenChange(true)} />
-        )}
       </header>
       <Sheet
         open={open}
@@ -116,48 +105,6 @@ export function ShareHeader({
         )}
       </Sheet>
     </>
-  );
-}
-
-// The greeting, then the start of the note; tapping it opens Contact, where
-// the whole note is. Away from the home (the end screen) only screen readers
-// keep the greeting, as the page's heading.
-function Caption({
-  heading,
-  note,
-  first,
-  shown,
-  onOpen,
-}: {
-  heading: string;
-  note: string;
-  first: string;
-  shown: boolean;
-  onOpen: () => void;
-}) {
-  if (!shown) return <h1 className="sr-only">{heading}</h1>;
-  return (
-    <div className="mx-auto mt-1 max-w-6xl px-3 sm:px-6">
-      <div className="relative flex max-w-xl items-center gap-2 rounded-2xl bg-black/40 px-3.5 py-2 backdrop-blur-md">
-        <div className="min-w-0 flex-1 text-[15px] leading-snug">
-          <h1 className="line-clamp-2 font-semibold">{heading}</h1>
-          {note && <p className="truncate text-white/85">{note}</p>}
-        </div>
-        {note && (
-          <>
-            <ChevronRight aria-hidden size={18} className="shrink-0 text-white/80" />
-            <button
-              type="button"
-              aria-haspopup="dialog"
-              onClick={onOpen}
-              className={cn("absolute inset-0 rounded-2xl", focusOnDark)}
-            >
-              <span className="sr-only">Read {first}&apos;s note</span>
-            </button>
-          </>
-        )}
-      </div>
-    </div>
   );
 }
 

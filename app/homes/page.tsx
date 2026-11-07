@@ -53,9 +53,11 @@ export default async function SearchFeed({ searchParams }: Props) {
     header: (
       <>
         <SiteHeader overlay />
+        {/* Side by side, on the photo's stage, at its top right: clear of the
+            white panel and of the comments that open in its place. */}
         <Link
           href={map}
-          className="absolute right-3 top-[calc(env(safe-area-inset-top)_+_3.75rem)] flex min-h-10 items-center gap-1.5 rounded-full bg-black/45 px-3.5 text-sm font-semibold text-white backdrop-blur-md hover:bg-black/60 sm:right-6"
+          className="absolute right-3 top-[calc(env(safe-area-inset-top)_+_3.75rem)] flex min-h-11 items-center gap-1.5 rounded-full bg-black/60 px-4 text-sm font-semibold text-white backdrop-blur-md hover:bg-black/75 sm:right-6 split:right-[480px] split:top-[calc(var(--stage-top)+12px)] split-xl:right-[520px]"
         >
           <ArrowLeft aria-hidden size={16} /> Back to map
         </Link>

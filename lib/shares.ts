@@ -76,24 +76,41 @@ export type ShareOpen = {
   // Null stands for everyone who hasn't given a name yet, together.
   participantId: string | null;
   lastAt: string;
+  // The most photos one of their devices has looked at on the link.
+  photosSeen: number;
 };
+
+// "saw 3 of 4 photos", "saw all 4 photos": how much of a link someone looked
+// at, of the photos on it now. Null before they've looked at any.
+export function photosSeenLine(seen: number, photos: number) {
+  const n = Math.min(seen, photos);
+  if (n <= 0) return null;
+  return `saw ${n === photos ? `all ${photos}` : `${n} of ${photos}`} ${photos === 1 ? "photo" : "photos"}`;
+}
 
 // Who has had a link open, and when they last did, newest first: for the agent
 // only. Anything someone did on it counts too, so a link sent before opens
 // were counted still shows who has been on it.
 export async function getShareOpens(shareId: string) {
-  const rows = await sql<{ participant_id: string | null; first_name: string | null; last_at: Date }[]>`
-    select x.participant_id, p.first_name, max(x.at) as last_at
+  const rows = await sql<
+    { participant_id: string | null; first_name: string | null; last_at: Date; photos_seen: number }[]
+  >`
+    select x.participant_id, p.first_name, max(x.at) as last_at, max(x.photos_seen)::int as photos_seen
     from (
-      select participant_id, last_at as at from share_opens where share_id = ${shareId}
+      select participant_id, last_at as at, photos_seen from share_opens where share_id = ${shareId}
       union all
-      select participant_id, at from (${clientActivity()}) a where a.share_id = ${shareId}
+      select participant_id, at, 0 from (${clientActivity()}) a where a.share_id = ${shareId}
     ) x
     left join participants p on p.id = x.participant_id
     group by x.participant_id, p.first_name
     order by last_at desc`;
   return rows.map(
-    (row): ShareOpen => ({ name: row.first_name, participantId: row.participant_id, lastAt: row.last_at.toISOString() }),
+    (row): ShareOpen => ({
+      name: row.first_name,
+      participantId: row.participant_id,
+      lastAt: row.last_at.toISOString(),
+      photosSeen: row.photos_seen,
+    }),
   );
 }
 
@@ -157,6 +174,17 @@ export async function getInvitees(shareId: string) {
     select id, first_name, token from participants
     where share_id = ${shareId} and token is not null
     order by invited_at, first_name`;
+}
+
+// Everyone on a link, by first name: the people the agent added, and anyone
+// who joined through the link anyone can open. Only ever shown on the link
+// itself, to the people on it.
+export async function getShareMembers(shareId: string) {
+  const rows = await sql<{ first_name: string }[]>`
+    select first_name from participants
+    where share_id = ${shareId}
+    order by invited_at nulls last, created_at, first_name`;
+  return rows.map((row) => row.first_name);
 }
 
 // Adds someone to a package with their own link. Returns their link token.

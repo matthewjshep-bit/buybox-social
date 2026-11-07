@@ -20,17 +20,19 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
   pia.on("pageerror", (error) => pageErrors.push(error.message));
   const homes = pia.getByRole("article");
 
-  // Like the first three homes, and say what else you like about the first.
+  // Like the first three homes, and say what else you like about the first two.
   for (let i = 0; i < 3; i++) {
     await heartOf(homes.nth(i)).click();
     await expect(heartOf(homes.nth(i))).toHaveAttribute("aria-pressed", "true");
   }
-  const more = await openMore(pia, homes.nth(0));
-  await more.getByRole("group", { name: "What else do you like?" }).getByRole("button", { name: "Vibe" }).click();
-  await expect(
-    more.getByRole("group", { name: "What else do you like?" }).getByRole("button", { name: "Vibe" }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await pia.keyboard.press("Escape");
+  for (let i = 0; i < 2; i++) {
+    const more = await openMore(pia, homes.nth(i));
+    const vibe = more.getByRole("group", { name: "What else do you like?" }).getByRole("button", { name: "Vibe" });
+    await vibe.click();
+    await expect(vibe).toHaveAttribute("aria-pressed", "true");
+    await pia.keyboard.press("Escape");
+    await expect(more).toBeHidden();
+  }
 
   // Not for me, on the fourth.
   const pass = await openMore(pia, homes.nth(3));
@@ -40,13 +42,25 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
   await expect(why.getByRole("button", { name: "Exterior" })).toHaveAttribute("aria-pressed", "true");
   await pia.keyboard.press("Escape");
 
-  // Your taste so far waits at the end of the feed, and homes that match it say why.
+  // Your taste so far waits at the end of the feed, told as your own page
+  // tells it: the same headline, the same words, the same chips.
   await pia.reload();
   await scrollToEnd(pia);
   const taste = pia.getByRole("region", { name: "Your taste" });
   await expect(taste).toContainText("From 4 reactions: liked 3, passed 1.");
-  await expect(taste.getByText("Vibe 1")).toBeVisible();
-  await expect(taste.getByText("Exterior 1")).toBeVisible();
+  await expect(taste.getByRole("group", { name: "Loves" }).getByRole("link", { name: "Loves Vibe, 2 homes" })).toBeVisible();
+  const story = (region: typeof taste) =>
+    region.evaluate((el) =>
+      [...el.querySelectorAll("p")].slice(0, 2).map((p) => p.textContent?.replace(/\s+/g, " ").trim()),
+    );
+  const told = await story(taste);
+  expect(told).toEqual([expect.stringMatching(/^Vibe · /), "You tend to like the vibe."]);
+  const own = await pia.context().newPage();
+  await own.goto("/people/me");
+  const ownTaste = own.getByRole("region", { name: "Your taste" });
+  await expect(ownTaste.getByRole("group", { name: "Loves" }).getByRole("link", { name: "Loves Vibe, 2 homes" })).toBeVisible();
+  expect(await story(ownTaste)).toEqual(told);
+  await own.close();
   // Homes that match it say why, in the Scorecard, under your take.
   let fits = false;
   for (let i = 0; i < (await homes.count()) && !fits; i++) {

@@ -323,11 +323,15 @@ export function buildScorecard(
   }
   const quiet = total === 0 && comments.length === 0 && privateMore === 0 && people.every((person) => !hasTake(person));
   const few = named && total <= 5;
-  const members = post.members ?? [];
-  // (You're "You" here: by your own name too.)
-  const reactedNames = new Set(
-    people.filter(hasTake).flatMap((person) => (person.you && myName ? [person.name, myName] : [person.name]).map((n) => n.toLowerCase())),
-  );
+  // Everyone on the link who hasn't said what they think yet: never you, and
+  // each name once for every person who has it (two Sams are two people).
+  const notYet = [...(post.members ?? [])];
+  const drop = (name: string) => {
+    const at = notYet.findIndex((member) => member.toLowerCase() === name.toLowerCase());
+    if (at !== -1) notYet.splice(at, 1);
+  };
+  if (myName) drop(myName);
+  for (const person of people) if (!person.you && hasTake(person)) drop(person.name);
   const feel: Scorecard["feel"] = {
     likes,
     passes,
@@ -340,7 +344,7 @@ export function buildScorecard(
       ? {
           liked: people.filter(likedIt).map((person) => person.name),
           passed: people.filter(passedIt).map((person) => person.name),
-          notYet: members.filter((name) => !reactedNames.has(name.toLowerCase())),
+          notYet,
         }
       : null,
   };
