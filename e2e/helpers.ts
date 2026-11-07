@@ -15,7 +15,7 @@ export async function signInAgent(browser: Browser, email: string, name: string)
   await page.getByRole("button", { name: "Continue" }).click();
   await page.waitForURL("**/dashboard/profile");
   await page.getByLabel("Full name").fill(name);
-  await page.getByLabel("Company (brokerage)").fill("Harbor & Pine Realty");
+  await page.getByLabel("Company (optional)").fill("Harbor & Pine Realty");
   await page.getByRole("button", { name: "Merlot" }).click();
   await page.getByLabel("Your photo").setInputFiles({
     name: "me.png",

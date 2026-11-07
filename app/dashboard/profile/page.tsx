@@ -11,6 +11,12 @@ export default async function ProfilePage() {
     <>
       <h1 className="font-display text-3xl">Your brand</h1>
       <p className="mt-1 text-stone-700">This is what clients see when they open your links.</p>
+      {/* A new agent is sent here from Your links until they have a name. */}
+      {!agent.full_name && (
+        <p className="mt-2 font-medium text-ink">
+          Add your name first so clients know the link is from you. Then send your first home.
+        </p>
+      )}
       <ProfileForm
         fullName={agent.full_name}
         brokerage={agent.brokerage}

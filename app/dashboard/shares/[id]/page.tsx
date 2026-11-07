@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronRight, Globe, Heart, Plus, RotateCcw, Tag, ThumbsDown, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, Globe, Heart, Plus, Tag, ThumbsDown } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
@@ -14,6 +14,7 @@ import { comparePeople, suggestHomes, type Suggestion } from "@/lib/compare";
 import { getSharePhotoLikes, getShareTimelines, type TimelineReaction } from "@/lib/timeline";
 import {
   clientActivity,
+  confidantOf,
   describeTake,
   getShareListings,
   spotsWhere,
@@ -26,15 +27,17 @@ import {
   type ThreadComment,
 } from "@/lib/shares";
 import { button, card } from "@/lib/ui";
-import { addSuggestedHome, setHomeRemoved } from "../../actions";
+import { addSuggestedHome } from "../../actions";
 import { Opened } from "../../opened";
 import {
   AddPersonForm,
   ClientNameEditor,
   CommentLike,
   CommentMenu,
+  HomeMovedStatus,
   HomeScorecards,
   MarkSeen,
+  RemoveHomeButton,
   ReplyForm,
   ScorecardButton,
   SendLink,
@@ -61,7 +64,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
     where id = ${id} and agent_id = ${agent.id}`;
   if (!share) notFound();
 
-  const [listings, thread, people, opens, [{ latest }]] = await Promise.all([
+  const [listings, thread, people, opens, [{ latest }], confidant] = await Promise.all([
     getShareListings(share.id, { includeRemoved: true }),
     getThread(share.id),
     // Everyone on the package: people the agent added, and anyone who joined
@@ -76,6 +79,8 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
     sql<{ latest: string | null }[]>`
       select to_char(max(a.at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as latest
       from (${clientActivity()}) a where a.share_id = ${id}`,
+    // Whoever was told only they and the agent see what they say on it.
+    confidantOf(share.id),
   ]);
   const active = listings.filter((l) => !l.removedAt);
   const removed = listings.filter((l) => l.removedAt);
@@ -135,6 +140,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
           beside the Scorecard's panel on a very wide one. */}
       <div data-wide className="@container">
         <LiveRefresh />
+        <HomeMovedStatus />
         <MarkSeen shareId={share.id} latest={latest} />
         <ShowTarget />
         <Link href="/dashboard" className="flex min-h-11 w-fit items-center gap-1.5 text-sm font-medium">
@@ -159,6 +165,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
                         count={active.length}
                         home={oneHome}
                         label={`${person.first_name}'s link`}
+                        who={person.first_name}
                         status={
                           <OpenedBy
                             opens={opens.filter((o) => o.participantId === person.id)}
@@ -193,7 +200,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
                 Everyone gets their own link, so you can see what each person likes, and where they agree.
               </p>
               <div className="mt-2">
-                <AddPersonForm shareId={share.id} />
+                <AddPersonForm shareId={share.id} confidant={confidant?.first_name ?? null} />
               </div>
             </section>
 
@@ -366,15 +373,15 @@ function WhatTheyWant({
   const several = summaries.length >= 2;
   // The table's cells, plus what each person didn't like in a home's photos
   // and facts, so a pass says why, and the spots they tapped that aren't on
-  // anything named ("A spot in photo 2").
+  // anything named ("A spot in the kitchen", "2 spots outside").
   const takeOf = (home: (typeof homes)[number], personId: string): TakeOf => {
     const cell = home.cells[personId];
     const theirs = <T extends { participantId: string; listingKey: string }>(rows: T[]) =>
       rows.filter((r) => r.participantId === personId && r.listingKey === home.listing.ListingKey);
-    const spots = (rows: { tag: string; mediaKey: string }[]) => {
-      const where = spotsWhere(home.listing, rows.filter((r) => r.tag.startsWith("@")));
-      return where ? [where[0].toUpperCase() + where.slice(1)] : [];
-    };
+    const spots = (rows: { tag: string; mediaKey: string }[]) =>
+      spotsWhere(home.listing, rows.filter((r) => r.tag.startsWith("@"))).map(
+        (where) => where[0].toUpperCase() + where.slice(1),
+      );
     const disliked = theirs(thread.photoDislikes);
     return {
       reaction: cell.reaction,
@@ -409,8 +416,8 @@ function WhatTheyWant({
       </h2>
       {heard.length === 0 ? (
         <p className="mt-1 text-stone-700">
-          Once they react, you&apos;ll see what {several ? "each person likes" : "they like"} and passes on here,
-          across every home you send.
+          Once they react, you&apos;ll see what {several ? "each person likes and passes on" : "they like and pass on"}{" "}
+          here, across every home you send.
         </p>
       ) : (
         <>
@@ -437,11 +444,7 @@ function WhatTheyWant({
                   {tally[s.person.id].liked + tally[s.person.id].passed === 0 ? (
                     <span className="text-muted">hasn&apos;t reacted yet</span>
                   ) : (
-                    <>
-                      liked <span className="tabular-nums">{tally[s.person.id].liked}</span> of{" "}
-                      <span className="tabular-nums">{homeCount}</span> {homeCount === 1 ? "home" : "homes"} · passed{" "}
-                      <span className="tabular-nums">{tally[s.person.id].passed}</span>
-                    </>
+                    tallyLine(tally[s.person.id], homeCount)
                   )}
                 </p>
                 <Things label="Likes" tone="like" things={s.likes} />
@@ -525,6 +528,18 @@ function WhatTheyWant({
       )}
     </section>
   );
+}
+
+// How many of the homes someone liked and passed on, saying only what they
+// did: "liked 2 of 3 homes · passed on 1", "liked all 3 homes", "liked both
+// homes", "passed on 1 of 2 homes"; on a link with one home, "liked the home".
+function tallyLine({ liked, passed }: { liked: number; passed: number }, homes: number) {
+  if (homes === 1) return liked > 0 ? "liked the home" : "passed on the home";
+  const of = (n: number) =>
+    n < homes ? `${n} of ${homes} homes` : homes === 2 ? "both homes" : `all ${homes} homes`;
+  return [liked > 0 && `liked ${of(liked)}`, passed > 0 && `passed on ${liked > 0 ? passed : of(passed)}`]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 // Likes, Passes on, or (liked in one home, passed on in another) Depends on
@@ -765,13 +780,12 @@ function HomePanel({
         {/* What everyone on the link thinks of it, then Remove. */}
         <div className="col-span-2 mt-3 flex flex-wrap items-center gap-1 @md:col-span-1 @md:-mr-1 @md:mt-0 @md:justify-self-end">
           <ScorecardButton listingKey={listing.ListingKey} address={listing.UnparsedAddress} />
-          <form action={setHomeRemoved.bind(null, shareId, listing.ListingKey, !isRemoved)}>
-            <button type="submit" className={cn(button({ kind: "ghost" }), "text-stone-700")}>
-              {isRemoved ? <RotateCcw aria-hidden size={15} /> : <X aria-hidden size={15} />}
-              {isRemoved ? "Restore" : "Remove"}
-              <span className="sr-only"> {listing.UnparsedAddress}</span>
-            </button>
-          </form>
+          <RemoveHomeButton
+            shareId={shareId}
+            listingKey={listing.ListingKey}
+            address={listing.UnparsedAddress}
+            removed={isRemoved}
+          />
         </div>
       </div>
 

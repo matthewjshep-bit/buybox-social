@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
-import { mediaKeyOf, tagNameIn } from "./photos";
-import { describeReaction, type Aspect, type ReactionState } from "./reactions";
+import { isPointTag, tagNameIn } from "./photos";
+import { describeReaction, spotPlace, spotsIn, type Aspect, type ReactionState } from "./reactions";
 
 export type CommentTag = "like" | "dislike";
 
@@ -209,6 +209,16 @@ export async function isPrivateTo(shareId: string, personId: string) {
   return row?.alone ?? false;
 }
 
+// The one person on a link who has been told that what they say there is
+// between them and the agent alone (isPrivateTo), while that's still so.
+// Anyone added after them would see all of it, so the agent is asked first.
+export async function confidantOf(shareId: string) {
+  const people = await sql<{ id: string; first_name: string }[]>`
+    select id, first_name from participants where share_id = ${shareId} limit 2`;
+  if (people.length !== 1) return null;
+  return (await isPrivateTo(shareId, people[0].id)) ? people[0] : null;
+}
+
 // Adds someone to a package with their own link. Returns their link token.
 export async function invitePerson(shareId: string, firstName: string, tx: typeof sql = sql) {
   const token = newShareToken();
@@ -345,44 +355,19 @@ export async function shareHasListing(shareId: string, listingKey: string) {
 // facts), as it was saved.
 export type TakeMark = { mediaKey: string; tag: string };
 
-// Which photo of the home a mark is on, counting from 1, or 0 for the facts.
-export const photoNumberOf = (listing: Listing, mediaKey: string) =>
-  listing.Media.findIndex((photo) => mediaKeyOf(photo) === mediaKey) + 1;
+// "a spot outside", "2 spots in the kitchen": the spots with no name among
+// someone's marks on a home, one phrase per place.
+export const spotsWhere = (listing: Listing, spots: TakeMark[]) =>
+  spotsIn(spots.map((spot) => spotPlace(listing, spot.mediaKey)));
 
-// "a spot in photo 2", "2 spots in photo 3", "3 spots in photos 1 and 4".
-export function spotsWhere(listing: Listing, spots: TakeMark[]) {
-  const photos = [...new Set(spots.map((s) => photoNumberOf(listing, s.mediaKey)))].filter((n) => n > 0).sort((a, b) => a - b);
-  if (photos.length === 0) return null;
-  const where = photos.length === 1 ? `photo ${photos[0]}` : `photos ${photos.slice(0, -1).join(", ")} and ${photos.at(-1)}`;
-  return spots.length === 1 ? `a spot in ${where}` : `${spots.length} spots in ${where}`;
-}
-
-// One person's take on a home, for the agent, worded as the link words it
-// ("liked the kitchen and a spot in a photo"), except that it says which photo
-// a spot is in: the agent has no photo open beside it.
+// One person's take on a home, for the agent, worded as the link words it,
+// except that a spot with no name says where it is ("liked the kitchen and a
+// spot outside"): the agent has no photo open beside it.
 export function describeTake(listing: Listing, state: ReactionState, likes: TakeMark[], dislikes: TakeMark[]) {
-  const named = (marks: TakeMark[]) => marks.map((m) => tagNameIn(listing, m.mediaKey, m.tag));
-  const likeTags = named(likes);
-  const dislikeTags = named(dislikes);
-  let text = describeReaction(state, likeTags, dislikeTags);
-  // Spots that aren't on a named thing keep their "@x,y" name.
-  const side = (marks: TakeMark[], tags: string[]) => {
-    const spots = marks.filter((_, i) => tags[i].startsWith("@"));
-    if (spots.length === 0) return null;
-    return { from: spots.length === 1 ? "a spot in a photo" : `${spots.length} spots in the photos`, to: spotsWhere(listing, spots) };
-  };
-  const liked = side(likes, likeTags);
-  const disliked = side(dislikes, dislikeTags);
-  // Only "passed, didn't like … but liked …" names the dislikes first.
-  const order = text.startsWith("passed, didn't like") ? [disliked, liked] : [liked, disliked];
-  let from = 0;
-  for (const part of order) {
-    if (!part) continue;
-    const at = text.indexOf(part.from, from);
-    if (at < 0) continue;
-    const to = part.to ?? part.from;
-    text = text.slice(0, at) + to + text.slice(at + part.from.length);
-    from = at + to.length;
-  }
-  return text;
+  const words = (marks: TakeMark[]) =>
+    marks.map((mark) => {
+      const tag = tagNameIn(listing, mark.mediaKey, mark.tag);
+      return isPointTag(tag) ? { place: spotPlace(listing, mark.mediaKey) } : tag;
+    });
+  return describeReaction(state, words(likes), words(dislikes));
 }

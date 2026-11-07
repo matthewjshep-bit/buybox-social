@@ -440,10 +440,15 @@ test("the longer way to send one home starts with it picked, and keeps it in vie
   const cards = agent.getByRole("button", { name: /^\$/ });
   await expect(cards.first()).toContainText("96 Fernhollow Ln");
   await expect(cards.first()).toHaveAttribute("aria-pressed", "true");
-  await agent.getByRole("button", { name: /4127 Larkmoor/ }).click();
+  const larkmoor = cards.filter({ hasText: "4127 Larkmoor" });
+  await larkmoor.click();
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send these homes");
-  await agent.getByRole("button", { name: /4127 Larkmoor/ }).click();
+  // What's picked shows above the homes, each able to come off again.
+  const tray = agent.getByRole("list", { name: "Picked homes" });
+  await expect(tray.getByRole("listitem")).toHaveCount(2);
+  await larkmoor.click();
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send this home");
+  await expect(tray.getByRole("listitem")).toHaveCount(1);
 
   await agent.getByLabel("Person 1's first name").fill("Pat");
   await agent.getByRole("button", { name: "Create link for 1 home" }).click();
@@ -455,4 +460,32 @@ test("the longer way to send one home starts with it picked, and keeps it in vie
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("New link");
   await expect(agent.getByRole("searchbox")).toBeVisible();
   await expect(agent.getByRole("button", { pressed: true })).toHaveCount(0);
+});
+
+test("what follows a Send downloads only for an agent, never for anyone else on the same homes", async ({ browser }) => {
+  test.setTimeout(60_000);
+  // Every script a page fetches, read as it arrives.
+  const scriptsOf = (page: Page) => {
+    const seen: Promise<string>[] = [];
+    page.on("response", (res) => {
+      if (res.request().resourceType() === "script") seen.push(res.text().catch(() => ""));
+    });
+    return async () => (await Promise.all(seen)).join("\n");
+  };
+  const SHEETS = "Meant for someone you";
+
+  const visitor = await (await browser.newContext()).newPage();
+  const visitorScripts = scriptsOf(visitor);
+  for (const url of ["/", "/homes/SAMPLE-1004", "/search"]) {
+    await visitor.goto(url);
+    await visitor.waitForLoadState("load");
+    await visitor.waitForTimeout(1000);
+  }
+  expect(await visitorScripts()).not.toContain(SHEETS);
+
+  // An agent's page has them ready before the first tap.
+  const agent = await signInAgent(browser, "lee-lazy@example.com", "Lee Lazy");
+  const agentScripts = scriptsOf(agent);
+  await agent.goto("/homes/SAMPLE-1004");
+  await expect.poll(async () => (await agentScripts()).includes(SHEETS), { timeout: 15_000 }).toBe(true);
 });

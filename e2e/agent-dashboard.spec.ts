@@ -1,5 +1,8 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
+import type { Listing } from "../lib/listings/types";
+import { mediaKeyOf } from "../lib/photos";
+import { describeReaction, spotPlace } from "../lib/reactions";
 import {
   commentIn,
   createShare,
@@ -311,8 +314,10 @@ test("the agent's page about a client reads like the product: a card per home, s
   const compare = agent.getByRole("region", { name: "What they each want" });
   await expect(compare.getByRole("table")).toBeHidden();
   // A spot she liked counts: the summary and her card agree.
-  await expect(compare).toContainText("Nina liked 1 of 2 homes · passed 0");
-  await expect(compare).toContainText("Christopher liked 0 of 2 homes · passed 1");
+  // Only what each of them did: no "passed 0", no "liked 0".
+  await expect(compare).toContainText("Nina liked 1 of 2 homes");
+  await expect(compare).toContainText("Christopher passed on 1 of 2 homes");
+  await expect(compare).not.toContainText(/(liked|passed on) 0/);
   await expect(compare).not.toContainText("hasn't reacted yet");
   const card = compare.getByRole("listitem").filter({ hasText: "5902 Lakeview Terrace SE" });
   await expect(card).toBeHidden();
@@ -336,7 +341,7 @@ test("the agent's page about a client reads like the product: a card per home, s
       .filter({ hasText: "719 Saltmarsh Ln" })
       .getByRole("listitem")
       .filter({ hasText: "Nina" }),
-  ).toContainText("liked A spot in photo 2");
+  ).toContainText("liked A spot in the living room");
   // Suggestions say "price range" once, not once per person.
   await expect(agent.getByText(/their price range/)).toHaveCount(0);
 
@@ -347,7 +352,7 @@ test("the agent's page about a client reads like the product: a card per home, s
   // The thread: who, then what they said; a spot shows the photo with a dot
   // where they tapped, and says which photo a bare spot was in.
   const home = agent.getByRole("region", { name: "719 Saltmarsh Ln" });
-  await expect(home).toContainText("Nina liked a spot in photo 2");
+  await expect(home).toContainText("Nina liked a spot in the living room");
   const said = home.getByRole("listitem").filter({ hasText: "Where would the TV go?" });
   const who = (await said.getByText("Nina", { exact: true }).boundingBox())!;
   const words = (await said.getByText("Where would the TV go?").boundingBox())!;
@@ -657,11 +662,12 @@ test("something liked in one home and passed on in another depends on the home, 
   // haven't liked it in the same home, only Ann likes it.
   await agent.goto(dashboardUrl);
   const want = agent.getByRole("region", { name: "What they each want" });
-  const person = (name: string) => want.getByRole("listitem").filter({ has: agent.getByText(new RegExp(`^${name} liked \\d`)) });
+  const person = (name: string) =>
+    want.getByRole("listitem").filter({ has: agent.getByText(new RegExp(`^${name} (liked|passed on) (\\d|all|both)`)) });
   await expect(want).toContainText("Both like: nothing in common yet");
   await expect(want).toContainText("Only Ann: Layout");
   await expect(person("Ann")).toContainText(/Likes\s*Layout/);
-  await expect(person("Bob")).toContainText("Bob liked 1 of 2 homes · passed 1");
+  await expect(person("Bob")).toContainText("Bob liked 1 of 2 homes · passed on 1");
   await expect(person("Bob")).toContainText(/Depends on the home\s*Layout/);
   await expect(person("Bob")).not.toContainText(/Likes|Passes on/);
 
@@ -767,4 +773,166 @@ test("an agent hearts what a client said: their thread says Liked by, in stone, 
   sheet = await openComments(ivy, homeIn(ivy, SALTMARSH));
   await expect(commentIn(sheet, "Ivy", IVY_SAYS)).toBeVisible();
   await expect(sheet.getByText(/^Liked by/)).toHaveCount(0);
+});
+
+test("adding someone to a link whose one person was told it's private asks first, on the page and on the server", async ({
+  browser,
+}) => {
+  test.setTimeout(90_000);
+  const agent = await signInAgent(browser, "alex-alone@example.com", "Alex Alpha");
+  const { url } = await createShare(agent, ["88 Heron Bluff"], ["Solo"]);
+
+  // Solo's link tells her what she says is between her and Alex.
+  const solo = await (await browser.newContext()).newPage();
+  await solo.goto(url);
+  let chat = await openComments(solo, homeIn(solo, "88 Heron Bluff Rd"));
+  await expect(chat.getByText("Only you and Alex Alpha see this.")).toBeVisible();
+
+  // Adding Newbie says what that means, and adds nobody until Alex says so.
+  await agent.getByLabel("Their first name").fill("Newbie");
+  await agent.getByRole("button", { name: "Add a person" }).click();
+  const ask = agent.getByRole("group", { name: /^Solo was told only you two see their comments\./ });
+  await expect(ask).toContainText("Newbie will see everything said so far.");
+  await expect(agent.locator("p[tabindex='-1']").filter({ hasText: "Solo was told" })).toBeFocused();
+  await expect(agent.getByLabel("Newbie's link")).toHaveCount(0);
+  await expect(agent.getByRole("button", { name: "Add a person" })).toBeHidden();
+
+  // The server asks too: an answer that isn't yes adds nobody.
+  await agent.route("**/dashboard/shares/*", async (route) => {
+    const body = route.request().postData();
+    if (route.request().method() !== "POST" || !body) return route.continue();
+    await route.continue({ postData: body.replace(/(name="[^"]*confirm"\r\n\r\n)yes/, "$1no") });
+  });
+  const refused = agent.waitForResponse(
+    (res) => res.request().method() === "POST" && /name="[^"]*confirm"/.test(res.request().postData() ?? ""),
+  );
+  await ask.getByRole("button", { name: "Add Newbie anyway" }).click();
+  await refused;
+  await expect(ask).toBeVisible();
+  await expect(agent.getByLabel("Newbie's link")).toHaveCount(0);
+  await agent.unroute("**/dashboard/shares/*");
+
+  // Yes: Newbie gets a link, and the cursor goes back to the name.
+  await ask.getByRole("button", { name: "Add Newbie anyway" }).click();
+  await expect(agent.getByLabel("Newbie's link")).toBeVisible();
+  await expect(ask).toHaveCount(0);
+  await expect(agent.getByLabel("Their first name")).toBeFocused();
+  await expect(agent.getByLabel("Their first name")).toHaveValue("");
+
+  // Solo's link no longer says it's just the two of them.
+  await solo.reload();
+  chat = await openComments(solo, homeIn(solo, "88 Heron Bluff Rd"));
+  await expect(chat.getByText("Only Alex Alpha and people on this link see this.")).toBeVisible();
+
+  // Nobody on it now was told that, so the next person is added straight away.
+  await agent.getByLabel("Their first name").fill("Third");
+  await agent.getByRole("button", { name: "Add a person" }).click();
+  await expect(agent.getByLabel("Third's link")).toBeVisible();
+
+  // Cancel leaves the link as it was, the name still there to change.
+  const { url: unoUrl } = await createShare(agent, ["88 Heron Bluff"], ["Uno"]);
+  expect(unoUrl).toBeTruthy();
+  await agent.getByLabel("Their first name").fill("Dos");
+  await agent.getByRole("button", { name: "Add a person" }).click();
+  await agent.getByRole("group", { name: /^Uno was told/ }).getByRole("button", { name: "Cancel" }).click();
+  await expect(agent.getByRole("group", { name: /^Uno was told/ })).toHaveCount(0);
+  await expect(agent.getByLabel("Their first name")).toBeFocused();
+  await expect(agent.getByLabel("Their first name")).toHaveValue("Dos");
+  await expect(agent.getByLabel("Dos's link")).toHaveCount(0);
+});
+
+test("on a phone, picked homes stay in view whatever the search, and a bar leads on to who it's for", async ({ browser }) => {
+  test.setTimeout(60_000);
+  const agent = await signInAgent(browser, "pip-picker@example.com", "Pip Picker");
+  await agent.setViewportSize({ width: 393, height: 660 });
+  await agent.goto("/dashboard/new");
+  const cards = agent.getByRole("button", { name: /^\$/ });
+  const next = agent.getByRole("button", { name: "Next", exact: true });
+  const tray = agent.getByRole("list", { name: "Picked homes" });
+  const pageWidth = () => agent.evaluate(() => document.documentElement.scrollWidth);
+  await expect(cards.first()).toBeVisible();
+  await expect(next).toHaveCount(0);
+
+  await cards.filter({ hasText: "1204 Quillan" }).click();
+  await expect(agent.getByText("1 of 3 picked")).toBeVisible();
+  await expect(next).toBeVisible();
+
+  // A search that leaves it out still shows it, above the homes, and it can come off from there.
+  await agent.getByRole("searchbox").fill("Seattle");
+  await expect(agent).toHaveURL(/q=Seattle/);
+  await expect(cards.filter({ hasText: "1204 Quillan" })).toHaveCount(0);
+  await expect(tray).toContainText("1204 Quillan St SE");
+  expect((await tray.boundingBox())!.y).toBeLessThan((await cards.first().boundingBox())!.y);
+  await tray.getByRole("button", { name: "Remove 1204 Quillan St SE" }).click();
+  await expect(tray).toHaveCount(0);
+  await expect(next).toHaveCount(0);
+  await expect(agent.getByRole("button", { name: "Pick at least 1 home" })).toBeVisible();
+
+  // Three picked: one row of them that slides rather than widening the page,
+  // and Next goes to who it's for, ready to type.
+  await agent.getByRole("searchbox").fill("");
+  await expect(agent).toHaveURL(/\/dashboard\/new$/);
+  for (const i of [0, 1, 2]) await cards.nth(i).click();
+  await expect(agent.getByText("3 of 3 picked")).toBeVisible();
+  await expect(tray.getByRole("listitem")).toHaveCount(3);
+  expect(await pageWidth()).toBeLessThanOrEqual(393);
+  await next.click();
+  const name = agent.getByLabel("Person 1's first name");
+  await expect(name).toBeFocused();
+  await expect(name).toBeInViewport();
+  await expect(next).toHaveCount(0);
+});
+
+test("Remove and Restore keep the keyboard with the home, and each person's link buttons say whose they are", async ({
+  browser,
+}) => {
+  test.setTimeout(60_000);
+  const agent = await signInAgent(browser, "kim-keys@example.com", "Kim Keys");
+  await createShare(agent, ["1204 Quillan", "719 Saltmarsh"], ["Ben", "Nina"]);
+  const links = agent.getByRole("region", { name: "Their links" });
+  for (const name of ["Ben", "Nina"]) {
+    await expect(links.getByRole("link", { name: `Text ${name}`, exact: true })).toBeVisible();
+    await expect(links.getByRole("button", { name: `Copy ${name}'s link`, exact: true })).toBeVisible();
+    await expect(links.getByRole("link", { name: `Preview ${name}'s link`, exact: true })).toBeVisible();
+  }
+
+  await agent.getByRole("button", { name: "Remove 719 Saltmarsh Ln" }).focus();
+  await agent.keyboard.press("Enter");
+  const removed = agent.getByRole("region", { name: "Removed from their link" });
+  await expect(removed.getByRole("button", { name: "Restore 719 Saltmarsh Ln" })).toBeFocused();
+  await expect(agent.getByRole("status").filter({ hasText: "Removed from their link." })).toBeAttached();
+  await agent.keyboard.press("Enter");
+  await expect(removed).toHaveCount(0);
+  await expect(agent.getByRole("button", { name: "Remove 719 Saltmarsh Ln" })).toBeFocused();
+  await expect(agent.getByRole("status").filter({ hasText: "Back on their link." })).toBeAttached();
+});
+
+test("what someone thought of a home reads as one list: one 'and', 'or' for what they didn't like, and spots by where they are", () => {
+  const listings = JSON.parse(readFileSync("supabase/seed/listings.json", "utf8")) as Listing[];
+  const saltmarsh = listings.find((listing) => listing.ListingKey === "SAMPLE-1008")!;
+  const [outside, livingRoom] = saltmarsh.Media.map(mediaKeyOf);
+  const at = (mediaKey: string) => ({ place: spotPlace(saltmarsh, mediaKey) });
+
+  expect(
+    describeReaction({ reaction: "like", liked: ["layout"], disliked: [] }, ["Floating staircase", "Deck", at(outside)]),
+  ).toBe("liked the layout, floating staircase, deck and a spot outside");
+  expect(
+    describeReaction({ reaction: "like", liked: ["location"], disliked: ["price"] }, ["Gas range"], ["Pedestal sink"]),
+  ).toBe("liked the location and gas range but not the price or pedestal sink");
+  expect(describeReaction({ reaction: "dislike", liked: [], disliked: ["layout", "bathrooms"] }, [], ["Bedrooms"])).toBe(
+    "passed, didn't like the layout, bathrooms or bedrooms",
+  );
+  // Spots in the same room together; "photo 2" only for a photo that doesn't say what it shows.
+  expect(
+    describeReaction({ reaction: "like", liked: [], disliked: [] }, [at(livingRoom), at(livingRoom), at(outside)]),
+  ).toBe("liked 2 spots in the living room and a spot outside");
+  const unsaid = { ...saltmarsh, Media: saltmarsh.Media.map((photo) => ({ ...photo, ImageOf: undefined })) };
+  expect(spotPlace(unsaid, livingRoom)).toBe("in photo 2");
+  // A spot as it was saved, with nothing to say where: as before.
+  expect(describeReaction({ reaction: "like", liked: ["layout"], disliked: [] }, ["@3,97"])).toBe(
+    "liked the layout and a spot in a photo",
+  );
+  expect(describeReaction({ reaction: null, liked: [], disliked: [] }, ["@3,97", "@97,3"])).toBe(
+    "liked 2 spots in the photos",
+  );
 });

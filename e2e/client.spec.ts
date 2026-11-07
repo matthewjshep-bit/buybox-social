@@ -63,7 +63,7 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
 
   // What Joe wants, summed up across every home.
   const profile = agent.getByRole("region", { name: "What Joe wants" });
-  await expect(profile).toContainText("Joe liked 1 of 2 homes · passed 1");
+  await expect(profile).toContainText("Joe liked 1 of 2 homes · passed on 1");
   await expect(profile.getByText("Floating staircase", { exact: true })).toBeVisible();
   await expect(profile.getByText("Exterior", { exact: true })).toBeVisible();
   await expect(agent.getByRole("region", { name: "10421 Halvard Way NE" })).toContainText(

@@ -213,7 +213,7 @@ test("the agent's own Preview shows their client's view, and saves nothing as th
   // Preview, on Dana's page, opens her link in a new tab, still signed in.
   const [preview] = await Promise.all([
     agent.context().waitForEvent("page"),
-    agent.getByRole("link", { name: "Preview", exact: true }).click(),
+    agent.getByRole("link", { name: "Preview Dana's link", exact: true }).click(),
   ]);
   const home = homeIn(preview, "1204 Quillan St SE");
   await expect(home).toBeInViewport({ ratio: 0.9 });

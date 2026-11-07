@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Plus, Search, X } from "lucide-react";
+import { ArrowDown, Check, Plus, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { HomeThumb } from "@/components/ui";
@@ -54,6 +54,27 @@ export function ShareBuilder({
     : results;
 
   useEffect(() => () => clearTimeout(debounce.current), []);
+
+  // Who it's for and the button that makes the link: on a phone, often far
+  // below the homes, so a bar at the foot of the screen leads there until
+  // it's in view.
+  const details = useRef<HTMLDivElement>(null);
+  const [detailsInView, setDetailsInView] = useState(false);
+  useEffect(() => {
+    const el = details.current;
+    if (!el) return;
+    const watch = new IntersectionObserver(([entry]) => setDetailsInView(entry.isIntersecting));
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, []);
+  const toDetails = () => {
+    const el = details.current;
+    if (!el) return;
+    // The first thing to fill in, or the button itself when adding homes.
+    el.querySelector<HTMLElement>("input, button[data-make-link]")?.focus({ preventScroll: true });
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ block: "start", behavior: still ? "auto" : "smooth" });
+  };
 
   const onSearch = (value: string) => {
     setQuery(value);
@@ -149,8 +170,53 @@ export function ShareBuilder({
               />
             </div>
 
+            {/* What's picked so far, whatever the search shows, each one able
+                to come off again without clearing the search. One row on a
+                phone, sliding sideways, so the homes stay near the top (and
+                what's said only to screen readers slides with it, rather
+                than widening the page). */}
+            {picked.length > 0 && (
+              <ul
+                aria-label="Picked homes"
+                className="relative -mx-4 mt-3 flex gap-2 overflow-x-auto px-4 py-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0"
+              >
+                {picked.map((listing) => (
+                  <li
+                    key={listing.ListingKey}
+                    className="flex min-w-0 max-w-64 shrink-0 items-center gap-2 rounded-xl bg-white pl-1.5 ring-2 ring-brand"
+                  >
+                    <HomeThumb src={listing.Media[0]?.MediaURL} sizes="32px" className="size-8" />
+                    <span className="min-w-0 truncate text-sm font-medium">{listing.UnparsedAddress}</span>
+                    <button
+                      type="button"
+                      onClick={() => toggle(listing)}
+                      className={cn(button({ kind: "ghost", icon: true }), "shrink-0 text-stone-600")}
+                    >
+                      <X aria-hidden size={16} />
+                      <span className="sr-only">Remove {listing.UnparsedAddress}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
             {shown.length > 0 && <ul className="mt-4 grid gap-3 sm:grid-cols-2">{shown.map(card)}</ul>}
             {results.length === 0 && <p className="mt-6 text-center text-stone-700">No homes match that search.</p>}
+
+            {/* Phones: how many are picked, and the way on, at the foot of the
+                screen until who it's for is in view. */}
+            {picked.length > 0 && !detailsInView && (
+              <div className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200 bg-white px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-4px_16px_rgb(0_0_0/0.06)] sm:hidden">
+                <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
+                  <p className="text-sm font-semibold">
+                    {picked.length} of {MAX_LISTINGS} picked
+                  </p>
+                  <button type="button" onClick={toDetails} className={button({ kind: "primary" })}>
+                    Next <ArrowDown aria-hidden size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -165,7 +231,7 @@ export function ShareBuilder({
           </>
         )}
 
-        <div className={cn(cardClass, "mt-6 flex flex-col gap-4 p-4")}>
+        <div ref={details} className={cn(cardClass, "mt-6 flex scroll-mt-4 flex-col gap-4 p-4")}>
           {!addTo && (
             <>
               <fieldset>
@@ -233,6 +299,7 @@ export function ShareBuilder({
           )}
           <button
             type="button"
+            data-make-link
             onClick={submit}
             disabled={picked.length === 0 || pending}
             className={button({ kind: "primary", size: "lg", block: true })}

@@ -6,11 +6,14 @@ import {
   Copy,
   ExternalLink,
   Heart,
+  Lock,
   MessageSquare,
   MoreHorizontal,
   Pencil,
+  RotateCcw,
   Share,
   UserPlus,
+  X,
 } from "lucide-react";
 import Image from "next/image";
 import {
@@ -33,7 +36,16 @@ import { Sheet } from "@/components/sheet";
 import type { FeedPost } from "@/lib/feed";
 import { cn } from "@/lib/format";
 import { button, card, field } from "@/lib/ui";
-import { addPerson, markShareSeen, removeComment, renameClient, replyAsAgent, type FormState } from "../../actions";
+import {
+  addPerson,
+  markShareSeen,
+  removeComment,
+  renameClient,
+  replyAsAgent,
+  setHomeRemoved,
+  type AddPersonState,
+  type FormState,
+} from "../../actions";
 import { HOME_MESSAGE_TITLE, homeMessage } from "../../message";
 import { likeClientComment } from "./actions";
 
@@ -147,6 +159,7 @@ export function SendLink({
   count,
   home,
   label = "Your link is ready",
+  who,
   status,
 }: {
   url: string;
@@ -156,6 +169,9 @@ export function SendLink({
   // words as sending a home from its page.
   home?: { address: string; price: number };
   label?: string;
+  // Whose link it is, when the page has one for each person: every button
+  // says so to a screen reader ("Copy Ben's link"), not just "Copy" again.
+  who?: string;
   // Whether it's been opened, and when.
   status?: ReactNode;
 }) {
@@ -169,6 +185,7 @@ export function SendLink({
     one ? homeMessage(home) : `I picked ${count === 1 ? "a home" : `${count} homes`} for you. Tell me what you think.`
   }`;
   const message = `${words} ${url}`;
+  const whose = (text: string) => who && <span className="sr-only"> {text}</span>;
   return (
     <div className={cn(card, "p-4")}>
       <label htmlFor={id} className="text-sm font-semibold">
@@ -190,7 +207,7 @@ export function SendLink({
           href={`sms:?&body=${encodeURIComponent(message)}`}
           className={cn(button({ kind: "primary" }), !share && "col-span-2 min-[412px]:col-span-1")}
         >
-          <MessageSquare aria-hidden size={16} /> Text
+          <MessageSquare aria-hidden size={16} /> Text{who && whose(who)}
         </a>
         {/* The phone's share sheet, straight from this tap: WhatsApp, Mail, AirDrop. */}
         {share && (
@@ -201,7 +218,7 @@ export function SendLink({
             }}
             className={button({ kind: "secondary" })}
           >
-            <Share aria-hidden size={16} /> Share…
+            <Share aria-hidden size={16} /> Share…{whose(`${who}'s link`)}
           </button>
         )}
         <button
@@ -220,9 +237,10 @@ export function SendLink({
         >
           {copied ? <Check aria-hidden size={16} /> : <Copy aria-hidden size={16} />}
           {copied ? "Copied" : "Copy"}
+          {whose(`${who}'s link`)}
         </button>
         <a href={url} target="_blank" rel="noreferrer" className={button({ kind: "secondary" })}>
-          <ExternalLink aria-hidden size={16} /> Preview
+          <ExternalLink aria-hidden size={16} /> Preview{whose(`${who}'s link`)}
         </a>
       </div>
     </div>
@@ -278,22 +296,63 @@ export function ReplyForm({ shareId, listingKey }: { shareId: string; listingKey
   );
 }
 
-// Someone else to send the package to, with a link of their own.
-export function AddPersonForm({ shareId }: { shareId: string }) {
-  const [state, action, pending] = useActionState<FormState, FormData>(addPerson.bind(null, shareId), {});
+// Someone else to send the package to, with a link of their own. When the one
+// person on it was told that only they and the agent see what they say
+// (`confidant`), the agent hears what adding someone means, and is asked,
+// before anyone is added. The server asks too, if this page is out of date.
+export function AddPersonForm({ shareId, confidant }: { shareId: string; confidant: string | null }) {
+  const [name, setName] = useState("");
+  // Who the agent is being asked about, until they say yes or no.
+  const [asking, setAsking] = useState<AddPersonState["confirm"] | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const warning = useRef<HTMLParagraphElement>(null);
+  const warningId = useId();
+  const [state, action, pending] = useActionState<AddPersonState, FormData>(async (previous, form) => {
+    const result = await addPerson(shareId, previous, form);
+    if (result.confirm) setAsking(result.confirm);
+    else if (!result.error) {
+      setName("");
+      setAsking(null);
+      // The button that was pressed has gone; the cursor goes back to the name.
+      input.current?.focus();
+    }
+    return result;
+  }, {});
+  // The question takes the keyboard, so it's heard before anything is pressed.
+  useEffect(() => {
+    if (asking) warning.current?.focus();
+  }, [asking]);
+
   return (
-    <form action={action} className="flex flex-wrap items-start gap-2">
+    <form
+      action={action}
+      onSubmit={(event) => {
+        // Asked here, before anything is sent, unless this is the answer.
+        const submitter = (event.nativeEvent as SubmitEvent).submitter;
+        if (confidant && name.trim() && submitter?.getAttribute("value") !== "yes") {
+          event.preventDefault();
+          setAsking({ confidant, newcomer: name.trim() });
+        }
+      }}
+      className="flex flex-wrap items-start gap-2"
+    >
       <div className="min-w-0 flex-1">
         <label htmlFor="new-person" className="sr-only">
           Their first name
         </label>
         <input
+          ref={input}
           id="new-person"
           name="firstName"
           required
           maxLength={40}
           autoComplete="off"
           placeholder="Their first name"
+          value={name}
+          onChange={(event) => {
+            setName(event.target.value);
+            setAsking(null);
+          }}
           className={field()}
         />
         {state.error && (
@@ -302,14 +361,52 @@ export function AddPersonForm({ shareId }: { shareId: string }) {
           </p>
         )}
       </div>
+      {/* Out of the way while the agent is asked, and off, so Enter in the
+          name can't answer for them. */}
       <button
         type="submit"
-        disabled={pending}
+        hidden={Boolean(asking)}
+        disabled={pending || Boolean(asking)}
         className={button({ kind: "secondary", size: "lg" })}
       >
         <UserPlus aria-hidden size={16} />
         {pending ? "Adding…" : "Add a person"}
       </button>
+      {asking && (
+        <div role="group" aria-labelledby={warningId} className="basis-full rounded-2xl bg-stone-100 p-4 text-sm">
+          <p ref={warning} id={warningId} tabIndex={-1} className="flex items-start gap-2 outline-none">
+            <Lock aria-hidden size={15} className="mt-0.5 shrink-0 text-stone-600" />
+            <span>
+              <span className="font-semibold">
+                {asking.confidant} was told only you two see their comments.
+              </span>{" "}
+              {asking.newcomer} will see everything said so far.
+            </span>
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="submit"
+              name="confirm"
+              value="yes"
+              disabled={pending}
+              className={button({ kind: "primary" })}
+            >
+              <UserPlus aria-hidden size={16} />
+              {pending ? "Adding…" : `Add ${asking.newcomer} anyway`}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAsking(null);
+                input.current?.focus();
+              }}
+              className={cn(button({ kind: "ghost" }), "text-stone-700")}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </form>
   );
 }
@@ -730,6 +827,77 @@ export function ScorecardButton({ listingKey, address }: { listingKey: string; a
       <ClipboardList aria-hidden size={16} />
       Scorecard
       <span className="sr-only"> for {address}</span>
+    </button>
+  );
+}
+
+// The home whose Remove or Restore was just pressed (and when), and what the
+// page said about it. The home moves to the other list, drawn afresh there,
+// so its new button takes the keyboard when it arrives, and the page says
+// where it went. A move that never came is forgotten after a while.
+let movingHome: { key: string; at: number } | null = null;
+let movedWords = "";
+const movedListeners = new Set<() => void>();
+const subscribeMoved = (onChange: () => void) => {
+  movedListeners.add(onChange);
+  return () => movedListeners.delete(onChange);
+};
+
+// Where a home just went, for screen readers: there from the start, so it's
+// heard when it changes.
+export function HomeMovedStatus() {
+  const words = useSyncExternalStore(subscribeMoved, () => movedWords, () => "");
+  // Said about this client's homes only, not the next page's.
+  useEffect(
+    () => () => {
+      movedWords = "";
+    },
+    [],
+  );
+  return (
+    <p role="status" className="sr-only">
+      {words}
+    </p>
+  );
+}
+
+// Remove on a home still on the link, Restore on one taken off it.
+export function RemoveHomeButton({
+  shareId,
+  listingKey,
+  address,
+  removed,
+}: {
+  shareId: string;
+  listingKey: string;
+  address: string;
+  removed: boolean;
+}) {
+  const [pending, startTransition] = useTransition();
+  const self = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (movingHome?.key !== listingKey || Date.now() - movingHome.at > 15_000) return;
+    movingHome = null;
+    self.current?.focus();
+    movedWords = removed ? "Removed from their link." : "Back on their link.";
+    movedListeners.forEach((onChange) => onChange());
+  }, [listingKey, removed]);
+  return (
+    <button
+      ref={self}
+      type="button"
+      // Kept able to hold the keyboard while it works.
+      aria-disabled={pending}
+      onClick={() => {
+        if (pending) return;
+        movingHome = { key: listingKey, at: Date.now() };
+        startTransition(() => setHomeRemoved(shareId, listingKey, !removed));
+      }}
+      className={cn(button({ kind: "ghost" }), "text-stone-700")}
+    >
+      {removed ? <RotateCcw aria-hidden size={15} /> : <X aria-hidden size={15} />}
+      {removed ? "Restore" : "Remove"}
+      <span className="sr-only"> {address}</span>
     </button>
   );
 }

@@ -10,8 +10,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <div
       // A Scorecard's panel down the right of a wide screen makes room for
-      // itself, so nothing on the page sits under it.
-      className="min-h-dvh lg:has-[[data-scorecard-docked]]:pr-[29.5rem]"
+      // itself, so nothing on the page sits under it. (No height of its own:
+      // under the header, a short page fits the window without scrolling.)
+      className="lg:has-[[data-scorecard-docked]]:pr-[29.5rem]"
     >
       {/* A page with two columns on a wide screen (a client's page) asks for
           more room with data-wide. */}

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { Camera, Check } from "lucide-react";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { formatPhone, isContactPhone, phoneDigits } from "@/lib/contact";
@@ -54,6 +54,7 @@ export function ProfileForm(props: {
   const suggested = phoneDigits(props.suggestedPhone);
   const suggestion = !phone && isContactPhone(suggested) ? formatPhone(suggested) : null;
   const phoneField = useRef<HTMLInputElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const form = useRef<HTMLFormElement>(null);
   // After a save that didn't go through, the cursor goes to what needs fixing,
   // rather than being lost with the Save button while it was busy.
@@ -78,13 +79,18 @@ export function ProfileForm(props: {
           <label htmlFor="photo-file" className="block text-sm font-semibold">
             Your photo
           </label>
+          {/* The browser's own file box says "Choose File" and "No file
+              chosen", even beside a photo; this button says it in our words. */}
           <input
+            ref={fileInput}
             id="photo-file"
             type="file"
             accept="image/*"
-            className="mt-1 max-w-full text-sm file:mr-3 file:min-h-11 file:rounded-full file:border-0 file:bg-white file:px-4 file:font-semibold file:text-ink"
+            hidden
             onChange={async (event) => {
               const file = event.target.files?.[0];
+              // So picking the same file again still counts.
+              event.target.value = "";
               if (!file) return;
               try {
                 setPhoto(await resizePhoto(file));
@@ -94,6 +100,14 @@ export function ProfileForm(props: {
               }
             }}
           />
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            className={cn(button({ kind: "light" }), "mt-1.5")}
+          >
+            <Camera aria-hidden size={16} />
+            {photo ? "Change photo" : "Upload a photo"}
+          </button>
           {photoError && <p role="alert" className="mt-1 text-sm">{photoError}</p>}
         </div>
       </div>
@@ -116,7 +130,7 @@ export function ProfileForm(props: {
 
       <div>
         <label htmlFor="brokerage" className="text-sm font-medium">
-          Company (brokerage)
+          Company (optional)
         </label>
         <input
           id="brokerage"
@@ -128,7 +142,7 @@ export function ProfileForm(props: {
           className={inputClass}
         />
         <p id="brokerage-hint" className="mt-1 text-sm text-muted">
-          Optional. A brokerage, team or company, if you work with one.
+          A brokerage, team or company, if you work with one.
         </p>
       </div>
 

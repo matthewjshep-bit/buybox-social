@@ -7,7 +7,7 @@ import { getCurrentUser, requireAgent } from "@/lib/auth";
 import { isContactPhone, phoneDigits } from "@/lib/contact";
 import { sql } from "@/lib/db";
 import { BRAND_COLORS } from "@/lib/format";
-import { invitePerson, isShareToken, newShareToken, reserveSendTokenFor } from "@/lib/shares";
+import { confidantOf, invitePerson, isShareToken, newShareToken, reserveSendTokenFor } from "@/lib/shares";
 
 export type FormState = { error?: string };
 
@@ -139,15 +139,26 @@ async function ownShare(agentId: string, shareId: string) {
   return share ?? null;
 }
 
-// Adds someone to a package, with their own link.
-export async function addPerson(shareId: string, _: FormState, form: FormData): Promise<FormState> {
+// Asking before someone joins a link whose one person was told only they and
+// the agent see what they say: who that is, and who would be added.
+export type AddPersonState = FormState & { confirm?: { confidant: string; newcomer: string } };
+
+// Adds someone to a package, with their own link. If the one person on it
+// was promised that only they and the agent see their words, the newcomer
+// would see them all, so it's done only once the agent has said so
+// (`confirm`), and never for a form that didn't ask.
+export async function addPerson(shareId: string, _: AddPersonState, form: FormData): Promise<AddPersonState> {
   const agent = await requireAgent();
   const name = z.string().trim().min(1).max(40).safeParse(form.get("firstName"));
   if (!name.success) return { error: "Please enter their first name." };
-  if (!(await ownShare(agent.id, shareId))) return { error: "We couldn't find that package." };
+  if (!(await ownShare(agent.id, shareId))) return { error: "We couldn't find that link." };
   const [{ count }] = await sql<{ count: number }[]>`
     select count(*)::int as count from participants where share_id = ${shareId}`;
-  if (count >= 25) return { error: "That's as many people as one package can have." };
+  if (count >= 25) return { error: "That's as many people as one link can have." };
+  const confidant = await confidantOf(shareId);
+  if (confidant && form.get("confirm") !== "yes") {
+    return { confirm: { confidant: confidant.first_name, newcomer: name.data } };
+  }
   await invitePerson(shareId, name.data);
   refresh();
   return {};
