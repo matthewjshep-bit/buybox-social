@@ -10,6 +10,7 @@ import {
   openMore,
   openScorecard,
   scrollToEnd,
+  settle,
   signUpBuyer,
 } from "./helpers";
 
@@ -175,9 +176,20 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
     await expect(cleo.getByRole("link", { name: "Activity", exact: true })).toBeVisible({ timeout: 1000 });
   }).toPass();
 
-  // Tapping a name opens their profile: what they've liked and said.
+  // Tapping a name opens their profile: what they've liked and said. Only the
+  // name: a tap on the words just under it stays on the words.
   await dev.goto("/homes/SAMPLE-1012");
   const devSheet = await openComments(dev, homeIn(dev, FOXGLOVE));
+  await settle(devSheet);
+  const cleoSaid = devSheet.locator("li[data-comment]").filter({ has: dev.getByRole("link", { name: "Cleo" }) }).first();
+  const under = await cleoSaid.getByRole("link", { name: "Cleo" }).evaluate((el) => {
+    el.scrollIntoView({ block: "center", behavior: "instant" });
+    const box = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.left + 4, box.bottom + 6);
+    return hit ? (hit.closest("a")?.textContent ?? hit.tagName) : "nothing";
+  });
+  expect(under).not.toBe("Cleo");
+  expect(under).not.toBe("nothing");
   await devSheet.getByRole("link", { name: "Cleo" }).first().click();
   await dev.waitForURL("**/people/**");
   await expect(dev.getByRole("heading", { level: 1 })).toHaveText("Cleo");

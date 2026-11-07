@@ -405,25 +405,37 @@ export function SpotChip({
 export function CommentLike({ commentId, name, liked }: { commentId: string; name: string; liked: boolean }) {
   const [shown, setShown] = useOptimistic(liked);
   const [, startTransition] = useTransition();
+  // Refused, the heart goes back and says so, and the page catches up (the
+  // home just came off the link, or the comment's gone).
+  const [failed, setFailed] = useState(false);
   return (
-    <button
-      type="button"
-      aria-pressed={shown}
-      onClick={() =>
-        startTransition(async () => {
-          setShown(!shown);
-          await likeClientComment(commentId, !shown);
-        })
-      }
-      className={cn(
-        "-ml-1.5 mt-0.5 flex min-h-8 w-fit items-center gap-1.5 rounded-full px-1.5 text-[13px] font-semibold hit-44 hover:bg-stone-100",
-        shown ? "text-rose-700" : "text-stone-600 hover:text-ink",
+    <div className="-ml-1.5 mt-0.5 flex flex-wrap items-center gap-x-2">
+      <button
+        type="button"
+        aria-pressed={shown}
+        onClick={() => {
+          setFailed(false);
+          startTransition(async () => {
+            setShown(!shown);
+            const result = await likeClientComment(commentId, !shown).catch(() => ({ ok: false }));
+            if (!result.ok) setFailed(true);
+          });
+        }}
+        className={cn(
+          "flex min-h-8 w-fit items-center gap-1.5 rounded-full px-1.5 text-[13px] font-semibold hit-44 hover:bg-stone-100",
+          shown ? "text-rose-700" : "text-stone-600 hover:text-ink",
+        )}
+      >
+        <Heart aria-hidden size={15} className={cn(shown && "fill-rose-600 text-rose-600")} />
+        Like
+        <span className="sr-only"> {name}&apos;s comment</span>
+      </button>
+      {failed && (
+        <p role="alert" className="text-[13px] text-red-700">
+          That didn&apos;t work. Try again.
+        </p>
       )}
-    >
-      <Heart aria-hidden size={15} className={cn(shown && "fill-rose-600 text-rose-600")} />
-      Like
-      <span className="sr-only"> {name}&apos;s comment</span>
-    </button>
+    </div>
   );
 }
 

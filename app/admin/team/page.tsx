@@ -43,7 +43,7 @@ export default async function AdminTeam() {
               <div className="min-w-0 flex-1">
                 <p className="font-semibold">
                   {admin.accountId ? (
-                    <Link href={`/admin/people/${admin.accountId}`} className="hit-44 hover:underline">
+                    <Link href={`/admin/people/${admin.accountId}`} className="hover:underline">
                       {admin.name || admin.email}
                     </Link>
                   ) : (

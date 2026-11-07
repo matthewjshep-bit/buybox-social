@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { homeFacts } from "@/app/homes/[key]/preview";
 import { LiveRefresh } from "@/components/live-refresh";
 import { getCurrentUser } from "@/lib/auth";
+import { agentFirstName } from "@/lib/format";
 import { readDevice } from "@/lib/engagement";
 import { isSampleListing } from "@/lib/listings/types";
 import { NO_PHOTO_LIKES } from "@/lib/photos";
@@ -80,7 +81,7 @@ export default async function SharePage({ params }: Props) {
     !/[&,]| and /i.test(share.client_name)
       ? share.client_name
       : undefined;
-  const agentFirst = agent.full_name.trim().split(/\s+/)[0] || "Your agent";
+  const agentFirst = agentFirstName(agent.full_name, "Your agent");
   // Who else can open this link. Someone's own link opens as them, so it's theirs alone.
   const whoCanSee = person
     ? `This link is just for you, ${person.first_name}. Ask ${agentName} if someone else should see ${count > 1 ? "these" : "it"}.`

@@ -26,6 +26,11 @@ export function timeAgo(iso: string, now = Date.now()) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+// An agent by first name in a sentence ("Liked by Jordan"), or "your agent"
+// when they haven't given a name.
+export const agentFirstName = (name: string | null | undefined, fallback = "your agent") =>
+  name?.trim().split(/\s+/)[0] || fallback;
+
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 // "Active 2h ago" for recent activity; older activity isn't worth calling out.

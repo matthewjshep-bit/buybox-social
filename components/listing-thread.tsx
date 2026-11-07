@@ -311,11 +311,14 @@ function Avatar({
   );
 }
 
-// A person's name, linking to their profile when they have a public one.
+// A person's name, linking to their profile when they have a public one. It
+// sits in a line of words, so it keeps the line's height (WCAG's inline
+// exception): a bigger touch area would cover the words under it. It stays
+// over the spot chip's touch area just below.
 function Who({ name, profileId }: { name: string; profileId?: string }) {
   if (!profileId) return <span className="font-semibold text-ink">{name}</span>;
   return (
-    <Link href={`/people/${profileId}`} className="font-semibold text-ink underline-offset-2 hit-44 hover:underline">
+    <Link href={`/people/${profileId}`} className="relative z-[1] font-semibold text-ink underline-offset-2 hover:underline">
       {name}
     </Link>
   );
@@ -435,10 +438,11 @@ function CommentItem({
         )}
         <p className="mt-0.5 whitespace-pre-line break-words text-[15px] leading-snug">{comment.body}</p>
         {/* The agent hearted it, as a creator does on a reel: in stone, so it
-            never reads as something the agent said. */}
+            never reads as something the agent said, and outlined, not filled,
+            so it reads as a note, not a button like the spot chip. */}
         {comment.likedBy && (
           <p className="mt-1.5 flex">
-            <span className="inline-flex h-6 items-center gap-1 rounded-full bg-stone-100 px-2 text-[12px] font-semibold text-stone-700">
+            <span className="inline-flex h-6 items-center gap-1 rounded-full px-2 text-[12px] font-medium text-stone-600 ring-1 ring-inset ring-stone-200">
               <Heart aria-hidden size={11} className="fill-rose-600 text-rose-600" />
               Liked by {comment.likedBy}
             </span>
@@ -653,7 +657,9 @@ export function CommentComposer({
           ))}
         </div>
       )}
-      <div className="flex items-end gap-2 rounded-3xl bg-stone-100 py-1 pl-4 pr-1 focus-within:ring-2 focus-within:ring-brand/80">
+      {/* The box itself is 44px tall, so a tap anywhere on the pill but its
+          thin edge lands in it. */}
+      <div className="flex items-end gap-2 rounded-3xl bg-stone-100 py-0.5 pl-4 pr-1 focus-within:ring-2 focus-within:ring-brand/80">
         <label htmlFor={inputId} className="sr-only">
           {who ? `Reply to ${who}` : (label ?? placeholder?.replace(/…$/, "") ?? "Add a comment")}
         </label>
@@ -676,13 +682,13 @@ export function CommentComposer({
           enterKeyHint="send"
           autoFocus={autoFocus}
           placeholder={who ? `Reply to ${who}…` : (placeholder ?? "Add a comment…")}
-          className="max-h-28 min-h-10 min-w-0 flex-1 resize-none bg-transparent py-2 text-base leading-6 outline-none [field-sizing:content] placeholder:text-stone-500"
+          className="max-h-29 min-h-11 min-w-0 flex-1 resize-none bg-transparent py-2.5 text-base leading-6 outline-none [field-sizing:content] placeholder:text-stone-500"
         />
         <button
           type="submit"
           aria-label="Post"
           disabled={pending || !body.trim()}
-          className="mb-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-brand text-white transition-opacity hit-44 disabled:opacity-30"
+          className="mb-1 flex size-9 shrink-0 items-center justify-center rounded-full bg-brand text-white transition-opacity hit-44 disabled:opacity-30"
         >
           <ArrowUp aria-hidden size={18} strokeWidth={2.5} className={cn(pending && "animate-pulse")} />
         </button>

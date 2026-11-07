@@ -7,7 +7,7 @@ import { flushSync } from "react-dom";
 import { AspectSummary } from "@/components/aspect-summary";
 import type { SpotRef } from "@/components/listing-thread";
 import type { FeedPost } from "@/lib/feed";
-import { cn, timeAgo } from "@/lib/format";
+import { agentFirstName, cn, timeAgo } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
 import { FACTS, mediaKeyOf, spotName, tagPosition, thingOf, type FactTag } from "@/lib/photos";
 import {
@@ -29,8 +29,7 @@ import type { TimelineComment } from "@/lib/timeline";
 
 // The agent, in a sentence: their name, or "your agent".
 const agentCalled = (agentName?: string) => (agentName && agentName !== "Your agent" ? agentName : "your agent");
-const firstOf = (agentName?: string) =>
-  agentName && agentName !== "Your agent" ? (agentName.split(" ")[0] ?? agentName) : "your agent";
+const firstOf = (agentName?: string) => (agentName === "Your agent" ? "your agent" : agentFirstName(agentName));
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 export function ScorecardBody({

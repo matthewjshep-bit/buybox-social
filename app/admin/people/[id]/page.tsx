@@ -132,7 +132,7 @@ export default async function AdminPerson({ params }: Props) {
                       On{" "}
                       <Link
                         href={`/admin/homes/${encodeURIComponent(comment.listing_key)}`}
-                        className="font-medium text-ink hit-44 hover:underline"
+                        className="font-medium text-ink hover:underline"
                       >
                         {comment.address}
                       </Link>{" "}

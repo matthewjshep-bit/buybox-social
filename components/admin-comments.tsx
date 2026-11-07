@@ -15,9 +15,12 @@ export function CommentList({ comments, showHome = true }: { comments: CommentRo
       {comments.map((comment) => (
         <li key={`${comment.kind}:${comment.id}`} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-start sm:gap-4">
           <div className="min-w-0 flex-1">
+            {/* The name and the home are links in a line of words, so they keep
+                the line's height (WCAG's inline exception): a bigger touch area
+                would cover the comment under them. */}
             <p className="text-sm">
               {comment.accountId ? (
-                <Link href={`/admin/people/${comment.accountId}`} className="font-semibold hit-44 hover:underline">
+                <Link href={`/admin/people/${comment.accountId}`} className="font-semibold hover:underline">
                   {comment.name}
                 </Link>
               ) : (
@@ -31,7 +34,7 @@ export function CommentList({ comments, showHome = true }: { comments: CommentRo
                   <span className="text-stone-500"> on </span>
                   <Link
                     href={`/admin/homes/${encodeURIComponent(comment.listing_key)}`}
-                    className="font-medium hit-44 hover:underline"
+                    className="font-medium hover:underline"
                   >
                     {comment.address}
                   </Link>

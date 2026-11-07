@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { homeIn, openComments, signUpBuyer } from "./helpers";
+import { homeIn, missedTaps, openComments, signInAgent, signUpBuyer } from "./helpers";
 
 // The phone settings carry over to new contexts, touch included; a desktop has none.
 const DESKTOP = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, isMobile: false, hasTouch: false };
@@ -129,39 +129,87 @@ test("the owner alone decides who else is an admin", async ({ browser }) => {
   expect((await helper.goto("/admin/people"))!.status()).toBe(404);
 });
 
-// Every link, button and field on the page that's smaller than a fingertip,
-// counting the touch area a small one gets around it (44px either way).
-const tooSmall = (page: Page) =>
-  page.getByRole("main").evaluate((main) =>
-    [...main.querySelectorAll("a, button, select, input:not([type=hidden]), summary")].flatMap((el) => {
+// Every link, button and field on the page that a fingertip can miss: taps
+// across a 44px box centred on it that land on something else. A link in a
+// line of words keeps the line's height (WCAG's inline exception), so a bigger
+// touch area never covers the words under it.
+async function tooSmall(page: Page) {
+  const misses: string[] = [];
+  for (const control of await page.getByRole("main").locator("a, button, select, input:not([type=hidden]), summary").all()) {
+    const { skip, label } = await control.evaluate((el) => {
       const box = el.getBoundingClientRect();
-      if (box.width === 0 && box.height === 0) return [];
-      const around = getComputedStyle(el, "::after");
-      const padded = around.position === "absolute" && around.content !== "none";
-      const height = Math.max(box.height, padded ? parseFloat(around.height) : 0);
-      const width = Math.max(box.width, padded ? parseFloat(around.width) : 0);
-      return height < 43.5 || width < 43.5 ? [`${el.textContent?.trim() || el.outerHTML.slice(0, 60)}: ${width}x${height}`] : [];
-    }),
-  );
+      const inline = el.tagName === "A" && getComputedStyle(el).display === "inline";
+      return {
+        skip: inline || (box.width === 0 && box.height === 0),
+        label: `${el.textContent?.trim() || el.outerHTML.slice(0, 60)} (${Math.round(box.width)}x${Math.round(box.height)})`,
+      };
+    });
+    if (skip) continue;
+    const missed = await missedTaps(control);
+    if (missed.length > 0) misses.push(`${label}: ${missed.join(" ")}`);
+  }
+  return misses;
+}
 
-test("on a phone, everything in the admin takes a fingertip, and likes are hearts, never green", async ({ browser }) => {
-  // (The default device: a phone.)
-  const admin = await signIn(browser, OWNER, {});
+test("on a phone, everything in the admin takes a fingertip and fits the screen, and likes are hearts, never green", async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  // Its own people: a sign-up to follow up, who says something, and an agent.
+  const fern = await signUpBuyer(browser, "fern.fingertip@example.com", "Fern Fingertip", "206-555-0177");
+  await fern.goto("/homes/SAMPLE-1006");
+  const sheet = await openComments(fern, homeIn(fern, BRACKENFIELD));
+  await sheet.getByLabel("Add a comment").fill("Does the yard get afternoon sun?");
+  await sheet.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(sheet.getByText("Does the yard get afternoon sun?")).toBeVisible();
+  await signInAgent(browser, "fay.fingertip@example.com", "Fay Fingertip");
+
+  // (A phone at its narrowest: 360 wide.)
+  const admin = await signIn(browser, OWNER, { viewport: { width: 360, height: 640 } });
   for (const path of ["/admin", "/admin/people", "/admin/homes", "/admin/homes/SAMPLE-1006", "/admin/comments", "/admin/team"]) {
     await admin.goto(path);
     await expect(admin.getByRole("heading", { level: 1 })).toBeVisible();
     expect(await tooSmall(admin), path).toEqual([]);
+    expect(await admin.evaluate(() => document.documentElement.scrollWidth), `${path} scrolls sideways`).toBeLessThanOrEqual(360);
     await expect(admin.locator(".lucide-thumbs-up")).toHaveCount(0);
   }
-  // The way back from a home or a person, most of all.
-  await admin.goto("/admin/people?q=casey");
-  await admin.getByRole("link", { name: /Casey Buyer/ }).click();
-  await expect(admin.getByRole("heading", { level: 1 })).toHaveText("Casey Buyer");
-  expect(await tooSmall(admin)).toEqual([]);
-  const back = admin.getByRole("main").getByRole("link", { name: "People", exact: true });
-  expect((await back.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  // Who to get back to stays readable: the name and number keep their room,
+  // and Call, Text and Email go under them.
+  await admin.goto("/admin");
+  const lead = admin.getByRole("listitem").filter({ has: admin.getByRole("link", { name: "Call Fern Fingertip" }) });
+  await expect(lead.getByText("206-555-0177", { exact: false })).toBeVisible();
+  const name = (await lead.getByRole("link", { name: "Fern Fingertip", exact: true }).boundingBox())!;
+  const call = (await lead.getByRole("link", { name: "Call Fern Fingertip" }).boundingBox())!;
+  expect(call.y).toBeGreaterThan(name.y + name.height);
+  expect((await lead.getByText(/206-555-0177/).boundingBox())!.width).toBeGreaterThan(150);
+
+  // The way back from a person, most of all.
+  for (const [query, who] of [
+    ["fern.fingertip", "Fern Fingertip"],
+    ["fay.fingertip", "Fay Fingertip"],
+  ]) {
+    await admin.goto(`/admin/people?q=${query}`);
+    await admin.getByRole("main").getByRole("link", { name: new RegExp(who) }).click();
+    await expect(admin.getByRole("heading", { level: 1 })).toHaveText(who);
+    expect(await tooSmall(admin), who).toEqual([]);
+    expect(await admin.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+    const back = admin.getByRole("main").getByRole("link", { name: "People", exact: true });
+    expect((await back.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
   // An agent is marked in ink, as everywhere else; green is for what's for sale.
   await expect(admin.getByText("Agent", { exact: true }).first()).toHaveClass(/bg-ink/);
   await admin.goto("/admin/people?status=agent");
   await expect(admin.getByRole("main").locator("[class*='emerald']")).toHaveCount(0);
+
+  // Asked to delete, then Cancel: the keyboard is back on Delete, not at the top.
+  await admin.goto("/admin/comments");
+  const said = admin.getByRole("listitem").filter({ hasText: "Does the yard get afternoon sun?" });
+  await said.getByRole("button", { name: "Delete", exact: true }).press("Enter");
+  await expect(said.getByRole("button", { name: "Delete comment and its replies" })).toBeFocused();
+  await said.getByRole("button", { name: "Cancel" }).press("Enter");
+  await expect(said.getByRole("button", { name: "Delete", exact: true })).toBeFocused();
+  // Then it goes, so the home is as the other tests expect it.
+  await said.getByRole("button", { name: "Delete", exact: true }).click();
+  await said.getByRole("button", { name: "Delete comment and its replies" }).click();
+  await expect(admin.getByText("Does the yard get afternoon sun?")).toHaveCount(0);
 });

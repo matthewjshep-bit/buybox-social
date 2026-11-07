@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { sql } from "./db";
+import { agentFirstName } from "./format";
 import type { Listing } from "./listings/types";
 import { likeId, mediaKeyOf, tagNameIn, type PhotoLikes } from "./photos";
 import { NO_REACTION, publicSideOf, type ReactionState } from "./reactions";
@@ -315,7 +316,7 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
             likedByMe: false,
             sharedPublicly: c.shared_publicly,
             personKey: personKey(c.participant_id ? `p:${c.participant_id}` : "agent"),
-            ...(c.liked_by !== null && { likedBy: c.liked_by.trim().split(/\s+/)[0] || "your agent" }),
+            ...(c.liked_by !== null && { likedBy: agentFirstName(c.liked_by) }),
             ...spotOf(c),
           }),
         ),

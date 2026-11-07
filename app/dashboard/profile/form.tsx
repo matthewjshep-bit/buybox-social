@@ -82,7 +82,7 @@ export function ProfileForm(props: {
             id="photo-file"
             type="file"
             accept="image/*"
-            className="mt-1 max-w-full text-sm file:mr-3 file:min-h-11 file:rounded-lg file:border-0 file:bg-white file:px-3 file:font-semibold file:text-stone-900"
+            className="mt-1 max-w-full text-sm file:mr-3 file:min-h-11 file:rounded-full file:border-0 file:bg-white file:px-4 file:font-semibold file:text-stone-900"
             onChange={async (event) => {
               const file = event.target.files?.[0];
               if (!file) return;

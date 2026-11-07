@@ -7,6 +7,7 @@ import {
   homeIn,
   joinAs,
   likeInPhoto,
+  missedTaps,
   openComments,
   openMore,
   pick,
@@ -695,8 +696,12 @@ test("an agent hearts what a client said: their thread says Liked by, in stone, 
   await expect(commentIn(sheet, "Ivy", IVY_SAYS)).toBeVisible();
   await expect(sheet.getByText(/^Liked by/)).toHaveCount(0);
   // The thread's small buttons each take a fingertip.
-  for (const small of [sheet.getByRole("button", { name: "Post", exact: true }), sheet.getByRole("button", { name: "Make private" })]) {
-    expect(await small.evaluate((el) => getComputedStyle(el, "::after").height)).toBe("44px");
+  for (const small of [
+    sheet.getByRole("button", { name: "Post", exact: true }),
+    sheet.getByRole("button", { name: "Make private" }),
+    sheet.getByLabel("Add a comment"),
+  ]) {
+    expect(await missedTaps(small)).toEqual([]);
   }
 
   // The agent answers, and hearts what she said; never their own words.
@@ -710,7 +715,7 @@ test("an agent hearts what a client said: their thread says Liked by, in stone, 
   const said = panel.getByRole("listitem").filter({ hasText: IVY_SAYS });
   const like = said.getByRole("button", { name: "Like Ivy's comment" });
   await expect(like).toHaveAttribute("aria-pressed", "false");
-  expect(await like.evaluate((el) => getComputedStyle(el, "::after").height)).toBe("44px");
+  expect(await missedTaps(like)).toEqual([]);
   await like.click();
   await expect(like).toHaveAttribute("aria-pressed", "true");
   await expect(like.locator(".lucide-heart")).toHaveClass(/fill-rose-600/);
@@ -723,7 +728,9 @@ test("an agent hearts what a client said: their thread says Liked by, in stone, 
   sheet = await openComments(ivy, homeIn(ivy, SALTMARSH));
   const chip = commentIn(sheet, "Ivy", IVY_SAYS).getByText("Liked by Hal", { exact: true });
   await expect(chip).toBeVisible();
-  await expect(chip).toHaveClass(/bg-stone-100/);
+  // A note in stone, outlined: not filled like the spot chip, which is a button.
+  await expect(chip).toHaveClass(/ring-stone-200/);
+  await expect(chip).not.toHaveClass(/bg-/);
   const colours = await chip.evaluate((el) => {
     const brand = document.createElement("span");
     brand.style.color = "var(--brand)";

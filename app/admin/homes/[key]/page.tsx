@@ -90,7 +90,7 @@ export default async function AdminHome({ params }: Props) {
               {home.links.map((link) => (
                 <li key={link.id} className="py-2.5 text-sm">
                   <p>
-                    <Link href={`/admin/people/${link.agent_id}`} className="font-semibold hit-44 hover:underline">
+                    <Link href={`/admin/people/${link.agent_id}`} className="font-semibold hover:underline">
                       {link.agent_name}
                     </Link>
                     <span className="text-stone-600"> to {link.client_name || "a client"}</span>
@@ -128,7 +128,7 @@ export default async function AdminHome({ params }: Props) {
                   {person.reaction === "like" ? "Liked" : "Passed"}
                 </span>
                 {person.accountId ? (
-                  <Link href={`/admin/people/${person.accountId}`} className="font-medium hit-44 hover:underline">
+                  <Link href={`/admin/people/${person.accountId}`} className="font-medium hover:underline">
                     {person.name}
                   </Link>
                 ) : (
