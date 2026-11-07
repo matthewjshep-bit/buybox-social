@@ -24,12 +24,15 @@ const at = ({ x, y }: { x: number; y: number }) => ({
 export function ProfileFeed({
   cards,
   name,
+  face = name,
   isMe,
   agent = false,
   earlierHref,
 }: {
   cards: ProfileCard[];
   name: string;
+  // What their initial is from, if not their name ("" for a plain figure).
+  face?: string;
   isMe: boolean;
   // An agent's face is ink, as everywhere.
   agent?: boolean;
@@ -55,6 +58,7 @@ export function ProfileFeed({
                 key={card.id}
                 card={card}
                 name={name}
+                face={face}
                 isMe={isMe}
                 agent={agent}
                 day={seen.get(card.home.key)! > 1 ? dayName(card.day) : undefined}
@@ -75,12 +79,14 @@ export function ProfileFeed({
 function Card({
   card,
   name,
+  face,
   isMe,
   agent,
   day,
 }: {
   card: ProfileCard;
   name: string;
+  face: string;
   isMe: boolean;
   agent: boolean;
   day?: string;
@@ -100,7 +106,7 @@ function Card({
         className="absolute inset-0 z-10 scroll-mt-[var(--filters)] rounded-2xl focus-visible:outline-offset-[-3px]!"
       />
       <div className="flex items-start gap-3 p-4 pb-3">
-        <Avatar name={name} tone={agent ? "agent" : "person"} size={8} />
+        <Avatar name={face} tone={agent ? "agent" : "person"} size={8} />
         <p className="min-w-0 flex-1 pt-1 text-body leading-snug text-ink">
           <strong className="font-semibold">{isMe ? "You" : name}</strong> {card.sentence}
           {/* Held to the last word, so the time never starts a line on its own. */}
@@ -116,7 +122,7 @@ function Card({
         )}
       </div>
 
-      {photo && !quiet && <CardPhoto card={card} name={name} agent={agent} />}
+      {photo && !quiet && <CardPhoto card={card} name={face} agent={agent} />}
 
       <div className={cn("px-4", quiet ? "pt-0" : "pt-3")}>
         <p className="flex flex-wrap items-baseline gap-x-1.5">

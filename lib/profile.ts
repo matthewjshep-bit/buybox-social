@@ -409,7 +409,10 @@ export const getProfilePerson = cache(async (visitorId: string) => {
       is_agent: boolean;
     }[]
   >`
-    select v.id, v.first_name, v.created_at, v.hide_passes, v.taste_hidden,
+    select v.id, v.created_at, v.hide_passes, v.taste_hidden,
+      -- An account with no name yet has none here either, even where an
+      -- older visitor row stood in with "Someone".
+      case when a.id is not null and btrim(a.full_name) = '' then '' else v.first_name end as first_name,
       coalesce(a.role = 'agent', false) as is_agent
     from visitors v left join accounts a on a.id = v.account_id
     where v.id::text = ${visitorId}`;

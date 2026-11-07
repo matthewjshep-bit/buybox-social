@@ -12,6 +12,8 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { commentInReel, joinPublic, reactInStream } from "@/app/homes/actions";
+import { NameGate, useThread } from "@/components/listing-thread";
 import { Sheet } from "@/components/sheet";
 import type { ActionResult } from "@/lib/engagement";
 import { cn } from "@/lib/format";
@@ -69,12 +71,12 @@ export function Toast() {
 
 // Your own page, shared the way your phone shares things; elsewhere, or if
 // that fails, copied.
-export function ShareMyPage({ name }: { name: string }) {
+export function ShareMyPage({ title }: { title: string }) {
   const share = async () => {
     const url = window.location.origin + window.location.pathname;
     if (navigator.share) {
       try {
-        await navigator.share({ title: `${name} on BuyBox Social`, url });
+        await navigator.share({ title, url });
         return;
       } catch (error) {
         // Closing the share sheet isn't an error.
@@ -98,6 +100,46 @@ export function ShareMyPage({ name }: { name: string }) {
     >
       <Share2 aria-hidden size={16} />
       Share my page
+    </button>
+  );
+}
+
+// Your page before you've said your first name (you signed in with just an
+// email): the same prompt the homes ask with, from a link under the heading.
+// Once it's saved the page says your name, and the keyboard goes to it.
+export function AddFirstName() {
+  return (
+    <NameGate
+      actions={{ join: joinPublic, react: reactInStream, comment: commentInReel }}
+      myName={null}
+      prompt="It shows at the top of your page and next to what you like and say, and anyone visiting can see it."
+    >
+      <AddFirstNameLink />
+    </NameGate>
+  );
+}
+
+function AddFirstNameLink() {
+  const { ensureName } = useThread();
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        if (!(await ensureName())) return;
+        say("Name saved");
+        // Once the page says the name and the prompt has gone, so neither takes the keyboard back.
+        const land = (tries: number) => {
+          const heading = document.getElementById("profile-name");
+          const settled = heading?.textContent !== "Your page" && !document.querySelector("dialog[open]");
+          if (settled) heading?.focus({ preventScroll: true });
+          else if (tries < 120) requestAnimationFrame(() => land(tries + 1));
+        };
+        land(0);
+      }}
+      // It can't ask without scripts, so without them it isn't there.
+      className="-my-1 min-h-11 text-body font-semibold text-brand underline-offset-2 hover:underline [@media(scripting:none)]:hidden"
+    >
+      Add your first name
     </button>
   );
 }

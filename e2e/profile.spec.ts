@@ -247,6 +247,44 @@ test("an empty page says what will show up there", async ({ browser }) => {
   expect((await anon.goto("/people/not-a-person"))!.status()).toBe(404);
 });
 
+// Signed in with just an email, so no name yet: their page never stands in
+// with "Someone". It says "Your page" and asks with the prompt the homes use.
+test("a page with no name yet asks for one", async ({ browser }) => {
+  const cy = await (await browser.newContext()).newPage();
+  await cy.goto("/login");
+  await cy.getByLabel("Email").fill("cy@example.com");
+  await cy.getByRole("button", { name: "Continue" }).click();
+  await cy.waitForURL((url) => !url.pathname.startsWith("/login"));
+  await cy.goto("/people/me");
+  await cy.waitForURL(/\/people\/[0-9a-f-]{36}$/);
+  await expect(cy.getByRole("heading", { level: 1 })).toHaveText("Your page");
+  await expect(cy).toHaveTitle("Your page · BuyBox Social");
+  await expect(cy.locator("main")).not.toContainText("Someone");
+
+  // Anyone else sees a buyer.
+  const anon = await (await browser.newContext()).newPage();
+  await anon.goto(cy.url());
+  await expect(anon.getByRole("heading", { level: 1 })).toHaveText("A buyer");
+  await expect(anon).toHaveTitle("A buyer · BuyBox Social");
+  await expect(anon.locator("main")).not.toContainText("Someone");
+  await expect(anon.getByRole("button", { name: "Add your first name" })).toHaveCount(0);
+
+  // Named, it's theirs, and the keyboard is on it.
+  await cy.getByRole("button", { name: "Add your first name" }).click();
+  const prompt = cy.getByRole("dialog", { name: "What's your first name?" });
+  await prompt.getByLabel("First name").fill("Cy");
+  await prompt.getByRole("button", { name: "Continue" }).click();
+  await expect(prompt).toBeHidden();
+  const heading = cy.getByRole("heading", { level: 1 });
+  await expect(heading).toHaveText("Cy (you)");
+  await expect(heading).toBeFocused();
+  await expect(cy.getByRole("status").filter({ hasText: "Name saved" })).toBeVisible();
+  await expect(cy.getByRole("button", { name: "Add your first name" })).toHaveCount(0);
+  await expect(cy).toHaveTitle("Cy · BuyBox Social");
+  await anon.reload();
+  await expect(anon.getByRole("heading", { level: 1 })).toHaveText("Cy");
+});
+
 // [P] Private to the link: a pass, a spot like, a spot dislike and a comment
 // made on an agent's link never reach that person's public page, in words or
 // in the HTML. Each is checked as saved on the link first, so the absence
@@ -817,9 +855,9 @@ test("the taste story is written from the data, and what someone switches off st
   // Passes kept private: gone for everyone else, still there for Nadia, and
   // its chip goes off with it, saying why.
   await nadia.getByRole("button", { name: "Not quite right?" }).click();
-  const passSwitch = sheet.getByRole("switch", { name: "Show what I pass on, on my page" });
+  const passSwitch = sheet.getByRole("switch", { name: "Show my passes on my page" });
   await expect(passSwitch).toHaveAttribute("aria-checked", "true");
-  await expect(passSwitch).toHaveAccessibleDescription(/A home's own page still shows who passed on it/);
+  await expect(passSwitch).toHaveAccessibleDescription(/Each home's own page still shows that you passed/);
   await passSwitch.click();
   await expect(passSwitch).toHaveAttribute("aria-checked", "false");
   const price = sheet.getByRole("switch", { name: "Show Price in my taste" });

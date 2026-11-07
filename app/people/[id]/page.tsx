@@ -29,6 +29,7 @@ import {
 } from "@/lib/profile";
 import { getPublicIdentity } from "@/lib/public";
 import { readStory, refreshStory, shownStory, storyOf, storyWriting, type TasteStory } from "@/lib/taste-story";
+import { ANONYMOUS_BUYER } from "@/lib/timeline";
 import { button, pill } from "@/lib/ui";
 
 type Props = {
@@ -44,6 +45,16 @@ const viewer = cache(async () => {
   return visitor;
 });
 
+// What their page calls them. Someone who signed in with just an email has no
+// name yet: on their own page it's "You" (the heading says "Your page" and asks
+// for one), with the initial the header shows, from their email; to anyone
+// else they're "A buyer", a plain figure. Never a stand-in like "Someone".
+async function nameOf(person: ProfilePerson, isMe: boolean) {
+  if (person.name.trim()) return { name: person.name, face: person.name, unnamed: false };
+  if (!isMe) return { name: person.isAgent ? "An agent" : ANONYMOUS_BUYER, face: "", unnamed: true };
+  return { name: "You", face: (await getCurrentUser())?.email ?? "", unnamed: true };
+}
+
 // What their page says about their taste, from everything public they've
 // done (read with the feed's first page), less anything they've switched off.
 const tasteOf = cache(async (person: ProfilePerson, mine: boolean) =>
@@ -55,11 +66,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const person = id.length > 64 ? null : await getProfilePerson(id);
   if (!person) return { title: "Not found · BuyBox Social" };
   const visitor = await viewer();
-  const story = await tasteOf(person, visitor?.id === person.id);
-  const title = `${person.name} · BuyBox Social`;
+  const isMe = visitor?.id === person.id;
+  const story = await tasteOf(person, isMe);
+  const { name, unnamed } = await nameOf(person, isMe);
+  const title = `${unnamed && isMe ? "Your page" : name} · BuyBox Social`;
   // The headline is from what everyone can see, whoever is looking, and it's
   // what a shared link to the page says under its title.
-  const description = story.headline ?? `What ${person.name} likes in homes, on BuyBox Social.`;
+  const description =
+    story.headline ??
+    (unnamed ? `What ${isMe ? "you like" : "they like"} in homes, on BuyBox Social.` : `What ${name} likes in homes, on BuyBox Social.`);
   return { title, description, openGraph: { title, description } };
 }
 
@@ -89,6 +104,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   const before = parseBefore(query.before);
   const visitor = await viewer();
   const isMe = visitor?.id === person.id;
+  const { name, face, unnamed } = await nameOf(person, isMe);
   // What they pass on is theirs to keep from everyone else.
   const passes = isMe || !person.hidePasses;
   const show: ProfileShow = isProfileShow(query.show) ? query.show : "all";
@@ -150,8 +166,10 @@ export default async function ProfilePage({ params, searchParams }: Props) {
           in it ever sits below the fold out of reach. */}
       <div className="flex flex-col gap-3 *:shrink-0 lg:-m-1 lg:p-1 [@media(min-width:64rem)_and_(min-height:860px)]:sticky [@media(min-width:64rem)_and_(min-height:860px)]:top-2 [@media(min-width:64rem)_and_(min-height:860px)]:max-h-[calc(100dvh-1rem)] [@media(min-width:64rem)_and_(min-height:860px)]:overflow-y-auto [@media(min-width:64rem)_and_(min-height:860px)]:overscroll-contain">
         <ProfileHeader
-          name={person.name}
+          name={name}
+          face={face}
           isMe={isMe}
+          unnamed={unnamed}
           agent={person.isAgent}
           since={person.since}
           homes={summary.counts.homes}
@@ -161,7 +179,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
         />
         {showTaste && (
           <TasteStoryCard
-            name={person.name}
+            name={name}
             isMe={isMe}
             headline={story.headline}
             prompt={prompt}
@@ -203,7 +221,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
             </EmptyState>
           ) : (
             <EmptyState icon={Home} title="Nothing to show yet">
-              {person.name} hasn&apos;t liked anything yet.
+              {name} hasn&apos;t liked anything yet.
             </EmptyState>
           )
         ) : (
@@ -244,11 +262,12 @@ export default async function ProfilePage({ params, searchParams }: Props) {
               )}
             </nav>
             {keptPrivate ? (
-              <EmptyState icon={Lock} title={`${person.name} keeps passes private.`} />
+              <EmptyState icon={Lock} title={`${name} keeps passes private.`} />
             ) : feed.cards.length > 0 || feed.earlier ? (
               <ProfileFeed
                 cards={feed.cards}
-                name={person.name}
+                name={name}
+                face={face}
                 isMe={isMe}
                 agent={person.isAgent}
                 earlierHref={feed.earlier ? href({ before: feed.earlier }) : null}

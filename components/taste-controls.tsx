@@ -98,8 +98,8 @@ export function TasteControls({ loves, passes, hidePasses }: { loves: TasteChip[
             Passes on
           </h3>
           <SwitchRow
-            label="Show what I pass on, on my page"
-            hint="Your passes, what you didn't like and the Passed filter. A home's own page still shows who passed on it."
+            label="Show my passes on my page"
+            hint="Hides your passes, what you didn't like and the Passed filter. Each home's own page still shows that you passed."
             on={passesShown}
             onChange={togglePasses}
           />

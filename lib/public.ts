@@ -237,12 +237,14 @@ export async function getPublicIdentity(account: Account | null, deviceToken: st
       select id, first_name from visitors where account_id = ${account.id}`;
     // No name yet (they signed in with just an email): asked the first time
     // they like or say something.
-    return { visitor: visitor ?? null, name: account.full_name.trim() ? firstName(account) : null };
+    return { visitor: visitor ?? null, name: firstName(account) || null };
   }
   const visitor = await getVisitor(deviceToken);
   return { visitor, name: visitor?.first_name ?? null };
 }
 
+// Their public self, made the first time it's needed. With no name yet it has
+// none either (older ones were stored as "Someone"), until they give one.
 export async function ensureAccountVisitor(account: Account) {
   const [visitor] = await sql<{ id: string; first_name: string }[]>`
     insert into visitors (device_token, first_name, account_id)

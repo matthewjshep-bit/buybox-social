@@ -1,6 +1,6 @@
 import { Globe } from "lucide-react";
 import Image from "next/image";
-import { ShareMyPage } from "@/app/people/[id]/client";
+import { AddFirstName, ShareMyPage } from "@/app/people/[id]/client";
 import { Avatar } from "@/components/ui";
 import { cn } from "@/lib/format";
 import { sinceLabel } from "@/lib/profile";
@@ -8,10 +8,13 @@ import { card } from "@/lib/ui";
 
 // The top of someone's page: a band from the photo they liked most, their
 // initial, name, how long they've been looking and how much. Counts are plain
-// words, not links: the filters below the header do the filtering.
+// words, not links: the filters below the header do the filtering. Your own
+// page with no name yet says "Your page" and asks for one.
 export function ProfileHeader({
   name,
+  face = name,
   isMe,
+  unnamed = false,
   agent = false,
   since,
   homes,
@@ -20,7 +23,11 @@ export function ProfileHeader({
   showPassed = true,
 }: {
   name: string;
+  // What their initial is from, if not their name ("" for a plain figure).
+  face?: string;
   isMe: boolean;
+  // Your own page, and you haven't said your first name yet.
+  unnamed?: boolean;
   // An agent's face is ink, as everywhere.
   agent?: boolean;
   since: string;
@@ -34,17 +41,20 @@ export function ProfileHeader({
       <div aria-hidden className="relative h-[120px] overflow-hidden bg-stone-200">
         {cover && (
           <>
-            {/* Soft enough to sit behind the name, clear enough to read as a home. */}
-            <Image src={cover} alt="" fill sizes="(min-width: 1024px) 360px, 600px" className="scale-110 object-cover blur-sm" />
+            {/* Soft enough to sit behind the name, clear enough to read as a home. Blurred, a
+                small photo looks the same as a big one, so a phone loads a small one. */}
+            <Image src={cover} alt="" fill sizes="96px" className="scale-110 object-cover blur-sm" />
             <span className="absolute inset-0 bg-black/15" />
           </>
         )}
       </div>
       <div className="px-4 pb-4">
-        <Avatar name={name} tone={agent ? "agent" : "person"} size={18} className="relative -mt-9 ring-4 ring-white" />
-        <h1 id="profile-name" className="mt-2 break-words font-display text-[30px] leading-tight">
-          {isMe ? `${name} (you)` : name}
+        <Avatar name={face} tone={agent ? "agent" : "person"} size={18} className="relative -mt-9 ring-4 ring-white" />
+        {/* The keyboard comes here once you've said your name, as it changes. */}
+        <h1 id="profile-name" tabIndex={-1} className="mt-2 break-words font-display text-[30px] leading-tight outline-none">
+          {isMe ? (unnamed ? "Your page" : `${name} (you)`) : name}
         </h1>
+        {isMe && unnamed && <AddFirstName />}
         <p className="mt-1 text-body text-muted">
           Looking since {sinceLabel(since)}
           {homes > 0 && ` · ${homes} ${homes === 1 ? "home" : "homes"}`}
@@ -70,7 +80,7 @@ export function ProfileHeader({
               <Globe aria-hidden size={14} className="mt-0.5 shrink-0" />
               Everyone can see this page. What you do on an agent&apos;s link never shows here.
             </p>
-            <ShareMyPage name={name} />
+            <ShareMyPage title={unnamed ? "My page on BuyBox Social" : `${name} on BuyBox Social`} />
           </>
         )}
       </div>
