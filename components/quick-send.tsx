@@ -422,7 +422,7 @@ function WhoFields({
           type="button"
           aria-expanded={false}
           onClick={() => setNoting(true)}
-          className={cn(button({ kind: "ghost" }), "-ml-4 self-start text-brand")}
+          className={cn(button({ kind: "ghost", flush: true }), "self-start text-brand")}
         >
           <Plus aria-hidden size={16} /> Add a note (optional)
         </button>

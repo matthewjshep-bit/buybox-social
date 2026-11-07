@@ -3,6 +3,7 @@
 import { ArrowUp, ChevronDown, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/format";
+import { glass } from "@/lib/ui";
 
 // The first time someone opens an agent's link, two gentle nudges show how it
 // works: swipe sideways through a home's photos, then move on to the next
@@ -99,7 +100,7 @@ export function NudgeHint({ nudge }: { nudge: Nudge }) {
       <p
         key={nudge}
         data-nudge={nudge}
-        className="flex items-center gap-1.5 rounded-full bg-black/45 py-2 pl-4 pr-3 text-sm font-semibold text-white shadow-lg backdrop-blur-md animate-[nudge-in_450ms_ease-out_both]"
+        className={cn(glass, "flex items-center gap-1.5 rounded-full py-2 pl-4 pr-3 text-sm font-semibold shadow-lg animate-[nudge-in_450ms_ease-out_both]")}
       >
         {nudge === "photos" ? (
           <>

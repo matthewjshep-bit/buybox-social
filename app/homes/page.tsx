@@ -59,7 +59,10 @@ export default async function SearchFeed({ searchParams }: Props) {
             white panel and of the comments that open in its place. */}
         <Link
           href={map}
-          className="absolute right-3 top-[calc(env(safe-area-inset-top)_+_3.75rem)] flex min-h-11 items-center gap-1.5 rounded-full bg-black/60 px-4 text-sm font-semibold text-white backdrop-blur-md hover:bg-black/75 sm:right-6 split:right-[480px] split:top-[calc(var(--stage-top)+12px)] split-xl:right-[520px]"
+          className={cn(
+            button({ kind: "glass" }),
+            "absolute right-3 top-[calc(env(safe-area-inset-top)_+_3.75rem)] sm:right-6 split:right-[480px] split:top-[calc(var(--stage-top)+12px)] split-xl:right-[520px]",
+          )}
         >
           <ArrowLeft aria-hidden size={16} /> Back to map
         </Link>

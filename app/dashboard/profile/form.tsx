@@ -157,7 +157,7 @@ export function ProfileForm(props: {
               // The button goes once it's used; the cursor carries on in the field.
               phoneField.current?.focus();
             }}
-            className={cn(button({ kind: "ghost" }), "-ml-4 mt-1 text-brand")}
+            className={cn(button({ kind: "ghost", flush: true }), "mt-1 text-brand")}
           >
             Use {suggestion}
           </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Heart, MessageCircle, ThumbsDown, X } from "lucide-react";
+import { Heart, MessageCircle, ThumbsDown, User, X } from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -33,7 +33,7 @@ import {
 } from "@/lib/photos";
 import type { TickerEvent } from "@/lib/ticker";
 import type { TimelineComment, TimelineItem } from "@/lib/timeline";
-import { pill } from "@/lib/ui";
+import { glass, pill } from "@/lib/ui";
 
 // Tap anywhere on a photo to like, dislike or comment on that spot: the front
 // door, the view from the deck. A ring marks where you tapped and a card opens
@@ -430,7 +430,7 @@ export function SpotLayer({
           }}
           className={cn("group pointer-events-auto absolute flex h-11 items-center", toggleCovered && "invisible")}
         >
-          <span className="flex h-8 items-center gap-1 rounded-full bg-black/60 px-3 text-meta font-semibold text-white backdrop-blur-md group-hover:bg-black/75 group-aria-pressed:bg-white group-aria-pressed:text-ink">
+          <span className={cn(glass, "flex h-8 items-center gap-1 rounded-full px-3 text-meta font-semibold group-hover:bg-black/75 group-aria-pressed:bg-white group-aria-pressed:text-ink")}>
             <MessageCircle aria-hidden size={14} /> {comments}
           </span>
         </button>
@@ -627,8 +627,10 @@ function SpotPin({
               <ThumbsDown size={10} className={pin.reaction === "dislike" ? "text-amber-300" : "text-white/90"} />
               {pin.dislikes > 1 && <span className="tabular-nums">{pin.dislikes}</span>}
             </>
+          ) : latest?.fromPrivateChat ? (
+            // Only talked about: who said something (a plain figure for someone unnamed).
+            <User size={10} strokeWidth={2.5} />
           ) : (
-            // Only talked about: who said something.
             latest?.name[0]?.toUpperCase()
           )}
         </span>

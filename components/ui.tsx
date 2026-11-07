@@ -33,10 +33,9 @@ export function Card({
   );
 }
 
-export type AvatarSize = 5 | 6 | 7 | 8 | 9 | 10 | 18;
+export type AvatarSize = 6 | 7 | 8 | 9 | 10 | 18;
 
 const FACE: Record<AvatarSize, { box: string; icon: number }> = {
-  5: { box: "size-5 text-[10px]", icon: 11 },
   6: { box: "size-6 text-tiny", icon: 12 },
   7: { box: "size-7 text-xs", icon: 14 },
   8: { box: "size-8 text-meta", icon: 15 },
@@ -48,7 +47,6 @@ const FACE: Record<AvatarSize, { box: string; icon: number }> = {
 
 // Where the small mark sits on a face (a heart, a reply), for its size.
 const MARK: Record<AvatarSize, string> = {
-  5: "-bottom-1 -right-1.5 size-3.5",
   6: "-bottom-1 -right-1.5 size-3.5",
   7: "-bottom-1 -right-1.5 size-3.5",
   8: "-bottom-1 -right-1 size-4",
@@ -60,23 +58,21 @@ const MARK: Record<AvatarSize, string> = {
 // Someone's face, as their initial: a buyer's (yours too) in the brand's
 // colour, an agent's in ink, someone unnamed a plain figure in stone. The
 // same everywhere, so a face says who someone is before their name does.
-// (An agent's own photo, where they have one, is AgentAvatar.) `badge`: a
-// small mark on its corner for what they did. `className`: its place and
-// any edge (a ring, a margin), never its size or colour.
+// (An agent's own photo, where they have one, is AgentAvatar; on the dark
+// ground, MarkFace.) `badge`: a small mark on its corner for what they did.
+// `className`: its place and any edge (a ring, a margin), never its size or
+// colour.
 export function Avatar({
   name,
   tone = "person",
   size = 9,
   badge,
-  dark = false,
   className,
 }: {
   name: string | null;
   tone?: AvatarTone;
   size?: AvatarSize;
   badge?: ReactNode;
-  // On the dark ground.
-  dark?: boolean;
   className?: string;
 }) {
   const initial = tone === "anonymous" ? undefined : name?.trim()[0]?.toUpperCase();
@@ -87,7 +83,7 @@ export function Avatar({
       className={cn(
         "flex shrink-0 items-center justify-center rounded-full font-semibold",
         face.box,
-        avatarColor(initial ? tone : "anonymous", { dark }),
+        avatarColor(initial ? tone : "anonymous"),
         !badge && className,
       )}
     >
@@ -96,7 +92,8 @@ export function Avatar({
   );
   if (!badge) return shown;
   return (
-    <span aria-hidden className={cn("relative shrink-0", className)}>
+    // Round, as the face is, so an edge given to it is round too.
+    <span aria-hidden className={cn("relative flex shrink-0 rounded-full", className)}>
       {shown}
       <span
         className={cn("absolute flex items-center justify-center rounded-full bg-white ring-1 ring-stone-200", MARK[size])}
@@ -172,14 +169,13 @@ export function Badge({
 }
 
 // Nothing to show here, said one way everywhere: an icon, a line, perhaps a
-// word more and a way on. In a card of its own, or `bare` inside one;
-// `compact`: just the line, small, as a list inside a card says it's empty.
+// word more and a way on, in a card of its own. `compact`: just the line,
+// small, as a list inside a card says it's empty.
 export function EmptyState({
   icon: Icon,
   title,
   children,
   action,
-  bare = false,
   compact = false,
   className,
 }: {
@@ -187,13 +183,12 @@ export function EmptyState({
   title: ReactNode;
   children?: ReactNode;
   action?: ReactNode;
-  bare?: boolean;
   compact?: boolean;
   className?: string;
 }) {
   if (compact) return <p className={cn("py-6 text-center text-sm text-muted", className)}>{title}</p>;
   return (
-    <div className={cn(!bare && card, "px-6 py-8 text-center", className)}>
+    <div className={cn(card, "px-6 py-8 text-center", className)}>
       {Icon && <Icon aria-hidden size={28} className="mx-auto mb-2 text-stone-500" />}
       <p className="text-balance text-[17px] font-semibold text-ink">{title}</p>
       {children && <div className="mt-1 text-balance text-body text-stone-700">{children}</div>}

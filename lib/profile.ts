@@ -395,19 +395,31 @@ export function withoutPasses(rows: ProfileRows): ProfileRows {
 // about them overall (their taste). Read once per page, with the feed's first page.
 export const getProfileRows = (visitorId: string, mine: boolean) => loadRows(visitorId, null, mine);
 
-// The person behind a profile: only their first name, when they joined, and
-// what they keep off their page.
+// The person behind a profile: only their first name, when they joined,
+// whether they're an agent (whose face is ink, as everywhere) and what they
+// keep off their page.
 export const getProfilePerson = cache(async (visitorId: string) => {
   const [visitor] = await sql<
-    { id: string; first_name: string; created_at: Date; hide_passes: boolean; taste_hidden: unknown }[]
+    {
+      id: string;
+      first_name: string;
+      created_at: Date;
+      hide_passes: boolean;
+      taste_hidden: unknown;
+      is_agent: boolean;
+    }[]
   >`
-    select id, first_name, created_at, hide_passes, taste_hidden from visitors where id::text = ${visitorId}`;
+    select v.id, v.first_name, v.created_at, v.hide_passes, v.taste_hidden,
+      coalesce(a.role = 'agent', false) as is_agent
+    from visitors v left join accounts a on a.id = v.account_id
+    where v.id::text = ${visitorId}`;
   if (!visitor) return null;
   const hidden = Array.isArray(visitor.taste_hidden) ? visitor.taste_hidden : [];
   return {
     id: visitor.id,
     name: visitor.first_name,
     since: visitor.created_at.toISOString(),
+    isAgent: visitor.is_agent,
     hidePasses: visitor.hide_passes,
     // Lower-case keys of the things their taste says that they've switched off.
     tasteHidden: hidden.filter((key): key is string => typeof key === "string").map((key) => key.toLowerCase()),

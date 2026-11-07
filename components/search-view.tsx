@@ -13,7 +13,7 @@ import { HomeThumb } from "@/components/ui";
 import type { FeedPost } from "@/lib/feed";
 import { cn, formatPrice } from "@/lib/format";
 import { filtersQuery, HOME_TYPES, SORTS, type SearchFilters } from "@/lib/search-options";
-import { field } from "@/lib/ui";
+import { button, field } from "@/lib/ui";
 
 // The map draws with WebGL in the browser, so it never renders on the server.
 const ListingMap = dynamic(() => import("@/components/listing-map"), {
@@ -454,7 +454,7 @@ export function SearchView({
         <button
           type="button"
           onClick={() => setMobileMap((v) => !v)}
-          className="pointer-events-auto flex h-12 items-center gap-2 rounded-full bg-white px-5 font-semibold text-stone-900 shadow-lg ring-1 ring-stone-200"
+          className={cn(button({ kind: "light", size: "lg" }), "pointer-events-auto shadow-lg ring-1 ring-stone-200")}
         >
           {mobileMap ? <Home aria-hidden size={18} /> : <MapIcon aria-hidden size={18} />}
           {mobileMap ? "Homes" : "Map"}

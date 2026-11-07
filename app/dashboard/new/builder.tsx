@@ -158,7 +158,7 @@ export function ShareBuilder({
             <button
               type="button"
               onClick={() => setSearching(true)}
-              className={cn(button({ kind: "ghost" }), "-ml-4 mt-2 text-brand")}
+              className={cn(button({ kind: "ghost", flush: true }), "mt-2 text-brand")}
             >
               <Plus aria-hidden size={16} /> Add another home
             </button>
@@ -204,7 +204,7 @@ export function ShareBuilder({
                   <button
                     type="button"
                     onClick={() => setPeople((current) => [...current, ""])}
-                    className={cn(button({ kind: "ghost" }), "-ml-4 mt-2 text-brand")}
+                    className={cn(button({ kind: "ghost", flush: true }), "mt-2 text-brand")}
                   >
                     <Plus aria-hidden size={16} /> Add another person
                   </button>

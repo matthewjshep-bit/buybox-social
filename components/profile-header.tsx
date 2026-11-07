@@ -12,6 +12,7 @@ import { card } from "@/lib/ui";
 export function ProfileHeader({
   name,
   isMe,
+  agent = false,
   since,
   homes,
   counts,
@@ -20,6 +21,8 @@ export function ProfileHeader({
 }: {
   name: string;
   isMe: boolean;
+  // An agent's face is ink, as everywhere.
+  agent?: boolean;
   since: string;
   homes: number;
   counts: { liked: number; passed: number; comments: number };
@@ -38,7 +41,7 @@ export function ProfileHeader({
         )}
       </div>
       <div className="px-4 pb-4">
-        <Avatar name={name} size={18} className="relative -mt-9 ring-4 ring-white" />
+        <Avatar name={name} tone={agent ? "agent" : "person"} size={18} className="relative -mt-9 ring-4 ring-white" />
         <h1 id="profile-name" className="mt-2 break-words font-display text-[30px] leading-tight">
           {isMe ? `${name} (you)` : name}
         </h1>

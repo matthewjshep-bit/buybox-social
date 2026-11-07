@@ -97,7 +97,7 @@ export function AspectRows({
             flushSync(() => setAll(true));
             list.current?.querySelectorAll<HTMLElement>(":scope > li > button")[first]?.focus();
           }}
-          className={cn(button({ kind: "ghost" }), "-ml-4 text-brand")}
+          className={cn(button({ kind: "ghost", flush: true }), "text-brand")}
         >
           Show all {items.length}
         </button>

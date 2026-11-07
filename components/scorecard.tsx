@@ -688,7 +688,7 @@ function SpotList({
             flushSync(() => setAll(true));
             list.current?.querySelectorAll<HTMLElement>(":scope > li > button")[SHOWN]?.focus();
           }}
-          className={cn(button({ kind: "ghost" }), "-ml-4 text-brand")}
+          className={cn(button({ kind: "ghost", flush: true }), "text-brand")}
         >
           Show all {rows.length}
         </button>
@@ -743,7 +743,7 @@ function Said({
         <button
           type="button"
           onClick={onAllComments}
-          className={cn(button({ kind: "ghost" }), "-ml-4 mt-2 text-brand")}
+          className={cn(button({ kind: "ghost", flush: true }), "mt-2 text-brand")}
         >
           See all {total} {total === 1 ? "comment" : "comments"}
         </button>
@@ -753,7 +753,7 @@ function Said({
           <button
             type="button"
             onClick={onCompose}
-            className={cn(button({ kind: "ghost" }), "-ml-4 mt-2 text-brand")}
+            className={cn(button({ kind: "ghost", flush: true }), "mt-2 text-brand")}
           >
             Add a comment
           </button>
@@ -1240,7 +1240,7 @@ export function WhatPeopleThink({
       <button
         type="button"
         onClick={onOpen}
-        className="-mx-2 mt-2 flex min-h-11 items-center gap-2 rounded-full px-3 text-body font-semibold text-brand hover:bg-white"
+        className={cn(button({ kind: "ghost", flush: true }), "mt-2 text-brand")}
       >
         <ClipboardList aria-hidden size={17} />
         Open the scorecard

@@ -152,6 +152,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
         <ProfileHeader
           name={person.name}
           isMe={isMe}
+          agent={person.isAgent}
           since={person.since}
           homes={summary.counts.homes}
           counts={summary.counts}
@@ -249,6 +250,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                 cards={feed.cards}
                 name={person.name}
                 isMe={isMe}
+                agent={person.isAgent}
                 earlierHref={feed.earlier ? href({ before: feed.earlier }) : null}
               />
             ) : before ? (

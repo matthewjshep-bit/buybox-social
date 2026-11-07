@@ -31,7 +31,7 @@ export default async function AdminHomes({ searchParams }: Props) {
       <PageTitle title="Homes">Every listing on the site, and how people are taking to it.</PageTitle>
 
       <div className="flex flex-col gap-3">
-        <SearchBox q={q} placeholder="Search by address, city or ZIP" keep={{ status, sort: sort === "liked" ? undefined : sort }} />
+        <SearchBox q={q} placeholder="Address, city or ZIP" keep={{ status, sort: sort === "liked" ? undefined : sort }} />
         <Chips
           label="Status"
           items={[

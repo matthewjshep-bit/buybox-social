@@ -7,21 +7,33 @@ import { createShare, signInAgent, signUpBuyer } from "./helpers";
 
 const DESKTOP = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, isMobile: false, hasTouch: false };
 
-// Every button, and every link drawn as one (a fill or an edge), on the page:
-// how tall it is and whether its ends are round. A card that's a link (taller
-// than any button) and a word that acts (no shape of its own) aren't buttons.
+// Every button, and every link drawn as one (a fill, an edge or a ring), in
+// the header, the page and any open sheet: how tall it is, whether its ends
+// are round, and how wide each of its icons is. A card that's a link (taller
+// than any button), a word that acts (no shape of its own) and a chip that
+// carries a photo aren't buttons.
 async function buttonShapes(page: Page) {
-  return page.getByRole("main").evaluate((main) =>
-    [...main.querySelectorAll<HTMLElement>("a, button")].flatMap((el) => {
+  return page.evaluate(() => {
+    const roots = [...document.querySelectorAll("header, main, dialog[open]")];
+    const controls = new Set(roots.flatMap((root) => [...root.querySelectorAll<HTMLElement>("a, button")]));
+    return [...controls].flatMap((el) => {
       const box = el.getBoundingClientRect();
       const style = getComputedStyle(el);
-      const drawn = style.backgroundColor !== "rgba(0, 0, 0, 0)" || parseFloat(style.borderTopWidth) >= 1;
-      if (!box.height || box.height >= 64 || !drawn || el.closest("[hidden]")) return [];
+      // A ring is a shadow; an empty one (every Tailwind shadow layer starts as one) isn't an edge.
+      const ring = style.boxShadow.replace(/rgba\(0, 0, 0, 0\) 0px 0px 0px 0px,? ?/g, "").trim();
+      const drawn =
+        style.backgroundColor !== "rgba(0, 0, 0, 0)" ||
+        parseFloat(style.borderTopWidth) >= 1 ||
+        (ring !== "" && ring !== "none");
+      if (!box.height || box.height >= 64 || !drawn || el.closest("[hidden]") || el.querySelector("img")) return [];
       const name = (el.getAttribute("aria-label") ?? el.textContent ?? "").trim().slice(0, 40);
       const round = parseFloat(style.borderTopLeftRadius) >= box.height / 2 - 0.5;
-      return [{ name, height: Math.round(box.height), round }];
-    }),
-  );
+      const icons = [...el.children]
+        .filter((child) => child instanceof SVGElement && getComputedStyle(child).display !== "none")
+        .map((icon) => Math.round(icon.getBoundingClientRect().width));
+      return [{ name, height: Math.round(box.height), round, icons }];
+    });
+  });
 }
 
 async function expectKitButtons(page: Page, where: string) {
@@ -30,6 +42,8 @@ async function expectKitButtons(page: Page, where: string) {
   for (const shape of shapes) {
     expect(shape.round, `${where}: ${shape.name}`).toBe(true);
     expect([44, 48], `${where}: ${shape.name} is ${shape.height}px`).toContain(shape.height);
+    // Never squeezed by the words beside it, on the narrowest phone too.
+    for (const width of shape.icons) expect(width, `${where}: ${shape.name}'s icon`).toBeGreaterThanOrEqual(12);
   }
 }
 
@@ -74,6 +88,13 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
 }) => {
   const agent = await signInAgent(browser, "una-kit@example.com", "Una Kit");
   await expectKitButtons(agent, "dashboard");
+  const ink = await colourOf(agent, "var(--ink)");
+
+  // Their own page: their face in ink, as it is in the header beside it.
+  await agent.goto("/people/me");
+  await expect(agent.locator("#profile-name")).toHaveText("Una (you)");
+  const big = agent.locator("#profile-name").locator("xpath=preceding-sibling::span[1]");
+  expect(await big.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(ink);
 
   // Picking homes for a link: the search box, and each home's price.
   await agent.goto("/dashboard/new");
@@ -88,6 +109,17 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   await expectKitButtons(agent, "client page");
   const home = agent.getByRole("region", { name: "812 N Corbel St" });
   expect(await home.getByText("$724,900").evaluate((el) => getComputedStyle(el).fontFamily)).toBe(heading);
+  // ...on a 360px phone, where Text, Copy and Preview share the card...
+  const wide = agent.viewportSize();
+  await agent.setViewportSize({ width: 360, height: 640 });
+  await expectKitButtons(agent, "client page at 360px");
+  // ...and in the home's Scorecard, open beside it.
+  await home.getByRole("button", { name: "Scorecard for 812 N Corbel St" }).click();
+  await expect(agent.getByRole("dialog", { name: "Scorecard" })).toBeVisible();
+  await expectKitButtons(agent, "Scorecard");
+  await agent.keyboard.press("Escape");
+  await expect(agent.getByRole("dialog", { name: "Scorecard" })).toBeHidden();
+  if (wide) await agent.setViewportSize(wide);
 
   // The agent's own words in the thread, under their face in ink, as everywhere.
   await expectFieldFocus(agent, "Reply to your client");
@@ -95,7 +127,6 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   await home.getByRole("button", { name: "Reply", exact: true }).click();
   const said = home.getByRole("listitem").filter({ hasText: "I can show you this one on Saturday." });
   await expect(said).toBeVisible();
-  const ink = await colourOf(agent, "var(--ink)");
   const face = said.locator("span[aria-hidden]").filter({ hasText: /^U$/ }).first();
   expect(await face.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(ink);
   // ...and the same face in the header.
@@ -131,7 +162,9 @@ test("a buyer's pages, sign-in and the admin are the same kit, and a buyer's fac
   await expect(buyer.getByText("Nothing yet")).toBeVisible();
   await expectKitButtons(buyer, "activity");
 
-  // The admin: buttons and the search box, and people's faces by who they are.
+  // The admin: buttons and the search box, and people's faces by who they are
+  // (an agent of its own, so this test needs nothing from the one above).
+  await signInAgent(browser, "ulla-kit@example.com", "Ulla Kit");
   const admin = await signIn(browser, "matt@shepflips.com");
   for (const path of ["/admin", "/admin/people", "/admin/homes"]) {
     await admin.goto(path);
@@ -146,6 +179,6 @@ test("a buyer's pages, sign-in and the admin are the same kit, and a buyer's fac
       .locator("span[aria-hidden]")
       .first()
       .evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(await rowFace("Una Kit")).toBe(await colourOf(admin, "var(--ink)"));
+  expect(await rowFace("Ulla Kit")).toBe(await colourOf(admin, "var(--ink)"));
   expect(await rowFace("Kira Kit")).toBe(await colourOf(admin, "var(--brand)"));
 });

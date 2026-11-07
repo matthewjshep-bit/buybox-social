@@ -102,8 +102,9 @@ export function ClientNameEditor({ shareId, name }: { shareId: string; name: str
   }
 
   return (
+    // On a phone the name gets the whole line, and Save and Cancel go under it.
     <form action={action} className="mt-1 flex flex-wrap items-start gap-2">
-      <div className="min-w-0 flex-1 sm:max-w-sm">
+      <div className="min-w-0 basis-full sm:flex-1 sm:max-w-sm">
         <label htmlFor="clientName" className="sr-only">
           Client&apos;s name
         </label>
@@ -125,10 +126,10 @@ export function ClientNameEditor({ shareId, name }: { shareId: string; name: str
           </p>
         )}
       </div>
-      <button type="submit" disabled={pending} className={cn(button({ kind: "primary", size: "lg" }), "mt-1")}>
+      <button type="submit" disabled={pending} className={cn(button({ kind: "primary", size: "lg" }), "sm:mt-1")}>
         {pending ? "Saving…" : "Save"}
       </button>
-      <button type="button" onClick={() => setEditing(false)} className={cn(button({ kind: "ghost", size: "lg" }), "mt-1")}>
+      <button type="button" onClick={() => setEditing(false)} className={cn(button({ kind: "ghost", size: "lg" }), "sm:mt-1")}>
         Cancel
       </button>
     </form>
@@ -182,8 +183,13 @@ export function SendLink({
         onFocus={(event) => event.target.select()}
         className={cn(field({ quiet: true }), "mt-2")}
       />
-      <div className={cn("mt-3 grid gap-2", share ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")}>
-        <a href={`sms:?&body=${encodeURIComponent(message)}`} className={button({ kind: "primary" })}>
+      {/* Without the phone's share sheet, three in a row once there's room for
+          their words; on a narrower phone Text gets a line of its own. */}
+      <div className={cn("mt-3 grid gap-2", share ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 min-[412px]:grid-cols-3")}>
+        <a
+          href={`sms:?&body=${encodeURIComponent(message)}`}
+          className={cn(button({ kind: "primary" }), !share && "col-span-2 min-[412px]:col-span-1")}
+        >
           <MessageSquare aria-hidden size={16} /> Text
         </a>
         {/* The phone's share sheet, straight from this tap: WhatsApp, Mail, AirDrop. */}

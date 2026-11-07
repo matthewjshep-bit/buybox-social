@@ -99,7 +99,8 @@ export function SearchBox({ q, placeholder, keep }: { q?: string; placeholder: s
           className={cn(field(), "pl-10")}
         />
       </label>
-      <button type="submit" className={button({ kind: "neutral", size: "lg" })}>
+      {/* As tall as the box beside it, with no more width than its word needs. */}
+      <button type="submit" className={button({ kind: "neutral" })}>
         Search
       </button>
     </form>

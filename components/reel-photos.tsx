@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Heart, Play } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { cn } from "@/lib/format";
+import { glass } from "@/lib/ui";
 import type { ListingMedia } from "@/lib/listings/types";
 
 // The clear space between the header at the top and the words at the bottom,
@@ -268,8 +269,6 @@ export function ReelPhotos({
   const farEdge = `max(100cqw - (${place.left}) - ${place.width} + 0.5rem, env(safe-area-inset-right) + 0.5rem)`;
   // "Kitchen · 3 of 12": what the photo shows, and where it is among them.
   const room = [shown?.ImageOf, media.length > 1 ? `${index + 1} of ${media.length}` : null].filter(Boolean).join(" · ");
-  // Dark enough that white words on it read over the brightest photo.
-  const glass = "rounded-full bg-black/60 text-white backdrop-blur-md";
   // On a phone on its side the middle of the photo is under the words, so
   // the arrows only show while the keyboard is on them (a swipe turns photos).
   const arrow = cn(
@@ -368,7 +367,7 @@ export function ReelPhotos({
         {room && (
           <p
             style={{ top: head, left: edge }}
-            className={cn(glass, "absolute flex h-7 max-w-[60cqw] items-center px-2.5 text-meta font-semibold")}
+            className={cn(glass, "absolute flex h-7 max-w-[60cqw] items-center rounded-full px-2.5 text-meta font-semibold")}
           >
             <span className="min-w-0 truncate">{room}</span>
           </p>
@@ -376,7 +375,7 @@ export function ReelPhotos({
         {counter && (
           <p
             style={{ top: head, right: farEdge }}
-            className={cn(glass, "absolute flex h-7 items-center px-2.5 text-meta font-semibold tabular-nums")}
+            className={cn(glass, "absolute flex h-7 items-center rounded-full px-2.5 text-meta font-semibold tabular-nums")}
           >
             {counter}
           </p>

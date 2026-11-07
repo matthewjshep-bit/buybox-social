@@ -65,7 +65,7 @@ export default async function AdminPeople({ searchParams }: Props) {
             count: filter.status ? counts[filter.status] : counts.all,
           }))}
         />
-        <SearchBox q={q} placeholder="Search by name, email or phone" keep={{ status }} />
+        <SearchBox q={q} placeholder="Name, email or phone" keep={{ status }} />
       </div>
 
       <div className={cn(card, "mt-4 overflow-hidden")}>

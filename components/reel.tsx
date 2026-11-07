@@ -82,7 +82,7 @@ import { eventsFromHeadline, eventsFromTimeline, onFact, onPhoto, type TickerEve
 import type { TimelineComment, TimelineItem } from "@/lib/timeline";
 import { NO_REACTION, publicSideOf, type Aspect, type ReactionState } from "@/lib/reactions";
 import type { ScorecardViewer } from "@/lib/scorecard";
-import { avatarColor, button, pill } from "@/lib/ui";
+import { avatarColor, button, glass, pill } from "@/lib/ui";
 
 // The feed: one home per screen, scrolled up like a reel, for as long as you
 // keep going. On a phone the whole photo sits right on top of a block of words
@@ -1535,7 +1535,7 @@ function Panel({
                     top: `calc(${photoFoot(current)} - 3.25rem)`,
                     left: `calc(${photoPlace(current).left} + ${photoPlace(current).width} / 2)`,
                   }}
-                  className="absolute z-10 flex h-11 -translate-x-1/2 items-center gap-2 rounded-full bg-black/50 px-4 text-body font-semibold text-white backdrop-blur-md hover:bg-black/65"
+                  className={cn(glass, "absolute z-10 flex h-11 -translate-x-1/2 items-center gap-2 rounded-full px-4 text-body font-semibold hover:bg-black/75")}
                 >
                   <Eye aria-hidden size={18} />
                   Show everything
@@ -2113,13 +2113,16 @@ function Facts({
           onPosted={onPosted}
           extra={
             open === "Address" && (
-              <Link
-                href={`/search?home=${encodeURIComponent(listing.ListingKey)}`}
-                className={cn(button({ kind: "ghost" }), "-ml-4 mt-2 text-brand")}
-              >
-                <MapPin aria-hidden size={15} />
-                See it on the map
-              </Link>
+              // In line with the card's title and its comments.
+              <div className="mt-2 pl-1">
+                <Link
+                  href={`/search?home=${encodeURIComponent(listing.ListingKey)}`}
+                  className={cn(button({ kind: "ghost", flush: true }), "text-brand")}
+                >
+                  <MapPin aria-hidden size={15} />
+                  See it on the map
+                </Link>
+              </div>
             )
           }
           ref={card}
@@ -2804,7 +2807,7 @@ function MoreSheet({
           <button
             type="button"
             onClick={onPhotoOnly}
-            className={cn(button({ kind: "ghost" }), "-ml-4 -mt-1 self-start text-ink")}
+            className={cn(button({ kind: "ghost", flush: true }), "-mt-1 self-start text-ink")}
           >
             <ImageIcon aria-hidden size={17} />
             Show the photo only
@@ -2886,7 +2889,7 @@ function LikeWithList({ things, children }: { things: Thing[]; children: ReactNo
                   aria-pressed={thing.liked}
                   aria-label={`Like ${tagPhrase(thing.tag)}${thing.count > 0 ? `, ${thing.count} ${thing.count === 1 ? "like" : "likes"}` : ""}`}
                   onClick={thing.toggle}
-                  className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full bg-black/50 px-3 text-meta font-semibold text-white backdrop-blur-md hit-44 hover:bg-black/70 [text-shadow:none]"
+                  className={cn(glass, "flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-meta font-semibold hit-44 hover:bg-black/75 [text-shadow:none]")}
                 >
                   <Heart
                     aria-hidden

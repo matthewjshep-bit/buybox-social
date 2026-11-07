@@ -7,7 +7,7 @@ import { MarkFace } from "@/components/spot-highlight";
 import { Avatar, Badge } from "@/components/ui";
 import { cn, formatPrice } from "@/lib/format";
 import { cardTime, dayHeading, dayName, type PinKind, type ProfileCard } from "@/lib/profile";
-import { button, card as cardClass } from "@/lib/ui";
+import { button, card as cardClass, glass } from "@/lib/ui";
 
 // Everything someone has done, Facebook-style: one card per home per day,
 // under "Today", "Yesterday" and so on. Each card shows the photo with the
@@ -25,11 +25,14 @@ export function ProfileFeed({
   cards,
   name,
   isMe,
+  agent = false,
   earlierHref,
 }: {
   cards: ProfileCard[];
   name: string;
   isMe: boolean;
+  // An agent's face is ink, as everywhere.
+  agent?: boolean;
   earlierHref: string | null;
 }) {
   const days: { heading: string; cards: ProfileCard[] }[] = [];
@@ -53,6 +56,7 @@ export function ProfileFeed({
                 card={card}
                 name={name}
                 isMe={isMe}
+                agent={agent}
                 day={seen.get(card.home.key)! > 1 ? dayName(card.day) : undefined}
               />
             ))}
@@ -68,7 +72,19 @@ export function ProfileFeed({
   );
 }
 
-function Card({ card, name, isMe, day }: { card: ProfileCard; name: string; isMe: boolean; day?: string }) {
+function Card({
+  card,
+  name,
+  isMe,
+  agent,
+  day,
+}: {
+  card: ProfileCard;
+  name: string;
+  isMe: boolean;
+  agent: boolean;
+  day?: string;
+}) {
   const { home, photo } = card;
   const href = `/homes/${encodeURIComponent(home.key)}${photo ? `?photo=${photo.index}` : ""}`;
   // A day when all they did was like someone's comment: a small card, no photo.
@@ -84,7 +100,7 @@ function Card({ card, name, isMe, day }: { card: ProfileCard; name: string; isMe
         className="absolute inset-0 z-10 scroll-mt-[var(--filters)] rounded-2xl focus-visible:outline-offset-[-3px]!"
       />
       <div className="flex items-start gap-3 p-4 pb-3">
-        <Avatar name={name} size={8} />
+        <Avatar name={name} tone={agent ? "agent" : "person"} size={8} />
         <p className="min-w-0 flex-1 pt-1 text-body leading-snug text-ink">
           <strong className="font-semibold">{isMe ? "You" : name}</strong> {card.sentence}
           {/* Held to the last word, so the time never starts a line on its own. */}
@@ -100,7 +116,7 @@ function Card({ card, name, isMe, day }: { card: ProfileCard; name: string; isMe
         )}
       </div>
 
-      {photo && !quiet && <CardPhoto card={card} name={name} />}
+      {photo && !quiet && <CardPhoto card={card} name={name} agent={agent} />}
 
       <div className={cn("px-4", quiet ? "pt-0" : "pt-3")}>
         <p className="flex flex-wrap items-baseline gap-x-1.5">
@@ -209,7 +225,7 @@ function commentMeta(comment: ProfileCard["comments"][number]) {
 // The photo at its own shape, so each spot lands where it was picked: dots for
 // what they liked (rose), didn't (amber) and talked about, and their initial
 // on the newest, as on the photo in the feed.
-function CardPhoto({ card, name }: { card: ProfileCard; name: string }) {
+function CardPhoto({ card, name, agent }: { card: ProfileCard; name: string; agent: boolean }) {
   const photo = card.photo!;
   const ratio = photo.width && photo.height ? photo.width / photo.height : null;
   const [newest, ...rest] = card.pins;
@@ -242,9 +258,9 @@ function CardPhoto({ card, name }: { card: ProfileCard; name: string }) {
             {pin.kind === "comment" && <MessageCircle size={9} strokeWidth={3} />}
           </span>
         ))}
-        {newest && <AvatarPin name={name} kind={newest.kind} x={newest.x} y={newest.y} />}
+        {newest && <AvatarPin name={name} agent={agent} kind={newest.kind} x={newest.x} y={newest.y} />}
         {card.otherPhotos > 0 && (
-          <span className="absolute bottom-3 right-3 rounded-full bg-black/55 px-2.5 py-1 text-meta font-semibold text-white backdrop-blur-md">
+          <span className={cn(glass, "absolute bottom-3 right-3 rounded-full px-2.5 py-1 text-meta font-semibold")}>
             +{card.otherPhotos} {card.otherPhotos === 1 ? "photo" : "photos"}
           </span>
         )}
@@ -254,7 +270,7 @@ function CardPhoto({ card, name }: { card: ProfileCard; name: string }) {
 }
 
 // The same face the feed draws on the photo where someone liked or said something.
-function AvatarPin({ name, kind, x, y }: { name: string; kind: PinKind; x: number; y: number }) {
+function AvatarPin({ name, agent, kind, x, y }: { name: string; agent: boolean; kind: PinKind; x: number; y: number }) {
   return (
     <span
       aria-hidden
@@ -263,7 +279,7 @@ function AvatarPin({ name, kind, x, y }: { name: string; kind: PinKind; x: numbe
       className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
       style={at({ x, y })}
     >
-      <MarkFace initial={name.trim()[0]?.toUpperCase()} mark={kind} pin className="ring-2" />
+      <MarkFace initial={name.trim()[0]?.toUpperCase()} agent={agent} mark={kind} pin className="ring-2" />
     </span>
   );
 }
