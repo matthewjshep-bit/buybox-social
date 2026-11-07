@@ -4,6 +4,7 @@ import { Suspense, type ReactNode } from "react";
 import { cn } from "@/lib/format";
 import type { TopicSide } from "@/lib/profile";
 import { updatedLabel, voiceOf, type ShownStory, type TasteChip } from "@/lib/taste-story";
+import { card } from "@/lib/ui";
 
 type Current = { key: string; side: TopicSide | null } | null;
 
@@ -61,7 +62,7 @@ export function TasteStoryCard({
       <TasteRow side="like" chips={loves} current={current} href={chipHref} isMe={isMe} />
       <TasteRow side="pass" chips={passes} current={current} href={chipHref} isMe={isMe} />
       {passesPrivate && passes.length > 0 && (
-        <p className="mt-2 flex items-center gap-1.5 text-[13px] text-stone-600">
+        <p className="mt-2 flex items-center gap-1.5 text-meta text-muted">
           <Lock aria-hidden size={12} className="shrink-0" />
           Only you see what you pass on
         </p>
@@ -70,13 +71,13 @@ export function TasteStoryCard({
   );
   const source = (origin: Origin | null) => <Source origin={origin} name={name} isMe={isMe} counts={counts} />;
   return (
-    <section aria-labelledby="taste-story-title" className="rounded-2xl bg-white p-4 ring-1 ring-stone-200">
-      <h2 id="taste-story-title" className="text-[13px] font-semibold text-stone-600">
+    <section aria-labelledby="taste-story-title" className={cn(card, "p-4")}>
+      <h2 id="taste-story-title" className="text-meta font-semibold text-muted">
         {title}
       </h2>
       {headline && <Headline text={headline} />}
       {prompt && (
-        <p className="mt-1 text-[15px] leading-snug text-stone-700">
+        <p className="mt-1 text-body leading-snug text-stone-700">
           Like a few more homes and a short description of your taste will appear here.
         </p>
       )}
@@ -183,7 +184,7 @@ function Source({
     parts.length === 0 ? `${whose} page` : `${whose} ${parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`}`;
   const when = origin.at ? ` · updated ${updatedLabel(origin.at)}` : "";
   return (
-    <p className="mt-3 flex items-start gap-1.5 text-[13px] leading-snug text-stone-600">
+    <p className="mt-3 flex items-start gap-1.5 text-meta leading-snug text-muted">
       {origin.ai && <Sparkles aria-hidden size={14} className="mt-px shrink-0 text-brand" />}
       <span>
         {origin.ai ? `Written by AI from ${from}` : `From ${from}`}
@@ -237,7 +238,7 @@ export function TasteRow({
     <div role="group" aria-label={title} className="mt-3 flex flex-wrap items-center gap-1.5">
       <span
         aria-hidden
-        className={cn("mr-1 flex items-center gap-1 text-[13px] font-semibold", like ? "text-rose-800" : "text-amber-800")}
+        className={cn("mr-1 flex items-center gap-1 text-meta font-semibold", like ? "text-rose-800" : "text-amber-800")}
       >
         <Icon size={14} className={like ? "fill-current" : undefined} />
         {title}
@@ -251,9 +252,9 @@ export function TasteRow({
             aria-label={`${title} ${chip.label}, ${chip.homes} ${chip.homes === 1 ? "home" : "homes"}${hidden ? ", only you see this" : ""}`}
             aria-current={current?.key === chip.key.toLowerCase() && current.side === side ? "true" : undefined}
             className={cn(
-              "relative inline-flex min-h-9 items-center gap-1 rounded-full px-3 text-[13px] font-semibold leading-5 before:absolute before:inset-x-0 before:-inset-y-1",
+              "relative inline-flex min-h-9 items-center gap-1 rounded-full px-3 text-meta font-semibold leading-5 before:absolute before:inset-x-0 before:-inset-y-1",
               hidden
-                ? "border border-dashed border-stone-400 bg-white text-stone-600 hover:bg-stone-50 aria-[current]:border-solid aria-[current]:border-stone-700"
+                ? "border border-dashed border-stone-400 bg-white text-muted hover:bg-stone-50 aria-[current]:border-solid aria-[current]:border-stone-700"
                 : like
                   ? "bg-rose-50 text-rose-900 ring-1 ring-rose-200 hover:bg-rose-100 aria-[current]:ring-2 aria-[current]:ring-rose-700"
                   : "bg-amber-50 text-amber-900 ring-1 ring-amber-200 hover:bg-amber-100 aria-[current]:ring-2 aria-[current]:ring-amber-700",

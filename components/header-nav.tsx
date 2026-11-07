@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
 import { signOut } from "@/app/login/actions";
+import { Avatar } from "@/components/ui";
 import { cn } from "@/lib/format";
 
 // Which page a link is: the one you're on, or the part of the site it's in
@@ -175,18 +176,13 @@ export function AccountMenu({
         onKeyDown={arrows}
         className="flex size-11 shrink-0 items-center justify-center rounded-full [anchor-name:--account-menu]"
       >
-        {/* The colour you have everywhere: a buyer's is the brand's, an
-            agent's is ink. */}
-        <span
-          aria-hidden
-          className={cn(
-            "flex size-9 items-center justify-center rounded-full text-sm font-semibold text-white [text-shadow:none]",
-            agent ? "bg-ink" : "bg-brand",
-            overlay && "ring-1 ring-white/30",
-          )}
-        >
-          {initial}
-        </span>
+        {/* The face you have everywhere: a buyer's in the brand's colour, an
+            agent's in ink. */}
+        <Avatar
+          name={initial}
+          tone={agent ? "agent" : "person"}
+          className={cn("[text-shadow:none]", overlay && "ring-1 ring-white/30")}
+        />
       </button>
       <div
         ref={menu}
@@ -204,8 +200,8 @@ export function AccountMenu({
         )}
       >
         <div className="px-3 pb-2 pt-2.5">
-          {name && <p className="truncate text-[15px] font-semibold">{name}</p>}
-          <p className={cn("truncate", name ? "text-[13px] text-stone-600" : "text-[15px] font-semibold")}>{email}</p>
+          {name && <p className="truncate text-body font-semibold">{name}</p>}
+          <p className={cn("truncate", name ? "text-meta text-muted" : "text-body font-semibold")}>{email}</p>
         </div>
         <ul className="border-t border-stone-100 pt-1.5">
           <MenuLink href={profile} icon={<UserRound aria-hidden size={18} />} onGo={close}>
@@ -234,7 +230,7 @@ export function AccountMenu({
         </ul>
         <form action={signOut} className="mt-1.5 border-t border-stone-100 pt-1.5">
           <button type="submit" className={menuItem}>
-            <LogOut aria-hidden size={18} className="text-stone-600" />
+            <LogOut aria-hidden size={18} className="text-muted" />
             Sign out
           </button>
         </form>
@@ -249,7 +245,7 @@ function within(menu: HTMLElement | null, trigger: HTMLElement | null, node: Eve
 }
 
 const menuItem =
-  "flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-[15px] font-medium hover:bg-stone-100 [&[aria-current]]:bg-stone-100 [&[aria-current]]:font-semibold";
+  "flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-body font-medium hover:bg-stone-100 [&[aria-current]]:bg-stone-100 [&[aria-current]]:font-semibold";
 
 function MenuLink({
   href,
@@ -269,7 +265,7 @@ function MenuLink({
   return (
     <li>
       <Link href={href} aria-current={useCurrent(href, section)} onClick={onGo} className={menuItem}>
-        <span className="text-stone-600">{icon}</span>
+        <span className="text-muted">{icon}</span>
         <span>{children}</span>
         {after}
       </Link>

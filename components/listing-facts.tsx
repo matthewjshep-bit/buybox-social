@@ -14,7 +14,7 @@ export function ListingFacts({ listing }: { listing: Listing }) {
       <p className="font-display text-3xl tabular-nums">{formatPrice(listing.ListPrice)}</p>
       <h2 className="mt-1 font-medium">
         {listing.UnparsedAddress}
-        <span className="block text-sm font-normal text-stone-600">
+        <span className="block text-sm font-normal text-muted">
           {listing.City}, {listing.StateOrProvince} {listing.PostalCode}
         </span>
       </h2>
@@ -31,7 +31,7 @@ export function ListingFacts({ listing }: { listing: Listing }) {
         </li>
       </ul>
       {listing.PublicRemarks && (
-        <p className="mt-3 text-[15px] leading-relaxed text-stone-700">{listing.PublicRemarks}</p>
+        <p className="mt-3 text-body leading-relaxed text-stone-700">{listing.PublicRemarks}</p>
       )}
     </>
   );

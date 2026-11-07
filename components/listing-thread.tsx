@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, Globe, Heart, Lock, MapPin, ThumbsDown, User } from "lucide-react";
+import { ArrowUp, Globe, Heart, Lock, MapPin, ThumbsDown } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -16,11 +16,13 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { Sheet } from "@/components/sheet";
+import { Avatar, Badge } from "@/components/ui";
 import type { ActionResult } from "@/lib/engagement";
 import { cn, timeAgo } from "@/lib/format";
 import type { SpotReaction } from "@/lib/photos";
 import { describeReaction, type ReactionState } from "@/lib/reactions";
 import type { TimelineComment, TimelineItem, TimelineReaction } from "@/lib/timeline";
+import { button, field } from "@/lib/ui";
 
 // The name prompt and comments UI shared by private share links and public
 // pages. Each passes in Server Actions bound to its own thread.
@@ -87,7 +89,7 @@ export function NameGate({
   children: ReactNode;
 }) {
   const [asking, setAsking] = useState(false);
-  const field = useRef<HTMLInputElement>(null);
+  const nameBox = useRef<HTMLInputElement>(null);
   const resolver = useRef<((joined: boolean) => void) | null>(null);
   const joined = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,8 +105,8 @@ export function NameGate({
       setError(null);
       setAsking(true);
     });
-    field.current?.focus();
-    field.current?.select();
+    nameBox.current?.focus();
+    nameBox.current?.select();
     return new Promise<boolean>((resolve) => {
       resolver.current = resolve;
     });
@@ -142,9 +144,9 @@ export function NameGate({
           }}
           className="mx-auto max-w-sm px-1 pb-1"
         >
-          <p className="text-center text-sm text-stone-600">{prompt}</p>
+          <p className="text-center text-sm text-muted">{prompt}</p>
           {nameHint && (
-            <p id={`${id}-hint`} className="mt-3 text-balance text-center text-[13px] text-stone-600">
+            <p id={`${id}-hint`} className="mt-3 text-balance text-center text-meta text-muted">
               {nameHint}
             </p>
           )}
@@ -152,7 +154,7 @@ export function NameGate({
             First name
           </label>
           <input
-            ref={field}
+            ref={nameBox}
             id={`${id}-name`}
             name="firstName"
             required
@@ -161,10 +163,7 @@ export function NameGate({
             aria-describedby={nameHint ? `${id}-hint` : undefined}
             defaultValue={suggestedName}
             placeholder="First name"
-            className={cn(
-              "w-full rounded-xl border border-stone-300 px-4 py-3 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30",
-              nameHint ? "mt-1.5" : "mt-4",
-            )}
+            className={cn(field(), nameHint ? "mt-1.5" : "mt-4")}
           />
           {error && (
             <p role="alert" className="mt-2 text-sm text-red-700">
@@ -175,14 +174,14 @@ export function NameGate({
             <button
               type="button"
               onClick={() => finish(false)}
-              className="min-h-12 flex-1 rounded-xl border border-stone-300 font-medium hover:bg-stone-50"
+              className={cn(button({ kind: "secondary", size: "lg" }), "flex-1")}
             >
               Not now
             </button>
             <button
               type="submit"
               disabled={pending}
-              className="min-h-12 flex-1 rounded-xl bg-brand font-semibold text-white disabled:opacity-60"
+              className={cn(button({ kind: "primary", size: "lg" }), "flex-1")}
             >
               {pending ? "Saving…" : "Continue"}
             </button>
@@ -223,7 +222,7 @@ export function Timeline({
       empty ?? (
         <div className="flex flex-col items-center px-6 py-12 text-center">
           <p className="text-lg font-semibold">No comments yet</p>
-          <p className="mt-1 text-sm text-stone-600">Start the conversation.</p>
+          <p className="mt-1 text-sm text-muted">Start the conversation.</p>
         </div>
       )
     );
@@ -250,7 +249,7 @@ export function Timeline({
       ))}
       {reacted.length > 0 && (
         <li className={cn(said.length > 0 && "border-t border-stone-100 pt-4")}>
-          <h3 className="text-[13px] font-semibold text-stone-500">
+          <h3 className="text-meta font-semibold text-stone-500">
             {reacted.some(passedOn) ? "Likes and passes" : "Likes"}
           </h3>
           <ul className="mt-2 flex flex-col gap-2.5">
@@ -269,47 +268,6 @@ const passedOn = (item: TimelineReaction) =>
   item.state.reaction === "dislike" || (!item.state.reaction && !item.photos.length && item.photoDislikes.length > 0);
 
 export type ReplyTarget = { id: string; name: string; mine: boolean };
-
-function Avatar({
-  name,
-  anonymous = false,
-  agent = false,
-  badge,
-  small = false,
-  tiny = false,
-}: {
-  name: string;
-  anonymous?: boolean;
-  agent?: boolean;
-  badge?: ReactNode;
-  small?: boolean;
-  // A line under "Likes": just a face.
-  tiny?: boolean;
-}) {
-  return (
-    <span aria-hidden className="relative shrink-0">
-      <span
-        className={cn(
-          "flex items-center justify-center rounded-full font-semibold",
-          tiny ? "size-6 text-[11px]" : small ? "size-7 text-xs" : "size-9 text-sm",
-          anonymous ? "bg-stone-200 text-stone-600" : agent ? "bg-ink text-white" : "bg-brand text-white",
-        )}
-      >
-        {anonymous ? <User size={tiny ? 12 : small ? 14 : 16} /> : name[0]?.toUpperCase()}
-      </span>
-      {badge && (
-        <span
-          className={cn(
-            "absolute flex items-center justify-center rounded-full bg-white ring-1 ring-stone-200",
-            tiny ? "-bottom-1 -right-1.5 size-3.5" : "-bottom-1 -right-1 size-4.5",
-          )}
-        >
-          {badge}
-        </span>
-      )}
-    </span>
-  );
-}
 
 // A person's name, linking to their profile when they have a public one. It
 // sits in a line of words, so it keeps the line's height (WCAG's inline
@@ -344,15 +302,15 @@ function ReactionItem({ item }: { item: TimelineReaction }) {
   const thumb = item.photos.findLast((photo) => photo.mediaUrl)?.mediaUrl;
   return (
     <li className="flex items-center gap-2.5">
-      <Avatar name={item.name} anonymous={item.fromPrivateChat} badge={badge} tiny />
-      <p className="line-clamp-1 min-w-0 flex-1 break-words text-[13px] leading-5">
+      <Avatar name={item.name} tone={item.fromPrivateChat ? "anonymous" : "person"} size={6} badge={badge} />
+      <p className="line-clamp-1 min-w-0 flex-1 break-words text-meta leading-5">
         <Who name={item.mine ? "You" : item.name} profileId={item.profileId} />{" "}
         {describeReaction(
           item.state,
           item.photos.map((photo) => photo.tag),
           item.photoDislikes.map((photo) => photo.tag),
         )}
-        <span className="text-[13px] text-stone-500">
+        <span className="text-meta text-stone-500">
           {" "}
           · <When at={item.at} />
           {item.fromPrivateChat && " · private chat"}
@@ -411,14 +369,18 @@ function CommentItem({
 
   return (
     <li data-comment={comment.id} className="flex gap-3">
-      <Avatar name={comment.name} anonymous={comment.fromPrivateChat} agent={comment.isAgent} small={reply} />
+      <Avatar
+        name={comment.name}
+        tone={comment.fromPrivateChat ? "anonymous" : comment.isAgent ? "agent" : "person"}
+        size={reply ? 7 : 9}
+      />
       <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-center gap-x-1 text-[13px] leading-snug text-stone-500">
+        <p className="flex flex-wrap items-center gap-x-1 text-meta leading-snug text-stone-500">
           <Who name={comment.name} profileId={comment.profileId} />
           {comment.isAgent && (
-            <span className="rounded-full bg-ink px-2 py-px text-[10px] font-bold uppercase tracking-wide text-white">
+            <Badge tone="ink" small>
               Agent
-            </span>
+            </Badge>
           )}
           <span>
             · <When at={comment.at} />
@@ -436,19 +398,19 @@ function CommentItem({
             <span className="sr-only">: show it</span>
           </button>
         )}
-        <p className="mt-0.5 whitespace-pre-line break-words text-[15px] leading-snug">{comment.body}</p>
+        <p className="mt-0.5 whitespace-pre-line break-words text-body leading-snug">{comment.body}</p>
         {/* The agent hearted it, as a creator does on a reel: in stone, so it
             never reads as something the agent said, and outlined, not filled,
             so it reads as a note, not a button like the spot chip. */}
         {comment.likedBy && (
           <p className="mt-1.5 flex">
-            <span className="inline-flex h-6 items-center gap-1 rounded-full px-2 text-[12px] font-medium text-stone-600 ring-1 ring-inset ring-stone-200">
+            <span className="inline-flex h-6 items-center gap-1 rounded-full px-2 text-[12px] font-medium text-muted ring-1 ring-inset ring-stone-200">
               <Heart aria-hidden size={11} className="fill-rose-600 text-rose-600" />
               Liked by {comment.likedBy}
             </span>
           </p>
         )}
-        <div className="flex flex-wrap items-center gap-x-4 text-[13px] font-semibold text-stone-500">
+        <div className="flex flex-wrap items-center gap-x-4 text-meta font-semibold text-stone-500">
           {likeable && !reply && onReply && (
             <button
               type="button"
@@ -496,7 +458,7 @@ function CommentItem({
               aria-expanded={open}
               onClick={() => setOpen(!open)}
               // (Over the edge of a Reply's touch area just above it.)
-              className="relative flex min-h-11 items-center gap-2.5 text-[13px] font-semibold text-stone-500 hover:text-ink"
+              className="relative flex min-h-11 items-center gap-2.5 text-meta font-semibold text-stone-500 hover:text-ink"
             >
               <span aria-hidden className="h-px w-6 bg-stone-300" />
               {open ? "Hide replies" : `View ${replies.length} ${replies.length === 1 ? "reply" : "replies"}`}
@@ -534,7 +496,7 @@ function CommentHeart({ comment }: { comment: TimelineComment }) {
         });
       }}
       className={cn(
-        "-mr-1 flex size-9 shrink-0 flex-col items-center justify-center rounded-full text-[11px] font-semibold tabular-nums hit-44 hover:bg-stone-100",
+        "-mr-1 flex size-9 shrink-0 flex-col items-center justify-center rounded-full text-tiny font-semibold tabular-nums hit-44 hover:bg-stone-100",
         state.liked ? "text-rose-600" : "text-stone-500",
       )}
     >
@@ -580,7 +542,7 @@ export function CommentComposer({
   const [body, setBody] = useState("");
   // Back to the box after posting: the Post button disables once the box is
   // empty, and a focused disabled button swallows keys (like Escape).
-  const field = useRef<HTMLTextAreaElement>(null);
+  const textBox = useRef<HTMLTextAreaElement>(null);
   const [sharePublicly, setSharePublicly] = useState(false);
   const [quick, setQuick] = useState(!quickOnFocus);
   const [error, setError] = useState<string | null>(null);
@@ -608,7 +570,7 @@ export function CommentComposer({
       );
       if (result.ok) {
         setBody("");
-        field.current?.focus();
+        textBox.current?.focus();
         setSharePublicly(false);
         onPosted?.();
       } else {
@@ -625,7 +587,7 @@ export function CommentComposer({
       }}
     >
       {replyTo ? (
-        <p className="flex min-h-9 items-center justify-between gap-2 px-2 text-[13px] text-stone-600">
+        <p className="flex min-h-9 items-center justify-between gap-2 px-2 text-meta text-muted">
           <span>
             Replying to <span className="font-semibold text-ink">{who}</span>
           </span>
@@ -633,7 +595,7 @@ export function CommentComposer({
             type="button"
             onClick={() => {
               onCancelReply?.();
-              field.current?.focus();
+              textBox.current?.focus();
             }}
             className="flex min-h-9 items-center px-1 font-semibold hit-44 hover:text-ink"
           >
@@ -648,7 +610,7 @@ export function CommentComposer({
               type="button"
               onClick={() => {
                 setBody((current) => current + emoji);
-                field.current?.focus();
+                textBox.current?.focus();
               }}
               className="flex size-10 items-center justify-center rounded-full text-[22px] transition-transform hit-44 hover:bg-stone-100 active:scale-90"
             >
@@ -664,7 +626,7 @@ export function CommentComposer({
           {who ? `Reply to ${who}` : (label ?? placeholder?.replace(/…$/, "") ?? "Add a comment")}
         </label>
         <textarea
-          ref={field}
+          ref={textBox}
           id={inputId}
           data-composer
           value={body}
@@ -694,7 +656,7 @@ export function CommentComposer({
         </button>
       </div>
       {sharing && (
-        <label className="mt-1.5 flex min-h-9 cursor-pointer items-center gap-2.5 px-2 text-[13px] text-stone-700 hit-44">
+        <label className="mt-1.5 flex min-h-9 cursor-pointer items-center gap-2.5 px-2 text-meta text-stone-700 hit-44">
           <input
             type="checkbox"
             checked={sharePublicly}
@@ -711,7 +673,7 @@ export function CommentComposer({
         </p>
       )}
       {seen && (
-        <p className="mt-1.5 flex items-center gap-1.5 px-2 text-[13px] leading-[18px] text-stone-600">
+        <p className="mt-1.5 flex items-center gap-1.5 px-2 text-meta leading-[18px] text-muted">
           {seen.private ? (
             <Lock aria-hidden size={12} className="shrink-0" />
           ) : (

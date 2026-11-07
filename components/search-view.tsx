@@ -2,7 +2,6 @@
 
 import { Heart, Home, Map as MapIcon, Search } from "lucide-react";
 import dynamic from "next/dynamic";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition, type ReactNode } from "react";
@@ -10,9 +9,11 @@ import type { ThreadActions } from "@/components/listing-thread";
 import type { MapHome } from "@/components/listing-map";
 import { SendPill, sendHomeFrom, useQuickSend } from "@/components/quick-send";
 import { ReelFeed } from "@/components/reel";
+import { HomeThumb } from "@/components/ui";
 import type { FeedPost } from "@/lib/feed";
 import { cn, formatPrice } from "@/lib/format";
 import { filtersQuery, HOME_TYPES, SORTS, type SearchFilters } from "@/lib/search-options";
+import { field } from "@/lib/ui";
 
 // The map draws with WebGL in the browser, so it never renders on the server.
 const ListingMap = dynamic(() => import("@/components/listing-map"), {
@@ -23,8 +24,8 @@ const ListingMap = dynamic(() => import("@/components/listing-map"), {
 const MIN_PRICES = [400_000, 600_000, 800_000, 1_000_000, 1_500_000, 2_000_000];
 const MAX_PRICES = [600_000, 800_000, 1_000_000, 1_500_000, 2_000_000, 3_000_000];
 
-const pill =
-  "h-11 shrink-0 rounded-full border border-stone-300 bg-white px-4 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand";
+// The filters: choices in a row of round-ended boxes, beside the search.
+const pill = cn(field({ pill: true, small: true }), "shrink-0 font-medium");
 
 // "3 bd · 2 ba · 2,120 sq ft"
 const factsOf = (listing: FeedPost["listing"]) =>
@@ -203,7 +204,7 @@ export function SearchView({
             type="search"
             defaultValue={filters.q}
             placeholder="City, ZIP or address"
-            className="h-11 w-full rounded-full border border-stone-300 bg-white pl-4 pr-11 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
+            className={cn(field({ pill: true }), "w-full pr-11")}
           />
           <button
             type="submit"
@@ -301,7 +302,7 @@ export function SearchView({
           <h1 className="text-sm font-semibold max-lg:sr-only lg:min-w-0 lg:truncate xl:w-full xl:pt-1">
             {filters.q ? `Homes matching “${filters.q}”` : "Washington homes for sale"}
           </h1>
-          <p className="shrink-0 text-sm font-semibold text-ink lg:font-normal lg:text-stone-600" aria-live="polite">
+          <p className="shrink-0 text-sm font-semibold text-ink lg:font-normal lg:text-muted" aria-live="polite">
             {count}
           </p>
           <label className={cn("flex min-w-0 items-center gap-1.5 text-sm lg:ml-auto xl:ml-0", posts.length === 0 && "invisible")}>
@@ -309,7 +310,7 @@ export function SearchView({
             <select
               value={shown.sort}
               onChange={(event) => update({ sort: event.target.value })}
-              className="min-h-11 min-w-0 rounded-lg bg-transparent font-semibold text-brand outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              className="min-h-11 min-w-0 rounded-full bg-transparent px-1 font-semibold text-brand"
             >
               {Object.entries(SORTS).map(([value, label]) => (
                 <option key={value} value={value}>
@@ -336,17 +337,13 @@ export function SearchView({
                   data-key={key}
                   className="relative flex items-center gap-3 border-b border-stone-100 px-4 py-2.5 hover:bg-stone-50 has-[a:focus-visible]:bg-stone-50 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-inset has-[a:focus-visible]:ring-brand has-[a[aria-current=true]]:bg-stone-100 has-[a[aria-current=true]]:shadow-[inset_3px_0_0_var(--brand)]"
                 >
-                  <span className="relative h-14 w-18 shrink-0 overflow-hidden rounded-lg bg-stone-200">
-                    {listing.Media[0] && (
-                      <Image src={listing.Media[0].MediaURL} alt="" fill sizes="72px" className="object-cover" />
-                    )}
-                  </span>
+                  <HomeThumb src={listing.Media[0]?.MediaURL} sizes="72px" className="h-14 w-18" />
                   <span className="min-w-0 flex-1 leading-snug">
                     <span id={`result-${key}`} className="block">
                       <span className="block font-display text-lg text-ink">{formatPrice(listing.ListPrice)}</span>
-                      <span className="block truncate text-[13px] text-stone-700">{factsOf(listing)}</span>
+                      <span className="block truncate text-meta text-stone-700">{factsOf(listing)}</span>
                     </span>
-                    <span className="block truncate text-[13px] text-stone-600">
+                    <span className="block truncate text-meta text-muted">
                       <a
                         href={`/search?${query ? `${query}&` : ""}home=${encodeURIComponent(key)}`}
                         aria-label={`Show ${listing.UnparsedAddress}`}

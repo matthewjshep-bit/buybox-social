@@ -49,7 +49,7 @@ export function CommentList({ comments, showHome = true }: { comments: CommentRo
                   : "A reply"}
               </p>
             )}
-            <p className="mt-1 whitespace-pre-line break-words text-[15px]">{comment.body}</p>
+            <p className="mt-1 whitespace-pre-line break-words text-body">{comment.body}</p>
           </div>
           <div className="-ml-4 shrink-0 sm:ml-0">
             {comment.kind === "public" ? (

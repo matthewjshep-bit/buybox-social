@@ -368,7 +368,7 @@ export function ReelPhotos({
         {room && (
           <p
             style={{ top: head, left: edge }}
-            className={cn(glass, "absolute flex h-7 max-w-[60cqw] items-center px-2.5 text-[13px] font-semibold")}
+            className={cn(glass, "absolute flex h-7 max-w-[60cqw] items-center px-2.5 text-meta font-semibold")}
           >
             <span className="min-w-0 truncate">{room}</span>
           </p>
@@ -376,7 +376,7 @@ export function ReelPhotos({
         {counter && (
           <p
             style={{ top: head, right: farEdge }}
-            className={cn(glass, "absolute flex h-7 items-center px-2.5 text-[13px] font-semibold tabular-nums")}
+            className={cn(glass, "absolute flex h-7 items-center px-2.5 text-meta font-semibold tabular-nums")}
           >
             {counter}
           </p>
@@ -510,7 +510,7 @@ function Filmstrip({
                 {likes > 0 && (
                   <span
                     aria-hidden
-                    className="absolute bottom-1 right-1 flex h-5 items-center gap-0.5 rounded-full bg-black/65 px-1.5 text-[11px] font-semibold tabular-nums text-white"
+                    className="absolute bottom-1 right-1 flex h-5 items-center gap-0.5 rounded-full bg-black/65 px-1.5 text-tiny font-semibold tabular-nums text-white"
                   >
                     <Heart size={10} strokeWidth={0} className="fill-white" />
                     {likes}

@@ -32,6 +32,7 @@ import { ScorecardBody } from "@/components/scorecard";
 import { Sheet } from "@/components/sheet";
 import type { FeedPost } from "@/lib/feed";
 import { cn } from "@/lib/format";
+import { button, card, field } from "@/lib/ui";
 import { addPerson, markShareSeen, removeComment, renameClient, replyAsAgent, type FormState } from "../../actions";
 import { HOME_MESSAGE_TITLE, homeMessage } from "../../message";
 import { likeClientComment } from "./actions";
@@ -91,7 +92,7 @@ export function ClientNameEditor({ shareId, name }: { shareId: string; name: str
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-stone-700 hover:bg-stone-200/60"
+          className={cn(button({ kind: "ghost" }), "text-stone-700")}
         >
           <Pencil aria-hidden size={15} />
           {name ? "Rename" : "Add their name"}
@@ -116,7 +117,7 @@ export function ClientNameEditor({ shareId, name }: { shareId: string; name: str
           autoComplete="off"
           placeholder="Client's name"
           aria-describedby={state.error ? "clientName-error" : undefined}
-          className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2.5 font-display text-2xl outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
+          className={field({ big: true })}
         />
         {state.error && (
           <p id="clientName-error" role="alert" className="mt-1 text-sm text-red-700">
@@ -124,18 +125,10 @@ export function ClientNameEditor({ shareId, name }: { shareId: string; name: str
           </p>
         )}
       </div>
-      <button
-        type="submit"
-        disabled={pending}
-        className="min-h-12 rounded-full bg-brand px-5 font-semibold text-white disabled:opacity-60"
-      >
+      <button type="submit" disabled={pending} className={cn(button({ kind: "primary", size: "lg" }), "mt-1")}>
         {pending ? "Saving…" : "Save"}
       </button>
-      <button
-        type="button"
-        onClick={() => setEditing(false)}
-        className="min-h-12 rounded-full px-4 font-medium hover:bg-stone-200/60"
-      >
+      <button type="button" onClick={() => setEditing(false)} className={cn(button({ kind: "ghost", size: "lg" }), "mt-1")}>
         Cancel
       </button>
     </form>
@@ -167,7 +160,7 @@ export function SendLink({
 }) {
   const [copied, setCopied] = useState(false);
   const id = useId();
-  const field = useRef<HTMLInputElement>(null);
+  const linkBox = useRef<HTMLInputElement>(null);
   const share = useSyncExternalStore(never, canShare, () => false);
   const greeting = clientName ? `Hi ${clientName}, ` : "";
   const one = count === 1 && home;
@@ -175,24 +168,22 @@ export function SendLink({
     one ? homeMessage(home) : `I picked ${count === 1 ? "a home" : `${count} homes`} for you. Tell me what you think.`
   }`;
   const message = `${words} ${url}`;
-  const button = "flex min-h-11 items-center justify-center gap-1.5 rounded-full";
-
   return (
-    <div className="rounded-2xl bg-white p-4 ring-1 ring-stone-200">
+    <div className={cn(card, "p-4")}>
       <label htmlFor={id} className="text-sm font-semibold">
         {label}
       </label>
-      {status && <p className="mt-0.5 text-sm text-stone-600">{status}</p>}
+      {status && <p className="mt-0.5 text-sm text-muted">{status}</p>}
       <input
-        ref={field}
+        ref={linkBox}
         id={id}
         readOnly
         value={url}
         onFocus={(event) => event.target.select()}
-        className="mt-2 w-full rounded-xl bg-stone-100 px-3 py-3 text-sm"
+        className={cn(field({ quiet: true }), "mt-2")}
       />
-      <div className={cn("mt-3 grid gap-2 text-sm font-semibold", share ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")}>
-        <a href={`sms:?&body=${encodeURIComponent(message)}`} className={cn(button, "bg-brand text-white")}>
+      <div className={cn("mt-3 grid gap-2", share ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")}>
+        <a href={`sms:?&body=${encodeURIComponent(message)}`} className={button({ kind: "primary" })}>
           <MessageSquare aria-hidden size={16} /> Text
         </a>
         {/* The phone's share sheet, straight from this tap: WhatsApp, Mail, AirDrop. */}
@@ -202,7 +193,7 @@ export function SendLink({
             onClick={() => {
               navigator.share({ ...(one && { title: HOME_MESSAGE_TITLE }), text: words, url }).catch(() => {});
             }}
-            className={cn(button, "border border-stone-300 hover:bg-stone-50")}
+            className={button({ kind: "secondary" })}
           >
             <Share aria-hidden size={16} /> Share…
           </button>
@@ -216,15 +207,15 @@ export function SendLink({
               setTimeout(() => setCopied(false), 2000);
             } catch {
               // Copying isn't allowed here: the link is selected, ready to copy by hand.
-              field.current?.focus();
+              linkBox.current?.focus();
             }
           }}
-          className={cn(button, "border border-stone-300 hover:bg-stone-50")}
+          className={button({ kind: "secondary" })}
         >
           {copied ? <Check aria-hidden size={16} /> : <Copy aria-hidden size={16} />}
           {copied ? "Copied" : "Copy"}
         </button>
-        <a href={url} target="_blank" rel="noreferrer" className={cn(button, "border border-stone-300 hover:bg-stone-50")}>
+        <a href={url} target="_blank" rel="noreferrer" className={button({ kind: "secondary" })}>
           <ExternalLink aria-hidden size={16} /> Preview
         </a>
       </div>
@@ -262,7 +253,7 @@ export function ReplyForm({ shareId, listingKey }: { shareId: string; listingKey
           maxLength={1000}
           onChange={(event) => setBody(event.target.value)}
           placeholder="Reply…"
-          className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
+          className={field()}
         />
         {error && (
           <p role="alert" className="mt-1 text-sm text-red-700">
@@ -273,7 +264,7 @@ export function ReplyForm({ shareId, listingKey }: { shareId: string; listingKey
       <button
         type="submit"
         disabled={pending || !body.trim()}
-        className="min-h-11 rounded-full bg-brand px-5 font-semibold text-white disabled:opacity-50"
+        className={button({ kind: "primary", size: "lg" })}
       >
         Reply
       </button>
@@ -297,7 +288,7 @@ export function AddPersonForm({ shareId }: { shareId: string }) {
           maxLength={40}
           autoComplete="off"
           placeholder="Their first name"
-          className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
+          className={field()}
         />
         {state.error && (
           <p role="alert" className="mt-1 text-sm text-red-700">
@@ -308,7 +299,7 @@ export function AddPersonForm({ shareId }: { shareId: string }) {
       <button
         type="submit"
         disabled={pending}
-        className="flex min-h-11 items-center gap-1.5 rounded-full border border-stone-300 bg-white px-4 text-sm font-semibold hover:bg-stone-50 disabled:opacity-60"
+        className={button({ kind: "secondary", size: "lg" })}
       >
         <UserPlus aria-hidden size={16} />
         {pending ? "Adding…" : "Add a person"}
@@ -351,7 +342,9 @@ export function SpotChip({
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={() => setOpen((v) => !v)}
-        className="flex min-h-11 max-w-full items-center gap-2 rounded-xl bg-stone-100 p-0.5 pr-3.5 text-left text-[13px] font-semibold text-stone-700 hover:bg-stone-200"
+        // Said whole, rather than pieced together from hidden words.
+        aria-label={`About ${label}: ${open ? "hide the photo" : "show it in the photo"}`}
+        className="flex min-h-11 max-w-full items-center gap-2 rounded-xl bg-stone-100 p-0.5 pr-3.5 text-left text-meta font-semibold text-stone-700 hover:bg-stone-200"
       >
         {/* Square, so a spot near a corner isn't cut off. */}
         <span data-spot-thumb className="relative size-10 shrink-0 overflow-hidden rounded-[10px] bg-stone-200">
@@ -365,11 +358,7 @@ export function SpotChip({
             />
           )}
         </span>
-        <span className="min-w-0 truncate">
-          <span className="sr-only">About </span>
-          {label}
-          <span className="sr-only">{open ? ": hide the photo" : ": show it in the photo"}</span>
-        </span>
+        <span className="min-w-0 truncate">{label}</span>
       </button>
       {open && (
         <figure id={id} className="mt-2 w-full max-w-80">
@@ -390,7 +379,7 @@ export function SpotChip({
               />
             )}
           </div>
-          <figcaption className="mt-1 text-xs text-stone-600">
+          <figcaption className="mt-1 text-xs text-muted">
             Photo {photoNumber} of {photoCount}
             {at ? ", where they tapped" : ""}
           </figcaption>
@@ -422,8 +411,8 @@ export function CommentLike({ commentId, name, liked }: { commentId: string; nam
           });
         }}
         className={cn(
-          "flex min-h-8 w-fit items-center gap-1.5 rounded-full px-1.5 text-[13px] font-semibold hit-44 hover:bg-stone-100",
-          shown ? "text-rose-700" : "text-stone-600 hover:text-ink",
+          "flex min-h-8 w-fit items-center gap-1.5 rounded-full px-1.5 text-meta font-semibold hit-44 hover:bg-stone-100",
+          shown ? "text-rose-700" : "text-muted hover:text-ink",
         )}
       >
         <Heart aria-hidden size={15} className={cn(shown && "fill-rose-600 text-rose-600")} />
@@ -431,7 +420,7 @@ export function CommentLike({ commentId, name, liked }: { commentId: string; nam
         <span className="sr-only"> {name}&apos;s comment</span>
       </button>
       {failed && (
-        <p role="alert" className="text-[13px] text-red-700">
+        <p role="alert" className="text-meta text-red-700">
           That didn&apos;t work. Try again.
         </p>
       )}
@@ -506,7 +495,7 @@ export function CommentMenu({ commentId, name }: { commentId: string; name: stri
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={() => (open ? close(false) : setOpen(true))}
-        className="flex size-11 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-ink aria-expanded:bg-stone-100 aria-expanded:text-ink"
+        className={cn(button({ kind: "ghost", icon: true }), "text-stone-500 hover:text-ink aria-expanded:bg-black/5 aria-expanded:text-ink")}
       >
         <MoreHorizontal aria-hidden size={18} />
       </button>
@@ -518,7 +507,7 @@ export function CommentMenu({ commentId, name }: { commentId: string; name: stri
           aria-labelledby={`${id}-ask`}
           // A tap on its words keeps focus inside it, so it stays open.
           tabIndex={-1}
-          className="absolute right-0 top-full z-20 mt-1 w-64 rounded-2xl bg-white p-3 text-sm shadow-lg outline-none ring-1 ring-stone-200"
+          className={cn(card, "absolute right-0 top-full z-20 mt-1 w-64 p-3 text-sm shadow-lg outline-none")}
         >
           <p id={`${id}-ask`}>
             <span className="font-semibold">Remove this comment?</span> Your client won&apos;t see it.
@@ -534,7 +523,7 @@ export function CommentMenu({ commentId, name }: { commentId: string; name: stri
               autoFocus
               disabled={pending}
               onClick={() => close(true)}
-              className="min-h-11 rounded-full px-4 font-semibold text-stone-700 hover:bg-stone-100"
+              className={cn(button({ kind: "ghost" }), "text-stone-700")}
             >
               Cancel
             </button>
@@ -554,7 +543,7 @@ export function CommentMenu({ commentId, name }: { commentId: string; name: stri
                   next?.focus();
                 });
               }}
-              className="min-h-11 rounded-full bg-red-700 px-4 font-semibold text-white disabled:opacity-60"
+              className={button({ kind: "danger" })}
             >
               {pending ? "Removing…" : "Remove"}
               <span className="sr-only"> comment from {name}</span>
@@ -730,7 +719,7 @@ export function ScorecardButton({ listingKey, address }: { listingKey: string; a
     <button
       type="button"
       onClick={() => open(listingKey)}
-      className="flex min-h-11 items-center gap-1.5 rounded-full border border-stone-300 bg-white px-4 text-sm font-semibold hover:bg-stone-50"
+      className={button({ kind: "secondary" })}
     >
       <ClipboardList aria-hidden size={16} />
       Scorecard

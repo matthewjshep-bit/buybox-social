@@ -82,6 +82,7 @@ import { eventsFromHeadline, eventsFromTimeline, onFact, onPhoto, type TickerEve
 import type { TimelineComment, TimelineItem } from "@/lib/timeline";
 import { NO_REACTION, publicSideOf, type Aspect, type ReactionState } from "@/lib/reactions";
 import type { ScorecardViewer } from "@/lib/scorecard";
+import { avatarColor, button, pill } from "@/lib/ui";
 
 // The feed: one home per screen, scrolled up like a reel, for as long as you
 // keep going. On a phone the whole photo sits right on top of a block of words
@@ -1534,7 +1535,7 @@ function Panel({
                     top: `calc(${photoFoot(current)} - 3.25rem)`,
                     left: `calc(${photoPlace(current).left} + ${photoPlace(current).width} / 2)`,
                   }}
-                  className="absolute z-10 flex h-11 -translate-x-1/2 items-center gap-2 rounded-full bg-black/50 px-4 text-[15px] font-semibold text-white backdrop-blur-md hover:bg-black/65"
+                  className="absolute z-10 flex h-11 -translate-x-1/2 items-center gap-2 rounded-full bg-black/50 px-4 text-body font-semibold text-white backdrop-blur-md hover:bg-black/65"
                 >
                   <Eye aria-hidden size={18} />
                   Show everything
@@ -1731,7 +1732,7 @@ function Panel({
               />
               {/* Who's selling it runs short before "Sample listing" does: it's
                   the only sign on the home that it isn't real. */}
-              <p className="flex h-5 whitespace-nowrap text-[13px] leading-5 text-white/80 split:text-stone-600">
+              <p className="flex h-5 whitespace-nowrap text-meta leading-5 text-white/80 split:text-muted">
                 <span className="min-w-0 truncate">
                   {listing.ListAgentFullName && `Listed by ${listing.ListAgentFullName}`}
                   {listing.ListOfficeName && ` · ${listing.ListOfficeName}`}
@@ -1777,7 +1778,7 @@ function Panel({
                 type="button"
                 data-keep-clear
                 onClick={onOpen}
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-white text-[15px] font-semibold text-ink shadow-lg transition-colors hover:bg-white/90"
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-white text-body font-semibold text-ink shadow-lg transition-colors hover:bg-white/90"
               >
                 <Maximize2 aria-hidden size={17} />
                 Open full screen
@@ -1788,7 +1789,7 @@ function Panel({
                 type="button"
                 data-keep-clear
                 onClick={onCompose}
-                className="flex h-12 w-full items-center gap-3 rounded-full bg-white/12 pl-5 pr-3 text-left text-base text-white/75 ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18 split:bg-stone-100 split:text-stone-600 split:ring-0 split:backdrop-blur-none split:hover:bg-stone-200"
+                className="flex h-12 w-full items-center gap-3 rounded-full bg-white/12 pl-5 pr-3 text-left text-base text-white/75 ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18 split:bg-stone-100 split:text-muted split:ring-0 split:backdrop-blur-none split:hover:bg-stone-200"
               >
                 <span className="min-w-0 flex-1 truncate">
                   {mode === "share" ? `Tell ${agentFirst} what you think…` : "Add a comment…"}
@@ -1864,7 +1865,7 @@ function RailButton({
       aria-disabled={busy || undefined}
       onClick={busy ? undefined : onClick}
       className={cn(
-        "group flex w-14 flex-col items-center gap-0.5 text-[13px] font-semibold leading-4 [text-shadow:0_1px_3px_rgb(0_0_0/0.6)]",
+        "group flex w-14 flex-col items-center gap-0.5 text-meta font-semibold leading-4 [text-shadow:0_1px_3px_rgb(0_0_0/0.6)]",
         busy && "cursor-progress opacity-60",
       )}
     >
@@ -2114,7 +2115,7 @@ function Facts({
             open === "Address" && (
               <Link
                 href={`/search?home=${encodeURIComponent(listing.ListingKey)}`}
-                className="mt-2 flex min-h-11 items-center gap-1.5 rounded-lg px-1 text-sm font-semibold text-brand hover:underline"
+                className={cn(button({ kind: "ghost" }), "-ml-4 mt-2 text-brand")}
               >
                 <MapPin aria-hidden size={15} />
                 See it on the map
@@ -2137,7 +2138,7 @@ function Facts({
           // week, among the busiest homes for sale.
           <span
             className={cn(
-              "flex h-6 shrink-0 items-center gap-1 rounded-full bg-white/15 px-2.5 text-[13px] font-semibold [text-shadow:none] short:bg-black/45 short:backdrop-blur-md",
+              "flex h-6 shrink-0 items-center gap-1 rounded-full bg-white/15 px-2.5 text-meta font-semibold [text-shadow:none] short:bg-black/45 short:backdrop-blur-md",
               legacy("@5xl:bg-black/45 @5xl:backdrop-blur-md"),
               // On the white panel beside the photo.
               "split:bg-rose-50 split:text-rose-700 split:backdrop-blur-none",
@@ -2296,8 +2297,8 @@ function LikedBy({
               key={i}
               style={{ zIndex: faces.length - i }}
               className={cn(
-                "relative -ml-1.5 flex size-6 items-center justify-center rounded-full text-[11px] font-semibold ring-2 ring-white",
-                name ? "bg-brand text-white" : "bg-stone-200 text-stone-600",
+                "relative -ml-1.5 flex size-6 items-center justify-center rounded-full text-tiny font-semibold ring-2 ring-white",
+                avatarColor(name ? "person" : "anonymous"),
               )}
             >
               {name ? name[0]?.toUpperCase() : <User size={12} />}
@@ -2371,7 +2372,7 @@ function Caption({
         // Side by side: up to ten lines in the panel (a listing's usual
         // description whole), and all of it right there when opened (the
         // panel scrolls).
-        "mb-1 text-[15px] leading-[22px] text-white/85 split:mb-2 split:mt-1 split:leading-6 split:text-stone-700",
+        "mb-1 text-body leading-[22px] text-white/85 split:mb-2 split:mt-1 split:leading-6 split:text-stone-700",
         open
           ? "pointer-events-auto max-h-[45dvh] overflow-y-auto overscroll-contain split:max-h-none split:overflow-visible"
           : "h-11 short:mb-0 short:h-[22px] split:h-auto split:max-h-60",
@@ -2581,14 +2582,14 @@ function HomeSheet({
               document.getElementById(tab(to))?.focus();
             }}
             className={cn(
-              "flex min-h-11 items-center gap-1.5 rounded-full px-4 text-[15px] font-semibold transition-colors",
+              "flex min-h-11 items-center gap-1.5 rounded-full px-4 text-body font-semibold transition-colors",
               // The one showing: filled in ink, plain at a glance.
-              selected ? "bg-ink text-white" : "text-stone-600 hover:bg-stone-100 hover:text-ink",
+              selected ? "bg-ink text-white" : "text-muted hover:bg-stone-100 hover:text-ink",
             )}
           >
             {which === "comments" ? "Comments" : "Scorecard"}
             {which === "comments" && comments > 0 && (
-              <span className={cn("tabular-nums", selected ? "text-white/80" : "text-stone-600")}>{comments.toLocaleString("en-US")}</span>
+              <span className={cn("tabular-nums", selected ? "text-white/80" : "text-muted")}>{comments.toLocaleString("en-US")}</span>
             )}
           </button>
         );
@@ -2686,8 +2687,8 @@ function HomeSheet({
                   >
                     <ClipboardList aria-hidden size={18} className="shrink-0 text-brand" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[15px] font-semibold leading-5 text-ink">See the scorecard</span>
-                      <span className="block truncate text-[13px] leading-[18px] text-stone-600">What people think of this home</span>
+                      <span className="block truncate text-body font-semibold leading-5 text-ink">See the scorecard</span>
+                      <span className="block truncate text-meta leading-[18px] text-muted">What people think of this home</span>
                     </span>
                     <ChevronRight aria-hidden size={18} className="shrink-0 text-stone-400" />
                   </button>
@@ -2715,7 +2716,7 @@ function HomeSheet({
                 }
                 empty={
                   name ? (
-                    <p className="px-2 py-3 text-center text-sm text-stone-600">Be the first to say something about {name}.</p>
+                    <p className="px-2 py-3 text-center text-sm text-muted">Be the first to say something about {name}.</p>
                   ) : undefined
                 }
               />
@@ -2767,7 +2768,8 @@ function MoreSheet({
             aria-pressed={passed}
             onClick={onPass}
             className={cn(
-              "flex min-h-12 items-center justify-center gap-2 rounded-xl border font-semibold",
+              pill("lg"),
+              "border",
               passed ? "border-amber-800 bg-amber-800 text-white" : "border-stone-300 bg-white hover:border-stone-500",
             )}
           >
@@ -2777,7 +2779,7 @@ function MoreSheet({
           {state.reaction ? (
             <AspectChips state={state} onToggle={onToggle} />
           ) : (
-            <p className="text-sm text-stone-600">
+            <p className="text-sm text-muted">
               Like it with the heart, or tell us it&apos;s not for you
               {agentName ? `, and ${agentCalled(agentName)} will know` : ""}. Either way, your picks get better.
             </p>
@@ -2786,7 +2788,7 @@ function MoreSheet({
             <button
               type="button"
               onClick={onNext}
-              className="flex min-h-12 items-center justify-center rounded-xl bg-ink font-semibold text-white"
+              className={button({ kind: "neutral", size: "lg" })}
             >
               Next home
             </button>
@@ -2802,7 +2804,7 @@ function MoreSheet({
           <button
             type="button"
             onClick={onPhotoOnly}
-            className="-mt-1 flex min-h-11 items-center gap-2 self-start rounded-lg text-sm font-semibold text-ink hover:text-stone-600"
+            className={cn(button({ kind: "ghost" }), "-ml-4 -mt-1 self-start text-ink")}
           >
             <ImageIcon aria-hidden size={17} />
             Show the photo only
@@ -2884,7 +2886,7 @@ function LikeWithList({ things, children }: { things: Thing[]; children: ReactNo
                   aria-pressed={thing.liked}
                   aria-label={`Like ${tagPhrase(thing.tag)}${thing.count > 0 ? `, ${thing.count} ${thing.count === 1 ? "like" : "likes"}` : ""}`}
                   onClick={thing.toggle}
-                  className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full bg-black/50 px-3 text-[13px] font-semibold text-white backdrop-blur-md hit-44 hover:bg-black/70 [text-shadow:none]"
+                  className="flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full bg-black/50 px-3 text-meta font-semibold text-white backdrop-blur-md hit-44 hover:bg-black/70 [text-shadow:none]"
                 >
                   <Heart
                     aria-hidden

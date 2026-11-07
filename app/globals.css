@@ -9,6 +9,14 @@
   --font-display: var(--font-heading);
   /* The dark ground the reel's photos and words sit on. */
   --color-night: #0c0a09;
+  /* Words that sit back (a time, a hint, the line under a title): one grey,
+     readable on white and on the sand colour alike (stone-600). */
+  --color-muted: oklch(44.4% 0.011 73.639);
+  /* The small sizes words come in, besides Tailwind's own: a comment or a
+     list row (body), the line under it (meta), a count in a badge (tiny). */
+  --text-body: 15px;
+  --text-meta: 13px;
+  --text-tiny: 11px;
 }
 
 /* Nothing moves on its own for long: a loading shape breathes twice, then

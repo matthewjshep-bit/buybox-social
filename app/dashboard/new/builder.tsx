@@ -1,18 +1,16 @@
 "use client";
 
 import { Check, Plus, Search, X } from "lucide-react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { HomeThumb } from "@/components/ui";
 import { cn, formatPrice } from "@/lib/format";
 import type { Listing } from "@/lib/listings/types";
+import { button, card as cardClass, field } from "@/lib/ui";
 import { addHomesToShare, createShare } from "../actions";
 
 const MAX_LISTINGS = 3;
 const MAX_PEOPLE = 6;
-
-const inputClass =
-  "w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30";
 
 export function ShareBuilder({
   heading,
@@ -102,20 +100,19 @@ export function ShareBuilder({
           disabled={disabled}
           onClick={() => toggle(listing)}
           className={cn(
-            "flex w-full items-center gap-3 rounded-2xl bg-white p-2.5 text-left ring-1 transition disabled:opacity-50",
-            selected ? "ring-2 ring-brand" : "ring-stone-200 hover:ring-stone-400",
+            cardClass,
+            "flex w-full items-center gap-3 p-2.5 text-left transition disabled:opacity-50 aria-pressed:ring-2 aria-pressed:ring-brand hover:not-aria-pressed:ring-stone-400",
           )}
         >
-          <div className="relative size-20 shrink-0 overflow-hidden rounded-xl bg-stone-200">
-            <Image src={listing.Media[0]?.MediaURL} alt="" fill sizes="80px" className="object-cover" />
+          <HomeThumb src={listing.Media[0]?.MediaURL} sizes="80px" className="size-20">
             {selected && (
               <span className="absolute inset-0 flex items-center justify-center bg-brand/70 text-white">
                 <Check aria-hidden size={28} />
               </span>
             )}
-          </div>
+          </HomeThumb>
           <span className="min-w-0">
-            <span className="block font-semibold">{formatPrice(listing.ListPrice)}</span>
+            <span className="block font-display text-lg leading-snug">{formatPrice(listing.ListPrice)}</span>
             <span className="block truncate text-sm">{listing.UnparsedAddress}</span>
             <span className="block truncate text-sm text-stone-700">
               {listing.City} · {listing.BedroomsTotal} bd · {listing.BathroomsTotalInteger} ba
@@ -139,7 +136,7 @@ export function ShareBuilder({
               Search by address, city, ZIP or MLS number
             </label>
             <div className="relative">
-              <Search aria-hidden size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-600" />
+              <Search aria-hidden size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
               <input
                 id="search"
                 type="search"
@@ -148,7 +145,7 @@ export function ShareBuilder({
                 autoFocus={Boolean(start)}
                 onChange={(event) => onSearch(event.target.value)}
                 placeholder="Address, city, ZIP or MLS number"
-                className={cn(inputClass, "pl-11")}
+                className={cn(field(), "pl-11")}
               />
             </div>
 
@@ -161,19 +158,19 @@ export function ShareBuilder({
             <button
               type="button"
               onClick={() => setSearching(true)}
-              className="mt-2 flex min-h-11 items-center gap-1.5 text-sm font-semibold text-brand"
+              className={cn(button({ kind: "ghost" }), "-ml-4 mt-2 text-brand")}
             >
               <Plus aria-hidden size={16} /> Add another home
             </button>
           </>
         )}
 
-        <div className="mt-6 flex flex-col gap-4 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
+        <div className={cn(cardClass, "mt-6 flex flex-col gap-4 p-4")}>
           {!addTo && (
             <>
               <fieldset>
                 <legend className="text-sm font-medium">Who&apos;s it for?</legend>
-                <p className="text-sm text-stone-600">
+                <p className="text-sm text-muted">
                   Each person gets their own link, so you can see what each of them likes.
                 </p>
                 <div className="mt-2 flex flex-col gap-2">
@@ -188,14 +185,14 @@ export function ShareBuilder({
                         onChange={(event) =>
                           setPeople((current) => current.map((p, j) => (j === i ? event.target.value : p)))
                         }
-                        className={inputClass}
+                        className={field()}
                       />
                       {people.length > 1 && (
                         <button
                           type="button"
                           aria-label={`Remove person ${i + 1}`}
                           onClick={() => setPeople((current) => current.filter((_, j) => j !== i))}
-                          className="flex size-11 shrink-0 items-center justify-center rounded-xl text-stone-600 hover:bg-stone-100"
+                          className={cn(button({ kind: "ghost", icon: true }), "shrink-0 text-muted")}
                         >
                           <X aria-hidden size={18} />
                         </button>
@@ -207,7 +204,7 @@ export function ShareBuilder({
                   <button
                     type="button"
                     onClick={() => setPeople((current) => [...current, ""])}
-                    className="mt-2 flex min-h-11 items-center gap-1.5 text-sm font-semibold text-brand"
+                    className={cn(button({ kind: "ghost" }), "-ml-4 mt-2 text-brand")}
                   >
                     <Plus aria-hidden size={16} /> Add another person
                   </button>
@@ -224,7 +221,7 @@ export function ShareBuilder({
                   value={note}
                   onChange={(event) => setNote(event.target.value)}
                   placeholder="This one has the yard you mentioned."
-                  className={cn(inputClass, "mt-1 resize-y")}
+                  className={cn(field({ lines: true }), "mt-1")}
                 />
               </div>
             </>
@@ -238,7 +235,7 @@ export function ShareBuilder({
             type="button"
             onClick={submit}
             disabled={picked.length === 0 || pending}
-            className="min-h-12 rounded-xl bg-brand font-semibold text-white disabled:opacity-50"
+            className={button({ kind: "primary", size: "lg", block: true })}
           >
             {pending
               ? "Creating…"

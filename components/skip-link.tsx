@@ -14,7 +14,7 @@ export function SkipLink() {
         event.preventDefault();
         homes.focus({ preventScroll: true });
       }}
-      className="sr-only z-50 rounded-lg bg-ink px-4 py-3 font-semibold text-white focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
+      className="sr-only z-50 rounded-full bg-ink px-5 py-3 font-semibold text-white focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
     >
       Skip to main content
     </a>

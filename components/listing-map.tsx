@@ -228,11 +228,12 @@ export default function ListingMap({
                 }}
                 style={offset ? { left: offset.x, top: offset.y } : { left: 0, top: 0 }}
                 className={cn(
-                  "absolute flex min-h-6 -translate-x-1/2 items-center whitespace-nowrap rounded-full font-bold tabular-nums shadow-md ring-1 transition-[scale,left,top] duration-200",
+                  // Prices are in the display type, here as everywhere.
+                  "absolute flex min-h-6 -translate-x-1/2 items-center whitespace-nowrap rounded-full font-display font-semibold tabular-nums shadow-md ring-1 transition-[scale,left,top] duration-200",
                   // Before it's laid out: right above its home.
                   !offset && "-translate-y-full",
                   offset && "-translate-y-1/2",
-                  far ? "px-2 text-[11px]" : "px-2.5 py-1 text-xs",
+                  far ? "px-2 text-tiny" : "px-2.5 py-1 text-xs",
                   lit ? "scale-110 bg-brand text-white ring-white" : "bg-white text-ink ring-stone-300 hover:scale-110",
                 )}
               >

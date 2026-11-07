@@ -7,6 +7,7 @@ import { useActionState, useId, type ComponentProps } from "react";
 import { signUp, type SignUpField, type SignUpState } from "@/app/login/actions";
 import { cn } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
+import { button, card, field } from "@/lib/ui";
 
 // For visitors who haven't signed up, the home page opens on what BuyBox
 // Social is and a short form, shows a few homes, then asks them to sign up to
@@ -122,7 +123,7 @@ function SignUpForm({ devMode, className }: { devMode: boolean; className?: stri
 
   if (state.sent) {
     return (
-      <div role="status" data-light className={cn("rounded-2xl bg-white p-6 text-ink shadow-xl", className)}>
+      <div role="status" data-light className={cn(card, "p-6 text-ink shadow-xl", className)}>
         <MailCheck aria-hidden size={28} className="text-brand" />
         <p className="mt-3 text-lg font-semibold">Check your email</p>
         <p className="mt-1 text-stone-700">
@@ -133,7 +134,7 @@ function SignUpForm({ devMode, className }: { devMode: boolean; className?: stri
     );
   }
 
-  const field = (name: SignUpField) => ({
+  const fieldProps = (name: SignUpField) => ({
     id: `${id}-${name}`,
     name,
     required: true,
@@ -149,12 +150,12 @@ function SignUpForm({ devMode, className }: { devMode: boolean; className?: stri
       aria-label="Sign up"
       // Light, over the dark reel: the brand focus ring inside it.
       data-light
-      className={cn("rounded-2xl bg-white p-5 text-ink shadow-xl sm:p-6", className)}
+      className={cn(card, "p-5 text-ink shadow-xl sm:p-6", className)}
     >
       <div className="flex flex-col gap-2.5">
-        <Field label="Name" {...field("fullName")} maxLength={80} autoComplete="name" />
-        <Field label="Phone" {...field("phone")} type="tel" inputMode="tel" maxLength={30} autoComplete="tel" />
-        <Field label="Email" {...field("email")} type="email" autoComplete="email" />
+        <Field label="Name" {...fieldProps("fullName")} maxLength={80} autoComplete="name" />
+        <Field label="Phone" {...fieldProps("phone")} type="tel" inputMode="tel" maxLength={30} autoComplete="tel" />
+        <Field label="Email" {...fieldProps("email")} type="email" autoComplete="email" />
       </div>
       {state.error && (
         <p id={`${id}-error`} role="alert" className="mt-3 text-sm text-red-700">
@@ -164,11 +165,11 @@ function SignUpForm({ devMode, className }: { devMode: boolean; className?: stri
       <button
         type="submit"
         disabled={pending}
-        className="mt-4 min-h-12 w-full rounded-xl bg-brand font-semibold text-white disabled:opacity-60"
+        className={cn(button({ kind: "primary", size: "lg", block: true }), "mt-4")}
       >
         {pending ? "One moment…" : "Sign up free"}
       </button>
-      <p className="mt-3 text-center text-sm text-stone-600">
+      <p className="mt-3 text-center text-sm text-muted">
         {devMode ? "Local demo, no email sent." : "No password needed."}{" "}
         <Link href="/login" className="font-semibold text-brand underline-offset-2 hover:underline">
           Have an account? Sign in
@@ -187,7 +188,7 @@ function Field({ label, id, ...input }: { label: string; id: string } & Componen
       <input
         id={id}
         {...input}
-        className="mt-1 h-11 w-full rounded-xl border border-stone-300 bg-white px-4 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30 aria-invalid:border-red-600"
+        className={cn(field(), "mt-1")}
       />
     </div>
   );

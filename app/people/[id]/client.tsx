@@ -16,6 +16,7 @@ import { Sheet } from "@/components/sheet";
 import type { ActionResult } from "@/lib/engagement";
 import { cn } from "@/lib/format";
 import type { CardControl } from "@/lib/profile";
+import { button } from "@/lib/ui";
 import { deleteMyComment, removeMyReaction, removeMySpots } from "./actions";
 
 const noop = () => () => {};
@@ -93,7 +94,7 @@ export function ShareMyPage({ name }: { name: string }) {
       type="button"
       onClick={share}
       // It can't share or copy without scripts, so without them it isn't there.
-      className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-4 text-[15px] font-semibold text-ink ring-1 ring-stone-300 hover:bg-stone-50 [@media(scripting:none)]:hidden"
+      className={cn(button({ kind: "secondary" }), "mt-3 [@media(scripting:none)]:hidden")}
     >
       <Share2 aria-hidden size={16} />
       Share my page
@@ -228,7 +229,10 @@ export function CardMenu({
         aria-label={label}
         onClick={() => setOpen(true)}
         // Nothing to open without scripts, so without them it isn't there.
-        className="relative z-20 -mr-2 -mt-1.5 flex size-11 shrink-0 items-center justify-center rounded-full text-stone-600 hover:bg-stone-100 hover:text-ink [@media(scripting:none)]:hidden"
+        className={cn(
+          button({ kind: "ghost", icon: true }),
+          "relative z-20 -mr-2 -mt-1.5 shrink-0 text-muted hover:text-ink [@media(scripting:none)]:hidden",
+        )}
       >
         <MoreHorizontal aria-hidden size={22} />
       </button>
@@ -239,7 +243,7 @@ export function CardMenu({
         title={
           <>
             {address}
-            {day && <span className="block text-[13px] font-normal text-stone-600">{day}</span>}
+            {day && <span className="block text-meta font-normal text-muted">{day}</span>}
           </>
         }
       >
@@ -251,11 +255,11 @@ export function CardMenu({
             </h3>
             <p
               id={`${id}-quote`}
-              className="line-clamp-3 break-words rounded-2xl bg-stone-50 p-3 text-[15px] leading-snug text-ink"
+              className="line-clamp-3 break-words rounded-2xl bg-stone-50 p-3 text-body leading-snug text-ink"
             >
               &ldquo;{comment.body}&rdquo;
             </p>
-            <p id={`${id}-warn`} className="text-[15px] leading-snug text-stone-700">
+            <p id={`${id}-warn`} className="text-body leading-snug text-stone-700">
               It comes off this home and your page for everyone
               {comment.replies > 0 ? ", with your replies to it" : ""}. You can&apos;t undo this.
             </p>
@@ -264,7 +268,7 @@ export function CardMenu({
               aria-disabled={pending || undefined}
               aria-describedby={`${id}-quote ${id}-warn`}
               onClick={() => run(comment)}
-              className="flex min-h-12 items-center justify-center gap-2 rounded-full bg-red-700 px-5 text-[15px] font-semibold text-white hover:bg-red-800 aria-disabled:opacity-70"
+              className={cn(button({ kind: "danger", size: "lg" }), "aria-disabled:opacity-70")}
             >
               <Trash2 aria-hidden size={18} />
               {pending ? "Deleting…" : "Delete comment"}
@@ -280,7 +284,7 @@ export function CardMenu({
                 // Back on the row it came from.
                 requestAnimationFrame(() => rows.current.get(`comment-${comment.id}`)?.focus());
               }}
-              className="flex min-h-12 items-center justify-center rounded-full bg-white px-5 text-[15px] font-semibold text-ink ring-1 ring-stone-300 hover:bg-stone-50"
+              className={button({ kind: "secondary", size: "lg" })}
             >
               Cancel
             </button>
@@ -333,7 +337,7 @@ export function CardMenu({
                       className={cn(
                         "mt-px shrink-0",
                         busy
-                          ? "animate-spin text-stone-600"
+                          ? "animate-spin text-muted"
                           : locked
                             ? "text-stone-400"
                             : control.kind === "comment"
@@ -346,14 +350,14 @@ export function CardMenu({
                     <span className="min-w-0 flex-1">
                       <span
                         className={cn(
-                          "block break-words text-[15px] font-semibold",
+                          "block break-words text-body font-semibold",
                           locked ? "text-stone-500" : control.kind === "comment" ? "text-red-700" : "text-ink",
                         )}
                       >
                         {text}
                       </span>
                       {control.kind === "comment" && (
-                        <span id={hint} className="block text-[13px] leading-snug text-stone-600">
+                        <span id={hint} className="block text-meta leading-snug text-muted">
                           <span className="block truncate">&ldquo;{control.body}&rdquo;</span>
                           {locked && <span className="block">Comments with replies can&apos;t be deleted here</span>}
                         </span>
@@ -366,7 +370,7 @@ export function CardMenu({
           </ul>
         )}
         {error && (
-          <p role="alert" className="mt-2 text-[13px] font-semibold text-red-700">
+          <p role="alert" className="mt-2 text-meta font-semibold text-red-700">
             {error}
           </p>
         )}
@@ -408,13 +412,13 @@ export function MoreText({ children, meta, className }: { children: ReactNode; m
       </p>
       {(meta || more) && (
         <div className={cn("flex items-center justify-between gap-3", more ? "mt-0.5" : "mt-1")}>
-          <p className="min-w-0 text-[13px] text-stone-600">{meta}</p>
+          <p className="min-w-0 text-meta text-muted">{meta}</p>
           {more && (
             <button
               type="button"
               aria-expanded={open}
               onClick={() => setOpen(!open)}
-              className="relative z-20 -mr-2 min-h-11 min-w-11 shrink-0 scroll-mt-[var(--filters)] rounded-full px-2 text-[13px] font-semibold text-stone-600 hover:text-ink"
+              className="relative z-20 -mr-2 min-h-11 min-w-11 shrink-0 scroll-mt-[var(--filters)] rounded-full px-2 text-meta font-semibold text-muted hover:text-ink"
             >
               {open ? "less" : "more"}
             </button>

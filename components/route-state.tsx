@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { SiteLogo } from "@/components/header-nav";
 import { cn } from "@/lib/format";
+import { button } from "@/lib/ui";
 
 // A page that can't show what was asked for: what happened, in a line, and a
 // way on from there.
@@ -20,7 +21,7 @@ export function RouteState({
     <main className="mx-auto flex max-w-md flex-col items-center px-6 py-20 text-center sm:py-24">
       <span
         aria-hidden
-        className="flex size-14 items-center justify-center rounded-full bg-white text-stone-600 ring-1 ring-stone-200"
+        className="flex size-14 items-center justify-center rounded-full bg-white text-muted ring-1 ring-stone-200"
       >
         <Icon size={26} />
       </span>
@@ -43,13 +44,10 @@ export function LogoHeader() {
   );
 }
 
-// The way on that most people want, and the other one beside it. (At the C3
-// merge these become lib/ui.ts's button({ kind: "primary" | "neutral", size: "lg" }).)
+// The way on that most people want, and the other one beside it.
 export const routeAction = {
-  primary:
-    "inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-brand px-6 font-semibold text-white hover:opacity-90",
-  secondary:
-    "inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-white px-6 font-semibold text-ink ring-1 ring-stone-300 hover:bg-stone-50",
+  primary: button({ kind: "primary", size: "lg" }),
+  secondary: button({ kind: "secondary", size: "lg" }),
 };
 
 // A grey shape where words or a photo will be, while the page loads. It

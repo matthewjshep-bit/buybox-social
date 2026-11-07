@@ -1,14 +1,15 @@
-import { Heart, Home, Lock, MessageCircle, ThumbsDown, X, type LucideIcon } from "lucide-react";
+import { Heart, Home, Lock, MessageCircle, ThumbsDown, X } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { after } from "next/server";
-import { cache, type CSSProperties, type ReactNode } from "react";
+import { cache, type CSSProperties } from "react";
 import { Toast } from "@/app/people/[id]/client";
 import { ProfileFeed } from "@/components/profile-feed";
 import { ProfileHeader } from "@/components/profile-header";
 import { TasteControls } from "@/components/taste-controls";
 import { TasteStoryCard } from "@/components/taste-story-card";
+import { EmptyState } from "@/components/ui";
 import { getCurrentUser } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
 import { cn } from "@/lib/format";
@@ -28,6 +29,7 @@ import {
 } from "@/lib/profile";
 import { getPublicIdentity } from "@/lib/public";
 import { readStory, refreshStory, shownStory, storyOf, storyWriting, type TasteStory } from "@/lib/taste-story";
+import { button, pill } from "@/lib/ui";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -191,10 +193,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
               icon={Home}
               title="Your page fills up as you go"
               action={
-                <Link
-                  href="/"
-                  className="mt-4 inline-flex min-h-11 items-center rounded-full bg-brand px-5 font-semibold text-white"
-                >
+                <Link href="/" className={button({ kind: "primary" })}>
                   See homes
                 </Link>
               }
@@ -220,10 +219,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                     <Link
                       href={href({ show: key })}
                       aria-current={show === key ? "page" : undefined}
-                      className={cn(
-                        "flex min-h-11 items-center rounded-full px-3.5 text-[15px] font-semibold min-[400px]:px-4",
-                        show === key ? "bg-ink text-white" : "bg-white text-stone-700 ring-1 ring-stone-200 hover:bg-stone-50",
-                      )}
+                      className={button({ kind: show === key ? "neutral" : "secondary" })}
                     >
                       {PROFILE_FILTERS[key]}
                     </Link>
@@ -236,7 +232,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                   <Link
                     href={href({ about: null })}
                     aria-label={`Remove ${label}`}
-                    className="flex min-h-11 min-w-0 items-center gap-1.5 rounded-full bg-white pl-3.5 pr-3 text-[15px] font-semibold text-ink ring-2 ring-ink"
+                    className={cn(pill(), "min-w-0 bg-white text-ink ring-2 ring-ink hover:bg-stone-50")}
                   >
                     {side === "like" && <Heart aria-hidden size={14} className="shrink-0 fill-rose-600 text-rose-600" />}
                     {side === "pass" && <ThumbsDown aria-hidden size={14} className="shrink-0 text-amber-700" />}
@@ -276,28 +272,5 @@ export default async function ProfilePage({ params, searchParams }: Props) {
       {/* What you just did on your page, said in a word: "Link copied", "Like removed". */}
       {isMe && <Toast />}
     </main>
-  );
-}
-
-// One way to say there's nothing here: an icon, a line, maybe a way on.
-// (C3 swaps this for the shared EmptyState in components/ui.tsx.)
-function EmptyState({
-  icon: Icon,
-  title,
-  children,
-  action,
-}: {
-  icon: LucideIcon;
-  title: string;
-  children?: ReactNode;
-  action?: ReactNode;
-}) {
-  return (
-    <div className="rounded-2xl bg-white p-8 text-center ring-1 ring-stone-200">
-      <Icon aria-hidden size={28} className="mx-auto text-stone-500" />
-      <p className="mt-2 text-[17px] font-semibold text-ink">{title}</p>
-      {children && <p className="mt-1 text-[15px] text-stone-700">{children}</p>}
-      {action}
-    </div>
   );
 }

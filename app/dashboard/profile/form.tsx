@@ -5,6 +5,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { formatPhone, isContactPhone, phoneDigits } from "@/lib/contact";
 import { BRAND_COLORS, cn } from "@/lib/format";
+import { button, field } from "@/lib/ui";
 import { saveProfile, type ContactField, type ProfileState } from "../actions";
 
 const PHOTO_SIZE = 256;
@@ -31,8 +32,7 @@ async function resizePhoto(file: File) {
   return canvas.toDataURL("image/jpeg", 0.82);
 }
 
-const inputClass =
-  "mt-1 w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30";
+const inputClass = cn(field(), "mt-1");
 
 export function ProfileForm(props: {
   fullName: string;
@@ -82,7 +82,7 @@ export function ProfileForm(props: {
             id="photo-file"
             type="file"
             accept="image/*"
-            className="mt-1 max-w-full text-sm file:mr-3 file:min-h-11 file:rounded-full file:border-0 file:bg-white file:px-4 file:font-semibold file:text-stone-900"
+            className="mt-1 max-w-full text-sm file:mr-3 file:min-h-11 file:rounded-full file:border-0 file:bg-white file:px-4 file:font-semibold file:text-ink"
             onChange={async (event) => {
               const file = event.target.files?.[0];
               if (!file) return;
@@ -127,7 +127,7 @@ export function ProfileForm(props: {
           aria-describedby="brokerage-hint"
           className={inputClass}
         />
-        <p id="brokerage-hint" className="mt-1 text-sm text-stone-600">
+        <p id="brokerage-hint" className="mt-1 text-sm text-muted">
           Optional. A brokerage, team or company, if you work with one.
         </p>
       </div>
@@ -147,7 +147,7 @@ export function ProfileForm(props: {
           value={phone}
           onChange={(event) => setPhone(event.target.value)}
           {...invalid("contactPhone")}
-          className={cn(inputClass, "aria-invalid:border-red-600")}
+          className={inputClass}
         />
         {suggestion && (
           <button
@@ -157,7 +157,7 @@ export function ProfileForm(props: {
               // The button goes once it's used; the cursor carries on in the field.
               phoneField.current?.focus();
             }}
-            className="mt-1 min-h-11 rounded-full px-1 text-sm font-semibold text-brand underline-offset-2 hover:underline"
+            className={cn(button({ kind: "ghost" }), "-ml-4 mt-1 text-brand")}
           >
             Use {suggestion}
           </button>
@@ -181,14 +181,14 @@ export function ProfileForm(props: {
           autoComplete="email"
           defaultValue={state.values?.contactEmail ?? props.contactEmail}
           {...invalid("contactEmail")}
-          className={cn(inputClass, "aria-invalid:border-red-600")}
+          className={inputClass}
         />
         {state.field === "contactEmail" && (
           <p id="contactEmail-error" role="alert" className="mt-1 text-sm text-red-700">
             {state.error}
           </p>
         )}
-        <p id="contact-hint" className="mt-1 text-sm text-stone-600">
+        <p id="contact-hint" className="mt-1 text-sm text-muted">
           Shown on your links so clients can text, call or email you.
         </p>
       </div>
@@ -206,7 +206,7 @@ export function ProfileForm(props: {
               style={{ background: option.value }}
               className={cn(
                 "flex size-11 items-center justify-center rounded-full text-white",
-                color === option.value && "ring-2 ring-stone-900 ring-offset-2",
+                color === option.value && "ring-2 ring-ink ring-offset-2",
               )}
             >
               {color === option.value && <Check aria-hidden size={18} />}
@@ -223,8 +223,9 @@ export function ProfileForm(props: {
       <button
         type="submit"
         disabled={pending}
+        // In the colour picked, before it's saved.
         style={{ background: color }}
-        className="min-h-12 rounded-xl font-semibold text-white disabled:opacity-60"
+        className={button({ kind: "primary", size: "lg" })}
       >
         {pending ? "Saving…" : "Save"}
       </button>

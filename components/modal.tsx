@@ -47,7 +47,7 @@ export function Modal({ label, children }: { label: string; children: ReactNode 
           type="button"
           aria-label="Close"
           onClick={() => router.back()}
-          className="absolute right-3 top-3 z-10 flex size-11 items-center justify-center rounded-full bg-white/95 text-stone-900 shadow"
+          className="absolute right-3 top-3 z-10 flex size-11 items-center justify-center rounded-full bg-white/95 text-ink shadow"
         >
           <X aria-hidden size={22} />
         </button>

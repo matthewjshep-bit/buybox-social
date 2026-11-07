@@ -10,10 +10,12 @@ import { SiteHeader } from "@/components/site-header";
 import { getCurrentUser } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
 import { getReel, REEL_PAGE } from "@/lib/feed";
+import { cn } from "@/lib/format";
 import { getPublicIdentity } from "@/lib/public";
 import { searchHomes } from "@/lib/search";
 import { filtersQuery, parseFilters } from "@/lib/search-options";
 import { getTaste } from "@/lib/taste";
+import { button } from "@/lib/ui";
 
 export const metadata = { title: "Homes · BuyBox Social" };
 
@@ -69,7 +71,7 @@ export default async function SearchFeed({ searchParams }: Props) {
         <p className="mt-2 text-white/80">Change the filters on the map to see more.</p>
         <Link
           href={map}
-          className="mt-6 inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-white px-5 font-semibold text-ink"
+          className={cn(button({ kind: "light", size: "lg" }), "mt-6")}
         >
           <ArrowLeft aria-hidden size={17} /> Back to the map
         </Link>

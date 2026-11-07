@@ -16,6 +16,7 @@ import { CommentComposer, type SpotRef } from "@/components/listing-thread";
 import type { usePhotoLikes } from "@/components/photo-likes";
 import { CLEAR_MARGIN, isNear, keepClearOf, PhotoBox, photoFoot, photoPlace, type Box } from "@/components/reel-photos";
 import { SpotHighlight } from "@/components/spot-highlight";
+import { Avatar } from "@/components/ui";
 import { cn } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
 import {
@@ -32,6 +33,7 @@ import {
 } from "@/lib/photos";
 import type { TickerEvent } from "@/lib/ticker";
 import type { TimelineComment, TimelineItem } from "@/lib/timeline";
+import { pill } from "@/lib/ui";
 
 // Tap anywhere on a photo to like, dislike or comment on that spot: the front
 // door, the view from the deck. A ring marks where you tapped and a card opens
@@ -428,7 +430,7 @@ export function SpotLayer({
           }}
           className={cn("group pointer-events-auto absolute flex h-11 items-center", toggleCovered && "invisible")}
         >
-          <span className="flex h-8 items-center gap-1 rounded-full bg-black/60 px-3 text-[13px] font-semibold text-white backdrop-blur-md group-hover:bg-black/75 group-aria-pressed:bg-white group-aria-pressed:text-ink">
+          <span className="flex h-8 items-center gap-1 rounded-full bg-black/60 px-3 text-meta font-semibold text-white backdrop-blur-md group-hover:bg-black/75 group-aria-pressed:bg-white group-aria-pressed:text-ink">
             <MessageCircle aria-hidden size={14} /> {comments}
           </span>
         </button>
@@ -445,7 +447,7 @@ export function SpotLayer({
             data-thing={thing.tag}
             onClick={() => onPick({ mediaKey, tag: thing.tag, x: thing.x, y: thing.y, keyboard: true })}
             style={{ left: `${thing.x * 100}%`, top: `${thing.y * 100}%` }}
-            className="pointer-events-none absolute size-px -translate-x-1/2 -translate-y-1/2 overflow-hidden whitespace-nowrap opacity-0 focus-visible:size-auto focus-visible:rounded-full focus-visible:bg-black/60 focus-visible:px-3 focus-visible:py-1.5 focus-visible:text-[13px] focus-visible:font-semibold focus-visible:text-white focus-visible:opacity-100"
+            className="pointer-events-none absolute size-px -translate-x-1/2 -translate-y-1/2 overflow-hidden whitespace-nowrap opacity-0 focus-visible:size-auto focus-visible:rounded-full focus-visible:bg-black/60 focus-visible:px-3 focus-visible:py-1.5 focus-visible:text-meta focus-visible:font-semibold focus-visible:text-white focus-visible:opacity-100"
           >
             Select {tagPhrase(thing.tag)}
           </button>
@@ -642,18 +644,15 @@ function SpotPin({
           style={{ translate: away(pin.x, pin.y, "1.25rem") }}
           // Over any dot beside it: the words come first.
           className={cn(
-            "pointer-events-auto absolute left-0 top-0 z-10 flex w-max max-w-[13rem] items-center gap-1.5 rounded-full bg-white/95 py-1 pl-1 pr-2.5 text-[13px] text-ink shadow-lg animate-[nudge-in_250ms_ease-out_both] hover:bg-white",
+            "pointer-events-auto absolute left-0 top-0 z-10 flex w-max max-w-[13rem] items-center gap-1.5 rounded-full bg-white/95 py-1 pl-1 pr-2.5 text-meta text-ink shadow-lg animate-[nudge-in_250ms_ease-out_both] hover:bg-white",
             lit && "ring-2 ring-brand",
           )}
         >
-          <span
-            className={cn(
-              "flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white",
-              latest.fromPrivateChat ? "bg-stone-400" : latest.isAgent ? "bg-ink" : "bg-brand",
-            )}
-          >
-            {latest.name[0]?.toUpperCase()}
-          </span>
+          <Avatar
+            name={latest.name}
+            tone={latest.fromPrivateChat ? "anonymous" : latest.isAgent ? "agent" : "person"}
+            size={6}
+          />
           <span className="min-w-0 truncate">{latest.body}</span>
           {pin.comments.length > 1 && (
             <span className="shrink-0 font-semibold text-stone-500">+{pin.comments.length - 1}</span>
@@ -823,7 +822,7 @@ export function ReactCard({
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="truncate pl-1 text-[15px] font-semibold">{label}</p>
+        <p className="truncate pl-1 text-body font-semibold">{label}</p>
         <button
           type="button"
           onClick={onClose}
@@ -886,7 +885,8 @@ export function ReactCard({
           disabled={!photos.enabled}
           onClick={() => choose("like")}
           className={cn(
-            "flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl text-sm font-semibold ring-1 transition-colors",
+            pill(),
+            "flex-1 ring-1",
             reaction === "like" ? "bg-rose-50 text-rose-700 ring-rose-200" : "ring-stone-300 hover:bg-stone-50",
           )}
         >
@@ -902,7 +902,8 @@ export function ReactCard({
           disabled={!photos.enabled}
           onClick={() => choose("dislike")}
           className={cn(
-            "flex min-h-10 min-w-10 items-center justify-center gap-1 rounded-xl px-2.5 text-[13px] font-semibold ring-1 transition-colors",
+            pill(),
+            "ring-1",
             reaction === "dislike"
               ? "bg-amber-50 text-amber-800 ring-amber-200"
               : "text-stone-500 ring-stone-200 hover:bg-stone-50 hover:text-stone-700",

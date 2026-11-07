@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   useEffect,
   useId,
-  useLayoutEffect,
   useRef,
   useState,
   useTransition,
@@ -28,6 +27,7 @@ import { ReelFeed, type SendHome } from "@/components/reel";
 import { Sheet } from "@/components/sheet";
 import { cn, formatPrice, timeAgo } from "@/lib/format";
 import type { Listing } from "@/lib/listings/types";
+import { button, field } from "@/lib/ui";
 
 // Send, for agents: on any home, one tap opens the phone's share sheet with a
 // link to just that home, made for one client, then asks who it was for.
@@ -72,11 +72,11 @@ const focusOnMount = (element: HTMLElement | null) => {
   element?.focus();
 };
 
-const action = "flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-5 font-semibold";
-const primary = "bg-brand text-white hover:bg-brand/90";
-const secondary = "bg-stone-100 text-ink hover:bg-stone-200";
-const inputClass =
-  "w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30";
+// The sheets' buttons, one above the other, as wide as the sheet.
+const primary = button({ kind: "primary", size: "lg", block: true });
+const secondary = button({ kind: "secondary", size: "lg", block: true });
+// A button that's working on it dims until it's done (it keeps the keyboard).
+const busy = (pending: boolean) => pending && "opacity-60";
 
 // `result` is the server's answer, once it's in: the sheet may open before it.
 type Sent = { n: number; home: SendHome; claim: Promise<ClaimResult>; copied: boolean; result?: ClaimResult };
@@ -250,14 +250,25 @@ export function useQuickSend({
   const failed = Boolean(sent?.result && "error" in sent.result);
   // On a computer the link is only copied so far, so the sheet doesn't say it's sent.
   const sentTitle = failed ? "That link didn't save" : sent?.copied ? "Who's it for?" : "Sent. Who's it for?";
+  // On a computer the sheet opens with the cursor on Close; this way a screen
+  // reader also says the link was copied.
+  const copiedId = useId();
 
   const ui = (
     <>
-      <Sheet open={Boolean(sent)} onClose={() => setSent(null)} label={sentTitle} title={sentTitle} anchor={sheetAnchor}>
+      <Sheet
+        open={Boolean(sent)}
+        onClose={() => setSent(null)}
+        label={sentTitle}
+        title={sentTitle}
+        describedBy={sent?.copied && !failed ? copiedId : undefined}
+        anchor={sheetAnchor}
+      >
         {sent && (
           <SentBody
             key={sent.n}
             sent={sent}
+            copiedId={copiedId}
             onDone={(message) => {
               setSent(null);
               if (message) say(message);
@@ -278,10 +289,10 @@ export function useQuickSend({
         anchor={sheetAnchor}
       >
         <div className="pb-2 text-center">
-          <p className="text-[15px] leading-relaxed text-stone-700">
+          <p className="text-body leading-relaxed text-stone-700">
             Add your name and photo first so clients know it&apos;s from you.
           </p>
-          <Link href="/dashboard/profile" className={cn(action, primary, "mt-4")}>
+          <Link href="/dashboard/profile" className={cn(primary, "mt-4")}>
             Add your name and photo
           </Link>
         </div>
@@ -337,7 +348,7 @@ export function SendPill({ home, quick, className }: { home: SendHome; quick: Qu
       className={cn(
         "flex h-12 items-center gap-2 rounded-full bg-white px-5 font-semibold text-ink shadow-lg ring-1 ring-stone-200 hover:bg-stone-50",
         // Solid while it waits, so nothing behind it shows through the words.
-        quick.waiting && "cursor-progress text-stone-600 hover:bg-white",
+        quick.waiting && "cursor-progress text-muted hover:bg-white",
         className,
       )}
     >
@@ -380,9 +391,9 @@ function WhoFields({
           autoComplete="off"
           aria-describedby={`${id}-name-hint`}
           onChange={(event) => onName(event.target.value)}
-          className={cn(inputClass, "mt-1")}
+          className={cn(field(), "mt-1")}
         />
-        <p id={`${id}-name-hint`} className="mt-1 text-[13px] text-stone-600">
+        <p id={`${id}-name-hint`} className="mt-1 text-meta text-muted">
           For your dashboard. The link greets them by name.
         </p>
       </div>
@@ -400,9 +411,9 @@ function WhoFields({
             value={note}
             aria-describedby={`${id}-note-hint`}
             onChange={(event) => onNote(event.target.value)}
-            className={cn(inputClass, "mt-1 resize-y")}
+            className={cn(field({ lines: true }), "mt-1")}
           />
-          <p id={`${id}-note-hint`} className="mt-1 text-[13px] text-stone-600">
+          <p id={`${id}-note-hint`} className="mt-1 text-meta text-muted">
             It shows under the photo on their link.
           </p>
         </div>
@@ -411,7 +422,7 @@ function WhoFields({
           type="button"
           aria-expanded={false}
           onClick={() => setNoting(true)}
-          className="flex min-h-11 items-center gap-1.5 self-start text-sm font-semibold text-brand"
+          className={cn(button({ kind: "ghost" }), "-ml-4 self-start text-brand")}
         >
           <Plus aria-hidden size={16} /> Add a note (optional)
         </button>
@@ -430,9 +441,16 @@ function linkLine(share: RecentShare) {
 }
 
 // After the share sheet: who it went to, a note, or a change of mind.
-function SentBody({ sent, onDone }: { sent: Sent; onDone: (message?: string) => void }) {
-  const copiedId = useId();
-  const box = useRef<HTMLDivElement>(null);
+function SentBody({
+  sent,
+  copiedId,
+  onDone,
+}: {
+  sent: Sent;
+  // What the sheet is described by, once the link is copied.
+  copiedId: string;
+  onDone: (message?: string) => void;
+}) {
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -447,16 +465,6 @@ function SentBody({ sent, onDone }: { sent: Sent; onDone: (message?: string) => 
   const failed = Boolean(result && "error" in result);
   const shareId = result && "shareId" in result ? result.shareId : null;
 
-  // On a computer the sheet opens with the cursor on Close; this way a screen
-  // reader also says the link was copied. Set before the sheet opens (this
-  // runs first), since Sheet is the reel track's and takes no description.
-  useLayoutEffect(() => {
-    const dialog = box.current?.closest("dialog");
-    if (!dialog || !sent.copied || failed) return;
-    dialog.setAttribute("aria-describedby", copiedId);
-    return () => dialog.removeAttribute("aria-describedby");
-  }, [sent.copied, failed, copiedId]);
-
   // The link, once it's made: it may still be on its way when this opens.
   const made = async () => {
     const done = await sent.claim;
@@ -465,13 +473,13 @@ function SentBody({ sent, onDone }: { sent: Sent; onDone: (message?: string) => 
 
   if (failed) {
     return (
-      <div ref={box} className="pb-2 text-center">
-        <p role="alert" className="text-[15px] font-semibold leading-relaxed text-red-700">
+      <div className="pb-2 text-center">
+        <p role="alert" className="text-body font-semibold leading-relaxed text-red-700">
           {sent.copied
             ? "The link you just copied won't open. Tap Send again and use the new one."
             : "The link you just sent won't open. Tap Send again and send the new one."}
         </p>
-        <button type="button" onClick={() => onDone()} className={cn(action, secondary, "mt-4")}>
+        <button type="button" onClick={() => onDone()} className={cn(secondary, "mt-4")}>
           Close
         </button>
       </div>
@@ -531,7 +539,7 @@ function SentBody({ sent, onDone }: { sent: Sent; onDone: (message?: string) => 
   const dashboardLink = "mx-auto flex min-h-11 items-center gap-1 px-3 text-sm font-semibold";
 
   return (
-    <div ref={box} className="pb-2">
+    <div className="pb-2">
       {sent.copied && (
         <p
           id={copiedId}
@@ -547,10 +555,10 @@ function SentBody({ sent, onDone }: { sent: Sent; onDone: (message?: string) => 
         </p>
       )}
       <div className="mt-4 flex flex-col gap-2.5">
-        <button type="button" onClick={save} aria-disabled={pending} className={cn(action, primary, pending && "opacity-60")}>
+        <button type="button" onClick={save} aria-disabled={pending} className={cn(primary, busy(pending))}>
           Save
         </button>
-        <button type="button" onClick={() => onDone()} className={cn(action, secondary)}>
+        <button type="button" onClick={() => onDone()} className={secondary}>
           Skip
         </button>
         {/* There from the start, so nothing under the thumb moves when the link
@@ -583,15 +591,15 @@ function SentBody({ sent, onDone }: { sent: Sent; onDone: (message?: string) => 
         {showOthers && (
           <div className="pb-2">
             {others === null ? (
-              <p role="status" className="py-2 text-sm text-stone-600">
+              <p role="status" className="py-2 text-sm text-muted">
                 Finding your clients…
               </p>
             ) : recent.length === 0 ? (
-              <p className="py-2 text-sm text-stone-600">No other clients yet.</p>
+              <p className="py-2 text-sm text-muted">No other clients yet.</p>
             ) : (
               <>
                 {/* Read before the tap, not after it. */}
-                <p className="text-[13px] leading-relaxed text-stone-600">
+                <p className="text-meta leading-relaxed text-muted">
                   Their link will show this home. The link you just sent will stop working.
                 </p>
                 <ul className="mt-2 flex flex-col gap-2">
@@ -604,10 +612,10 @@ function SentBody({ sent, onDone }: { sent: Sent; onDone: (message?: string) => 
                         className="flex min-h-11 w-full items-center gap-3 rounded-2xl bg-stone-50 px-4 py-2.5 text-left hover:bg-stone-100"
                       >
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[15px] font-medium">
+                          <span className="block truncate text-body font-medium">
                             {share.clientName} · {share.homes} {share.homes === 1 ? "home" : "homes"}
                           </span>
-                          <span className="block truncate text-[13px] text-stone-600">{linkLine(share)}</span>
+                          <span className="block truncate text-meta text-muted">{linkLine(share)}</span>
                         </span>
                         <ChevronRight aria-hidden size={18} className="shrink-0 text-stone-500" />
                       </button>
@@ -626,7 +634,7 @@ function SentBody({ sent, onDone }: { sent: Sent; onDone: (message?: string) => 
             type="button"
             autoFocus={kept}
             onClick={() => setUndo("ask")}
-            className="mx-auto flex min-h-11 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+            className={cn(button({ kind: "ghost" }), "text-stone-700")}
           >
             <Undo2 aria-hidden size={16} /> Undo send
           </button>
@@ -641,7 +649,7 @@ function SentBody({ sent, onDone }: { sent: Sent; onDone: (message?: string) => 
                 autoFocus
                 onClick={undoSend}
                 aria-disabled={pending}
-                className={cn("min-h-11 rounded-full bg-stone-900 px-5 text-sm font-semibold text-white", pending && "opacity-60")}
+                className={cn(button({ kind: "neutral" }), busy(pending))}
               >
                 Undo send
               </button>
@@ -651,7 +659,7 @@ function SentBody({ sent, onDone }: { sent: Sent; onDone: (message?: string) => 
                   setUndo(null);
                   setKept(true);
                 }}
-                className="min-h-11 rounded-full px-5 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+                className={cn(button({ kind: "ghost" }), "text-stone-700")}
               >
                 Keep it
               </button>
@@ -716,7 +724,7 @@ function DraftBody({ home, onNextToken }: { home: SendHome; onNextToken: (token:
       <div className="rounded-2xl bg-stone-50 p-4">
         <p className="font-display text-xl">{formatPrice(home.price)}</p>
         <p className="truncate font-medium">{home.address}</p>
-        <p className="truncate text-sm text-stone-600">{facts}</p>
+        <p className="truncate text-sm text-muted">{facts}</p>
       </div>
       {link ? (
         <div className="mt-4">
@@ -730,7 +738,7 @@ function DraftBody({ home, onNextToken }: { home: SendHome; onNextToken: (token:
             readOnly
             value={link.url}
             onFocus={(event) => event.target.select()}
-            className="mt-2 w-full rounded-xl bg-stone-100 px-3 py-2.5 text-sm"
+            className={cn(field({ quiet: true }), "mt-2")}
           />
           {error && (
             <p role="alert" className="mt-3 text-sm text-red-700">
@@ -749,13 +757,13 @@ function DraftBody({ home, onNextToken }: { home: SendHome; onNextToken: (token:
                   () => setError("That didn't copy. Press and hold the link to copy it."),
                 )
               }
-              className={cn(action, primary)}
+              className={primary}
             >
               {copied ? <Check aria-hidden size={18} /> : <Copy aria-hidden size={18} />}
               {copied ? "Copied" : "Copy link"}
             </button>
             {phone && (
-              <a href={`sms:?&body=${encodeURIComponent(message)}`} className={cn(action, secondary)}>
+              <a href={`sms:?&body=${encodeURIComponent(message)}`} className={secondary}>
                 <MessageSquare aria-hidden size={18} /> Text
               </a>
             )}
@@ -765,7 +773,7 @@ function DraftBody({ home, onNextToken }: { home: SendHome; onNextToken: (token:
                 onClick={() =>
                   navigator.share({ title: HOME_MESSAGE_TITLE, text: messageFor(home), url: link.url }).catch(() => {})
                 }
-                className={cn(action, secondary)}
+                className={secondary}
               >
                 <Share2 aria-hidden size={18} /> Share…
               </button>
@@ -793,7 +801,7 @@ function DraftBody({ home, onNextToken }: { home: SendHome; onNextToken: (token:
               type="button"
               onClick={create}
               aria-disabled={pending}
-              className={cn(action, primary, pending && "opacity-60")}
+              className={cn(primary, busy(pending))}
             >
               {pending ? "Creating…" : "Create link"}
             </button>

@@ -15,7 +15,7 @@ export default async function LoginPage({
   if (await getCurrentUser()) redirect(agent ? "/for-agents" : "/");
   return (
     <main className="mx-auto max-w-md px-6 py-16">
-      <h1 className="font-display text-4xl">{agent ? "Start free as an agent" : "Sign in or sign up"}</h1>
+      <h1 className="font-display text-3xl">{agent ? "Start free as an agent" : "Sign in or sign up"}</h1>
       <p className="mt-2 text-stone-700">
         {agent ? "Send clients homes and see what they think of each one." : "For home buyers and agents."}{" "}
         {devLoginEnabled

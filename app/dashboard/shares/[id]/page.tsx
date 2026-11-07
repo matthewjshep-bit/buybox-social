@@ -1,9 +1,9 @@
 import { ArrowLeft, ChevronRight, Globe, Heart, Plus, RotateCcw, Tag, ThumbsDown, X } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { LiveRefresh } from "@/components/live-refresh";
+import { Avatar, Badge, HomeThumb } from "@/components/ui";
 import { requireAgent } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { headlineFromTimeline, type FeedPost } from "@/lib/feed";
@@ -25,6 +25,7 @@ import {
   type TakeMark,
   type ThreadComment,
 } from "@/lib/shares";
+import { button, card } from "@/lib/ui";
 import { addSuggestedHome, setHomeRemoved } from "../../actions";
 import { Opened } from "../../opened";
 import {
@@ -170,9 +171,9 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
                     {/* The package's own link, sent before anyone was added, still
                         says who opened it. */}
                     {packageOpens.length > 0 && (
-                      <div className="rounded-2xl bg-white p-4 text-sm ring-1 ring-stone-200">
+                      <div className={cn(card, "p-4 text-sm")}>
                         <p className="font-semibold">The link you sent first</p>
-                        <p className="mt-0.5 text-stone-600">
+                        <p className="mt-0.5 text-muted">
                           <OpenedBy opens={packageOpens} photos={photos} />
                         </p>
                       </div>
@@ -188,7 +189,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
                   />
                 )}
               </div>
-              <p className="mt-3 text-sm text-stone-600">
+              <p className="mt-3 text-sm text-muted">
                 Everyone gets their own link, so you can see what each person likes, and where they agree.
               </p>
               <div className="mt-2">
@@ -212,15 +213,12 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
               <h2 id="homes-title" className="font-display text-2xl">
                 On their link
               </h2>
-              <Link
-                href={`/dashboard/new?share=${share.id}`}
-                className="flex min-h-11 items-center gap-1.5 rounded-full border border-stone-300 bg-white px-4 text-sm font-semibold hover:bg-stone-50"
-              >
+              <Link href={`/dashboard/new?share=${share.id}`} className={button({ kind: "secondary" })}>
                 <Plus aria-hidden size={16} /> Add homes
               </Link>
             </div>
             {active.length === 0 ? (
-              <p className="mt-3 rounded-2xl bg-white p-6 text-center text-stone-700 ring-1 ring-stone-200">
+              <p className={cn(card, "mt-3 p-6 text-center text-stone-700")}>
                 No homes on this link right now. Add some, or restore one below.
               </p>
             ) : (
@@ -405,7 +403,7 @@ function WhatTheyWant({
         : "Everyone likes"
       : `${names.slice(0, -1).join(", ")} and ${names.at(-1)} ${likers.length === 2 ? "both" : "all"} like`;
   return (
-    <section aria-labelledby="profile-title" className="@container mt-6 rounded-2xl bg-white p-5 ring-1 ring-stone-200">
+    <section aria-labelledby="profile-title" className={cn(card, "@container mt-6 p-5")}>
       <h2 id="profile-title" className="font-display text-2xl">
         {several ? "What they each want" : `What ${summaries[0]?.person.name ?? clientName} wants`}
       </h2>
@@ -420,7 +418,7 @@ function WhatTheyWant({
             <div className="mt-3 flex flex-col gap-1.5 rounded-xl bg-stone-50 p-3 text-sm ring-1 ring-stone-200">
               <p>
                 <span className="font-semibold">{inCommon}:</span>{" "}
-                {both.length > 0 ? both.join("\u00a0· ") : <span className="text-stone-600">nothing in common yet</span>}
+                {both.length > 0 ? both.join("\u00a0· ") : <span className="text-muted">nothing in common yet</span>}
               </p>
               {likers.map((s) =>
                 only[s.person.id]?.length ? (
@@ -434,10 +432,10 @@ function WhatTheyWant({
           <ul className="mt-4 flex flex-col gap-4">
             {summaries.map((s) => (
               <li key={s.person.id}>
-                <p className="text-[15px]">
+                <p className="text-body">
                   <span className="font-semibold">{s.person.name}</span>{" "}
                   {tally[s.person.id].liked + tally[s.person.id].passed === 0 ? (
-                    <span className="text-stone-600">hasn&apos;t reacted yet</span>
+                    <span className="text-muted">hasn&apos;t reacted yet</span>
                   ) : (
                     <>
                       liked <span className="tabular-nums">{tally[s.person.id].liked}</span> of{" "}
@@ -462,7 +460,7 @@ function WhatTheyWant({
                 <summary className="-mx-2 flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl px-2 font-semibold hover:bg-stone-50 [&::-webkit-details-marker]:hidden">
                   <ChevronRight aria-hidden size={18} className="shrink-0 text-stone-500 transition-transform group-open:rotate-90" />
                   Home by home{" "}
-                  <span className="font-normal text-stone-600">
+                  <span className="font-normal text-muted">
                     · {homes.length} {homes.length === 1 ? "home" : "homes"}
                   </span>
                 </summary>
@@ -470,11 +468,7 @@ function WhatTheyWant({
                   {homes.map((home, i) => (
                     <li key={home.listing.ListingKey} className="rounded-xl bg-stone-50 p-3 ring-1 ring-stone-200">
                       <p className="flex items-center gap-2.5">
-                        <span className="relative size-10 shrink-0 overflow-hidden rounded-lg bg-stone-200">
-                          {home.listing.Media[0] && (
-                            <Image src={home.listing.Media[0].MediaURL} alt="" fill sizes="40px" className="object-cover" />
-                          )}
-                        </span>
+                        <HomeThumb src={home.listing.Media[0]?.MediaURL} sizes="40px" className="size-10" />
                         <span className="min-w-0 font-semibold leading-snug">{home.listing.UnparsedAddress}</span>
                       </p>
                       {/* Names take the room they need, up to a point, then wrap. */}
@@ -498,7 +492,7 @@ function WhatTheyWant({
                 <table className="w-full text-left text-sm">
                   <caption className="sr-only">Each home, by person</caption>
                   <thead>
-                    <tr className="border-b border-stone-200 text-stone-600">
+                    <tr className="border-b border-stone-200 text-muted">
                       <th scope="col" className="sticky left-0 z-10 bg-white py-2 pr-3 font-medium">
                         Home
                       </th>
@@ -645,11 +639,11 @@ function Suggestions({
       ),
     );
   return (
-    <section aria-labelledby="suggest-title" className="mt-6 rounded-2xl bg-white p-5 ring-1 ring-stone-200">
+    <section aria-labelledby="suggest-title" className={cn(card, "mt-6 p-5")}>
       <h2 id="suggest-title" className="font-display text-2xl">
         {together ? `Homes ${people.length === 2 ? "they might both" : "they might all"} like` : `Homes ${people[0] ?? "they"} might like`}
       </h2>
-      <p className="text-sm text-stone-600">From what they&apos;ve liked so far.</p>
+      <p className="text-sm text-muted">From what they&apos;ve liked so far.</p>
       <ul className="mt-3 flex flex-col gap-4">
         {suggestions.map(({ listing, reasons }) => (
           // On a narrow phone, Add sits under the words rather than squeezing them.
@@ -657,24 +651,17 @@ function Suggestions({
             key={listing.ListingKey}
             className="grid grid-cols-[4rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 sm:grid-cols-[4rem_minmax(0,1fr)_auto]"
           >
-            <span className="relative size-16 shrink-0 self-start overflow-hidden rounded-xl bg-stone-200 sm:self-center">
-              {listing.Media[0] && (
-                <Image src={listing.Media[0].MediaURL} alt="" fill sizes="64px" className="object-cover" />
-              )}
-            </span>
+            <HomeThumb src={listing.Media[0]?.MediaURL} sizes="64px" className="size-16 self-start sm:self-center" />
             <div className="min-w-0 flex-1 text-sm">
               <p className="truncate font-semibold">{listing.UnparsedAddress}</p>
               <p className="text-stone-700">
                 <span className="font-display text-base text-ink">{formatPrice(listing.ListPrice)}</span> ·{" "}
                 {listing.City}
               </p>
-              <p className="text-stone-600">{why({ listing, reasons })}</p>
+              <p className="text-muted">{why({ listing, reasons })}</p>
             </div>
             <form action={addSuggestedHome.bind(null, shareId, listing.ListingKey)} className="col-start-2 sm:col-start-3">
-              <button
-                type="submit"
-                className="flex min-h-11 items-center gap-1.5 rounded-full border border-stone-300 px-4 text-sm font-semibold hover:bg-stone-50"
-              >
+              <button type="submit" className={button({ kind: "secondary" })}>
                 <Plus aria-hidden size={16} /> Add
                 <span className="sr-only"> {listing.UnparsedAddress}</span>
               </button>
@@ -691,7 +678,7 @@ function Suggestions({
 function CommentSpot({ listing, spot }: { listing: Listing; spot: NonNullable<ThreadComment["spot"]> }) {
   if (spot.mediaKey === FACTS) {
     return (
-      <span className="mt-1 inline-flex min-h-8 items-center gap-1.5 rounded-full bg-stone-100 px-3 text-[13px] font-semibold text-stone-700">
+      <span className="mt-1 inline-flex min-h-8 items-center gap-1.5 rounded-full bg-stone-100 px-3 text-meta font-semibold text-stone-700">
         <Tag aria-hidden size={13} />
         <span className="sr-only">About </span>
         {spot.tag}
@@ -751,20 +738,20 @@ function HomePanel({
     <section
       id={`home-${listing.ListingKey}`}
       aria-label={listing.UnparsedAddress}
-      className="@container scroll-mt-4 rounded-2xl bg-white p-4 ring-1 ring-stone-200 transition-[box-shadow] duration-1000 data-target:ring-2 data-target:ring-amber-300"
+      className={cn(
+        card,
+        "@container scroll-mt-4 p-4 transition-[box-shadow] duration-1000 data-target:ring-2 data-target:ring-amber-300",
+      )}
     >
       {/* Narrow (a phone, or a column beside the Scorecard), the buttons sit
           in a row of their own underneath, so the words keep the width: the
           address on one line, the price and city on the next. */}
       <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 @md:grid-cols-[auto_minmax(0,1fr)_auto]">
-        <div
-          className={cn(
-            "relative size-16 shrink-0 overflow-hidden rounded-xl bg-stone-200 @md:size-18",
-            isRemoved && "opacity-60 grayscale",
-          )}
-        >
-          {listing.Media[0] && <Image src={listing.Media[0].MediaURL} alt="" fill sizes="72px" className="object-cover" />}
-        </div>
+        <HomeThumb
+          src={listing.Media[0]?.MediaURL}
+          sizes="72px"
+          className={cn("size-16 @md:size-18", isRemoved && "opacity-60 grayscale")}
+        />
         <div className="min-w-0">
           {/* Focus lands here when the last comment on a removed home goes. */}
           <h3 tabIndex={-1} className="font-semibold leading-snug outline-none">
@@ -779,10 +766,7 @@ function HomePanel({
         <div className="col-span-2 mt-3 flex flex-wrap items-center gap-1 @md:col-span-1 @md:-mr-1 @md:mt-0 @md:justify-self-end">
           <ScorecardButton listingKey={listing.ListingKey} address={listing.UnparsedAddress} />
           <form action={setHomeRemoved.bind(null, shareId, listing.ListingKey, !isRemoved)}>
-            <button
-              type="submit"
-              className="flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-stone-700 hover:bg-stone-100"
-            >
+            <button type="submit" className={cn(button({ kind: "ghost" }), "text-stone-700")}>
               {isRemoved ? <RotateCcw aria-hidden size={15} /> : <X aria-hidden size={15} />}
               {isRemoved ? "Restore" : "Remove"}
               <span className="sr-only"> {listing.UnparsedAddress}</span>
@@ -807,7 +791,7 @@ function HomePanel({
           })}
         </ul>
       ) : (
-        <p className="mt-3 text-sm text-stone-600">No reactions yet.</p>
+        <p className="mt-3 text-sm text-muted">No reactions yet.</p>
       )}
 
       {comments.length > 0 && (
@@ -819,22 +803,14 @@ function HomePanel({
               id={`comment-${comment.id}`}
               className="-mx-2 -my-1 flex scroll-mt-4 gap-3 rounded-xl px-2 py-1 transition-[background-color,box-shadow] duration-1000 data-target:bg-amber-50 data-target:ring-2 data-target:ring-amber-200"
             >
-              <span
-                aria-hidden
-                className={cn(
-                  "flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white",
-                  comment.isAgent ? "bg-ink" : "bg-brand",
-                )}
-              >
-                {comment.name[0]?.toUpperCase()}
-              </span>
+              <Avatar name={comment.name} tone={comment.isAgent ? "agent" : "person"} />
               <div className="min-w-0 flex-1">
-                <p className="flex flex-wrap items-center gap-x-1.5 text-[13px] leading-snug text-stone-600">
+                <p className="flex flex-wrap items-center gap-x-1.5 text-meta leading-snug text-muted">
                   <span className="text-sm font-semibold text-ink">{comment.name}</span>
                   {comment.isAgent && (
-                    <span className="rounded-full bg-ink px-2 py-px text-[10px] font-bold uppercase tracking-wide text-white">
+                    <Badge tone="ink" small>
                       Agent
-                    </span>
+                    </Badge>
                   )}
                   <span>· {timeAgo(comment.createdAt)}</span>
                   {comment.sharedPublicly && (
@@ -844,7 +820,7 @@ function HomePanel({
                   )}
                 </p>
                 {comment.spot && <CommentSpot listing={listing} spot={comment.spot} />}
-                <p className="mt-0.5 whitespace-pre-line break-words text-[15px] leading-snug">{comment.body}</p>
+                <p className="mt-0.5 whitespace-pre-line break-words text-body leading-snug">{comment.body}</p>
                 {/* A client's words on a home still on their link: they'd see the heart. */}
                 {!comment.isAgent && !isRemoved && (
                   <CommentLike commentId={comment.id} name={comment.name} liked={liked.has(comment.id)} />

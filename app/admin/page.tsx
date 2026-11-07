@@ -1,7 +1,7 @@
-import Image from "next/image";
 import Link from "next/link";
 import { connection } from "next/server";
-import { Avatar, Card, ContactLinks, Empty, PageTitle, Stat } from "@/components/admin-ui";
+import { Card, ContactLinks, Empty, PageTitle, Stat } from "@/components/admin-ui";
+import { Avatar, HomeThumb } from "@/components/ui";
 import { getOverview } from "@/lib/admin";
 import { requireAdmin } from "@/lib/auth";
 import { formatPrice, timeAgo } from "@/lib/format";
@@ -46,7 +46,7 @@ export default async function AdminOverview() {
           </Link>
         }
       >
-        <p className="-mt-1 mb-3 text-sm text-stone-600">
+        <p className="-mt-1 mb-3 text-sm text-muted">
           Everyone who signed up on the home page in the last 30 days, newest first.
         </p>
         {followUps.length === 0 ? (
@@ -62,7 +62,7 @@ export default async function AdminOverview() {
                   <Link href={`/admin/people/${lead.id}`} className="font-semibold hover:underline">
                     {lead.name}
                   </Link>
-                  <p className="truncate text-sm text-stone-600">
+                  <p className="truncate text-sm text-muted">
                     {lead.phone} · {lead.email}
                   </p>
                   <p className="text-xs text-stone-500">
@@ -71,7 +71,7 @@ export default async function AdminOverview() {
                   </p>
                 </div>
                 <div className="w-full pl-13 sm:w-auto sm:pl-0">
-                  <ContactLinks name={lead.name} phone={lead.phone} email={lead.email} compact />
+                  <ContactLinks name={lead.name} phone={lead.phone} email={lead.email} />
                 </div>
               </li>
             ))}
@@ -93,21 +93,17 @@ export default async function AdminOverview() {
                     href={`/admin/homes/${encodeURIComponent(home.listing_key)}`}
                     className="flex items-center gap-3 py-2.5 hover:bg-stone-50"
                   >
-                    <div className="relative size-12 shrink-0 overflow-hidden rounded-lg bg-stone-200">
-                      {home.data.Media[0] && (
-                        <Image src={home.data.Media[0].MediaURL} alt="" fill sizes="48px" className="object-cover" />
-                      )}
-                    </div>
+                    <HomeThumb src={home.data.Media[0]?.MediaURL} sizes="48px" className="size-12" />
                     {/* On a phone the count goes under the price, so the
                         address keeps its room. */}
                     <div className="min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
                       <div className="min-w-0 sm:flex-1">
                         <p className="truncate font-medium">{home.data.UnparsedAddress}</p>
-                        <p className="text-sm text-stone-600">
+                        <p className="text-sm text-muted">
                           <span className="font-display text-base text-ink">{formatPrice(home.data.ListPrice)}</span> · {home.data.City}
                         </p>
                       </div>
-                      <p className="text-sm tabular-nums text-stone-600 sm:shrink-0">
+                      <p className="text-sm tabular-nums text-muted sm:shrink-0">
                         {home.n} {home.n === 1 ? "like or comment" : "likes and comments"}
                       </p>
                     </div>

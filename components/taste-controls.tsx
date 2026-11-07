@@ -80,20 +80,20 @@ export function TasteControls({ loves, passes, hidePasses }: { loves: TasteChip[
             setOpened({ loves, passes });
             setOpen(true);
           }}
-          className="-mr-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 text-[15px] font-semibold text-stone-700 underline decoration-stone-400 underline-offset-2 hover:text-ink hover:decoration-ink"
+          className="-mr-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 text-body font-semibold text-stone-700 underline decoration-stone-400 underline-offset-2 hover:text-ink hover:decoration-ink"
         >
           <SlidersHorizontal aria-hidden size={14} className="shrink-0" />
           Not quite right?
         </button>
       </div>
       <Sheet open={open} onClose={close} label="What others see" title="What others see">
-        <p className="text-[15px] leading-snug text-stone-700">
+        <p className="text-body leading-snug text-stone-700">
           Turn off anything that isn&apos;t you. Others won&apos;t see it in your taste, and the description leaves it
           out. You&apos;ll still see it.
         </p>
         <ChipSwitches side="like" chips={steady(loves, opened?.loves)} hidden={hidden} onToggle={toggleChip} />
         <div className="mt-5">
-          <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-amber-800">
+          <h3 className="flex items-center gap-1.5 text-meta font-semibold text-amber-800">
             <ThumbsDown aria-hidden size={14} />
             Passes on
           </h3>
@@ -112,7 +112,7 @@ export function TasteControls({ loves, passes, hidePasses }: { loves: TasteChip[
           />
         </div>
         {error && (
-          <p role="alert" className="mt-3 text-[13px] font-semibold text-amber-800">
+          <p role="alert" className="mt-3 text-meta font-semibold text-amber-800">
             {error}
           </p>
         )}
@@ -157,7 +157,7 @@ function ChipSwitches({
   if (side === "pass") return list;
   return (
     <div className="mt-4">
-      <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-rose-800">
+      <h3 className="flex items-center gap-1.5 text-meta font-semibold text-rose-800">
         <Heart aria-hidden size={14} className="fill-current" />
         Loves
       </h3>
@@ -187,11 +187,11 @@ function SwitchRow({
   return (
     <div className="flex min-h-14 items-center justify-between gap-3 border-b border-stone-100">
       <div className="min-w-0 py-2">
-        <p className={cn("break-words text-[15px] font-semibold", disabled ? "text-stone-600" : "text-ink")}>
+        <p className={cn("break-words text-body font-semibold", disabled ? "text-muted" : "text-ink")}>
           {title ?? label}
         </p>
         {hint && (
-          <p id={hintId} className="text-[13px] text-stone-600">
+          <p id={hintId} className="text-meta text-muted">
             {hint}
           </p>
         )}

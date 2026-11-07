@@ -3,8 +3,11 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CardMenu, MoreText } from "@/app/people/[id]/client";
+import { MarkFace } from "@/components/spot-highlight";
+import { Avatar, Badge } from "@/components/ui";
 import { cn, formatPrice } from "@/lib/format";
 import { cardTime, dayHeading, dayName, type PinKind, type ProfileCard } from "@/lib/profile";
+import { button, card as cardClass } from "@/lib/ui";
 
 // Everything someone has done, Facebook-style: one card per home per day,
 // under "Today", "Yesterday" and so on. Each card shows the photo with the
@@ -42,7 +45,7 @@ export function ProfileFeed({
     <div className="flex flex-col gap-6">
       {days.map((day) => (
         <section key={day.heading}>
-          <h2 className="px-1 text-[15px] font-semibold text-stone-600">{day.heading}</h2>
+          <h2 className="px-1 text-body font-semibold text-muted">{day.heading}</h2>
           <ul className="mt-2 flex flex-col gap-3">
             {day.cards.map((card) => (
               <Card
@@ -57,10 +60,7 @@ export function ProfileFeed({
         </section>
       ))}
       {earlierHref && (
-        <Link
-          href={earlierHref}
-          className="mx-auto flex min-h-11 items-center rounded-full bg-white px-5 text-[15px] font-semibold text-ink ring-1 ring-stone-300 hover:bg-stone-50"
-        >
+        <Link href={earlierHref} className={cn(button({ kind: "secondary" }), "mx-auto")}>
           Show earlier
         </Link>
       )}
@@ -74,7 +74,7 @@ function Card({ card, name, isMe, day }: { card: ProfileCard; name: string; isMe
   // A day when all they did was like someone's comment: a small card, no photo.
   const { quiet } = card;
   return (
-    <li className="relative overflow-hidden rounded-2xl bg-white ring-1 ring-stone-200">
+    <li className={cn(cardClass, "relative overflow-hidden")}>
       {/* The whole card opens the home. Links and buttons in it sit above this.
           Its focus ring is drawn inside, where the card's rounded edge can't cut it off. */}
       <Link
@@ -84,12 +84,12 @@ function Card({ card, name, isMe, day }: { card: ProfileCard; name: string; isMe
         className="absolute inset-0 z-10 scroll-mt-[var(--filters)] rounded-2xl focus-visible:outline-offset-[-3px]!"
       />
       <div className="flex items-start gap-3 p-4 pb-3">
-        <Avatar name={name} />
-        <p className="min-w-0 flex-1 pt-1 text-[15px] leading-snug text-ink">
+        <Avatar name={name} size={8} />
+        <p className="min-w-0 flex-1 pt-1 text-body leading-snug text-ink">
           <strong className="font-semibold">{isMe ? "You" : name}</strong> {card.sentence}
           {/* Held to the last word, so the time never starts a line on its own. */}
           {"\u00a0"}
-          <span className="whitespace-nowrap text-[13px] text-stone-600">
+          <span className="whitespace-nowrap text-meta text-muted">
             {"· "}
             <time dateTime={card.at}>{cardTime(card.at)}</time>
           </span>
@@ -105,16 +105,12 @@ function Card({ card, name, isMe, day }: { card: ProfileCard; name: string; isMe
       <div className={cn("px-4", quiet ? "pt-0" : "pt-3")}>
         <p className="flex flex-wrap items-baseline gap-x-1.5">
           <span className="font-display text-xl font-semibold">{formatPrice(home.price)}</span>
-          <span className="text-[15px] text-stone-700">
+          <span className="text-body text-stone-700">
             · {home.beds} bd · {home.baths} ba · {home.sqft.toLocaleString("en-US")} sq ft
           </span>
-          {!home.active && (
-            <span className="self-center rounded-full bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-700 ring-1 ring-stone-200">
-              Off market
-            </span>
-          )}
+          {!home.active && <Badge className="self-center">Off market</Badge>}
         </p>
-        <p className="truncate text-[13px] text-stone-600">
+        <p className="truncate text-meta text-muted">
           {home.address}, {home.city}
         </p>
       </div>
@@ -125,7 +121,7 @@ function Card({ card, name, isMe, day }: { card: ProfileCard; name: string; isMe
             <li
               key={`${fact.kind}-${fact.phrase}`}
               className={cn(
-                "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[13px] font-semibold ring-1",
+                "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-meta font-semibold ring-1",
                 fact.kind === "like"
                   ? "bg-rose-50 text-rose-900 ring-rose-200"
                   : "bg-amber-50 text-amber-900 ring-amber-200",
@@ -148,12 +144,12 @@ function Card({ card, name, isMe, day }: { card: ProfileCard; name: string; isMe
           {card.comments.map((comment) => (
             <li key={comment.id} className="rounded-2xl bg-stone-50 p-3">
               {comment.spot && (
-                <span className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[13px] font-semibold text-stone-700 ring-1 ring-stone-200">
+                <span className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-meta font-semibold text-stone-700 ring-1 ring-stone-200">
                   {comment.spot.fact ? <Tag aria-hidden size={12} /> : <MapPin aria-hidden size={12} />}
                   {comment.spot.name}
                 </span>
               )}
-              <MoreText className="text-[15px] leading-snug text-ink" meta={commentMeta(comment)}>
+              <MoreText className="text-body leading-snug text-ink" meta={commentMeta(comment)}>
                 {comment.body}
               </MoreText>
             </li>
@@ -163,13 +159,13 @@ function Card({ card, name, isMe, day }: { card: ProfileCard; name: string; isMe
 
       {isMe && card.likedComments.length > 0 && (
         <div className="mx-4 mt-3 rounded-xl border border-dashed border-stone-300 px-3 py-2">
-          <p className="flex items-center gap-1.5 text-[13px] font-semibold text-stone-600">
+          <p className="flex items-center gap-1.5 text-meta font-semibold text-muted">
             <Lock aria-hidden size={12} />
             Only you see this
           </p>
           <ul className="mt-0.5 flex flex-col gap-0.5">
             {card.likedComments.map((like, i) => (
-              <li key={i} className="line-clamp-2 break-words text-[13px] text-stone-700">
+              <li key={i} className="line-clamp-2 break-words text-meta text-stone-700">
                 {quiet ? `${like.author}: ` : `You liked ${like.author}'s comment, `}
                 &ldquo;{like.body}&rdquo;
               </li>
@@ -248,7 +244,7 @@ function CardPhoto({ card, name }: { card: ProfileCard; name: string }) {
         ))}
         {newest && <AvatarPin name={name} kind={newest.kind} x={newest.x} y={newest.y} />}
         {card.otherPhotos > 0 && (
-          <span className="absolute bottom-3 right-3 rounded-full bg-black/55 px-2.5 py-1 text-[13px] font-semibold text-white backdrop-blur-md">
+          <span className="absolute bottom-3 right-3 rounded-full bg-black/55 px-2.5 py-1 text-meta font-semibold text-white backdrop-blur-md">
             +{card.otherPhotos} {card.otherPhotos === 1 ? "photo" : "photos"}
           </span>
         )}
@@ -257,37 +253,17 @@ function CardPhoto({ card, name }: { card: ProfileCard; name: string }) {
   );
 }
 
-// The same pin the feed draws where someone liked or said something.
+// The same face the feed draws on the photo where someone liked or said something.
 function AvatarPin({ name, kind, x, y }: { name: string; kind: PinKind; x: number; y: number }) {
   return (
     <span
       aria-hidden
       data-pin={kind}
       data-newest
-      className="pointer-events-none absolute flex size-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-brand text-[13px] font-bold text-white shadow-[0_2px_8px_rgb(0_0_0/0.45)] ring-2 ring-white"
+      className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
       style={at({ x, y })}
     >
-      {name[0]?.toUpperCase()}
-      <span className="absolute -bottom-1 -right-1 flex size-3.5 items-center justify-center rounded-full bg-white">
-        {kind === "like" ? (
-          <Heart size={9} className="fill-rose-500 text-rose-500" />
-        ) : kind === "dislike" ? (
-          <ThumbsDown size={9} className="text-amber-600" strokeWidth={3} />
-        ) : (
-          <MessageCircle size={9} className="text-brand" strokeWidth={3} />
-        )}
-      </span>
-    </span>
-  );
-}
-
-function Avatar({ name }: { name: string }) {
-  return (
-    <span
-      aria-hidden
-      className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand text-[13px] font-bold text-white"
-    >
-      {name[0]?.toUpperCase()}
+      <MarkFace initial={name.trim()[0]?.toUpperCase()} mark={kind} pin className="ring-2" />
     </span>
   );
 }

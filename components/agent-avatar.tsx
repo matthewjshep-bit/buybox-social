@@ -1,5 +1,8 @@
 import { cn } from "@/lib/format";
+import { avatarColor } from "@/lib/ui";
 
+// An agent's own face: their photo, or their initials, in ink as an agent's
+// face is everywhere (frosted white over a photo or their colour).
 export function AgentAvatar({
   agent,
   size,
@@ -40,8 +43,8 @@ export function AgentAvatar({
       aria-hidden
       style={{ width: size, height: size }}
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full font-semibold text-white",
-        light ? "bg-brand" : "bg-white/20",
+        "flex shrink-0 items-center justify-center rounded-full font-semibold",
+        light ? avatarColor("agent") : "bg-white/20 text-white",
         className,
       )}
     >

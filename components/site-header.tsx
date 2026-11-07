@@ -7,6 +7,7 @@ import { getCurrentUser, isAdmin } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
 import { cn } from "@/lib/format";
 import { getPublicIdentity } from "@/lib/public";
+import { button } from "@/lib/ui";
 
 // On every page, one header: the logo always goes home; then the map, the
 // bell, your dashboard if you send homes, and you (your initial, opening your
@@ -76,7 +77,7 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
               {unread > 0 && (
                 <span
                   aria-hidden
-                  className="absolute right-1 top-1.5 flex min-w-[18px] items-center justify-center rounded-full bg-rose-600 px-1 text-[11px] font-bold leading-[18px] text-white tabular-nums [text-shadow:none]"
+                  className="absolute right-1 top-1.5 flex min-w-[18px] items-center justify-center rounded-full bg-rose-600 px-1 text-tiny font-bold leading-[18px] text-white tabular-nums [text-shadow:none]"
                 >
                   {unread > 9 ? "9+" : unread}
                 </span>
@@ -116,10 +117,7 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
               <NavLink href="/login" className={navItem}>
                 Sign in
               </NavLink>
-              <Link
-                href="/login"
-                className="ml-1 flex min-h-11 shrink-0 items-center rounded-full bg-brand px-4 font-semibold text-white"
-              >
+              <Link href="/login" className={cn(button({ kind: "primary" }), "ml-1 shrink-0")}>
                 Sign up
               </Link>
             </>

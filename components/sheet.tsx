@@ -60,6 +60,8 @@ export function Sheet({
   onClose,
   label,
   title,
+  titleHidden = false,
+  describedBy,
   children,
   footer,
   anchor,
@@ -77,6 +79,10 @@ export function Sheet({
   // Its name for screen readers: "Comments".
   label: string;
   title: ReactNode;
+  // The title is for screen readers only (what's in it says the same on screen).
+  titleHidden?: boolean;
+  // The id of words in it that a screen reader says as it opens, after its name.
+  describedBy?: string;
   children: ReactNode;
   // Stays put at the bottom while the rest scrolls (a comment box).
   footer?: ReactNode;
@@ -297,6 +303,7 @@ export function Sheet({
     <dialog
       ref={dialog}
       aria-label={label}
+      aria-describedby={describedBy}
       // (Not when it has already opened again, the other way: wide, or not.)
       onClose={() => {
         if (!dialog.current?.open) onClose();
@@ -325,7 +332,11 @@ export function Sheet({
           {tabs ? (
             <div className="min-w-0 flex-1">{tabs}</div>
           ) : (
-            <h2 ref={heading} tabIndex={-1} className="min-w-0 flex-1 truncate text-[15px] font-semibold">
+            <h2
+              ref={heading}
+              tabIndex={-1}
+              className={cn("min-w-0 flex-1 truncate text-body font-semibold", titleHidden && "sr-only")}
+            >
               {title}
             </h2>
           )}
@@ -333,7 +344,7 @@ export function Sheet({
             type="button"
             onClick={dismiss}
             aria-label="Close"
-            className="flex size-11 shrink-0 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-ink"
+            className="ml-auto flex size-11 shrink-0 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-ink"
           >
             <X aria-hidden size={20} />
           </button>
@@ -424,7 +435,11 @@ export function Sheet({
           ) : (
             <span aria-hidden className="mx-auto block h-1 w-10 rounded-full bg-stone-300" />
           )}
-          <h2 ref={heading} tabIndex={-1} className="mt-2.5 px-14 text-center text-[15px] font-semibold outline-none">
+          <h2
+            ref={heading}
+            tabIndex={-1}
+            className={cn("px-14 text-center text-body font-semibold outline-none", titleHidden ? "sr-only" : "mt-2.5")}
+          >
             {title}
           </h2>
         </div>

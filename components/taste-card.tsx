@@ -5,6 +5,7 @@ import { cn } from "@/lib/format";
 import { getProfilePerson, getProfileRows, type TopicSide } from "@/lib/profile";
 import { hasTaste, TASTE_MIN_REACTIONS, type Taste } from "@/lib/taste";
 import { readStory, shownStory, storyOf, voiceOf, type TasteChip } from "@/lib/taste-story";
+import { card } from "@/lib/ui";
 
 // Your taste as your own page tells it, for the end of the feed: the same
 // headline, words and chips, so "See your taste" opens a card that agrees.
@@ -75,33 +76,33 @@ export function TasteCard({
     <section
       data-light
       aria-labelledby="taste-title"
-      className={cn("rounded-2xl bg-white p-5 ring-1 ring-stone-200", className)}
+      className={cn(card, "p-5", className)}
     >
-      <h3 id="taste-title" className="text-[13px] font-semibold text-stone-600">
+      <h3 id="taste-title" className="text-meta font-semibold text-muted">
         Your taste
       </h3>
       {!hasTaste(taste) ? (
-        <p className="mt-1 text-[15px] leading-snug text-stone-700">
+        <p className="mt-1 text-body leading-snug text-stone-700">
           Like or pass on {TASTE_MIN_REACTIONS - reacted} more{" "}
           {TASTE_MIN_REACTIONS - reacted === 1 ? "home" : "homes"} and your picks start matching what you like.
         </p>
       ) : (
         <>
           {story?.headline && <Headline text={story.headline} />}
-          {story?.sentence && <p className="mt-2 text-[15px] leading-6 text-stone-800">{story.sentence}</p>}
+          {story?.sentence && <p className="mt-2 text-body leading-6 text-stone-800">{story.sentence}</p>}
           {story && (
             <>
               <TasteRow side="like" chips={story.loves} current={null} href={chipHref} isMe />
               <TasteRow side="pass" chips={story.passes} current={null} href={chipHref} isMe />
               {story.passesPrivate && story.passes.length > 0 && (
-                <p className="mt-2 flex items-center gap-1.5 text-[13px] text-stone-600">
+                <p className="mt-2 flex items-center gap-1.5 text-meta text-muted">
                   <Lock aria-hidden size={12} className="shrink-0" />
                   Only you see what you pass on
                 </p>
               )}
             </>
           )}
-          <p className="mt-3 flex items-start gap-1.5 text-[13px] leading-snug text-stone-600">
+          <p className="mt-3 flex items-start gap-1.5 text-meta leading-snug text-muted">
             {story?.ai && <Sparkles aria-hidden size={14} className="mt-px shrink-0 text-brand" />}
             <span>
               {story?.ai && "Written by AI. "}

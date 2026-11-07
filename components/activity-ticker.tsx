@@ -8,6 +8,7 @@ import { cn, timeAgo } from "@/lib/format";
 import type { Listing } from "@/lib/listings/types";
 import { likeId, mediaKeyOf, tagPosition } from "@/lib/photos";
 import { buildCycle, DOT, eventText, onPhoto, spokenAgo, type TickerEvent, type TickerTap } from "@/lib/ticker";
+import { avatarColor } from "@/lib/ui";
 
 // What people did on a home lately, in the slot above the price, one thing at
 // a time: who and what, then what they said (or where) and when, with their
@@ -344,11 +345,11 @@ export function ActivityTicker({
   if (cycle.length === 0) {
     if (!hint) return null;
     return (
-      <div role="group" aria-label="Recent activity" className="flex min-w-0 items-center gap-2.5 text-white/70 split:text-stone-600">
+      <div role="group" aria-label="Recent activity" className="flex min-w-0 items-center gap-2.5 text-white/70 split:text-muted">
         <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white/10 split:bg-stone-100">
           <Hand size={16} className="text-white/60 split:text-stone-500" />
         </span>
-        <p className="line-clamp-2 text-[15px] leading-5">{hint}</p>
+        <p className="line-clamp-2 text-body leading-5">{hint}</p>
       </div>
     );
   }
@@ -421,7 +422,7 @@ export function ActivityTicker({
               type="button"
               aria-label="Show the next activity"
               onClick={ticker.step}
-              className="flex size-11 items-center justify-center rounded-full text-white/80 hover:bg-white/10 split:text-stone-600 split:hover:bg-stone-100"
+              className="flex size-11 items-center justify-center rounded-full text-white/80 hover:bg-white/10 split:text-muted split:hover:bg-stone-100"
             >
               {/* A step on, not the photo's arrow. */}
               <StepForward aria-hidden size={17} />
@@ -431,7 +432,7 @@ export function ActivityTicker({
               type="button"
               aria-label={ticker.halted ? "Play activity" : "Pause activity"}
               onClick={ticker.halted ? ticker.play : ticker.pause}
-              className="flex size-11 items-center justify-center rounded-full text-white/80 hover:bg-white/10 split:text-stone-600 split:hover:bg-stone-100"
+              className="flex size-11 items-center justify-center rounded-full text-white/80 hover:bg-white/10 split:text-muted split:hover:bg-stone-100"
             >
               {ticker.halted ? <Play aria-hidden size={16} className="fill-current" /> : <Pause aria-hidden size={16} className="fill-current" />}
             </button>
@@ -547,14 +548,14 @@ function Lines({ shown, myName, ghost = false, underline = false }: { shown: Sho
               style={{ zIndex: shown.faces.length - i }}
               className={cn(
                 "relative -ml-1.5 flex size-5 items-center justify-center rounded-full text-[10px] font-semibold ring-2 ring-night [text-shadow:none] split:ring-white",
-                name ? "bg-brand text-white" : "bg-stone-500 text-white",
+                avatarColor(name ? "person" : "anonymous", { dark: true }),
               )}
             >
               {name ? (ghost ? <Drawn text={name[0]?.toUpperCase() ?? ""} /> : name[0]?.toUpperCase()) : <User size={11} />}
             </span>
           ))}
         </span>
-        {say(shown.text, "line-clamp-2 min-w-0 flex-1 text-[15px] font-semibold leading-5")}
+        {say(shown.text, "line-clamp-2 min-w-0 flex-1 text-body font-semibold leading-5")}
       </>
     );
   }
@@ -564,7 +565,7 @@ function Lines({ shown, myName, ghost = false, underline = false }: { shown: Sho
   const meta = (whole: boolean) =>
     words.meta && (
       <span
-        className={cn("text-[13px] font-normal text-white/75 split:text-stone-600", whole && "shrink-0 whitespace-pre")}
+        className={cn("text-meta font-normal text-white/75 split:text-muted", whole && "shrink-0 whitespace-pre")}
         suppressHydrationWarning
       >
         {ghost ? <Drawn text={`${DOT}${words.meta}`} /> : `${DOT}${words.meta}`}
@@ -577,8 +578,8 @@ function Lines({ shown, myName, ghost = false, underline = false }: { shown: Sho
         // Who, on what; under it, what they said (cut short, but never when
         // they said it). Side by side, each gets two lines.
         <span className="min-w-0 flex-1">
-          {say(words.line1, cn("block truncate text-[15px] leading-5 split:line-clamp-2 split:whitespace-normal", strong), first)}
-          <span className="flex min-w-0 items-end text-[13px] leading-[18px] text-white/75 split:text-stone-600">
+          {say(words.line1, cn("block truncate text-body leading-5 split:line-clamp-2 split:whitespace-normal", strong), first)}
+          <span className="flex min-w-0 items-end text-meta leading-[18px] text-white/75 split:text-muted">
             {say(words.words, "min-w-0 truncate split:line-clamp-2 split:whitespace-normal")}
             {meta(true)}
           </span>
@@ -586,10 +587,10 @@ function Lines({ shown, myName, ghost = false, underline = false }: { shown: Sho
       ) : (
         // Who did what, in full, over two lines when it needs them, then
         // where and when, quieter.
-        <span className="line-clamp-2 min-w-0 flex-1 text-[15px] leading-5 split:line-clamp-3">
+        <span className="line-clamp-2 min-w-0 flex-1 text-body leading-5 split:line-clamp-3">
           {say(words.line1, strong)}
           {words.words && (
-            <span className="text-[13px] text-white/75 split:text-stone-600"> {ghost ? <Drawn text={words.words} /> : words.words}</span>
+            <span className="text-meta text-white/75 split:text-muted"> {ghost ? <Drawn text={words.words} /> : words.words}</span>
           )}
           {meta(false)}
         </span>

@@ -1,11 +1,11 @@
 import { ArrowLeft, Heart, ThumbsDown } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { updatePerson, deleteLead } from "@/app/admin/actions";
 import { ConfirmAction, PersonForm } from "@/components/admin";
-import { Avatar, Card, ContactLinks, Empty, StatusBadge, when } from "@/components/admin-ui";
+import { Card, ContactLinks, Empty, StatusBadge, when } from "@/components/admin-ui";
+import { Avatar, HomeThumb } from "@/components/ui";
 import { getPerson } from "@/lib/admin";
 import { requireAdmin } from "@/lib/auth";
 import { cn, timeAgo } from "@/lib/format";
@@ -27,23 +27,23 @@ export default async function AdminPerson({ params }: Props) {
 
   return (
     <>
-      <Link href="/admin/people" className="mb-2 flex min-h-11 w-fit items-center gap-1.5 text-sm font-semibold text-stone-600 hover:text-ink">
+      <Link href="/admin/people" className="mb-2 flex min-h-11 w-fit items-center gap-1.5 text-sm font-semibold text-muted hover:text-ink">
         <ArrowLeft aria-hidden size={16} /> People
       </Link>
 
       <div className="flex flex-wrap items-start gap-4">
-        <Avatar name={person.name || person.email} />
+        <Avatar name={person.name || person.email} tone={person.status === "agent" ? "agent" : "person"} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-display text-3xl">{person.name || "No name yet"}</h1>
             <StatusBadge status={person.status} />
           </div>
-          <p className="mt-1 text-stone-600">
+          <p className="mt-1 text-muted">
             {person.email}
             {person.phone && ` · ${person.phone}`}
             {person.brokerage && ` · ${person.brokerage}`}
           </p>
-          <p className="mt-1 text-sm text-stone-500">
+          <p className="mt-1 text-sm text-muted">
             {person.leadAt && `Left their details ${when(person.leadAt)}`}
             {person.leadAt && person.joinedAt && " · "}
             {person.joinedAt && `Account since ${when(person.joinedAt)}`}
@@ -69,7 +69,7 @@ export default async function AdminPerson({ params }: Props) {
                         {link.people.length > 0 ? link.people.join(", ") : link.client_name || "Unnamed client"}
                         <span className="font-normal text-stone-500"> · {timeAgo(link.created_at.toISOString())}</span>
                       </p>
-                      <p className="truncate text-sm text-stone-600">{link.addresses.join(" · ") || "No homes left on it"}</p>
+                      <p className="truncate text-sm text-muted">{link.addresses.join(" · ") || "No homes left on it"}</p>
                       <p className="mt-0.5 text-xs text-stone-500">
                         {link.reactions} {link.reactions === 1 ? "reaction" : "reactions"} · {link.comments}{" "}
                         {link.comments === 1 ? "comment" : "comments"} (private)
@@ -92,11 +92,7 @@ export default async function AdminPerson({ params }: Props) {
                       href={`/admin/homes/${encodeURIComponent(home.listing_key)}`}
                       className="flex items-center gap-3 rounded-xl p-1.5 hover:bg-stone-50"
                     >
-                      <div className="relative size-12 shrink-0 overflow-hidden rounded-lg bg-stone-200">
-                        {home.data.Media[0] && (
-                          <Image src={home.data.Media[0].MediaURL} alt="" fill sizes="48px" className="object-cover" />
-                        )}
-                      </div>
+                      <HomeThumb src={home.data.Media[0]?.MediaURL} sizes="48px" className="size-12" />
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{home.data.UnparsedAddress}</p>
                         <p
@@ -157,7 +153,7 @@ export default async function AdminPerson({ params }: Props) {
           </Card>
           {neverSignedIn && (
             <Card title="Remove">
-              <p className="mb-3 text-sm text-stone-600">
+              <p className="mb-3 text-sm text-muted">
                 Spam, or asked to be removed? They never signed in, so there&apos;s nothing else of theirs to lose.
               </p>
               <ConfirmAction action={deleteLead.bind(null, person.id)} label="Delete this lead" confirm="Delete lead" className="-ml-4" />

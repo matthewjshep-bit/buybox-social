@@ -1,11 +1,12 @@
 "use client";
 
-import { ClipboardList, EyeOff, Hand, Heart, Lock, MapPin, MessageCircle, Sparkles, Tag, ThumbsDown, User } from "lucide-react";
+import { ClipboardList, EyeOff, Hand, Heart, Lock, MapPin, MessageCircle, Sparkles, Tag, ThumbsDown } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { AspectSummary } from "@/components/aspect-summary";
 import type { SpotRef } from "@/components/listing-thread";
+import { Avatar, Badge, HomeThumb } from "@/components/ui";
 import type { FeedPost } from "@/lib/feed";
 import { agentFirstName, cn, timeAgo } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
@@ -22,6 +23,7 @@ import {
   type SpotRow,
 } from "@/lib/scorecard";
 import type { TimelineComment } from "@/lib/timeline";
+import { button, pill } from "@/lib/ui";
 
 // The Scorecard: what everyone thinks of a home, then the home itself, in one
 // place, for the sheet (phones), the panel beside the photo (wide) and the
@@ -91,13 +93,13 @@ export function ScorecardBody({
     <div className="flex flex-col gap-6 pb-2 text-ink">
       {/* (Plain boxes, not a page's banner and footer: the site has those.) */}
       <div>
-        <p className="text-[15px] font-semibold leading-snug">{card.header.address}</p>
-        <p className="mt-0.5 text-[13px] text-stone-600">
+        <p className="text-body font-semibold leading-snug">{card.header.address}</p>
+        <p className="mt-0.5 text-meta text-muted">
           <span className="font-display font-semibold text-ink">{card.header.line.split(" · ")[0]}</span>
           {card.header.line.slice(card.header.line.indexOf(" · "))}
         </p>
         {share && (
-          <p className="mt-2 inline-flex items-start gap-1.5 rounded-2xl bg-stone-100 px-2.5 py-1.5 text-[13px] leading-[18px] text-stone-700">
+          <p className="mt-2 inline-flex items-start gap-1.5 rounded-2xl bg-stone-100 px-2.5 py-1.5 text-meta leading-[18px] text-stone-700">
             <Lock aria-hidden size={12} className="mt-[3px] shrink-0" />
             {mode === "agent"
               ? "From the people on this link · only they and you see this"
@@ -108,7 +110,7 @@ export function ScorecardBody({
         )}
         {/* Said first, so nothing below reads as if they can still see it. */}
         {mode === "agent" && offLink && (
-          <p className="mt-1.5 inline-flex items-start gap-1.5 rounded-2xl bg-white px-2.5 py-1.5 text-[13px] font-semibold leading-[18px] text-stone-800 ring-1 ring-stone-300">
+          <p className="mt-1.5 inline-flex items-start gap-1.5 rounded-2xl bg-white px-2.5 py-1.5 text-meta font-semibold leading-[18px] text-stone-800 ring-1 ring-stone-300">
             <EyeOff aria-hidden size={12} className="mt-[3px] shrink-0" />
             Off their link · they can&apos;t see it now
           </p>
@@ -129,11 +131,11 @@ export function ScorecardBody({
           {card.say && (
             <Section title="What people say">
               {card.say.sentences.map((sentence) => (
-                <p key={sentence} className="text-[15px] leading-6">
+                <p key={sentence} className="text-body leading-6">
                   {sentence}
                 </p>
               ))}
-              <p className="mt-1 text-[13px] text-stone-600" suppressHydrationWarning>
+              <p className="mt-1 text-meta text-muted" suppressHydrationWarning>
                 {card.say.from}
                 {card.say.at && ` · updated ${timeAgo(card.say.at)}`}
               </p>
@@ -167,7 +169,7 @@ export function ScorecardBody({
           {card.agree && (
             // (On the agent's dashboard, "you" is the agent.)
             <Section title={mode === "agent" ? "Where they agree" : "Where you agree"}>
-              <ul className="flex flex-col gap-1.5 text-[15px] leading-6">
+              <ul className="flex flex-col gap-1.5 text-body leading-6">
                 {card.agree.map((line) => (
                   <li key={line.label}>
                     <span className="font-semibold">{line.label}:</span> {line.things.join(" · ")}
@@ -190,8 +192,8 @@ export function ScorecardBody({
                 )}
                 {card.photos.pauseNone && (
                   <div>
-                    <h4 className="text-[13px] font-semibold text-amber-900">Gave people pause</h4>
-                    <p className="mt-1 text-[15px] text-stone-600">{card.photos.pauseNone}</p>
+                    <h4 className="text-meta font-semibold text-amber-900">Gave people pause</h4>
+                    <p className="mt-1 text-body text-muted">{card.photos.pauseNone}</p>
                   </div>
                 )}
               </div>
@@ -234,19 +236,19 @@ export function ScorecardBody({
       <Section title="About this home" id="about">
         {share && post.note && (
           <div className="mb-3 rounded-2xl bg-stone-50 p-4">
-            <p className="text-[13px] font-semibold text-stone-600">{mode === "agent" ? "Your note to them" : `From ${agent}`}</p>
+            <p className="text-meta font-semibold text-muted">{mode === "agent" ? "Your note to them" : `From ${agent}`}</p>
             <p className="mt-1 whitespace-pre-line text-base leading-[26px]">{post.note}</p>
           </div>
         )}
         {card.about.remarks && <p className="text-base leading-[26px] text-stone-800">{card.about.remarks}</p>}
-        {card.about.listedBy && <p className={cn("text-[15px] text-stone-600", card.about.remarks && "mt-3")}>{card.about.listedBy}</p>}
-        {card.about.sample && <p className="mt-1 text-[13px] text-stone-600">Sample listing, fictional and not for sale</p>}
+        {card.about.listedBy && <p className={cn("text-body text-muted", card.about.remarks && "mt-3")}>{card.about.listedBy}</p>}
+        {card.about.sample && <p className="mt-1 text-meta text-muted">Sample listing, fictional and not for sale</p>}
       </Section>
 
       <div className="border-t border-stone-200 pt-4">
         {mode === "public" ? (
           card.activity && (
-            <p aria-label="Activity" className="text-[13px] text-stone-600">
+            <p aria-label="Activity" className="text-meta text-muted">
               {card.activity}
             </p>
           )
@@ -256,14 +258,14 @@ export function ScorecardBody({
               <button
                 type="button"
                 onClick={onReply}
-                className="flex min-h-11 items-center gap-2 rounded-full bg-brand px-5 text-[15px] font-semibold text-white hover:opacity-90"
+                className={button({ kind: "primary" })}
               >
                 <MessageCircle aria-hidden size={17} />
                 Reply to your client
               </button>
             )}
             {offLink && (
-              <p className={cn("text-[13px] text-stone-600", onReply && "mt-2")}>
+              <p className={cn("text-meta text-muted", onReply && "mt-2")}>
                 You took this home off their link. What they said about it still counts.
               </p>
             )}
@@ -274,13 +276,13 @@ export function ScorecardBody({
               <button
                 type="button"
                 onClick={onCompose}
-                className="flex min-h-11 items-center gap-2 rounded-full bg-brand px-5 text-[15px] font-semibold text-white hover:opacity-90"
+                className={button({ kind: "primary" })}
               >
                 <MessageCircle aria-hidden size={17} />
                 Message {firstOf(agentName)}
               </button>
             )}
-            <p className="mt-2 text-[13px] text-stone-600">{capital(agent)} sees what you like and say on this link.</p>
+            <p className="mt-2 text-meta text-muted">{capital(agent)} sees what you like and say on this link.</p>
           </>
         )}
       </div>
@@ -291,7 +293,7 @@ export function ScorecardBody({
 function Section({ title, id, children }: { title: string; id?: string; children: ReactNode }) {
   return (
     <section data-section={id}>
-      <h3 className="mb-2 text-[15px] font-semibold text-ink">{title}</h3>
+      <h3 className="mb-2 text-body font-semibold text-ink">{title}</h3>
       {children}
     </section>
   );
@@ -306,8 +308,8 @@ function Quiet({ mode, agent, offLink = false }: { mode: ScorecardMode; agent: s
         <Hand size={17} className="text-stone-500" />
       </span>
       <div>
-        <p className="text-[15px] font-semibold">{offLink ? "No one weighed in on it." : "No one has weighed in yet."}</p>
-        <p className="mt-0.5 text-[15px] leading-6 text-stone-600">
+        <p className="text-body font-semibold">{offLink ? "No one weighed in on it." : "No one has weighed in yet."}</p>
+        <p className="mt-0.5 text-body leading-6 text-muted">
           {offLink
             ? "They didn't react to it before you took it off their link."
             : mode === "agent"
@@ -338,7 +340,7 @@ function Factoids({ card }: { card: Scorecard }) {
             <p aria-hidden className="font-display text-[28px] font-semibold leading-8 tabular-nums">
               {item.n.toLocaleString("en-US")}
             </p>
-            <p aria-hidden className="flex items-center gap-1 text-[13px] text-stone-600">
+            <p aria-hidden className="flex items-center gap-1 text-meta text-muted">
               {item.icon}
               {item.label}
             </p>
@@ -346,13 +348,13 @@ function Factoids({ card }: { card: Scorecard }) {
         ))}
       </ul>
       {card.feel.yours > 0 && (
-        <p className="mt-1.5 text-[13px] text-stone-600">
+        <p className="mt-1.5 text-meta text-muted">
           and {card.feel.yours} {card.feel.yours === 1 ? "reply" : "replies"} from you
         </p>
       )}
       {/* On a line of its own, under the numbers, so none of them wraps. */}
       {privateMore > 0 && (
-        <p className="mt-1.5 text-[13px] text-stone-600">
+        <p className="mt-1.5 text-meta text-muted">
           and {privateMore} more {privateMore === 1 ? "comment" : "comments"} in private chats
         </p>
       )}
@@ -375,7 +377,7 @@ function Feel({ card, myName }: { card: Scorecard; myName?: string | null }) {
                 </span>
               ))}
             </span>
-            <p className="min-w-0 text-[15px] leading-6">
+            <p className="min-w-0 text-body leading-6">
               {named.liked.length > 0 && (
                 <>
                   <span className="font-semibold">{namesList(named.liked)}</span> liked it
@@ -390,14 +392,14 @@ function Feel({ card, myName }: { card: Scorecard; myName?: string | null }) {
             </p>
           </div>
         ) : (
-          <p className="text-[15px] text-stone-600">Nobody has liked it or passed on it yet.</p>
+          <p className="text-body text-muted">Nobody has liked it or passed on it yet.</p>
         )}
-        <p className="mt-1 text-[13px] text-stone-600">
+        <p className="mt-1 text-meta text-muted">
           {comments} {comments === 1 ? "comment" : "comments"}
           {/* (The agent's dashboard: their own replies are counted apart.) */}
           {yours > 0 && ` · ${yours} ${yours === 1 ? "reply" : "replies"} from you`}
         </p>
-        {named.notYet.length > 0 && <p className="mt-0.5 text-[13px] text-stone-600">Not yet: {namesList(named.notYet)}</p>}
+        {named.notYet.length > 0 && <p className="mt-0.5 text-meta text-muted">Not yet: {namesList(named.notYet)}</p>}
       </div>
     );
   }
@@ -414,7 +416,7 @@ function Feel({ card, myName }: { card: Scorecard; myName?: string | null }) {
           liked a thing in the photos counts above among the likes, and here
           among the passes, so the numbers add up. */}
       {people >= 5 && (
-        <p className="mt-1.5 text-[13px] text-stone-600">
+        <p className="mt-1.5 text-meta text-muted">
           {passes > 0 ? `Of ${people} people, ${likedOnly} liked it and ${passes} passed` : `${likedOnly} of ${people} liked it`}
         </p>
       )}
@@ -437,17 +439,12 @@ function Face({
 }) {
   const anonymous = !name || name === "A buyer";
   return (
-    <span
-      aria-hidden
-      className={cn(
-        "flex shrink-0 items-center justify-center rounded-full font-semibold",
-        size === "sm" ? "size-6 text-[11px]" : "size-8 text-[13px]",
-        anonymous ? "bg-stone-200 text-stone-600" : agent ? "bg-ink text-white" : "bg-brand text-white",
-        ring && "ring-2 ring-white",
-      )}
-    >
-      {anonymous ? <User size={size === "sm" ? 12 : 15} /> : name[0]?.toUpperCase()}
-    </span>
+    <Avatar
+      name={name}
+      tone={anonymous ? "anonymous" : agent ? "agent" : "person"}
+      size={size === "sm" ? 6 : 8}
+      className={cn(ring && "ring-2 ring-white")}
+    />
   );
 }
 
@@ -477,7 +474,7 @@ function AspectDetail({
   const then = (spots: SpotRow[]) => (peek ? (big === spots[0].index ? "Show it smaller" : "Show it bigger") : "Show it on the photo");
   return (
     <div className="flex flex-col gap-2.5 pl-0.5">
-      {who.length > 0 && <p className="text-[13px] text-stone-700">{namesList(who)}</p>}
+      {who.length > 0 && <p className="text-meta text-stone-700">{namesList(who)}</p>}
       {photos.length > 0 && (
         <ul className="flex flex-wrap gap-2">
           {photos.map((spots) => {
@@ -501,7 +498,7 @@ function AspectDetail({
                 >
                   <Thumb photo={first.photo} dots={spots.flatMap((spot) => (spot.at ? [spot.at] : []))} tone={first.tone} height={56} />
                   {spots.length > 1 && (
-                    <span aria-hidden className="pl-0.5 text-[12px] leading-4 text-stone-600">
+                    <span aria-hidden className="pl-0.5 text-[12px] leading-4 text-muted">
                       {spots.length} spots
                     </span>
                   )}
@@ -522,7 +519,7 @@ function AspectDetail({
         />
       )}
       {row.comments.slice(0, 2).map((comment) => (
-        <p key={comment.id} className="line-clamp-2 text-[13px] text-stone-700">
+        <p key={comment.id} className="line-clamp-2 text-meta text-stone-700">
           <span className="font-semibold text-ink">{comment.name}:</span> {comment.body}
         </p>
       ))}
@@ -599,7 +596,7 @@ function Peek({
   return (
     <figure id={id} data-spot-peek className="w-full max-w-80 pb-2 pt-1.5">
       <Thumb photo={photo} dots={dots} tone={tone} big alt={photo.ShortDescription || `Photo ${index + 1}`} />
-      <figcaption className="mt-1 text-[12px] leading-4 text-stone-600">
+      <figcaption className="mt-1 text-[12px] leading-4 text-muted">
         Photo {index + 1}
         {dots.length > 0 && `, where ${who.length > 0 && who.length <= 2 ? namesList(who) : "they"} tapped`}
       </figcaption>
@@ -631,7 +628,7 @@ function SpotList({
   const ids = useId();
   return (
     <div>
-      <h4 className={cn("text-[13px] font-semibold", like ? "text-rose-900" : "text-amber-900")}>{title}</h4>
+      <h4 className={cn("text-meta font-semibold", like ? "text-rose-900" : "text-amber-900")}>{title}</h4>
       <ul ref={list} className="mt-1 flex flex-col">
         {shown.map((row, i) => {
           const what =
@@ -657,17 +654,17 @@ function SpotList({
               >
                 <Thumb photo={row.photo} at={row.at} tone={row.tone} width={72} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[15px] font-semibold leading-5">{row.name}</span>
-                  <span id={where} className="block truncate text-[13px] leading-[18px] text-stone-600">
+                  <span className="block truncate text-body font-semibold leading-5">{row.name}</span>
+                  <span id={where} className="block truncate text-meta leading-[18px] text-muted">
                     {row.where}
                   </span>
                   {who.length > 0 && (
-                    <span id={whom} className="block truncate text-[13px] leading-[18px] text-stone-600">
+                    <span id={whom} className="block truncate text-meta leading-[18px] text-muted">
                       {share ? who.join(", ") : namesList(who)}
                     </span>
                   )}
                 </span>
-                <span aria-hidden className="flex shrink-0 items-center gap-1 text-[15px] font-semibold tabular-nums">
+                <span aria-hidden className="flex shrink-0 items-center gap-1 text-body font-semibold tabular-nums">
                   {row.tone === "like" ? (
                     <Heart size={14} className="fill-rose-500 text-rose-500" />
                   ) : (
@@ -691,7 +688,7 @@ function SpotList({
             flushSync(() => setAll(true));
             list.current?.querySelectorAll<HTMLElement>(":scope > li > button")[SHOWN]?.focus();
           }}
-          className="-mx-2 flex min-h-11 items-center rounded-xl px-2 text-[15px] font-semibold text-brand hover:bg-stone-50"
+          className={cn(button({ kind: "ghost" }), "-ml-4 text-brand")}
         >
           Show all {rows.length}
         </button>
@@ -722,7 +719,7 @@ function Said({
     <div>
       {top.length === 0 ? (
         // Said only in private: one plain line, never "yet" and "more" at once.
-        <p className="text-[15px] text-stone-600">
+        <p className="text-body text-muted">
           {privateMore > 0
             ? `No one has commented in public yet. ${chats}`
             : total > 0
@@ -738,7 +735,7 @@ function Said({
         </ul>
       )}
       {top.length > 0 && privateMore > 0 && (
-        <p className="mt-3 text-[13px] text-stone-600">
+        <p className="mt-3 text-meta text-muted">
           {privateMore} more in private chats
         </p>
       )}
@@ -746,7 +743,7 @@ function Said({
         <button
           type="button"
           onClick={onAllComments}
-          className="-mx-2 mt-2 flex min-h-11 items-center rounded-xl px-2 text-[15px] font-semibold text-brand hover:bg-stone-50"
+          className={cn(button({ kind: "ghost" }), "-ml-4 mt-2 text-brand")}
         >
           See all {total} {total === 1 ? "comment" : "comments"}
         </button>
@@ -756,7 +753,7 @@ function Said({
           <button
             type="button"
             onClick={onCompose}
-            className="-mx-2 mt-2 flex min-h-11 items-center rounded-xl px-2 text-[15px] font-semibold text-brand hover:bg-stone-50"
+            className={cn(button({ kind: "ghost" }), "-ml-4 mt-2 text-brand")}
           >
             Add a comment
           </button>
@@ -782,15 +779,17 @@ function SaidItem({
     <li className="flex gap-3">
       <Face name={comment.fromPrivateChat ? null : comment.name} agent={comment.isAgent} />
       <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-center gap-x-1.5 text-[13px] leading-5 text-stone-600">
+        <p className="flex flex-wrap items-center gap-x-1.5 text-meta leading-5 text-muted">
           <span className="font-semibold text-ink">{comment.name}</span>
           {comment.isAgent && (
-            <span className="rounded-full bg-ink px-2 py-px text-[10px] font-bold uppercase tracking-wide text-white">Agent</span>
+            <Badge tone="ink" small>
+              Agent
+            </Badge>
           )}
           <span suppressHydrationWarning>· {timeAgo(comment.at)}</span>
         </p>
         {spot && <SpotChip listing={post.listing} spot={spot} who={comment.name} peek={peek} onShowSpot={onShowSpot} />}
-        <p className="mt-0.5 line-clamp-3 whitespace-pre-line break-words text-[15px] leading-snug">{comment.body}</p>
+        <p className="mt-0.5 line-clamp-3 whitespace-pre-line break-words text-body leading-snug">{comment.body}</p>
       </div>
     </li>
   );
@@ -837,7 +836,7 @@ function AgentSpotChip({ listing, spot, who }: { listing: FeedPost["listing"]; s
   const id = useId();
   if (spot.mediaKey === FACTS) {
     return (
-      <span className="mt-1 inline-flex min-h-8 items-center gap-1.5 rounded-full bg-stone-100 px-3 text-[13px] font-semibold text-stone-700">
+      <span className="mt-1 inline-flex min-h-8 items-center gap-1.5 rounded-full bg-stone-100 px-3 text-meta font-semibold text-stone-700">
         <Tag aria-hidden size={13} />
         <span className="sr-only">About </span>
         {spot.tag}
@@ -860,7 +859,7 @@ function AgentSpotChip({ listing, spot, who }: { listing: FeedPost["listing"]; s
         aria-controls={open ? id : undefined}
         aria-label={`About ${label}: ${open ? "hide the photo" : "show it in the photo"}`}
         onClick={() => setOpen((was) => !was)}
-        className="mt-1 flex min-h-11 max-w-full items-center gap-2 rounded-xl bg-stone-100 p-0.5 pr-3.5 text-left text-[13px] font-semibold text-stone-700 hover:bg-stone-200"
+        className="mt-1 flex min-h-11 max-w-full items-center gap-2 rounded-xl bg-stone-100 p-0.5 pr-3.5 text-left text-meta font-semibold text-stone-700 hover:bg-stone-200"
       >
         <span aria-hidden className="relative size-10 shrink-0 overflow-hidden rounded-[10px] bg-stone-200">
           <Image src={photo.MediaURL} alt="" fill sizes="40px" style={crop} className="object-cover" />
@@ -890,14 +889,13 @@ function Take({
   onOpenMore?: () => void;
 }) {
   const { verdict, liked, disliked, reacted, forYou } = card.take;
-  const button = "flex min-h-11 items-center justify-center gap-2 rounded-full px-5 text-[15px] font-semibold";
   // The first button stays the same button as it changes from "I like it"
   // to "Change your take", so the keyboard stays on it.
   const first = reacted ? onOpenMore : onLike;
   return (
     <div className="flex flex-col gap-3">
       {verdict || liked.length > 0 || disliked.length > 0 ? (
-        <div className="flex flex-col gap-1 text-[15px] leading-6">
+        <div className="flex flex-col gap-1 text-body leading-6">
           {verdict && <p>{verdict}</p>}
           {liked.length > 0 && (
             <p>
@@ -911,10 +909,10 @@ function Take({
           )}
         </div>
       ) : (
-        <p className="text-[15px] leading-6 text-stone-600">You haven&apos;t weighed in yet.</p>
+        <p className="text-body leading-6 text-muted">You haven&apos;t weighed in yet.</p>
       )}
       {forYou && (
-        <p className="flex items-start gap-1.5 text-[15px] font-semibold leading-6 text-stone-800">
+        <p className="flex items-start gap-1.5 text-body font-semibold leading-6 text-stone-800">
           <Sparkles aria-hidden size={15} className="mt-1 shrink-0 text-brand" />
           For you: {forYou.join(" · ")}
         </p>
@@ -925,12 +923,12 @@ function Take({
             <button
               type="button"
               onClick={first}
-              className={cn(
-                button,
+              className={
                 reacted
-                  ? "border border-stone-300 hover:border-stone-500"
-                  : "bg-rose-50 text-rose-800 ring-1 ring-rose-200 hover:bg-rose-100",
-              )}
+                  ? button({ kind: "secondary" })
+                  : // A like, in the colour of liking.
+                    cn(pill(), "bg-rose-50 text-rose-800 ring-1 ring-rose-200 hover:bg-rose-100")
+              }
             >
               {reacted ? (
                 "Change your take"
@@ -942,7 +940,7 @@ function Take({
             </button>
           )}
           {!reacted && onPass && (
-            <button type="button" onClick={onPass} className={cn(button, "border border-stone-300 hover:border-stone-500")}>
+            <button type="button" onClick={onPass} className={button({ kind: "secondary" })}>
               <ThumbsDown aria-hidden size={17} />
               Not for me
             </button>
@@ -955,7 +953,7 @@ function Take({
 
 function Facts({ rows, onOpenFact }: { rows: FactRow[]; onOpenFact?: (tag: FactTag, keyboard?: boolean) => void }) {
   return (
-    <dl className="flex flex-col text-[15px]">
+    <dl className="flex flex-col text-body">
       {rows.map((row) => {
         const reacted = row.tag && (row.likes > 0 || row.dislikes > 0 || row.comments > 0);
         const tally = [
@@ -970,7 +968,7 @@ function Facts({ rows, onOpenFact }: { rows: FactRow[]; onOpenFact?: (tag: FactT
               {row.label === "Price" ? <span className="font-display font-semibold">{row.value}</span> : row.value}
             </span>
             {reacted && (
-              <span aria-hidden className="flex shrink-0 items-center gap-2 text-[13px] text-stone-600">
+              <span aria-hidden className="flex shrink-0 items-center gap-2 text-meta text-muted">
                 {row.likes > 0 && (
                   <span className="flex items-center gap-0.5 tabular-nums">
                     <Heart size={12} className="fill-rose-500 text-rose-500" />
@@ -995,7 +993,7 @@ function Facts({ rows, onOpenFact }: { rows: FactRow[]; onOpenFact?: (tag: FactT
         );
         return (
           <div key={row.label} className="flex min-h-11 items-center justify-between gap-4 border-b border-stone-100 last:border-b-0">
-            <dt className="shrink-0 text-stone-600">{row.label}</dt>
+            <dt className="shrink-0 text-muted">{row.label}</dt>
             <dd className="min-w-0 text-right">
               {reacted && onOpenFact ? (
                 <button
@@ -1027,7 +1025,7 @@ function PersonRow({ person }: { person: PersonTake }) {
   return (
     <li className="flex gap-3 py-3 first:pt-0 last:pb-0">
       <Face name={person.name} />
-      <div className="min-w-0 flex-1 text-[15px] leading-6">
+      <div className="min-w-0 flex-1 text-body leading-6">
         <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="font-semibold">{person.name}</span>
           <span
@@ -1037,7 +1035,7 @@ function PersonRow({ person }: { person: PersonTake }) {
                 ? "bg-rose-50 text-rose-800"
                 : person.tone === "pass"
                   ? "bg-amber-50 text-amber-900"
-                  : "bg-stone-100 text-stone-600",
+                  : "bg-stone-100 text-muted",
             )}
           >
             {person.tone === "like" && <Heart aria-hidden size={12} className="fill-rose-500 text-rose-500" />}
@@ -1046,27 +1044,27 @@ function PersonRow({ person }: { person: PersonTake }) {
           </span>
         </p>
         {person.likes.length > 0 && (
-          <p className="mt-0.5 flex items-start gap-1.5 text-[13px] leading-5 text-stone-700">
+          <p className="mt-0.5 flex items-start gap-1.5 text-meta leading-5 text-stone-700">
             <Heart aria-hidden size={13} className="mt-[3px] shrink-0 text-rose-600" />
             <span>
               <span className="sr-only">Likes: </span>
               {person.likes.join(" · ")}
-              {person.moreLikes > 0 && <span className="whitespace-nowrap text-stone-600"> · {person.moreLikes} more</span>}
+              {person.moreLikes > 0 && <span className="whitespace-nowrap text-muted"> · {person.moreLikes} more</span>}
             </span>
           </p>
         )}
         {person.passes.length > 0 && (
-          <p className="mt-0.5 flex items-start gap-1.5 text-[13px] leading-5 text-stone-700">
+          <p className="mt-0.5 flex items-start gap-1.5 text-meta leading-5 text-stone-700">
             <ThumbsDown aria-hidden size={13} className="mt-[3px] shrink-0 text-amber-800" />
             <span>
               <span className="sr-only">Didn&apos;t like: </span>
               {person.passes.join(" · ")}
-              {person.morePasses > 0 && <span className="whitespace-nowrap text-stone-600"> · {person.morePasses} more</span>}
+              {person.morePasses > 0 && <span className="whitespace-nowrap text-muted"> · {person.morePasses} more</span>}
             </span>
           </p>
         )}
         {person.comment && (
-          <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-stone-600" suppressHydrationWarning>
+          <p className="mt-1 line-clamp-2 text-meta leading-5 text-muted" suppressHydrationWarning>
             <span className="text-ink">“{person.comment.body}”</span> · {timeAgo(person.comment.at)}
           </p>
         )}
@@ -1124,14 +1122,14 @@ function CompareSection({ compare }: { compare: NonNullable<Scorecard["compare"]
           scope="row"
           className={cn(
             sticky,
-            "py-2.5 align-top text-[13px] leading-5",
+            "py-2.5 align-top text-meta leading-5",
             strong ? "font-semibold text-ink" : "font-normal text-stone-800",
           )}
         >
           {label}
         </th>
         {cells.map((cell, i) => (
-          <td key={compare.homes[i].key} className="px-2 py-2.5 align-top text-[13px] leading-5 tabular-nums text-stone-700">
+          <td key={compare.homes[i].key} className="px-2 py-2.5 align-top text-meta leading-5 tabular-nums text-stone-700">
             {cell.likes + cell.passes === 0 ? (
               <>
                 <span aria-hidden className="text-stone-500">
@@ -1164,7 +1162,7 @@ function CompareSection({ compare }: { compare: NonNullable<Scorecard["compare"]
   };
   return (
     <Section title={`Compare with the other ${others === 1 ? "home" : `${others} homes`}`}>
-      <p id={`${ids}-about`} className="-mt-1 mb-2 text-[13px] text-stone-600">
+      <p id={`${ids}-about`} className="-mt-1 mb-2 text-meta text-muted">
         How many people on this link liked or passed on each, home by home.
       </p>
       <div className="relative -mx-1">
@@ -1187,11 +1185,7 @@ function CompareSection({ compare }: { compare: NonNullable<Scorecard["compare"]
                 {/* Photos in a line along the top, whatever the address under each. */}
                 {compare.homes.map((home, i) => (
                   <th key={home.key} scope="col" className="min-w-[4.75rem] max-w-28 px-2 pb-2 text-left align-top font-normal">
-                    {home.photo && (
-                      <span aria-hidden className="relative mb-1 block h-9 w-12 overflow-hidden rounded-lg bg-stone-200">
-                        <Image src={home.photo.MediaURL} alt="" fill sizes="48px" className="object-cover" />
-                      </span>
-                    )}
+                    {home.photo && <HomeThumb src={home.photo.MediaURL} sizes="48px" className="mb-1 h-9 w-12" />}
                     <span className={cn("block text-[12px] leading-4", i === 0 ? "font-semibold text-ink" : "text-stone-700")}>
                       {i === 0 ? (
                         <>
@@ -1238,15 +1232,15 @@ export function WhatPeopleThink({
   if (card.quiet) return null;
   return (
     <div className="mt-4 rounded-2xl bg-stone-50 p-4">
-      <h3 className="text-[15px] font-semibold">What people think</h3>
+      <h3 className="text-body font-semibold">What people think</h3>
       <div className="mt-2">
         <Feel card={card} myName={myName} />
       </div>
-      {card.say && <p className="mt-3 text-[15px] leading-6 text-stone-800">{card.say.sentences[0]}</p>}
+      {card.say && <p className="mt-3 text-body leading-6 text-stone-800">{card.say.sentences[0]}</p>}
       <button
         type="button"
         onClick={onOpen}
-        className="-mx-2 mt-2 flex min-h-11 items-center gap-2 rounded-full px-3 text-[15px] font-semibold text-brand hover:bg-white"
+        className="-mx-2 mt-2 flex min-h-11 items-center gap-2 rounded-full px-3 text-body font-semibold text-brand hover:bg-white"
       >
         <ClipboardList aria-hidden size={17} />
         Open the scorecard

@@ -91,7 +91,7 @@ export function AspectChips({ state, onToggle }: { state: ReactionState; onToggl
   return (
     <div>
       <p className="text-sm font-semibold">
-        {QUESTIONS[sentiment]} <span className="font-normal text-stone-600">Optional.</span>
+        {QUESTIONS[sentiment]} <span className="font-normal text-muted">Optional.</span>
       </p>
       <div role="group" aria-label={QUESTIONS[sentiment]} className="mt-2 flex flex-wrap gap-2">
         {ASPECTS.filter(({ id }) => CHIPS[sentiment].includes(id) || picked.includes(id)).map(({ id, label }) => {

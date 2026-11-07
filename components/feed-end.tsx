@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { StoryTasteCard, TasteCard } from "@/components/taste-card";
 import type { Account } from "@/lib/auth";
 import type { Taste } from "@/lib/taste";
+import { button } from "@/lib/ui";
 
 // The last screen of the feed, once there are no more homes to show.
 export function FeedEnd({
@@ -25,26 +26,20 @@ export function FeedEnd({
         <StoryTasteCard taste={taste} visitorId={visitorId} className="mt-6 text-left text-ink" />
       </Suspense>
       <div className="mt-6 flex flex-wrap justify-center gap-3">
-        <Link
-          href="/search"
-          className="flex min-h-11 items-center gap-1.5 rounded-xl bg-white px-5 font-semibold text-ink"
-        >
+        <Link href="/search" className={button({ kind: "light", size: "lg" })}>
           <MapIcon aria-hidden size={17} /> Explore the map
         </Link>
         {account?.role === "agent" && (
-          <Link
-            href="/dashboard/new"
-            className="flex min-h-11 items-center gap-1.5 rounded-xl bg-brand px-5 font-semibold text-white"
-          >
+          <Link href="/dashboard/new" className={button({ kind: "primary", size: "lg" })}>
             <Plus aria-hidden size={17} /> New link
           </Link>
         )}
         {!account && (
           <>
-            <Link href="/login" className="flex min-h-11 items-center rounded-xl bg-brand px-5 font-semibold text-white">
+            <Link href="/login" className={button({ kind: "primary", size: "lg" })}>
               Sign up free
             </Link>
-            <Link href="/for-agents" className="flex min-h-11 items-center px-3 font-semibold text-white underline-offset-2 hover:underline">
+            <Link href="/for-agents" className="flex min-h-12 items-center px-3 font-semibold text-white underline-offset-2 hover:underline">
               For agents
             </Link>
           </>

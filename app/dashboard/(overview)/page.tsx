@@ -1,7 +1,7 @@
-import { Heart, MessageCircle, Plus, ThumbsDown } from "lucide-react";
-import Image from "next/image";
+import { Heart, MessageCircle, Plus, Send, ThumbsDown } from "lucide-react";
 import Link from "next/link";
 import { LiveRefresh } from "@/components/live-refresh";
+import { EmptyState, HomeThumb } from "@/components/ui";
 import { requireAgent } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { cn, timeAgo } from "@/lib/format";
@@ -9,6 +9,7 @@ import type { Listing } from "@/lib/listings/types";
 import { tagNameIn } from "@/lib/photos";
 import type { ReactionState } from "@/lib/reactions";
 import { clientActivity, describeTake, photosSeenLine } from "@/lib/shares";
+import { button, card } from "@/lib/ui";
 import { Opened } from "../opened";
 
 // Each home on a link, and how its people came down on it.
@@ -212,21 +213,15 @@ export default async function DashboardPage() {
       <LiveRefresh />
       <div className="flex items-center justify-between gap-4">
         <h1 className="font-display text-3xl">Your links</h1>
-        <Link
-          href="/dashboard/new"
-          className="flex min-h-11 items-center gap-1.5 rounded-xl bg-brand px-4 font-semibold text-white"
-        >
+        <Link href="/dashboard/new" className={button({ kind: "primary", size: "lg" })}>
           <Plus aria-hidden size={18} /> New link
         </Link>
       </div>
 
       {shares.length === 0 ? (
-        <div className="mt-6 rounded-2xl bg-white p-8 text-center ring-1 ring-stone-200">
-          <h2 className="font-display text-xl">Send your first home</h2>
-          <p className="mt-1 text-stone-700">
-            Pick up to three homes, add a note, and text the link to your client.
-          </p>
-        </div>
+        <EmptyState icon={Send} title="Send your first home" className="mt-6">
+          Pick up to three homes, add a note, and text the link to your client.
+        </EmptyState>
       ) : (
         <>
           <WhatsNew news={news} />
@@ -251,7 +246,7 @@ export default async function DashboardPage() {
 // The latest from clients, newest first, each opening the home it's about.
 function WhatsNew({ news }: { news: News[] }) {
   return (
-    <section aria-labelledby="news-title" className="mt-6 rounded-2xl bg-white p-2 ring-1 ring-stone-200">
+    <section aria-labelledby="news-title" className={cn(card, "mt-6 p-2")}>
       <h2 id="news-title" className="px-3 pb-1 pt-2 font-display text-2xl">
         What&apos;s new
       </h2>
@@ -280,10 +275,10 @@ function WhatsNew({ news }: { news: News[] }) {
                     <Icon size={16} />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="line-clamp-2 break-words text-[15px] leading-snug">
+                    <span className="line-clamp-2 break-words text-body leading-snug">
                       <span className="font-semibold">{item.name}</span> {item.what}
                     </span>
-                    <span className="mt-0.5 block truncate text-sm text-stone-600">
+                    <span className="mt-0.5 block truncate text-sm text-muted">
                       {item.address} · <time dateTime={item.at.toISOString()}>{ago(item.at)}</time>
                     </span>
                   </span>
@@ -302,11 +297,9 @@ function ShareRow({ share }: { share: Row }) {
   return (
     <Link
       href={`/dashboard/shares/${share.id}`}
-      className="flex items-start gap-4 rounded-2xl bg-white p-3 ring-1 ring-stone-200 hover:ring-stone-400"
+      className={cn(card, "flex items-start gap-4 p-3 hover:ring-stone-400")}
     >
-      <div className="relative size-20 shrink-0 overflow-hidden rounded-xl bg-stone-200">
-        {share.photo && <Image src={share.photo} alt="" fill sizes="80px" className="object-cover" />}
-      </div>
+      <HomeThumb src={share.photo} sizes="80px" className="size-20" />
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-2">
           <span className="truncate font-semibold">
@@ -343,7 +336,7 @@ function ShareRow({ share }: { share: Row }) {
           </p>
         ) : (
           // Said once for the link, not under every home.
-          share.homes.length > 1 && !reacted && <p className="mt-1 text-sm text-stone-600">No reactions yet</p>
+          share.homes.length > 1 && !reacted && <p className="mt-1 text-sm text-muted">No reactions yet</p>
         )}
         <p className="mt-2 text-sm text-stone-700">
           {share.opened_at ? <Opened at={share.opened_at.toISOString()} /> : "Not opened yet"}
@@ -356,7 +349,7 @@ function ShareRow({ share }: { share: Row }) {
           )}
         </p>
         {/* Each part stays whole when the line wraps. */}
-        <p className="mt-0.5 text-[13px] text-stone-600 [&>span]:whitespace-nowrap">
+        <p className="mt-0.5 text-meta text-muted [&>span]:whitespace-nowrap">
           {share.comment_count > 0 && (
             <>
               <span>{`${share.comment_count} ${share.comment_count === 1 ? "comment" : "comments"}`}</span>
@@ -374,7 +367,7 @@ function ShareRow({ share }: { share: Row }) {
 
 // "2 liked · 1 passed", in the colours used everywhere for liking and passing.
 function Verdict({ home }: { home: Home }) {
-  if (home.liked + home.passed === 0) return <span className="whitespace-nowrap text-stone-600">No reactions yet</span>;
+  if (home.liked + home.passed === 0) return <span className="whitespace-nowrap text-muted">No reactions yet</span>;
   return (
     <span className="whitespace-nowrap text-stone-800">
       {home.liked > 0 && (

@@ -10,13 +10,10 @@ import { Sheet } from "@/components/sheet";
 import { phoneDigits } from "@/lib/contact";
 import { agentFirstName, cn } from "@/lib/format";
 import type { ShareAgent } from "@/lib/shares";
+import { button, focusOnDark, pill } from "@/lib/ui";
 
 // An agent's link is the agent's space: their name and face at the top, and
 // one tap to text, call or email them about the home on screen.
-
-// Every agent colour is dark, so on a photo or a dark screen the usual
-// brand-coloured focus ring would vanish: a white ring with a dark edge instead.
-export const focusOnDark = "focus-visible:outline-white! focus-visible:shadow-[0_0_0_6px_rgb(0_0_0/0.45)]";
 
 const looksLikeEmail = (value: string) => /^[^\s@?&#/]+@[^\s@?&#/]+\.[^\s@?&#/]+$/.test(value);
 
@@ -54,6 +51,7 @@ export function ShareHeader({
       {/* The sheet sits beside the header, not in it, so the header holds just what it shows. */}
       <header className="bg-linear-to-b from-black/65 via-black/35 to-transparent pb-6 pt-[env(safe-area-inset-top)] text-white">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-3 sm:px-6">
+          {/* Every agent colour is dark: over the photo, focus is white with a dark edge. */}
           <Link href="/" className={cn("flex size-11 shrink-0 items-center justify-center rounded-xl", focusOnDark)}>
             <span aria-hidden className="flex size-9 items-center justify-center rounded-xl bg-brand ring-1 ring-white/30">
               <Home size={18} />
@@ -62,9 +60,9 @@ export function ShareHeader({
           </Link>
           <AgentAvatar agent={agent} size={36} decorative className="text-sm ring-1 ring-white/60" />
           <div className="min-w-0 flex-1 leading-tight [text-shadow:0_1px_3px_rgb(0_0_0/0.5)]">
-            <p className="truncate text-[15px] font-semibold">{agent.full_name}</p>
+            <p className="truncate text-body font-semibold">{agent.full_name}</p>
             {/* Full white: over a bright photo, anything fainter falls short of easy reading. */}
-            {agent.brokerage && <p className="truncate text-[13px]">{agent.brokerage}</p>}
+            {agent.brokerage && <p className="truncate text-meta">{agent.brokerage}</p>}
           </div>
           <button
             type="button"
@@ -86,7 +84,8 @@ export function ShareHeader({
         label={`Contact ${agent.full_name}`}
         // Their name heads the sheet for screen readers; on screen it's beside
         // their photo just below, rather than said twice.
-        title={<span className="sr-only">{agent.full_name}</span>}
+        title={agent.full_name}
+        titleHidden
       >
         {/* Starts fresh for each home, and each time it opens. */}
         {open && (
@@ -106,9 +105,8 @@ export function ShareHeader({
   );
 }
 
-const action = "flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-5 font-semibold";
-const primary = "bg-brand text-white hover:bg-brand/90";
-const secondary = "bg-stone-100 text-ink hover:bg-stone-200";
+// Each way to reach them, the first as the one to reach for.
+const way = (first: boolean) => button({ kind: first ? "primary" : "secondary", size: "lg", block: true });
 
 // Who the agent is and every way to reach them, only the ways they chose to show.
 export function AgentContact({
@@ -176,17 +174,17 @@ export function AgentContact({
         <AgentAvatar agent={agent} size={64} decorative light className="text-xl" />
         <div className="min-w-0">
           <p className="text-[17px] font-semibold leading-snug">{agent.full_name}</p>
-          {agent.brokerage && <p className="text-[15px] text-stone-600">{agent.brokerage}</p>}
+          {agent.brokerage && <p className="text-body text-muted">{agent.brokerage}</p>}
         </div>
       </div>
       {note && (
-        <p className="mt-4 whitespace-pre-line rounded-2xl bg-stone-50 p-4 text-[15px] leading-relaxed text-stone-800">
+        <p className="mt-4 whitespace-pre-line rounded-2xl bg-stone-50 p-4 text-body leading-relaxed text-stone-800">
           {note}
         </p>
       )}
       <div className="mt-4 flex flex-col gap-2.5">
         {ways.map(({ href, Icon, label }, i) => (
-          <a key={label} href={href} className={cn(action, i === 0 ? primary : secondary)}>
+          <a key={label} href={href} className={way(i === 0)}>
             <Icon aria-hidden size={18} />
             {label}
           </a>
@@ -196,22 +194,18 @@ export function AgentContact({
             type="button"
             onClick={ask}
             aria-disabled={pending || asked}
-            className={cn(
-              action,
+            className={
               asked
-                ? "cursor-default bg-stone-100 text-stone-700"
-                : ways.length === 0
-                  ? primary
-                  : "border border-brand text-brand hover:bg-brand/5",
-              pending && "opacity-60",
-            )}
+                ? cn(pill("lg", { block: true }), "cursor-default bg-stone-100 text-stone-700")
+                : cn(way(ways.length === 0), pending && "opacity-60")
+            }
           >
             {asked ? <Check aria-hidden size={18} /> : <CalendarCheck aria-hidden size={18} />}
             {asked ? "Asked to see it" : "Ask to see it"}
           </button>
         )}
         {seeHomes && (
-          <button type="button" onClick={seeHomes} className={cn(action, ways.length === 0 ? primary : secondary)}>
+          <button type="button" onClick={seeHomes} className={way(ways.length === 0)}>
             <ArrowDown aria-hidden size={18} />
             {`See the ${homesCount} homes`}
           </button>
@@ -220,7 +214,7 @@ export function AgentContact({
           {said}
         </p>
       </div>
-      <p className="mt-2 text-[13px] leading-relaxed text-stone-600">
+      <p className="mt-2 text-meta leading-relaxed text-muted">
         {homesCount > 0 &&
           `${ways.length > 0 || canAsk ? "Or add" : "Add"} a comment under ${home ? "the home" : "any home"}. ${first} sees every one. `}
         {whoCanSee}

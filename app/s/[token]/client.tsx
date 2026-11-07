@@ -4,12 +4,13 @@ import { ArrowDown, Check, Phone, Share2 } from "lucide-react";
 import Image from "next/image";
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
-import { focusOnDark, ShareHeader } from "@/components/agent-card";
+import { ShareHeader } from "@/components/agent-card";
 import { Backdrop } from "@/components/join";
 import { ReelFeed } from "@/components/reel";
 import { agentFirstName, cn } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
 import type { ShareAgent } from "@/lib/shares";
+import { button, card } from "@/lib/ui";
 import { recordOpen, type AskResult } from "./actions";
 
 type ReelProps = ComponentProps<typeof ReelFeed>;
@@ -280,18 +281,18 @@ export function ShareEnd({
         {agentName} sees what you liked and said.{count > 1 && " Change your mind any time."}
       </p>
       {!personal ? (
-        <div className="mt-8 rounded-2xl bg-white p-5 text-ink">
+        <div data-light className={cn(card, "mt-8 p-5 text-ink")}>
           <h3 className="font-semibold">Deciding with someone?</h3>
-          <p className="mt-1 text-sm text-stone-600">
+          <p className="mt-1 text-sm text-muted">
             Send them this link so you can all weigh in here, together with {agentName}.
           </p>
           <InviteButton token={token} />
         </div>
       ) : (
         count > 1 && (
-          <div className="mt-8 rounded-2xl bg-white p-5 text-ink">
+          <div data-light className={cn(card, "mt-8 p-5 text-ink")}>
             <h3 className="font-semibold">Deciding with someone?</h3>
-            <p className="mt-1 text-sm text-stone-600">
+            <p className="mt-1 text-sm text-muted">
               Ask {agentName} to add them. They&apos;ll get their own link, so you each pick what you like and{" "}
               {agentName} can see where you agree.
             </p>
@@ -310,15 +311,12 @@ function SeeHomes({ count }: { count: number }) {
       <button
         type="button"
         onClick={goToFirstHome}
-        className={cn(
-          "flex min-h-12 items-center gap-2 rounded-full bg-white px-6 font-semibold text-ink shadow-lg hover:bg-stone-100",
-          focusOnDark,
-        )}
+        className={cn(button({ kind: "light", size: "lg" }), "shadow-lg")}
       >
         <ArrowDown aria-hidden size={18} />
         {`See the ${count} homes`}
       </button>
-      <p className="text-[13px] text-white/80">
+      <p className="text-meta text-white/80">
         <span className="pointer-fine:hidden">or swipe up</span>
         <span className="hidden pointer-fine:inline">or scroll</span>
       </p>
@@ -337,10 +335,7 @@ function EmptyLink({ agentName }: { agentName: string }) {
         type="button"
         aria-haspopup="dialog"
         onClick={contact.open}
-        className={cn(
-          "mt-6 flex min-h-12 items-center gap-2 rounded-full bg-white px-6 font-semibold text-ink hover:bg-stone-100",
-          focusOnDark,
-        )}
+        className={cn(button({ kind: "light", size: "lg" }), "mt-6")}
       >
         <Phone aria-hidden size={18} />
         Contact {contact.first}
@@ -372,7 +367,7 @@ function InviteButton({ token }: { token: string }) {
     <button
       type="button"
       onClick={invite}
-      className="mx-auto mt-3 flex min-h-11 items-center gap-2 rounded-xl border border-brand px-5 font-semibold text-brand"
+      className={cn(button({ kind: "primary" }), "mt-3")}
     >
       <Icon aria-hidden size={16} />
       {copied ? "Link copied" : "Invite someone"}

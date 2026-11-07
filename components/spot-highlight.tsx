@@ -3,6 +3,7 @@
 import { Heart, MessageCircle, Send, ThumbsDown, User } from "lucide-react";
 import { cn } from "@/lib/format";
 import type { TickerEvent } from "@/lib/ticker";
+import { avatarColor } from "@/lib/ui";
 
 // Who did something and what, as a face with a small mark: the same in the
 // line above the price and on the photo where they did it, so the two read as
@@ -30,39 +31,45 @@ export const markDot: Record<Mark, string> = {
 
 function MarkIcon({ mark, size }: { mark: Mark; size: number }) {
   if (mark === "comment") return <MessageCircle size={size} strokeWidth={3} className="text-brand" />;
-  if (mark === "sent") return <Send size={size - 1} strokeWidth={3} className="text-stone-600" />;
+  if (mark === "sent") return <Send size={size - 1} strokeWidth={3} className="text-muted" />;
   if (mark === "dislike") return <ThumbsDown size={size - 1} strokeWidth={3} className="text-amber-700" />;
   return <Heart size={size} strokeWidth={0} className="fill-rose-500" />;
 }
 
 // The face: someone's initial on the brand colour (an agent's on ink), or,
-// for someone unnamed, a plain figure on grey.
-export function EventFace({
-  event,
-  myName,
+// for someone unnamed, a plain figure on grey, as faces are everywhere
+// (avatarColor); with its mark on the corner. The same on a profile's
+// photos, where someone liked or said something.
+export function MarkFace({
+  initial,
+  agent = false,
+  mark,
+  plane = false,
   pin = false,
   ghost = false,
   className,
 }: {
-  event: TickerEvent;
-  // Your name, for your own face.
-  myName: string | null;
+  // None for someone unnamed.
+  initial: string | undefined;
+  agent?: boolean;
+  mark: Mark;
+  // Unnamed, and it's a home sent: a paper plane rather than a figure.
+  plane?: boolean;
   // On the photo: a little smaller, ringed in white, with a shadow.
   pin?: boolean;
   // A copy that's on its way out: the initial drawn, not written.
   ghost?: boolean;
   className?: string;
 }) {
-  const { tone, name } = event.who;
-  const initial = (tone === "you" ? myName : tone === "anonymous" ? null : name)?.trim()[0]?.toUpperCase();
   return (
     <span
       data-face
       className={cn(
-        "relative flex shrink-0 items-center justify-center rounded-full font-bold text-white [text-shadow:none]",
-        pin ? "size-7 text-[12px] shadow-[0_2px_8px_rgb(0_0_0/0.45)] ring-white" : "size-8 text-[13px]",
+        "relative flex shrink-0 items-center justify-center rounded-full font-bold [text-shadow:none]",
+        pin ? "size-7 text-[12px] shadow-[0_2px_8px_rgb(0_0_0/0.45)] ring-white" : "size-8 text-meta",
+        avatarColor(agent ? "agent" : initial ? "person" : "anonymous", { dark: true }),
         // (Ink on the dark ground needs an edge to be seen.)
-        tone === "agent" ? cn("bg-ink", !pin && "ring-1 ring-white/30 split:ring-0") : initial ? "bg-brand" : "bg-stone-500",
+        agent && !pin && "ring-1 ring-white/30 split:ring-0",
         className,
       )}
     >
@@ -72,7 +79,7 @@ export function EventFace({
         ) : (
           initial
         )
-      ) : event.kind === "sent" && tone !== "you" ? (
+      ) : plane ? (
         <Send size={pin ? 12 : 14} />
       ) : (
         <User size={pin ? 12 : 14} />
@@ -83,9 +90,39 @@ export function EventFace({
           pin ? "-bottom-1 -right-1 size-3.5" : "-bottom-0.5 -right-0.5 size-4 split:ring-1 split:ring-stone-200",
         )}
       >
-        <MarkIcon mark={markOf(event)} size={pin ? 8 : 10} />
+        <MarkIcon mark={mark} size={pin ? 8 : 10} />
       </span>
     </span>
+  );
+}
+
+// The face of whoever did something on the activity line.
+export function EventFace({
+  event,
+  myName,
+  pin = false,
+  ghost = false,
+  className,
+}: {
+  event: TickerEvent;
+  // Your name, for your own face.
+  myName: string | null;
+  pin?: boolean;
+  ghost?: boolean;
+  className?: string;
+}) {
+  const { tone, name } = event.who;
+  const initial = (tone === "you" ? myName : tone === "anonymous" ? null : name)?.trim()[0]?.toUpperCase();
+  return (
+    <MarkFace
+      initial={initial}
+      agent={tone === "agent"}
+      mark={markOf(event)}
+      plane={event.kind === "sent" && tone !== "you"}
+      pin={pin}
+      ghost={ghost}
+      className={className}
+    />
   );
 }
 

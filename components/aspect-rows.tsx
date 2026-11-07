@@ -4,6 +4,7 @@ import { ChevronDown, Heart, ThumbsDown } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { cn } from "@/lib/format";
+import { button } from "@/lib/ui";
 import { aspectLabel, type Aspect } from "@/lib/reactions";
 
 // One list of the Scorecard's rows: the most-mentioned first, a few, then
@@ -36,11 +37,11 @@ export function AspectRows({
   const shown = all ? items : items.slice(0, first);
   return (
     <div>
-      <h4 className={cn("flex items-center gap-1.5 text-[13px] font-semibold", like ? "text-rose-900" : "text-amber-900")}>
+      <h4 className={cn("flex items-center gap-1.5 text-meta font-semibold", like ? "text-rose-900" : "text-amber-900")}>
         <Icon aria-hidden size={14} />
         {label}
       </h4>
-      {note && <p className="mt-0.5 text-[13px] text-stone-600">{note}</p>}
+      {note && <p className="mt-0.5 text-meta text-muted">{note}</p>}
       <ul ref={list} className="mt-1 flex flex-col">
         {shown.map(([aspect, count]) => {
           const expanded = open === aspect;
@@ -53,7 +54,7 @@ export function AspectRows({
                 onClick={detail ? () => setOpen(expanded ? null : aspect) : undefined}
                 className="-mx-2 flex min-h-11 w-[calc(100%+1rem)] items-center gap-3 rounded-xl px-2 text-left hover:bg-stone-50"
               >
-                <span className="w-32 shrink-0 truncate text-[15px] text-ink">
+                <span className="w-32 shrink-0 truncate text-body text-ink">
                   {aspectLabel(aspect)} <span className="font-semibold tabular-nums">{count}</span>
                 </span>
                 <span aria-hidden className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-stone-100">
@@ -96,7 +97,7 @@ export function AspectRows({
             flushSync(() => setAll(true));
             list.current?.querySelectorAll<HTMLElement>(":scope > li > button")[first]?.focus();
           }}
-          className="-mx-2 flex min-h-11 items-center rounded-xl px-2 text-[15px] font-semibold text-brand hover:bg-stone-50"
+          className={cn(button({ kind: "ghost" }), "-ml-4 text-brand")}
         >
           Show all {items.length}
         </button>
