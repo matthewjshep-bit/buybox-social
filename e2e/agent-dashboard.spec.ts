@@ -4,6 +4,7 @@ import {
   createShare,
   heartOf,
   homeIn,
+  joinAs,
   likeInPhoto,
   openComments,
   openMore,
@@ -427,6 +428,7 @@ test("the agent's Scorecard on a home: what each person thinks, the exact spot t
   const SALTMARSH = "719 Saltmarsh Ln";
   const BEA_SAYS = "Are the shutters original?";
   const DOT_SAYS = "Too close to the road for me.";
+  const QUILL_SAYS = "The garden is bigger than it looks.";
   const agent = await signInAgent(browser, "remy-scores@example.com", "Remy Scores");
   // The same home on another of the agent's links: none of that may show on this one.
   const elsewhere = await createShare(agent, ["719 Saltmarsh"], ["Dot"]);
@@ -441,6 +443,18 @@ test("the agent's Scorecard on a home: what each person thinks, the exact spot t
   await dotChat.getByLabel("Add a comment").fill(DOT_SAYS);
   await dotChat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(dotChat.getByText(DOT_SAYS)).toBeVisible();
+
+  // In public, Quill likes the home and says something about it.
+  const quill = await (await browser.newContext()).newPage();
+  await quill.goto("/homes/SAMPLE-1008");
+  const quillHome = homeIn(quill, SALTMARSH);
+  await heartOf(quillHome).click();
+  await joinAs(quill, "Quill");
+  await expect(heartOf(quillHome)).toHaveAttribute("aria-pressed", "true");
+  const quillChat = await openComments(quill, quillHome);
+  await quillChat.getByLabel("Add a comment").fill(QUILL_SAYS);
+  await quillChat.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(quillChat.getByText(QUILL_SAYS)).toBeVisible();
 
   // Bea likes the home and its blue shutters, and asks about them.
   const bea = await (await browser.newContext()).newPage();
@@ -490,8 +504,9 @@ test("the agent's Scorecard on a home: what each person thinks, the exact spot t
   await expect(person("Pat")).toContainText("Hasn't weighed in yet");
   await expect(card.getByRole("heading", { name: "Your take" })).toHaveCount(0);
 
-  // [P] Only this link: nobody from the agent's other link, and nothing public.
-  await expect(card).not.toContainText(/\bDot\b|Too close to the road|A buyer/);
+  // [P] Only this link: nobody from the agent's other link, and nothing
+  // public (Quill's like isn't among "Bea liked it", nor her words anywhere).
+  await expect(card).not.toContainText(/\bDot\b|Too close to the road|A buyer|\bQuill\b|bigger than it looks/);
 
   // The exact spot: a tap shows the photo bigger, here, with the dot where
   // the shutters are (34% across, 52% down).
@@ -513,8 +528,9 @@ test("the agent's Scorecard on a home: what each person thinks, the exact spot t
   expect(Math.abs(dotBox.y + dotBox.height / 2 - (big.y + big.height * 0.52))).toBeLessThan(2);
   await row.click();
   await expect(peek).toHaveCount(0);
-  // What she said about them opens the same way.
-  const said = card.getByRole("button", { name: /^About the blue shutters ?: show it in the photo$/ });
+  // What she said about them opens the same way, from a chip like the one in
+  // the thread beside it.
+  const said = card.getByRole("button", { name: "About Blue shutters: show it in the photo" });
   await said.click();
   await expect(card.locator("[data-spot-peek]")).toContainText("Photo 1, where Bea tapped");
 
@@ -530,20 +546,64 @@ test("the agent's Scorecard on a home: what each person thinks, the exact spot t
   await expect(card).toBeHidden();
   await expect(home.getByRole("textbox", { name: "Reply to your client" })).toBeFocused();
 
-  // Wide: a panel down the right, the page still free to use, and Escape
-  // puts it away with the keyboard back on the button.
-  await agent.setViewportSize({ width: 1440, height: 900 });
-  await agent.reload();
+  // Wide: a panel down the right, under the site's header, with the page
+  // making room beside it, so nothing on the page is under it and every
+  // home's buttons stay in reach. Escape puts it away with the keyboard back
+  // on the button.
+  for (const width of [1440, 1024]) {
+    await agent.setViewportSize({ width, height: 900 });
+    await agent.reload();
+    await open.click();
+    await expect(card).toBeVisible();
+    expect(await card.evaluate((el) => el.matches(":modal"))).toBe(false);
+    await expect(card.getByRole("heading", { name: "Scorecard", exact: true })).toBeFocused();
+    await settle(card);
+    const panel = (await card.boundingBox())!;
+    expect(panel.x + panel.width).toBeGreaterThan(width - 40);
+    expect(panel.width).toBeLessThanOrEqual(448);
+    const header = (await agent.getByRole("banner").boundingBox())!;
+    expect(panel.y).toBeGreaterThanOrEqual(Math.max(0, header.y + header.height));
+    const under = await agent.evaluate(
+      ({ x, y, width, height }) =>
+        [...document.querySelectorAll("a, button, input, textarea, summary")]
+          .filter((el) => !el.closest("dialog"))
+          .filter((el) => {
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.left < x + width && r.right > x && r.top < y + height && r.bottom > y;
+          })
+          .map((el) => el.getAttribute("aria-label") ?? el.textContent?.trim()),
+      panel,
+    );
+    expect(under).toEqual([]);
+    await agent.keyboard.press("Escape");
+    await expect(card).toBeHidden();
+    await expect(open).toBeFocused();
+  }
+
+  // Another home's Scorecard while one is open: the keyboard goes to it, and
+  // back to that home's button when it closes.
   await open.click();
-  await expect(card).toBeVisible();
-  expect(await card.evaluate((el) => el.matches(":modal"))).toBe(false);
-  const panel = (await card.boundingBox())!;
-  expect(panel.x + panel.width).toBeGreaterThan(1400);
-  expect(panel.width).toBeLessThanOrEqual(448);
+  await expect(card.getByRole("heading", { name: "Scorecard", exact: true })).toBeFocused();
+  const quillan = agent.getByRole("region", { name: "1204 Quillan St SE" });
+  const other = quillan.getByRole("button", { name: "Scorecard for 1204 Quillan St SE" });
+  await other.focus();
+  await agent.keyboard.press("Enter");
+  await expect(agent.getByRole("dialog", { name: "Scorecard for 1204 Quillan St SE" })).toBeVisible();
   await expect(card.getByRole("heading", { name: "Scorecard", exact: true })).toBeFocused();
   await agent.keyboard.press("Escape");
   await expect(card).toBeHidden();
-  await expect(open).toBeFocused();
+  await expect(other).toBeFocused();
+
+  // Reply, beside the page: the Scorecard stays, and the keyboard is in the
+  // home's reply box, clear of it.
+  await open.click();
+  await card.getByRole("button", { name: "Reply to your client" }).click();
+  const replyBox = home.getByRole("textbox", { name: "Reply to your client" });
+  await expect(replyBox).toBeFocused();
+  await expect(card).toBeVisible();
+  const reply = (await replyBox.boundingBox())!;
+  await settle(card);
+  expect(reply.x + reply.width).toBeLessThan((await card.boundingBox())!.x);
 
   // Another agent can't open it at all.
   const stranger = await signInAgent(browser, "nosy-agent@example.com", "Nora Nosy");
@@ -551,4 +611,63 @@ test("the agent's Scorecard on a home: what each person thinks, the exact spot t
   expect(response?.status()).toBe(404);
   await expect(stranger.getByText(BEA_SAYS)).toHaveCount(0);
   await expect(stranger.getByRole("button", { name: /^Scorecard/ })).toHaveCount(0);
+});
+
+test("something liked in one home and passed on in another depends on the home, and is agreed only where they both liked it", async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  // (Homes no later spec needs quiet.)
+  const HALVARD = "10421 Halvard Way NE";
+  const CORBEL = "812 N Corbel St";
+  const agent = await signInAgent(browser, "mia-mixed@example.com", "Mia Mixed");
+  const { urls, dashboardUrl } = await createShare(agent, ["10421 Halvard", "812 N Corbel"], ["Ann", "Bob"]);
+  // The heart, then the layout among what else they like.
+  const likeLayout = async (page: Page, address: string) => {
+    const home = homeIn(page, address);
+    await heartOf(home).click();
+    await expect(heartOf(home)).toHaveAttribute("aria-pressed", "true");
+    const more = await openMore(page, home);
+    const what = more.getByRole("group", { name: "What else do you like?" });
+    await what.getByRole("button", { name: "Layout" }).click();
+    await expect(what.getByRole("button", { name: "Layout" })).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("Escape");
+    await expect(more).toBeHidden();
+  };
+
+  // Ann likes the first home's layout. Bob likes the second's, and passes on
+  // the first for its layout.
+  const ann = await (await browser.newContext()).newPage();
+  await ann.goto(urls.Ann);
+  await likeLayout(ann, HALVARD);
+  const bob = await (await browser.newContext()).newPage();
+  await bob.goto(urls.Bob);
+  await likeLayout(bob, CORBEL);
+  const more = await openMore(bob, homeIn(bob, HALVARD));
+  await more.getByRole("button", { name: "Not for me" }).click();
+  const why = more.getByRole("group", { name: "What made you pass?" });
+  await why.getByRole("button", { name: "Layout" }).click();
+  await expect(why.getByRole("button", { name: "Layout" })).toHaveAttribute("aria-pressed", "true");
+  await bob.keyboard.press("Escape");
+  await expect(more).toBeHidden();
+
+  // For Bob the layout depends on the home, once, on its own; and as they
+  // haven't liked it in the same home, only Ann likes it.
+  await agent.goto(dashboardUrl);
+  const want = agent.getByRole("region", { name: "What they each want" });
+  const person = (name: string) => want.getByRole("listitem").filter({ has: agent.getByText(new RegExp(`^${name} liked \\d`)) });
+  await expect(want).toContainText("Both like: nothing in common yet");
+  await expect(want).toContainText("Only Ann: Layout");
+  await expect(person("Ann")).toContainText(/Likes\s*Layout/);
+  await expect(person("Bob")).toContainText("Bob liked 1 of 2 homes · passed 1");
+  await expect(person("Bob")).toContainText(/Depends on the home\s*Layout/);
+  await expect(person("Bob")).not.toContainText(/Likes|Passes on/);
+
+  // Ann likes the second home's layout too: now they agree on it there, and
+  // it says where.
+  await likeLayout(ann, CORBEL);
+  await agent.reload();
+  await expect(want).toContainText(`Both like: Layout (${CORBEL})`);
+  await expect(want).not.toContainText("Only Ann");
+  await expect(person("Bob")).toContainText(/Depends on the home\s*Layout/);
 });

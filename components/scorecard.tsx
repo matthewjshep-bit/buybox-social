@@ -1,15 +1,15 @@
 "use client";
 
-import { ClipboardList, Hand, Heart, Lock, MapPin, MessageCircle, Sparkles, ThumbsDown, User } from "lucide-react";
+import { ClipboardList, EyeOff, Hand, Heart, Lock, MapPin, MessageCircle, Sparkles, Tag, ThumbsDown, User } from "lucide-react";
 import Image from "next/image";
-import { useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { AspectSummary } from "@/components/aspect-summary";
 import type { SpotRef } from "@/components/listing-thread";
 import type { FeedPost } from "@/lib/feed";
 import { cn, timeAgo } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
-import { mediaKeyOf, spotName, tagPosition, type FactTag } from "@/lib/photos";
+import { FACTS, mediaKeyOf, spotName, tagPosition, thingOf, type FactTag } from "@/lib/photos";
 import {
   buildScorecard,
   namesList,
@@ -107,11 +107,18 @@ export function ScorecardBody({
                 : `From the people on this link · only they and ${agent} see this`}
           </p>
         )}
+        {/* Said first, so nothing below reads as if they can still see it. */}
+        {mode === "agent" && offLink && (
+          <p className="mt-1.5 inline-flex items-start gap-1.5 rounded-2xl bg-white px-2.5 py-1.5 text-[13px] font-semibold leading-[18px] text-stone-800 ring-1 ring-stone-300">
+            <EyeOff aria-hidden size={12} className="mt-[3px] shrink-0" />
+            Off their link · they can&apos;t see it now
+          </p>
+        )}
       </div>
 
       {card.quiet ? (
         <>
-          <Quiet mode={mode} agent={agent} />
+          <Quiet mode={mode} agent={agent} offLink={mode === "agent" && offLink} />
           {card.compare && <CompareSection compare={card.compare} />}
         </>
       ) : (
@@ -159,7 +166,8 @@ export function ScorecardBody({
           )}
 
           {card.agree && (
-            <Section title="Where you agree">
+            // (On the agent's dashboard, "you" is the agent.)
+            <Section title={mode === "agent" ? "Where they agree" : "Where you agree"}>
               <ul className="flex flex-col gap-1.5 text-[15px] leading-6">
                 {card.agree.map((line) => (
                   <li key={line.label}>
@@ -257,7 +265,7 @@ export function ScorecardBody({
             )}
             {offLink && (
               <p className={cn("text-[13px] text-stone-600", onReply && "mt-2")}>
-                You took this home off their link, so they can&apos;t see it now. What they said still counts.
+                You took this home off their link. What they said about it still counts.
               </p>
             )}
           </>
@@ -291,18 +299,21 @@ function Section({ title, id, children }: { title: string; id?: string; children
 }
 
 // Nobody's weighed in yet: one card in place of everything they'd have said.
-function Quiet({ mode, agent }: { mode: ScorecardMode; agent: string }) {
+// `offLink`: a home the agent has taken off the link, so nothing more can come.
+function Quiet({ mode, agent, offLink = false }: { mode: ScorecardMode; agent: string; offLink?: boolean }) {
   return (
     <div className="flex items-start gap-3 rounded-2xl bg-stone-50 p-4">
       <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white ring-1 ring-stone-200">
         <Hand size={17} className="text-stone-500" />
       </span>
       <div>
-        <p className="text-[15px] font-semibold">No one has weighed in yet.</p>
+        <p className="text-[15px] font-semibold">{offLink ? "No one weighed in on it." : "No one has weighed in yet."}</p>
         <p className="mt-0.5 text-[15px] leading-6 text-stone-600">
-          {mode === "agent"
-            ? "When they like something in its photos, pass on it or say something about it, you'll see it here."
-            : "Tap anything in a photo to like it or say something about it."}
+          {offLink
+            ? "They didn't react to it before you took it off their link."
+            : mode === "agent"
+              ? "When they like something in its photos, pass on it or say something about it, you'll see it here."
+              : "Tap anything in a photo to like it or say something about it."}
           {mode === "share" && ` ${capital(agent)} sees what you like and say.`}
         </p>
       </div>
@@ -335,6 +346,11 @@ function Factoids({ card }: { card: Scorecard }) {
           </li>
         ))}
       </ul>
+      {card.feel.yours > 0 && (
+        <p className="mt-1.5 text-[13px] text-stone-600">
+          and {card.feel.yours} {card.feel.yours === 1 ? "reply" : "replies"} from you
+        </p>
+      )}
       {/* On a line of its own, under the numbers, so none of them wraps. */}
       {privateMore > 0 && (
         <p className="mt-1.5 text-[13px] text-stone-600">
@@ -346,7 +362,7 @@ function Factoids({ card }: { card: Scorecard }) {
 }
 
 function Feel({ card, myName }: { card: Scorecard; myName?: string | null }) {
-  const { named, passes, people, likedOnly, bar, comments } = card.feel;
+  const { named, passes, people, likedOnly, bar, comments, yours } = card.feel;
   if (named) {
     const faces = [...named.liked, ...named.passed].slice(0, 4);
     return (
@@ -379,6 +395,8 @@ function Feel({ card, myName }: { card: Scorecard; myName?: string | null }) {
         )}
         <p className="mt-1 text-[13px] text-stone-600">
           {comments} {comments === 1 ? "comment" : "comments"}
+          {/* (The agent's dashboard: their own replies are counted apart.) */}
+          {yours > 0 && ` · ${yours} ${yours === 1 ? "reply" : "replies"} from you`}
         </p>
         {named.notYet.length > 0 && <p className="mt-0.5 text-[13px] text-stone-600">Not yet: {namesList(named.notYet)}</p>}
       </div>
@@ -793,37 +811,14 @@ function SpotChip({
   peek: boolean;
   onShowSpot?: (spot: SpotRef, keyboard?: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const id = useId();
-  const name = spotName(listing, spot);
+  if (peek) return <AgentSpotChip listing={listing} spot={spot} who={who} />;
   const body = (
     <>
       <MapPin aria-hidden size={12} />
-      {name}
+      {spotName(listing, spot)}
     </>
   );
   const chip = "mt-1 inline-flex min-h-7 items-center gap-1 rounded-full bg-stone-100 px-2 text-[12px] font-semibold text-stone-700";
-  const index = listing.Media.findIndex((photo) => mediaKeyOf(photo) === spot.mediaKey);
-  const photo = listing.Media[index];
-  if (peek && photo) {
-    const at = tagPosition(photo, spot.tag);
-    return (
-      <>
-        <button
-          type="button"
-          aria-expanded={open}
-          aria-controls={open ? id : undefined}
-          onClick={() => setOpen((was) => !was)}
-          className={cn(chip, "hit-44 hover:bg-stone-200")}
-        >
-          <span className="sr-only">About </span>
-          {body}
-          <span className="sr-only">{open ? ": hide the photo" : ": show it in the photo"}</span>
-        </button>
-        {open && <Peek id={id} photo={photo} index={index} dots={at ? [at] : []} tone="comment" who={[who]} />}
-      </>
-    );
-  }
   if (!onShowSpot) return <span className={chip}>{body}</span>;
   return (
     <button type="button" onClick={(event) => onShowSpot(spot, event.detail === 0)} className={cn(chip, "hit-44 hover:bg-stone-200")}>
@@ -831,6 +826,56 @@ function SpotChip({
       {body}
       <span className="sr-only">: show it</span>
     </button>
+  );
+}
+
+// On the agent's dashboard, a comment's spot looks as it does in the thread
+// beside it: a fact with its tag ("Price"), or the photo cropped around the
+// spot with a dot where they tapped ("Covered porch"), which a tap shows
+// whole, here.
+function AgentSpotChip({ listing, spot, who }: { listing: FeedPost["listing"]; spot: SpotRef; who: string }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  if (spot.mediaKey === FACTS) {
+    return (
+      <span className="mt-1 inline-flex min-h-8 items-center gap-1.5 rounded-full bg-stone-100 px-3 text-[13px] font-semibold text-stone-700">
+        <Tag aria-hidden size={13} />
+        <span className="sr-only">About </span>
+        {spot.tag}
+      </span>
+    );
+  }
+  const index = listing.Media.findIndex((photo) => mediaKeyOf(photo) === spot.mediaKey);
+  const photo = listing.Media[index];
+  if (!photo) return null;
+  const label = thingOf(photo, spot.tag) ?? `A spot in photo ${index + 1}`;
+  const at = tagPosition(photo, spot.tag);
+  // Cropped around the spot, which keeps the dot where it is on the photo.
+  const crop = at ? { objectPosition: `${at.x * 100}% ${at.y * 100}%` } : undefined;
+  return (
+    <>
+      <button
+        type="button"
+        data-spot-chip
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        aria-label={`About ${label}: ${open ? "hide the photo" : "show it in the photo"}`}
+        onClick={() => setOpen((was) => !was)}
+        className="mt-1 flex min-h-11 max-w-full items-center gap-2 rounded-xl bg-stone-100 p-0.5 pr-3.5 text-left text-[13px] font-semibold text-stone-700 hover:bg-stone-200"
+      >
+        <span aria-hidden className="relative size-10 shrink-0 overflow-hidden rounded-[10px] bg-stone-200">
+          <Image src={photo.MediaURL} alt="" fill sizes="40px" style={crop} className="object-cover" />
+          {at && (
+            <span
+              style={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }}
+              className="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-brand shadow-[0_0_0_1px_rgb(0_0_0/0.3)]"
+            />
+          )}
+        </span>
+        <span className="min-w-0 truncate">{label}</span>
+      </button>
+      {open && <Peek id={id} photo={photo} index={index} dots={at ? [at] : []} tone="comment" who={[who]} />}
+    </>
   );
 }
 
@@ -963,7 +1008,11 @@ function Facts({ rows, onOpenFact }: { rows: FactRow[]; onOpenFact?: (tag: FactT
                   {value}
                 </button>
               ) : (
-                <span className="flex min-w-0 items-center justify-end gap-3">{value}</span>
+                <span className="flex min-w-0 items-center justify-end gap-3">
+                  {value}
+                  {/* The counts beside it, in words (the icons are hidden). */}
+                  {reacted && <span className="sr-only">: {tally.join(", ")}</span>}
+                </span>
               )}
             </dd>
           </div>
@@ -1029,10 +1078,43 @@ function PersonRow({ person }: { person: PersonTake }) {
 
 // "Compare with the other 2 homes": whether people liked each home, then each
 // aspect, a heart or pass count per home, this home first. Wider than a
-// phone with several homes, it scrolls sideways, the aspects kept in view.
+// phone with several homes, it scrolls sideways, the aspects kept in view:
+// the homes slide under them, and a fade at the right says there's more.
 function CompareSection({ compare }: { compare: NonNullable<Scorecard["compare"]> }) {
   const others = compare.homes.length - 1;
   const ids = useId();
+  const scroller = useRef<HTMLDivElement>(null);
+  // Whether it scrolls sideways at all (only then is it a stop for the
+  // keyboard), and whether it has been, and has further to go.
+  const [edges, setEdges] = useState({ scrolls: false, scrolled: false, more: false });
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const measure = () => {
+      const scrolls = el.scrollWidth > el.clientWidth + 1;
+      const next = {
+        scrolls,
+        scrolled: scrolls && el.scrollLeft > 1,
+        more: scrolls && el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
+      };
+      setEdges((was) => (was.scrolls === next.scrolls && was.scrolled === next.scrolled && was.more === next.more ? was : next));
+    };
+    // (It measures as soon as it starts watching, and again on any change.)
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    if (el.firstElementChild) watch.observe(el.firstElementChild);
+    el.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      watch.disconnect();
+      el.removeEventListener("scroll", measure);
+    };
+  }, []);
+  // The aspects' column, kept in view, with an edge the homes slide under.
+  const sticky = cn(
+    "sticky left-0 z-10 bg-white pr-3 text-left",
+    edges.scrolled &&
+      "after:pointer-events-none after:absolute after:inset-y-0 after:left-full after:w-4 after:border-l after:border-stone-200 after:bg-linear-to-r after:from-white after:to-transparent",
+  );
   // The most likes in a row stand out, so the home people liked it best in is plain.
   const most = (cells: { likes: number }[]) => Math.max(...cells.map((cell) => cell.likes));
   const row = (label: string, cells: { likes: number; passes: number }[], strong = false) => {
@@ -1042,7 +1124,8 @@ function CompareSection({ compare }: { compare: NonNullable<Scorecard["compare"]
         <th
           scope="row"
           className={cn(
-            "sticky left-0 z-10 bg-white py-2.5 pr-3 text-left align-top text-[13px] leading-5",
+            sticky,
+            "py-2.5 align-top text-[13px] leading-5",
             strong ? "font-semibold text-ink" : "font-normal text-stone-800",
           )}
         >
@@ -1052,7 +1135,7 @@ function CompareSection({ compare }: { compare: NonNullable<Scorecard["compare"]
           <td key={compare.homes[i].key} className="px-2 py-2.5 align-top text-[13px] leading-5 tabular-nums text-stone-700">
             {cell.likes + cell.passes === 0 ? (
               <>
-                <span aria-hidden className="text-stone-300">
+                <span aria-hidden className="text-stone-500">
                   –
                 </span>
                 <span className="sr-only">None</span>
@@ -1085,41 +1168,53 @@ function CompareSection({ compare }: { compare: NonNullable<Scorecard["compare"]
       <p id={`${ids}-about`} className="-mt-1 mb-2 text-[13px] text-stone-600">
         How many people on this link liked or passed on each, home by home.
       </p>
-      <div className="-mx-1 overflow-x-auto px-1" role="region" aria-labelledby={`${ids}-caption`} tabIndex={0}>
-        <table aria-describedby={`${ids}-about`} className="w-full border-collapse">
-          <caption id={`${ids}-caption`} className="sr-only">
-            This home beside the other {others === 1 ? "home" : `${others} homes`} on the link
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col" className="sticky left-0 z-10 bg-white pb-2 pr-3 text-left align-bottom">
-                <span className="sr-only">Aspect</span>
-              </th>
-              {compare.homes.map((home, i) => (
-                <th key={home.key} scope="col" className="min-w-[4.75rem] max-w-28 px-2 pb-2 text-left align-bottom font-normal">
-                  {home.photo && (
-                    <span aria-hidden className="relative mb-1 block h-9 w-12 overflow-hidden rounded-lg bg-stone-200">
-                      <Image src={home.photo.MediaURL} alt="" fill sizes="48px" className="object-cover" />
-                    </span>
-                  )}
-                  <span className={cn("block text-[12px] leading-4", i === 0 ? "font-semibold text-ink" : "text-stone-700")}>
-                    {i === 0 ? (
-                      <>
-                        This home<span className="sr-only">, {home.address}</span>
-                      </>
-                    ) : (
-                      <span className="line-clamp-2 break-words">{home.address}</span>
-                    )}
-                  </span>
+      <div className="relative -mx-1">
+        <div
+          ref={scroller}
+          className="overflow-x-auto px-1"
+          role="region"
+          aria-labelledby={`${ids}-caption`}
+          tabIndex={edges.scrolls ? 0 : undefined}
+        >
+          <table aria-describedby={`${ids}-about`} className="w-full border-collapse">
+            <caption id={`${ids}-caption`} className="sr-only">
+              This home beside the other {others === 1 ? "home" : `${others} homes`} on the link
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col" className={cn(sticky, "pb-2 align-top")}>
+                  <span className="sr-only">Aspect</span>
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {row("Overall", compare.overall, true)}
-            {compare.rows.map((r) => row(r.label, r.cells))}
-          </tbody>
-        </table>
+                {/* Photos in a line along the top, whatever the address under each. */}
+                {compare.homes.map((home, i) => (
+                  <th key={home.key} scope="col" className="min-w-[4.75rem] max-w-28 px-2 pb-2 text-left align-top font-normal">
+                    {home.photo && (
+                      <span aria-hidden className="relative mb-1 block h-9 w-12 overflow-hidden rounded-lg bg-stone-200">
+                        <Image src={home.photo.MediaURL} alt="" fill sizes="48px" className="object-cover" />
+                      </span>
+                    )}
+                    <span className={cn("block text-[12px] leading-4", i === 0 ? "font-semibold text-ink" : "text-stone-700")}>
+                      {i === 0 ? (
+                        <>
+                          This home<span className="sr-only">, {home.address}</span>
+                        </>
+                      ) : (
+                        <span className="line-clamp-2 break-words">{home.address}</span>
+                      )}
+                    </span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {row("Overall", compare.overall, true)}
+              {compare.rows.map((r) => row(r.label, r.cells))}
+            </tbody>
+          </table>
+        </div>
+        {edges.more && (
+          <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-linear-to-l from-white to-transparent" />
+        )}
       </div>
     </Section>
   );

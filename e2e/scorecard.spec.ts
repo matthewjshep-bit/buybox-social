@@ -1,4 +1,11 @@
+import { readFileSync } from "node:fs";
 import { expect, test, type Browser, type Locator } from "@playwright/test";
+import type { FeedPost } from "../lib/feed";
+import type { Listing } from "../lib/listings/types";
+import { likeId, NO_PHOTO_LIKES } from "../lib/photos";
+import { NO_REACTION, type ReactionState } from "../lib/reactions";
+import { buildScorecard } from "../lib/scorecard";
+import type { PhotoThing, TimelineComment, TimelineItem, TimelineReaction } from "../lib/timeline";
 import { createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, openMore, openScorecard, pick, settle, signInAgent } from "./helpers";
 
 // The Scorecard: everything people think of a home in one place, from the
@@ -294,6 +301,21 @@ test("on a link with more than one home, the Scorecard sets this one beside the 
     await expect(why.getByRole("button", { name: aspect })).toHaveAttribute("aria-pressed", "true");
   };
 
+  // In public, Zed likes the first and its red front door, and passes on the
+  // second's price: none of it may count on the link.
+  const zed = await page$(browser);
+  await zed.goto("/homes/SAMPLE-1009");
+  const zedQuillan = homeIn(zed, QUILLAN);
+  await heartOf(zedQuillan).click();
+  await joinAs(zed, "Zed");
+  await expect(heartOf(zedQuillan)).toHaveAttribute("aria-pressed", "true");
+  const door = await likeInPhoto(zedQuillan, "the red front door");
+  await door.getByRole("button", { name: "Close" }).click();
+  await zed.goto("/homes/SAMPLE-1013");
+  const zedMore = await openMore(zed, homeIn(zed, LAKEVIEW));
+  await pass(zedMore, "Price");
+  await zed.keyboard.press("Escape");
+
   // Ana likes the first for where it is, and passes on the second's price.
   const ana = await page$(browser);
   await ana.goto(urls.Ana);
@@ -326,11 +348,14 @@ test("on a link with more than one home, the Scorecard sets this one beside the 
   await expect(table.getByRole("columnheader")).toHaveText(["Aspect", `This home, ${QUILLAN}`, LAKEVIEW]);
   const cells = (label: string) =>
     table.getByRole("row").filter({ has: ana.getByRole("rowheader", { name: label, exact: true }) }).getByRole("cell");
-  // [P] From the link alone: both homes have likes in public, and none of them count here.
+  // [P] From the link alone: Zed's heart, front door and pass in public count
+  // for nothing here (no second like, no Exterior row, no second pass), and
+  // nobody from the public is named.
   await expect(cells("Overall")).toHaveText([/^1 like 1 pass$/, /^\s*1 pass$/]);
   await expect(cells("Location")).toHaveText([/^1 like\s*$/, /None$/]);
   await expect(cells("Price")).toHaveText([/^\s*1 pass$/, /^\s*1 pass$/]);
   await expect(table.getByRole("rowheader")).toHaveText(["Overall", "Price", "Location"]);
+  await expect(card).not.toContainText(/\bZed\b/);
 
   // What you've just done counts at once, in this home's column.
   await card.getByRole("button", { name: "Change your take" }).click();
@@ -348,4 +373,97 @@ test("on a link with more than one home, the Scorecard sets this one beside the 
   await page.goto("/homes/SAMPLE-1009");
   const card2 = await openScorecard(page, homeIn(page, QUILLAN));
   await expect(card2.getByRole("heading", { name: /^Compare/ })).toHaveCount(0);
+});
+
+// The Scorecard as built from a link's conversation, without a browser: the
+// kitchen photo of 4127 Larkmoor, and three people on the link.
+const LARKMOOR = (JSON.parse(readFileSync("supabase/seed/listings.json", "utf8")) as Listing[]).find(
+  (listing) => listing.ListingKey === "SAMPLE-1001",
+)!;
+const KITCHEN_PHOTO = "SAMPLE-1001-3";
+const AT = "2026-11-01T10:00:00.000Z";
+const liked = (tag: string): PhotoThing => ({ tag, mediaUrl: null, mediaKey: KITCHEN_PHOTO, spot: tag, at: AT });
+const personOf = (name: string, state: ReactionState, photos: PhotoThing[] = []): TimelineReaction => ({
+  kind: "reaction",
+  id: name,
+  personKey: name,
+  name,
+  at: AT,
+  mine: false,
+  state,
+  photos,
+  photoDislikes: [],
+});
+const said = (name: string, body: string, isAgent = false): TimelineComment => ({
+  kind: "comment",
+  id: `${name}-${body}`,
+  personKey: isAgent ? undefined : name,
+  name,
+  isAgent,
+  body,
+  at: AT,
+  mine: false,
+  parentId: null,
+  likes: 0,
+  likedByMe: false,
+});
+const linkPost = (timeline: TimelineItem[]): FeedPost => ({
+  listing: LARKMOOR,
+  headline: null,
+  likes: 0,
+  likers: [],
+  dislikes: 0,
+  aspects: { liked: {}, disliked: {} },
+  publicComments: 0,
+  privateComments: 0,
+  timeline,
+  photoLikes: {
+    ...NO_PHOTO_LIKES,
+    counts: Object.fromEntries(
+      timeline.flatMap((item) => (item.kind === "reaction" ? item.photos.map((t) => [likeId(KITCHEN_PHOTO, t.spot!), 1]) : [])),
+    ),
+  },
+  mine: NO_REACTION,
+  buzz: { sends: 0, views: 0, lastActivityAt: null, trending: false },
+  reasons: [],
+});
+
+test("someone who passed on the kitchen doesn't like the kitchen, whatever they hearted in its photos", () => {
+  const nina = personOf("Nina", { reaction: "like", liked: ["kitchen"], disliked: [] });
+  const owen = personOf("Owen", { reaction: "like", liked: ["yard"], disliked: [] });
+  const passed = { reaction: "dislike", liked: [], disliked: ["kitchen"] } as ReactionState;
+
+  // Ben hearts the kitchen photo as a whole (it's named "Kitchen", like the
+  // specific), and passes on the home for its kitchen.
+  for (const mode of ["agent", "share"] as const) {
+    const card = buildScorecard(
+      linkPost([personOf("Ben", passed, [liked("Kitchen")]), nina, owen, said("Nina", "Love it"), said("Jordan Rivera", "Same", true)]),
+      mode,
+    );
+    expect(card.agree).toEqual([
+      { label: "Only Nina", things: ["Kitchen"] },
+      { label: "Only Owen", things: ["Yard"] },
+    ]);
+    expect(card.say?.sentences).toEqual(["Ben didn't like the kitchen."]);
+    if (mode === "agent") {
+      const ben = card.people!.find((person) => person.name === "Ben")!;
+      expect(ben.likes).toEqual([]);
+      expect(ben.passes).toEqual(["Kitchen"]);
+      // What people said, apart from the agent's own reply.
+      expect([card.feel.comments, card.feel.yours]).toEqual([1, 1]);
+    }
+  }
+
+  // A heart on something in it (the marble counters) is still a like of
+  // that, and still not of the kitchen.
+  const card = buildScorecard(linkPost([personOf("Ben", passed, [liked("Marble counters")]), nina, owen]), "agent");
+  const ben = card.people!.find((person) => person.name === "Ben")!;
+  expect(ben.likes).toEqual(["Marble counters"]);
+  expect(ben.passes).toEqual(["Kitchen"]);
+  expect(card.agree).toEqual([
+    { label: "Only Ben", things: ["Marble counters"] },
+    { label: "Only Nina", things: ["Kitchen"] },
+    { label: "Only Owen", things: ["Yard"] },
+  ]);
+  expect(card.say?.sentences).toEqual(["Ben didn't like the kitchen."]);
 });

@@ -106,6 +106,9 @@ export type Scorecard = {
     likes: number;
     passes: number;
     comments: number;
+    // The agent's dashboard: their own replies, which aren't what people
+    // said (so not among the comments above).
+    yours: number;
     // Said in private chats, and not among those shown (a count only).
     privateMore: number;
     // How many people, and how many of them liked it without passing, for
@@ -238,17 +241,24 @@ const likedIt = (person: ScorecardPerson) =>
   person.state.reaction === "like" || (person.state.reaction !== "dislike" && (person.liked.length > 0 || person.state.liked.length > 0));
 const passedIt = (person: ScorecardPerson) => person.state.reaction === "dislike";
 
+// The specifics someone picked when they passed, as they read ("kitchen").
+const passedLabels = (person: ScorecardPerson) => new Set(person.state.disliked.map((a) => aspectLabel(a).toLowerCase()));
+
 // The things a person liked (or didn't), by name: specifics (picked, or what
 // a like in a photo counts toward) and named things in the photos and facts,
 // each once. Someone who hearted the gas range but passed on the kitchen
 // doesn't like the kitchen: what they picked when they passed wins over what
-// a heart in a photo counts toward (the gas range itself still shows).
+// a heart in a photo counts toward (the gas range itself still shows), and
+// over a heart on the kitchen photo as a whole, which is named "Kitchen" too.
 function thingsOf(listing: Listing, person: ScorecardPerson, tone: "like" | "dislike") {
   const passedOn = new Set<Aspect>(person.state.disliked);
+  const passed = passedLabels(person);
   const aspects = [...aspectsOf(listing, person, tone)]
     .filter((aspect) => tone === "dislike" || !passedOn.has(aspect))
     .map(aspectLabel) as string[];
-  const named = (tone === "like" ? person.liked : person.disliked).map((thing) => thing.tag).filter((tag) => !isPointTag(tag));
+  const named = (tone === "like" ? person.liked : person.disliked)
+    .map((thing) => thing.tag)
+    .filter((tag) => !isPointTag(tag) && (tone === "dislike" || !passed.has(tag.toLowerCase())));
   const seen = new Set<string>();
   return [...aspects, ...named].filter((thing) => {
     const key = thing.toLowerCase();
@@ -316,6 +326,8 @@ export function buildScorecard(
   const people = peopleOf(post, viewer);
   const counts = liveCounts(post.photoLikes, viewer);
   const comments = allComments(post.timeline);
+  // What people said: on the agent's dashboard, never the agent's own replies.
+  const theirs = mode === "agent" ? comments.filter((c) => !c.isAgent) : comments;
   const top = topComments(post.timeline);
   const shownPrivate = comments.filter((c) => c.fromPrivateChat).length;
   const privateMore = mode === "public" ? Math.max(0, post.privateComments - shownPrivate) : 0;
@@ -367,7 +379,8 @@ export function buildScorecard(
   const feel: Scorecard["feel"] = {
     likes,
     passes,
-    comments: comments.length,
+    comments: theirs.length,
+    yours: comments.length - theirs.length,
     privateMore,
     people: total,
     likedOnly,
@@ -503,7 +516,7 @@ export function buildScorecard(
     },
     quiet,
     feel,
-    say: say && say.length > 0 ? { sentences: say, from: fromLine(total, comments.length), at: latest } : null,
+    say: say && say.length > 0 ? { sentences: say, from: fromLine(total, theirs.length), at: latest } : null,
     aspects: {
       liked: likedAspects,
       // Passes, only where this viewer may see them: a public page's are its own.
@@ -678,7 +691,14 @@ function themesOf(
   named: boolean,
 ): Theme[] {
   const themes: Theme[] = [];
-  const add = (label: string, count: number, who: string[]) => {
+  // By name, someone who passed on the kitchen doesn't like the kitchen,
+  // whatever they hearted in its photos, as in their take and where people
+  // agree. (In public, the counts stay the page's own.)
+  const passedOn = (name: string, label: string) =>
+    people.some((p) => p.name === name && passedLabels(p).has(label.toLowerCase()));
+  const add = (label: string, count: number, all: string[]) => {
+    const who = named && tone === "like" ? all.filter((name) => !passedOn(name, label)) : all;
+    if (named && who.length === 0) return;
     const same = themes.find((t) => t.label.toLowerCase() === label.toLowerCase());
     if (same) {
       same.who = [...new Set([...same.who, ...who])];

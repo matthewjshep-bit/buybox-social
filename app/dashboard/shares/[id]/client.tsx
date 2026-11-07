@@ -525,10 +525,15 @@ const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").match
 
 const OpenScorecard = createContext<(listingKey: string) => void>(() => {});
 
+// Where a home sits on the screen, to keep it there as the page makes room
+// for the Scorecard's panel (or takes the room back).
+const topOf = (listingKey: string) => document.getElementById(`home-${listingKey}`)?.getBoundingClientRect().top ?? null;
+
 // Each home's Scorecard, as the people on the link see it, with what each of
 // them thinks: a sheet from the bottom on a phone; on a wide screen, a panel
-// down the right that leaves the page free to scroll and use. One at a time,
-// opened from the button on each home.
+// down the right, under the site's header, with the page making room beside
+// it, so nothing is hidden and every home's buttons stay in reach. One at a
+// time, opened from the button on each home.
 export function HomeScorecards({
   posts,
   offLink,
@@ -542,14 +547,50 @@ export function HomeScorecards({
   agentName: string;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState<string | null>(null);
+  // The home whose Scorecard was opened last, and whether it still is.
+  const [shown, setShown] = useState<{ key: string; open: boolean } | null>(null);
+  const open = shown?.open ? shown.key : null;
   const wide = useSyncExternalStore(subscribeWide, () => matchMedia(WIDE).matches, () => false);
+  const docked = wide && Boolean(open);
   const dock = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
-  const post = posts.find((p) => p.listing.ListingKey === open) ?? null;
+  const post = posts.find((p) => p.listing.ListingKey === shown?.key) ?? null;
   const removed = Boolean(open && offLink.includes(open));
   // Set beside the homes still on the link.
   const siblings = posts.filter((p) => p !== post && !offLink.includes(p.listing.ListingKey));
+
+  // The home the agent is looking at stays where it is on the screen while
+  // the page makes room for the panel, and when it gives the room back.
+  const held = useRef<{ key: string; top: number } | null>(null);
+  const hold = (key: string) => {
+    const top = topOf(key);
+    held.current = top === null ? null : { key, top };
+  };
+  useLayoutEffect(() => {
+    const was = held.current;
+    held.current = null;
+    const now = was && topOf(was.key);
+    if (was && now !== null && Math.abs(now - was.top) > 1) window.scrollBy({ top: now - was.top, behavior: "instant" });
+  }, [docked]);
+
+  // On a wide screen the panel starts under the site's header, and rises
+  // to the top of the window as the header scrolls away.
+  useLayoutEffect(() => {
+    const el = dock.current;
+    if (!docked || !el) return;
+    const header = document.querySelector("header");
+    const place = () => {
+      el.style.top = `${Math.max(12, (header?.getBoundingClientRect().bottom ?? 0) + 12)}px`;
+    };
+    place();
+    window.addEventListener("scroll", place, { passive: true });
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place);
+      window.removeEventListener("resize", place);
+      el.style.top = "";
+    };
+  }, [docked]);
 
   // Each home's Scorecard opens where the agent left it, while the page is open.
   const kept = useRef(new Map<string, number>());
@@ -562,47 +603,66 @@ export function HomeScorecards({
     return () => el.removeEventListener("scroll", keep);
   }, [open]);
 
-  // Off the sheet, to a place on the page: it shuts first, so the page can
-  // take the keyboard, and the place comes into view.
-  const goTo = (target: HTMLElement | null, scrollTo?: HTMLElement | null) => {
-    flushSync(() => setOpen(null));
+  const show = (key: string) => {
+    if (wide && !open) hold(key);
+    setShown({ key, open: true });
+  };
+  const close = () => {
+    if (wide && open) hold(open);
+    setShown((was) => was && { ...was, open: false });
+  };
+
+  // From the Scorecard to a place on the page. On a phone the sheet is over
+  // everything, so it shuts first and the page can take the keyboard; beside
+  // the page it stays open. The place comes into view.
+  const goTo = (target: HTMLElement | null, block: ScrollLogicalPosition = "center") => {
+    if (!wide) flushSync(close);
     if (!target) return;
     target.focus({ preventScroll: true });
-    (scrollTo ?? target).scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
+    target.scrollIntoView({ block, behavior: reducedMotion() ? "auto" : "smooth" });
   };
 
   return (
-    <OpenScorecard value={setOpen}>
+    <OpenScorecard value={show}>
       {children}
-      {/* The panel's place on a wide screen; on a phone the sheet rises over
-          the whole page instead. Never in the way of a tap when it's shut. */}
-      <div ref={dock} className="pointer-events-none fixed inset-y-3 right-3 z-40 w-[min(28rem,calc(100vw-1.5rem))]">
+      {/* The panel's place on a wide screen (the page pads itself clear of
+          it while it's open); on a phone the sheet rises over the whole page
+          instead. Never in the way of a tap when it's shut. */}
+      <div
+        ref={dock}
+        data-scorecard-docked={docked ? "" : undefined}
+        className="pointer-events-none fixed inset-y-3 right-3 z-40 w-[min(28rem,calc(100vw-1.5rem))]"
+      >
+        {/* A home of its own each time: opening another home's Scorecard
+            while one is open moves the keyboard to it, and closing it goes
+            back to the button that opened it. */}
         <Sheet
-          open={Boolean(post)}
-          onClose={() => setOpen(null)}
-          label="Scorecard"
+          key={shown?.key}
+          open={Boolean(open && post)}
+          onClose={close}
+          label={post ? `Scorecard for ${post.listing.UnparsedAddress}` : "Scorecard"}
           title="Scorecard"
           anchor={wide ? dock : undefined}
           docked={wide}
           bodyRef={body}
-          className="pointer-events-auto"
+          // Beside the page it fills its place as that follows the header.
+          className={cn("pointer-events-auto", wide && "top-0! left-0! h-full! w-full!")}
         >
-          {post && (
+          {open && post && (
             <ScorecardBody
               post={post}
               mode="agent"
               agentName={agentName}
               siblings={siblings.length > 0 ? siblings : undefined}
               offLink={removed}
-              onReply={
-                removed
-                  ? undefined
-                  : () => goTo(document.getElementById(`reply-${post.listing.ListingKey}`))
+              onReply={removed ? undefined : () => goTo(document.getElementById(`reply-${post.listing.ListingKey}`))}
+              onAllComments={() =>
+                goTo(
+                  document.getElementById(`home-${post.listing.ListingKey}`)?.querySelector<HTMLElement>("[aria-label='Comments']") ??
+                    null,
+                  "start",
+                )
               }
-              onAllComments={() => {
-                const home = document.getElementById(`home-${post.listing.ListingKey}`);
-                goTo(home?.querySelector<HTMLElement>("h3") ?? null, home?.querySelector<HTMLElement>("[aria-label='Comments']"));
-              }}
             />
           )}
         </Sheet>

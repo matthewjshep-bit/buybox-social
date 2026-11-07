@@ -125,7 +125,9 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
       offLink={removed.map((listing) => listing.ListingKey)}
       agentName={agent.full_name || "Your agent"}
     >
-      <div data-wide>
+      {/* Two columns when there's room for them: on a wide screen, and still
+          beside the Scorecard's panel on a very wide one. */}
+      <div data-wide className="@container">
         <LiveRefresh />
         <MarkSeen shareId={share.id} latest={latest} />
         <ShowTarget />
@@ -134,7 +136,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
         </Link>
         <ClientNameEditor shareId={share.id} name={share.client_name} />
 
-        <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-8">
+        <div className="@4xl:grid @4xl:grid-cols-2 @4xl:items-start @4xl:gap-x-8">
           <div>
             <section aria-labelledby="links-title" className="mt-4">
               <h2 id="links-title" className="sr-only">
@@ -194,14 +196,14 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
               shareId={share.id}
               suggestions={suggestions}
               together={together}
-              people={comparison.summaries.filter((s) => s.likes.length > 0).map((s) => s.person.name)}
+              people={comparison.likers.map((s) => s.person.name)}
               everyone={everyone}
               thread={thread}
             />
           </div>
 
           <div>
-            <div className="mt-8 flex items-center justify-between gap-3 lg:mt-4">
+            <div className="mt-8 flex items-center justify-between gap-3 @4xl:mt-4">
               <h2 id="homes-title" className="font-display text-2xl">
                 On their link
               </h2>
@@ -357,19 +359,8 @@ function WhatTheyWant({
   homeCount: number;
   thread: Thread;
 }) {
-  const { summaries, homes } = comparison;
+  const { summaries, homes, likers, both, only } = comparison;
   const several = summaries.length >= 2;
-  // Something someone liked in one home and passed on in another (the layout
-  // here, not there) is neither a like nor a pass of theirs: it shows once, on
-  // its own, and never as something people agree on.
-  const mixed = Object.fromEntries(
-    summaries.map((s) => [s.person.id, new Set(s.likes.filter((t) => s.passes.some((p) => key(p) === key(t))).map(key))]),
-  );
-  const isMixed = (personId: string, thing: string) => mixed[personId]?.has(key(thing)) ?? false;
-  const both = comparison.both.filter((thing) => !summaries.some((s) => isMixed(s.person.id, thing)));
-  const only = Object.fromEntries(
-    Object.entries(comparison.only).map(([personId, things]) => [personId, things.filter((t) => !isMixed(personId, t))]),
-  );
   // The table's cells, plus what each person didn't like in a home's photos
   // and facts, so a pass says why, and the spots they tapped that aren't on
   // anything named ("A spot in photo 2").
@@ -401,7 +392,6 @@ function WhatTheyWant({
   const heard = summaries.filter((s) => tally[s.person.id].liked + tally[s.person.id].passed > 0);
   // Where they agree is worked out among those who've liked particular
   // things; when that isn't everyone, it says who.
-  const likers = summaries.filter((s) => s.likes.length > 0);
   const names = likers.map((s) => s.person.name);
   const inCommon =
     likers.length === summaries.length
@@ -451,13 +441,10 @@ function WhatTheyWant({
                     </>
                   )}
                 </p>
-                <Things label="Likes" tone="like" things={s.likes.filter((t) => !isMixed(s.person.id, t))} />
-                <Things label="Passes on" tone="pass" things={s.passes.filter((t) => !isMixed(s.person.id, t))} />
-                <Things
-                  label="Depends on the home"
-                  tone="mixed"
-                  things={s.likes.filter((t) => isMixed(s.person.id, t))}
-                />
+                <Things label="Likes" tone="like" things={s.likes} />
+                <Things label="Passes on" tone="pass" things={s.passes} />
+                {/* Liked in one home, passed on in another: once, on its own. */}
+                <Things label="Depends on the home" tone="mixed" things={s.mixed} />
               </li>
             ))}
           </ul>
@@ -541,8 +528,8 @@ function WhatTheyWant({
   );
 }
 
-// "♥ Likes", "👎 Passes on", or (liked in one home, passed on in another)
-// "Depends on the home", each with its things.
+// Likes, Passes on, or (liked in one home, passed on in another) Depends on
+// the home, each with its things.
 function Things({ label, tone, things }: { label: string; tone: "like" | "pass" | "mixed"; things: string[] }) {
   if (things.length === 0) return null;
   const Icon = tone === "like" ? Heart : tone === "pass" ? ThumbsDown : null;
@@ -748,15 +735,15 @@ function HomePanel({ shareId, listing, thread }: { shareId: string; listing: Lis
     <section
       id={`home-${listing.ListingKey}`}
       aria-label={listing.UnparsedAddress}
-      className="scroll-mt-4 rounded-2xl bg-white p-4 ring-1 ring-stone-200 transition-[box-shadow] duration-1000 data-target:ring-2 data-target:ring-amber-300"
+      className="@container scroll-mt-4 rounded-2xl bg-white p-4 ring-1 ring-stone-200 transition-[box-shadow] duration-1000 data-target:ring-2 data-target:ring-amber-300"
     >
-      {/* On a phone, the buttons sit in a row of their own underneath, so
-          the words keep the width: the address on one line, the price and
-          city on the next. */}
-      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+      {/* Narrow (a phone, or a column beside the Scorecard), the buttons sit
+          in a row of their own underneath, so the words keep the width: the
+          address on one line, the price and city on the next. */}
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 @md:grid-cols-[auto_minmax(0,1fr)_auto]">
         <div
           className={cn(
-            "relative size-16 shrink-0 overflow-hidden rounded-xl bg-stone-200 sm:size-18",
+            "relative size-16 shrink-0 overflow-hidden rounded-xl bg-stone-200 @md:size-18",
             isRemoved && "opacity-60 grayscale",
           )}
         >
@@ -773,7 +760,7 @@ function HomePanel({ shareId, listing, thread }: { shareId: string; listing: Lis
           </p>
         </div>
         {/* What everyone on the link thinks of it, then Remove. */}
-        <div className="col-span-2 mt-3 flex flex-wrap items-center gap-1 sm:col-span-1 sm:-mr-1 sm:mt-0 sm:justify-self-end">
+        <div className="col-span-2 mt-3 flex flex-wrap items-center gap-1 @md:col-span-1 @md:-mr-1 @md:mt-0 @md:justify-self-end">
           <ScorecardButton listingKey={listing.ListingKey} address={listing.UnparsedAddress} />
           <form action={setHomeRemoved.bind(null, shareId, listing.ListingKey, !isRemoved)}>
             <button
@@ -808,7 +795,8 @@ function HomePanel({ shareId, listing, thread }: { shareId: string; listing: Lis
       )}
 
       {comments.length > 0 && (
-        <ul aria-label="Comments" className="mt-4 flex flex-col gap-4 border-t border-stone-100 pt-4">
+        // (The Scorecard's "See all" brings the keyboard here.)
+        <ul aria-label="Comments" tabIndex={-1} className="mt-4 flex scroll-mt-4 flex-col gap-4 border-t border-stone-100 pt-4">
           {comments.map((comment) => (
             <li
               key={comment.id}
