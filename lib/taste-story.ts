@@ -4,7 +4,7 @@ import { sql } from "./db";
 import type { Listing } from "./listings/types";
 import { FACTS, isPointTag } from "./photos";
 import { aspectOf, dayOf, isVideo, photoOf, PROFILE_TIME_ZONE, thingAt, withoutPasses, type ProfileRows } from "./profile";
-import { aspectLabel, type Aspect } from "./reactions";
+import { ASPECT_IDS, aspectLabel, type Aspect } from "./reactions";
 import { describeBeds, describePriceRange } from "./taste";
 
 // What someone's page says about their taste: a headline from the data, a
@@ -28,8 +28,8 @@ export const STORY_MAX = 240;
 
 // The model, and what it's asked. Changing either writes everyone's again.
 export const STORY_MODEL = "claude-opus-5-5";
-export const PROMPT_VERSION = 1;
-// However many people look, at most this many are written by the model a day.
+export const PROMPT_VERSION = 2;
+// However many people look, the model is asked at most this many times a day.
 export const DAILY_AI_CAP = 500;
 // A page never waits for the model; this is how long the model gets after it.
 const MODEL_TIMEOUT_MS = 10_000;
@@ -78,13 +78,22 @@ export type TasteInput = {
 };
 
 export type TasteStory = {
-  // Enough to go on for a headline and sentences.
+  // Enough to go on for a headline and sentences, in what everyone else can
+  // see of them (so passes they keep private never count toward it).
   enough: boolean;
   headline: string | null;
-  // The top few a side, each marked if they've switched it off. Someone else
-  // sees only the ones not hidden (and no passes when those are private).
+  // The top few a side, each marked if they've switched it off, counted from
+  // what everyone else sees. Someone else sees only the ones not hidden (and
+  // no passes when those are private).
   loves: TasteChip[];
   passes: TasteChip[];
+  // The same chips as they see them on their own page: counted and ordered
+  // from everything they've done, so each count matches the homes the chip
+  // shows them, and keeping passes private never moves or recounts them.
+  own: { loves: TasteChip[]; passes: TasteChip[] };
+  // Whether they've passed on or not liked anything at all, so their own
+  // page offers the switch for it even when no chip says so.
+  hasPasses: boolean;
   // Written from what everyone sees; null when there's nothing to say.
   template: StoryText | null;
   input: TasteInput;
@@ -99,6 +108,8 @@ type Settings = { hidden: string[]; hidePasses: boolean };
 
 const DAY_MS = 86_400_000;
 const lower = (text: string) => text.toLowerCase();
+// "kitchen" and "light" are aspects; "Covered porch" is a named thing.
+const isAspect = (key: string) => (ASPECT_IDS as string[]).includes(key);
 
 // "Kitchen" and "Natural light" by home, on each side, and whether each home was recent.
 type Term = { key: string; label: string; liked: Map<string, boolean>; passed: Map<string, boolean> };
@@ -136,6 +147,10 @@ function termsOf(rows: ProfileRows, now: number) {
 
 const weightOf = (homes: Map<string, boolean>) => [...homes.values()].reduce((sum, recent) => sum + (recent ? 2 : 1), 0);
 
+// Most and most recent first.
+const bySide = (side: "liked" | "passed") => (a: Term, b: Term) =>
+  weightOf(b[side]) - weightOf(a[side]) || b[side].size - a[side].size || a.label.localeCompare(b.label);
+
 // What a side holds, most and most recent first. A thing goes on whichever
 // side has more homes, never both, and a tie goes on neither.
 function sideOf(terms: Term[], side: "liked" | "passed", minHomes: number) {
@@ -147,10 +162,7 @@ function sideOf(terms: Term[], side: "liked" | "passed", minHomes: number) {
         t[side].size >= minHomes &&
         !(side === "liked" && NEVER_LOVED.includes(t.key)),
     )
-    .sort(
-      (a, b) =>
-        weightOf(b[side]) - weightOf(a[side]) || b[side].size - a[side].size || a.label.localeCompare(b.label),
-    );
+    .sort(bySide(side));
 }
 
 // What they love, counted from `seen` (what someone else can see of them),
@@ -188,7 +200,8 @@ function citiesOf(homes: Listing[]) {
 }
 
 // "Covered porch · Seattle · $650K–$1M · 3–4 beds": what they love most, then
-// where, how much and how big the homes they like are. Short enough for one line.
+// where, how much and how big the homes they like are. Short enough for one
+// line on a wide screen; on a phone each part after the first keeps together.
 export function headlineOf(topLove: string | null, liked: Listing[]) {
   const price = rangeOf(liked.map((home) => home.ListPrice));
   const beds = rangeOf(liked.map((home) => home.BedroomsTotal));
@@ -371,36 +384,47 @@ export const hashOf = (input: TasteInput) =>
 // passes included, so a thing they pass on more than they like is never shown
 // as a love, even when passes are private).
 export function storyOf(rows: ProfileRows, settings: Settings, now = Date.now()): TasteStory {
-  const enough = isEnough(rows);
   const terms = termsOf(rows, now);
   const seen = settings.hidePasses ? withoutPasses(rows) : rows;
+  // Whether there's enough to say is decided by what everyone else sees: a
+  // headline from one visible home would hint at passes kept private.
+  const enough = isEnough(seen);
   const hidden = new Set(settings.hidden);
   const min = enough ? CHIP_MIN_HOMES : 1;
   // Loves count only homes anyone else can see, so a chip never counts a home
   // that's private to them.
   const visible = settings.hidePasses ? termsOf(seen, now) : terms;
-  const chips = (side: "liked" | "passed") =>
-    (side === "liked" ? lovedOf(terms, visible, min) : sideOf(terms, side, min))
-      .slice(0, CHIPS)
-      .map(
-        (t): TasteChip => ({
-          key: t.key,
-          label: t.label,
-          homes: t[side].size,
-          hidden: hidden.has(lower(t.key)) || hidden.has(lower(t.label)),
-        }),
-      );
-  const loves = chips("liked");
-  const passes = chips("passed");
-  const shownLoves = loves.filter((chip) => !chip.hidden).map((chip) => chip.label);
+  const chipOf =
+    (side: "liked" | "passed") =>
+    (t: Term): TasteChip => ({
+      key: t.key,
+      label: t.label,
+      homes: t[side].size,
+      hidden: hidden.has(lower(t.key)) || hidden.has(lower(t.label)),
+    });
+  const loveTerms = lovedOf(terms, visible, min).slice(0, CHIPS);
+  const passTerms = sideOf(terms, "passed", min).slice(0, CHIPS);
+  // On their own page the same things, counted from all they've done.
+  const everything = new Map(terms.map((t) => [lower(t.label), t]));
+  const ownLoves = loveTerms.map((t) => everything.get(lower(t.label)) ?? t).sort(bySide("liked"));
+  const loves = loveTerms.map(chipOf("liked"));
+  const passes = passTerms.map(chipOf("passed"));
+  const shown = loves.filter((chip) => !chip.hidden);
+  const shownLoves = shown.map((chip) => chip.label);
   const shownPasses = settings.hidePasses ? [] : passes.filter((chip) => !chip.hidden).map((chip) => chip.label);
+  // A named thing ("Covered porch") says more than an aspect ("Exterior"), so
+  // one of those leads the headline when they love one.
+  const lead = shown.find((chip) => !isAspect(chip.key)) ?? shown[0];
   const times = [...seen.reactions, ...seen.likes, ...seen.dislikes, ...seen.comments].map((row) => +row.at);
   const input = inputOf(rows, settings, now);
   return {
     enough,
-    headline: enough ? headlineOf(shownLoves[0] ?? null, likedHomes(rows)) : null,
+    headline: enough ? headlineOf(lead?.label ?? null, likedHomes(seen)) : null,
     loves,
     passes,
+    own: { loves: ownLoves.map(chipOf("liked")), passes },
+    hasPasses:
+      rows.dislikes.length > 0 || rows.reactions.some((r) => r.reaction === "dislike" || r.disliked.length > 0),
     template: enough ? templateOf(shownLoves, shownPasses) : null,
     input,
     hash: hashOf(input),
@@ -434,22 +458,58 @@ const DENYLIST = [
   // Absolutes and superlatives
   /\b(always|never|hates?|loves everything|best|perfect|dream|ideal|amazing|stunning|must)\b/i,
 ];
-const PRONOUNS = /\b(she|he|her|his|him|hers|herself|himself)\b/i;
+// No pronouns at all: always their name, or "You" to them.
+const PRONOUNS = /\b(she|he|her|his|him|hers|herself|himself|they|them|their|theirs|themselves|i|me|my|mine|we|us|our|ours)\b/i;
+const SECOND_PERSON = /\b(you|your|yours|yourself)\b/i;
 const HEDGE = /\b(tends? to|usually|often)\b/i;
 const PASS_WORDS = /\b(pass(es|ed|ing)?|dislikes?|doesn't like|don't like|avoids?|not)\b/i;
 const EMOJI = /\p{Extended_Pictographic}/u;
 
+// "Porches" and "porch", "kitchens" and "kitchen": one word.
+const stem = (word: string) =>
+  word
+    .replace(/(ch|sh|ss|x|z)es$/, "$1")
+    .replace(/([^aeiou])ies$/, "$1y")
+    .replace(/([^s'])s$/, "$1");
+// The words in some text, lower-case and singular: "Floor-to-ceiling windows"
+// is floor, to, ceiling, window.
+const wordsIn = (text: string) =>
+  lower(text)
+    .replace(/’/g, "'")
+    .replace(/'s\b/g, "")
+    .split(/[^\p{L}\p{N}']+/u)
+    .filter(Boolean)
+    .map(stem);
 // "Covered porches" and "the covered porch" are one thing.
-const normal = (text: string) =>
-  lower(text.trim())
-    .replace(/^(the|a|an)\s+/, "")
-    .replace(/(es|s)$/, "");
+const normal = (text: string) => {
+  const words = wordsIn(text);
+  return (["the", "a", "an"].includes(words[0]) ? words.slice(1) : words).join(" ");
+};
+// Whether some text names a thing: "the covered porches" names "Covered porch".
+const names = (text: string, item: string) => ` ${wordsIn(text).join(" ")} `.includes(` ${normal(item)} `);
+
+// The plain words that join their own into a sentence about taste. Anything
+// else in what the model writes must come from what they've done.
+const JOINING = new Set(
+  wordsIn(`
+    a an and also as at both but by especially for from if in into is it its of on or plus so than that the
+    then these this those to too up with without you your
+    tend tends tended usually often mostly generally typically frequently sometimes
+    like likes liked go goes going gravitate gravitates lean leans toward towards drawn favor favors favour
+    favours prefer prefers pick picks choose chooses enjoy enjoys appreciate appreciates
+    pass passes passed passing skip skips not less keen doesn't don't isn't aren't
+    home homes house houses place places space spaces room rooms feature features detail details character
+    style styles look looks feel touch touches good nice lots plenty more most some many few other such kind
+    kinds sort older newer built era
+  `),
+);
 
 // Whether words the model wrote can go on someone's page: in the right voice,
 // hedged, about things that really are in their taste on at least two homes,
 // with no one else's name, no pronoun, no address or number, nothing about
-// their life or a neighbourhood, and nothing they've switched off. Anything
-// else falls back to the template.
+// their life or a neighbourhood, nothing they've switched off, and no word
+// that isn't theirs or a plain joining word. Anything else falls back to the
+// template.
 export function checkStory(
   output: unknown,
   story: Pick<TasteStory, "input" | "withheld">,
@@ -479,6 +539,10 @@ export function checkStory(
   if (!written.loves.every((item) => claimable("liked", item))) return { ok: false, reason: "unknown love" };
   if (!written.passes.every((item) => claimable("passed", item))) return { ok: false, reason: "unknown pass" };
   if (input.passes.length === 0 && written.passes.length > 0) return { ok: false, reason: "passes" };
+  // What it says it's about is what the words are about, in both voices.
+  for (const item of [...written.loves, ...written.passes]) {
+    if (!names(written.named, item) || !names(written.you, item)) return { ok: false, reason: "unsaid" };
+  }
 
   // Words that may be capitalized mid-sentence: places and things from the input.
   const proper = new Set(
@@ -486,8 +550,15 @@ export function checkStory(
       ...input.loves.map((t) => t.term),
       ...input.passes.map((t) => t.term),
       ...input.homes.flatMap((home) => [home.city, home.type ?? "", ...home.liked, ...home.disliked]),
-    ].flatMap((term) => term.split(/[\s-]+/).map(lower)),
+    ].flatMap(wordsIn),
   );
+  // Every word they could be described with: their things, places, kinds of
+  // home and how the photos they liked are captioned.
+  const theirs = new Set([
+    ...proper,
+    ...input.cities.flatMap((c) => wordsIn(c.city)),
+    ...input.homes.flatMap((home) => home.captions.flatMap(wordsIn)),
+  ]);
   // Decades they have homes from: "1920s".
   const decades = new Set(input.homes.flatMap((home) => (home.built ? [`${Math.floor(home.built / 10) * 10}s`] : [])));
 
@@ -497,14 +568,19 @@ export function checkStory(
   ] as const) {
     const body = text.trim();
     if (!body.startsWith(subject)) return { ok: false, reason: `${voice}: subject` };
-    const rest = body.replace("{name}", "");
+    // "{name}" only ever stands for the subject of a sentence, and only in
+    // the named voice: they'd read it as it is in theirs.
+    const sentences = body.split(/(?<=\.)\s+/);
+    const rest = voice === "named" ? sentences.map((s) => s.replace(/^\{name\}(?=\s)/, "")).join(" ") : body;
     if (/[{}]/.test(rest)) return { ok: false, reason: `${voice}: placeholder` };
     if (body.length > STORY_MAX) return { ok: false, reason: `${voice}: length` };
     if ((body.match(/[.?!](\s|$)/g) ?? []).length > 2 || /[!?]/.test(body)) {
       return { ok: false, reason: `${voice}: sentences` };
     }
     if (!HEDGE.test(body)) return { ok: false, reason: `${voice}: hedge` };
-    if (PRONOUNS.test(rest)) return { ok: false, reason: `${voice}: pronoun` };
+    if (PRONOUNS.test(rest) || (voice === "named" && SECOND_PERSON.test(rest))) {
+      return { ok: false, reason: `${voice}: pronoun` };
+    }
     if (EMOJI.test(body)) return { ok: false, reason: `${voice}: emoji` };
     if (DENYLIST.some((pattern) => pattern.test(rest))) return { ok: false, reason: `${voice}: denylist` };
     if (/\$/.test(body) || (rest.match(/\d[\d,]*s?/g) ?? []).some((n) => !decades.has(n))) {
@@ -514,14 +590,23 @@ export function checkStory(
     if (withheld.some((word) => new RegExp(`\\b${escape(word)}`, "i").test(rest))) {
       return { ok: false, reason: `${voice}: withheld` };
     }
-    // A capital in the middle of a sentence is a name: theirs, a place or a thing from the input.
-    const sentences = rest.split(/[.]\s+/);
-    for (const sentence of sentences) {
-      const words = sentence.trim().split(/\s+/).slice(1);
-      for (const word of words) {
-        const bare = word.replace(/[^\p{L}'-]/gu, "");
-        if (/^\p{Lu}/u.test(bare) && !bare.split("-").every((part) => proper.has(lower(part)))) {
+    for (const sentence of rest.split(/(?<=\.)\s+/)) {
+      const words = sentence.trim().split(/\s+/).filter(Boolean);
+      for (const [i, word] of words.entries()) {
+        const bare = word.replace(/[^\p{L}\p{N}'’-]/gu, "");
+        // Numbers are checked above.
+        if (!bare || /\d/.test(bare)) continue;
+        const parts = bare.split("-").filter(Boolean).map((part) => wordsIn(part)[0] ?? "");
+        // A capital mid-sentence is a name: a place or a thing from the input.
+        if (i > 0 && /^\p{Lu}/u.test(bare) && !parts.every((part) => proper.has(part))) {
           return { ok: false, reason: `${voice}: name` };
+        }
+        // Any other word is theirs or a plain one: never a thing, a place or
+        // a name (whatever its case, and at the start of a sentence too) that
+        // isn't in their taste. Short words starting a sentence count too.
+        const checked = parts.filter((part) => part.length >= 3 || (i === 0 && /^\p{Lu}/u.test(bare)));
+        if (!checked.every((part) => JOINING.has(part) || theirs.has(part))) {
+          return { ok: false, reason: `${voice}: word` };
         }
       }
     }
@@ -542,7 +627,8 @@ Rules for both:
 - One sentence if you can, two at most, 240 characters or fewer.
 - Plain and warm, and hedged: "tends to", "usually", "often". Never "always", "never" or "hates". No superlatives, exclamation marks, questions or emoji.
 - Use concrete nouns from the input, in its own words. Only say what at least 2 homes show.
-- Never use she, he, her, his, him or hers.
+- Name every term in loves and passes, in both texts. Add no things, places or describing words of your own: only the input's words, joined with plain ones like "tends to", "usually", "often", "like", "pass on", "homes with" and "and".
+- No pronouns for them (she, he, they, her, his, their and the like): only {name}, or You. Mention no one else.
 - No numbers, prices or addresses.
 - Never guess about their life (family, children, pets, partner, work, age, health, religion, money) and never describe people or neighbourhoods (safe, schools, quiet, family-friendly, up-and-coming, exclusive, or who lives there).
 - Only say they like what's in the loves list (or the cities, kinds and decades of homes they liked), and only mention what they pass on when the passes list has something in it.
@@ -617,7 +703,8 @@ export async function readStory(visitorId: string) {
   return row ?? null;
 }
 
-// Whether the model can write anyone's: a key, and room under today's cap.
+// Whether the model can write anyone's: there's a key. (The day's cap is
+// checked when it's asked.)
 export const storyWriting = () => Boolean(process.env.ANTHROPIC_API_KEY);
 
 export type ShownStory = { text: StoryText; ai: boolean; at: string | null; refresh: boolean };
@@ -650,10 +737,6 @@ export async function refreshStory(
 ) {
   try {
     if (!story.template) return "nothing";
-    const [{ n }] = await sql<{ n: number }[]>`
-      select count(*)::int as n from taste_summaries
-      where source = 'ai' and created_at > now() - interval '24 hours'`;
-    if (n >= DAILY_AI_CAP) return "cap";
     const placeholder = { ...story.template, loves: [], passes: [] };
     const claimed = await sql`
       insert into taste_summaries (visitor_id, input_hash, summary, source, attempted_at)
@@ -663,6 +746,15 @@ export async function refreshStory(
           or taste_summaries.attempted_at < now() - interval '10 minutes'
       returning 1`;
     if (claimed.length === 0) return "busy";
+    // Every call counts toward the day's cap, whatever comes of it, and two
+    // pages at once can't both take the last one.
+    const slot = await sql`
+      insert into taste_generations (day, calls)
+      values ((now() at time zone ${PROFILE_TIME_ZONE})::date, 1)
+      on conflict (day) do update set calls = taste_generations.calls + 1
+        where taste_generations.calls < ${DAILY_AI_CAP}
+      returning calls`;
+    if (slot.length === 0) return "cap";
     const result = await generate(story);
     if (result.ok) {
       await sql`

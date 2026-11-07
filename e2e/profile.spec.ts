@@ -741,29 +741,65 @@ test("the taste story is written from the data, and what someone switches off st
   await expect(theirs).toContainText("Nadia tends to like the vibe, and usually passes on the price.");
   await expect(theirs).toContainText("From Nadia's 2 likes and 2 passes · updated today");
   await expect(visitor.locator('meta[name="description"]')).toHaveAttribute("content", headline);
+  await expect(visitor.locator('meta[property="og:description"]')).toHaveAttribute("content", headline);
   await expect(visitor.getByRole("button", { name: "Not quite right?" })).toHaveCount(0);
   expect(await theirs.innerText()).not.toMatch(NEVER_SAID);
 
-  // Passes kept private: gone for everyone else, still there for Nadia.
+  // One love switched off: off their page and out of the words for everyone
+  // else, kept (and marked) for Nadia, and remembered.
   await nadia.getByRole("button", { name: "Not quite right?" }).click();
-  const sheet = nadia.getByRole("dialog", { name: "Your taste" });
-  const passSwitch = sheet.getByRole("switch", { name: "Show what I pass on to others" });
-  await expect(passSwitch).toHaveAttribute("aria-checked", "true");
-  await passSwitch.click();
-  await expect(passSwitch).toHaveAttribute("aria-checked", "false");
-  await expect(sheet.getByRole("switch", { name: "Show Price on my profile" })).toBeDisabled();
-  await expect(own).toContainText("Only you see what you pass on");
-  await expect(own).toContainText("You tend to like the vibe.");
+  const sheet = nadia.getByRole("dialog", { name: "What others see" });
+  const vibe = sheet.getByRole("switch", { name: "Show Vibe in my taste" });
+  await expect(vibe).toHaveAccessibleDescription("2 homes");
+  await vibe.click();
+  await expect(vibe).toHaveAttribute("aria-checked", "false");
+  await expect(own.getByRole("link", { name: "Loves Vibe, 2 homes, only you see this" })).toBeVisible();
+  await expect(own).toContainText("You usually pass on the price.");
   await nadia.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
-  await expect(own.getByRole("group", { name: "Passes on" })).toBeVisible();
-  await expect(nadia.getByRole("link", { name: "Passed", exact: true })).toBeVisible();
+  await nadia.reload();
+  await nadia.getByRole("button", { name: "Not quite right?" }).click();
+  await expect(sheet.getByRole("switch", { name: "Show Vibe in my taste" })).toHaveAttribute("aria-checked", "false");
+  await nadia.keyboard.press("Escape");
 
   await visitor.reload();
-  await expect(theirs).toContainText("Nadia tends to like the vibe.");
-  await expect(theirs).toContainText("From Nadia's 2 likes · updated today");
-  await expect(theirs.getByRole("group", { name: "Passes on" })).toHaveCount(0);
+  await expect(theirs.getByText("Edmonds · $689K–$749K · 2 beds", { exact: true })).toBeVisible();
+  await expect(theirs).toContainText("Nadia usually passes on the price.");
+  await expect(theirs).toContainText("From Nadia's 2 likes and 2 passes · updated today");
+  await expect(theirs.getByRole("group", { name: "Loves" })).toHaveCount(0);
+  await expect(theirs).not.toContainText(/vibe/i);
+
+  // Passes kept private: gone for everyone else, still there for Nadia, and
+  // its chip goes off with it, saying why.
+  await nadia.getByRole("button", { name: "Not quite right?" }).click();
+  const passSwitch = sheet.getByRole("switch", { name: "Show what I pass on, on my page" });
+  await expect(passSwitch).toHaveAttribute("aria-checked", "true");
+  await expect(passSwitch).toHaveAccessibleDescription(/A home's own page still shows who passed on it/);
+  await passSwitch.click();
+  await expect(passSwitch).toHaveAttribute("aria-checked", "false");
+  const price = sheet.getByRole("switch", { name: "Show Price in my taste" });
+  await expect(price).toBeDisabled();
+  await expect(price).toHaveAttribute("aria-checked", "false");
+  await expect(price).toHaveAccessibleDescription("2 homes · Hidden with your passes");
+  // That leaves two homes anyone else can see: too few to say anything
+  // about, so Nadia is told how to get a description back.
+  await expect(own).toContainText("Only you see what you pass on");
+  await expect(own).toContainText("Like a few more homes and a short description of your taste will appear here.");
+  await expect(own).not.toContainText("pass on the price");
+  await nadia.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(own.getByRole("group", { name: "Passes on" }).getByRole("link")).toHaveText(["Price 2"]);
+  await expect(nadia.getByRole("link", { name: "Passed", exact: true })).toBeVisible();
+
+  // Everyone else: nothing hints at the passes, not even a headline from the
+  // homes they can't see; and with the vibe off there's nothing else to show.
+  await visitor.reload();
+  await expect(theirs).toHaveCount(0);
   await expect(visitor.getByRole("link", { name: "Passed", exact: true })).toHaveCount(0);
+  await expect(visitor.locator('meta[name="description"]')).toHaveAttribute(
+    "content",
+    "What Nadia likes in homes, on BuyBox Social.",
+  );
   const counts = visitor.locator("main section").first();
   await expect(counts).toContainText("2 liked · 0 comments");
   await expect(counts).not.toContainText("passed");
@@ -773,30 +809,21 @@ test("the taste story is written from the data, and what someone switches off st
   await expect(cardLinks(visitor)).toHaveCount(0);
   for (const path of [profileUrl, `${profileUrl}?show=passed`, `${profileUrl}?about=price&side=pass`]) {
     const html = await (await visitor.request.get(path)).text();
-    for (const secret of [QUILLAN, LAKEVIEW, "passes on the price", "Passes on", "didn't like"]) {
+    for (const secret of [QUILLAN, LAKEVIEW, "passes on the price", "Passes on", "didn't like", headline]) {
       expect(html, `${path} hides ${secret}`).not.toContain(secret);
     }
   }
 
-  // One love switched off: off their page and out of the words for everyone
-  // else, kept (and marked) for Nadia, and remembered.
-  await nadia.reload();
+  // The vibe back on: below the threshold, others see just the chips.
   await nadia.getByRole("button", { name: "Not quite right?" }).click();
-  const vibe = sheet.getByRole("switch", { name: "Show Vibe on my profile" });
-  await vibe.click();
-  await expect(vibe).toHaveAttribute("aria-checked", "false");
-  await expect(own.getByRole("link", { name: "Loves Vibe, 2 homes, only you see this" })).toBeVisible();
+  await sheet.getByRole("switch", { name: "Show Vibe in my taste" }).click();
+  await expect(sheet.getByRole("switch", { name: "Show Vibe in my taste" })).toHaveAttribute("aria-checked", "true");
+  await expect(own.getByRole("link", { name: "Loves Vibe, 2 homes" })).toBeVisible();
   await nadia.keyboard.press("Escape");
-  await nadia.reload();
-  await nadia.getByRole("button", { name: "Not quite right?" }).click();
-  await expect(sheet.getByRole("switch", { name: "Show Vibe on my profile" })).toHaveAttribute("aria-checked", "false");
-  await expect(sheet.getByRole("switch", { name: "Show what I pass on to others" })).toHaveAttribute("aria-checked", "false");
-  await nadia.keyboard.press("Escape");
-
   await visitor.goto(profileUrl);
-  await expect(theirs.getByText("Edmonds · $689K–$749K · 2 beds", { exact: true })).toBeVisible();
-  await expect(theirs.getByRole("group", { name: "Loves" })).toHaveCount(0);
-  await expect(theirs).not.toContainText(/vibe/i);
+  await expect(theirs.getByRole("group", { name: "Loves" }).getByRole("link")).toHaveText(["Vibe 2"]);
+  await expect(theirs.getByRole("group", { name: "Passes on" })).toHaveCount(0);
+  await expect(theirs).not.toContainText(/tends to like|usually|From Nadia|Like a few more/);
   expect(pageErrors).toEqual([]);
 });
 
@@ -875,6 +902,40 @@ test("chips never contradict, facts are never loves, and the template speaks in 
   const counted = (hidePasses: boolean) =>
     storyOf(passedLike, { hidden: [], hidePasses }, NOW).loves.find((chip) => chip.key === "light")?.homes;
   expect([counted(false), counted(true)]).toEqual([4, 3]);
+  // On their own page the chips count everything (as their feed does), so
+  // keeping passes private never recounts or reorders them.
+  const own = (hidePasses: boolean) =>
+    storyOf(passedLike, { hidden: [], hidePasses }, NOW).own.loves.map((chip) => `${chip.label} ${chip.homes}`);
+  expect(own(true)).toEqual(own(false));
+  expect(own(true)).toContain("Natural light 4");
+
+  // Whether there's enough to say is decided by what others see: one liked
+  // home and two passes kept private is one home, so no headline and no words.
+  const oneLike = empty();
+  for (const [key, reaction] of [
+    ["SAMPLE-1001", "like"],
+    ["SAMPLE-1009", "dislike"],
+    ["SAMPLE-1010", "dislike"],
+  ] as const) {
+    oneLike.reactions.push({ listing_key: key, reaction, liked: [], disliked: [], at: new Date(NOW) });
+    oneLike.standing.set(key, reaction);
+  }
+  expect(storyOf(oneLike, { hidden: [], hidePasses: false }, NOW)).toMatchObject({ enough: true, hasPasses: true });
+  expect(storyOf(oneLike, { hidden: [], hidePasses: true }, NOW)).toMatchObject({
+    enough: false,
+    headline: null,
+    template: null,
+  });
+
+  // A named thing they love leads the headline over an aspect.
+  const thing = tasteRows();
+  for (const media of ["SAMPLE-1001-2", "SAMPLE-1004-2"]) {
+    const key = media.slice(0, 11);
+    thing.likes.push({ listing_key: key, media_key: media, tag: "Hardwood floors", aspect: null, at: new Date(NOW) });
+  }
+  const floors = storyOf(thing, { hidden: [], hidePasses: false }, NOW);
+  expect(floors.loves.map((chip) => chip.label)).toContain("Hardwood floors");
+  expect(floors.headline).toMatch(/^Hardwood floors · /);
 
   // Below the threshold: no sentences, and chips from a single home.
   const few = empty();
@@ -903,31 +964,72 @@ test("words the model writes go on a page only if they hold up", () => {
   };
   expect(checkStory(good, story)).toMatchObject({ ok: true });
   const fails = (change: Partial<typeof good>) => checkStory({ ...good, ...change }, story).ok;
-  // A pronoun, a guess about their life or a neighbourhood, a thing that
-  // isn't in their taste (or is on just one home), another name, a number,
-  // the wrong voice, shouting, no hedge.
-  expect(fails({ named: "{name} tends to like natural light, and she usually passes on the price." })).toBe(false);
-  expect(fails({ you: "You tend to like natural light and room for the kids." })).toBe(false);
-  expect(fails({ named: "{name} tends to like quiet streets and natural light." })).toBe(false);
-  expect(fails({ named: "{name} tends to like safe areas with good schools." })).toBe(false);
+  // Why some words about the natural light and the price fail ("ok" when
+  // they don't), said to them the same way unless given.
+  const toYou = (named: string) =>
+    named
+      .replace(/(^|\. )\{name\} (tends|usually|often)/g, (_, start, word) => `${start}You ${word === "tends" ? "tend" : word}`)
+      .replace(/passes on/g, "pass on");
+  const why = (named: string, you = toYou(named), loves = ["Natural light"], passes = ["Price"]) => {
+    const result = checkStory({ named, you, loves, passes }, story);
+    return result.ok ? "ok" : result.reason;
+  };
+  const says = (named: string, you?: string) => why(named, you) === "ok";
+  expect(why("{name} tends to like natural light, and usually passes on the price.")).toBe("ok");
+  expect(why("{name} tends to like homes with lots of natural light, and usually passes on the price.")).toBe("ok");
+  // Two sentences, each about them.
+  expect(why("{name} tends to like natural light. {name} usually passes on the price.")).toBe("ok");
+  // Someone else's name, wherever it is and whatever its case: their own
+  // comments can name other people, and the model reads those.
+  expect(why("{name} tends to like natural light and usually passes on the price. Jordan often likes natural light.")).toBe(
+    "named: word",
+  );
+  expect(why("{name} tends to like natural light, like jordan, and usually passes on the price.")).toBe("named: word");
+  expect(why("{name} tends to like natural light, and usually passes on the price. Bo often likes natural light.")).toBe(
+    "named: word",
+  );
+  expect(why("{name} tends to like natural light, like Sam, and usually passes on the price.")).toBe("named: name");
+  expect(says("{name} tends to like natural light, and usually passes on the price. Often in Seattle.")).toBe(true);
+  // A thing that isn't theirs, in the words even when the list leaves it out.
+  expect(why("{name} tends to like the wine cellar and natural light, and usually passes on the price.")).toBe("named: word");
+  // What the lists say it's about has to be what the words are about.
+  expect(fails({ loves: ["Natural light", "Kitchen"], named: "{name} tends to like natural light, and usually passes on the price." })).toBe(false);
+  // No pronoun, not even "they"; the placeholder only as the named subject.
+  expect(why("{name} tends to like natural light, and she usually passes on the price.")).toBe("named: pronoun");
+  expect(why("{name} tends to like natural light, and they usually pass on the price.")).toBe("named: pronoun");
+  expect(why("{name} tends to like natural light, as you do, and usually passes on the price.")).toBe("named: pronoun");
+  const plain = "{name} tends to like natural light, and usually passes on the price.";
+  expect(why(plain, "You tend to like natural light, as {name} does, and usually pass on the price.")).toBe("you: placeholder");
+  // A guess about their life or a neighbourhood, an absolute.
+  expect(why(plain, "You tend to like natural light and room for the kids, and usually pass on the price.")).toBe("you: denylist");
+  expect(why("{name} tends to like quiet streets and natural light, and usually passes on the price.")).toBe("named: denylist");
+  expect(why("{name} tends to like natural light near good schools, and usually passes on the price.")).toBe("named: denylist");
+  expect(why("{name} always picks natural light, and usually passes on the price.")).toBe("named: denylist");
+  // A number or a price.
+  expect(why("{name} tends to like natural light in homes around $900,000, and usually passes on the price.")).toBe(
+    "named: number",
+  );
+  expect(why("{name} tends to like natural light and 3 bedrooms, and usually passes on the price.")).toBe("named: number");
+  expect(why("{name} tends to like natural light and three bedrooms, and usually passes on the price.")).toBe("named: word");
+  // The wrong voice, shouting, too many sentences, no hedge.
+  expect(why("Maya tends to like natural light, and usually passes on the price.")).toBe("named: subject");
+  expect(why(plain, plain)).toBe("you: subject");
+  expect(why("{name} tends to like natural light, and usually passes on the price!")).toBe("named: sentences");
+  expect(why("{name} tends to like natural light. Really. Really.", "You tend to like natural light. Really. Really.", ["Natural light"], [])).toBe(
+    "named: sentences",
+  );
+  expect(why("{name} loves natural light.", "You love natural light.", ["Natural light"], [])).toBe("named: hedge");
+  // A thing that isn't in their taste, is on just one home, or is on the other side.
   expect(fails({ loves: ["Wine cellar"] })).toBe(false);
   expect(fails({ loves: ["Yard"] })).toBe(false);
   expect(fails({ loves: ["Bay window"] })).toBe(false);
-  expect(fails({ named: "{name} tends to like natural light, like Sam." })).toBe(false);
-  expect(fails({ named: "{name} tends to like homes around $900,000." })).toBe(false);
-  expect(fails({ named: "{name} tends to like 3 bedrooms." })).toBe(false);
-  expect(fails({ named: "Maya tends to like natural light." })).toBe(false);
-  expect(fails({ you: "{name} tends to like natural light." })).toBe(false);
-  expect(fails({ named: "{name} tends to like natural light!" })).toBe(false);
-  expect(fails({ named: "{name} loves natural light." })).toBe(false);
-  expect(fails({ named: "{name} always picks natural light." })).toBe(false);
-  expect(fails({ named: `{name} tends to like natural light. ${"Really. ".repeat(3)}` })).toBe(false);
   expect(fails({ passes: ["Natural light"] })).toBe(false);
   expect(checkStory({ named: "{name} tends to like light." }, story).ok).toBe(false);
   // Cities and decades of homes they like are fair to name.
-  expect(fails({ named: "{name} tends to like natural light, often in Seattle." })).toBe(true);
-  expect(fails({ named: "{name} tends to like natural light, often in Tacoma." })).toBe(true);
-  expect(fails({ named: "{name} tends to like natural light, often in Spokane." })).toBe(false);
+  const city = (place: string) => why(`{name} tends to like natural light, often in ${place}, and usually passes on the price.`);
+  expect(city("Seattle")).toBe("ok");
+  expect(city("Tacoma")).toBe("ok");
+  expect(city("Spokane")).toBe("named: name");
 
   // Nothing they've switched off, and nothing about passes once those are private.
   const quiet = storyOf(tasteRows(), { hidden: ["kitchen"], hidePasses: true }, NOW);

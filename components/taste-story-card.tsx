@@ -7,6 +7,9 @@ import { updatedLabel, voiceOf, type ShownStory, type TasteChip } from "@/lib/ta
 
 type Current = { key: string; side: TopicSide | null } | null;
 
+// Where the words on the card come from: the model or the template, and when.
+type Origin = Pick<ShownStory, "ai" | "at">;
+
 // Someone's taste in a few words: a headline from what they like, a sentence
 // or two (from a template, or written by AI and labelled so), and the things
 // they keep liking and passing on, each a way to see just those homes below.
@@ -16,12 +19,13 @@ export function TasteStoryCard({
   name,
   isMe,
   headline,
-  enough,
+  prompt,
   loves,
   passes,
   passesPrivate,
   shown,
   template = null,
+  updated,
   counts,
   current,
   chipHref,
@@ -30,7 +34,8 @@ export function TasteStoryCard({
   name: string;
   isMe: boolean;
   headline: string | null;
-  enough: boolean;
+  // On their own page, with nothing to say yet: how to get a description.
+  prompt: boolean;
   // Just what this viewer may see.
   loves: TasteChip[];
   passes: TasteChip[];
@@ -40,6 +45,8 @@ export function TasteStoryCard({
   // for browsers that won't run the script that swaps them in).
   shown: ShownStory | null | Promise<ShownStory | null>;
   template?: ShownStory | null;
+  // When what the headline is from last changed, for a card with no sentence.
+  updated: string | null;
   counts: { likes: number; passes: number; comments: number };
   current: Current;
   chipHref: (key: string, side: TopicSide) => string;
@@ -47,34 +54,10 @@ export function TasteStoryCard({
   controls?: ReactNode;
 }) {
   const title = isMe ? "Your taste" : `${name}'s taste`;
-  const waiting = shown instanceof Promise;
-  return (
-    <section aria-labelledby="taste-story-title" className="rounded-2xl bg-white p-4 ring-1 ring-stone-200">
-      <h2 id="taste-story-title" className="text-[13px] font-semibold text-stone-600">
-        {title}
-      </h2>
-      {headline && <p className="mt-1 text-balance break-words font-display text-[22px] leading-7 text-ink">{headline}</p>}
-      {waiting ? (
-        <Suspense
-          fallback={
-            <>
-              <SentenceSkeleton />
-              <noscript>
-                <Sentence shown={template} name={name} isMe={isMe} />
-              </noscript>
-            </>
-          }
-        >
-          <Later shown={shown}>{(story) => <Sentence shown={story} name={name} isMe={isMe} />}</Later>
-        </Suspense>
-      ) : (
-        <Sentence shown={shown} name={name} isMe={isMe} />
-      )}
-      {!enough && isMe && (
-        <p className="mt-1 text-[15px] leading-snug text-stone-700">
-          Like a few more homes and a short description of your taste will appear here.
-        </p>
-      )}
+  // With no sentence, the headline still says where it's from.
+  const plain: Origin | null = headline ? { ai: false, at: updated } : null;
+  const chips = (
+    <>
       <TasteRow side="like" chips={loves} current={current} href={chipHref} isMe={isMe} />
       <TasteRow side="pass" chips={passes} current={current} href={chipHref} isMe={isMe} />
       {passesPrivate && passes.length > 0 && (
@@ -83,24 +66,77 @@ export function TasteStoryCard({
           Only you see what you pass on
         </p>
       )}
-      {waiting ? (
+    </>
+  );
+  const source = (origin: Origin | null) => <Source origin={origin} name={name} isMe={isMe} counts={counts} />;
+  return (
+    <section aria-labelledby="taste-story-title" className="rounded-2xl bg-white p-4 ring-1 ring-stone-200">
+      <h2 id="taste-story-title" className="text-[13px] font-semibold text-stone-600">
+        {title}
+      </h2>
+      {headline && <Headline text={headline} />}
+      {prompt && (
+        <p className="mt-1 text-[15px] leading-snug text-stone-700">
+          Like a few more homes and a short description of your taste will appear here.
+        </p>
+      )}
+      {shown instanceof Promise ? (
+        // The words and the line saying who wrote them arrive together, so a
+        // sentence never shows under another's label, scripts or not.
         <Suspense
           fallback={
             <>
-              <SourceSkeleton />
+              <SentenceSkeleton />
               <noscript>
-                <Source shown={template} name={name} isMe={isMe} counts={counts} />
+                <Sentence shown={template} name={name} isMe={isMe} />
               </noscript>
+              {chips}
+              <SourceSkeleton />
+              <noscript>{source(template ?? plain)}</noscript>
             </>
           }
         >
-          <Later shown={shown}>{(story) => <Source shown={story} name={name} isMe={isMe} counts={counts} />}</Later>
+          <Later shown={shown}>
+            {(story) => (
+              <>
+                <Sentence shown={story} name={name} isMe={isMe} />
+                {chips}
+                {source(story ?? plain)}
+              </>
+            )}
+          </Later>
         </Suspense>
       ) : (
-        <Source shown={shown} name={name} isMe={isMe} counts={counts} />
+        <>
+          <Sentence shown={shown} name={name} isMe={isMe} />
+          {chips}
+          {source(shown ?? plain)}
+        </>
       )}
       {controls}
     </section>
+  );
+}
+
+// "Exterior · Bellevue · $689K–$1.9M · 2–4 beds". Parts wrap whole, so a
+// price range never splits, and the dot before whichever part starts a line
+// is tucked out of sight, so no line starts or ends on one. (Read aloud and
+// copied, the dots are plain text.)
+function Headline({ text }: { text: string }) {
+  return (
+    <p className="mt-1 overflow-hidden font-display text-[22px] leading-7 text-ink">
+      <span className="-ml-[0.8em] flex flex-wrap">
+        {text.split(" · ").map((part, i) => (
+          <span
+            key={i}
+            className="min-w-0 break-words before:inline-block before:w-[0.8em] before:text-center before:content-['·'_/_'']"
+          >
+            {i > 0 && <span className="sr-only"> · </span>}
+            {part}
+          </span>
+        ))}
+      </span>
+    </p>
   );
 }
 
@@ -125,32 +161,32 @@ function Sentence({ shown, name, isMe }: { shown: ShownStory | null; name: strin
 // Where the words came from: "Written by AI from Maya's 14 likes, 3 passes
 // and 9 comments · updated 2d", or "From your 14 likes and 3 passes · updated today".
 function Source({
-  shown: story,
+  origin,
   name,
   isMe,
   counts,
 }: {
-  shown: ShownStory | null;
+  origin: Origin | null;
   name: string;
   isMe: boolean;
   counts: { likes: number; passes: number; comments: number };
 }) {
-  if (!story) return null;
+  if (!origin) return null;
   const whose = isMe ? "your" : `${name}'s`;
   const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
   const parts = [
     counts.likes > 0 && n(counts.likes, "like", "likes"),
     counts.passes > 0 && n(counts.passes, "pass", "passes"),
-    story.ai && counts.comments > 0 && n(counts.comments, "comment", "comments"),
+    origin.ai && counts.comments > 0 && n(counts.comments, "comment", "comments"),
   ].filter((part): part is string => Boolean(part));
   const from =
     parts.length === 0 ? `${whose} page` : `${whose} ${parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`}`;
-  const when = story.at ? ` · updated ${updatedLabel(story.at)}` : "";
+  const when = origin.at ? ` · updated ${updatedLabel(origin.at)}` : "";
   return (
     <p className="mt-3 flex items-start gap-1.5 text-[13px] leading-snug text-stone-600">
-      {story.ai && <Sparkles aria-hidden size={14} className="mt-px shrink-0 text-brand" />}
+      {origin.ai && <Sparkles aria-hidden size={14} className="mt-px shrink-0 text-brand" />}
       <span>
-        {story.ai ? `Written by AI from ${from}` : `From ${from}`}
+        {origin.ai ? `Written by AI from ${from}` : `From ${from}`}
         {when}
       </span>
     </p>

@@ -53,11 +53,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!person) return { title: "Not found · BuyBox Social" };
   const visitor = await viewer();
   const story = await tasteOf(person, visitor?.id === person.id);
-  return {
-    title: `${person.name} · BuyBox Social`,
-    // The headline is from what everyone can see, whoever is looking.
-    description: story.headline ?? `What ${person.name} likes in homes, on BuyBox Social.`,
-  };
+  const title = `${person.name} · BuyBox Social`;
+  // The headline is from what everyone can see, whoever is looking, and it's
+  // what a shared link to the page says under its title.
+  const description = story.headline ?? `What ${person.name} likes in homes, on BuyBox Social.`;
+  return { title, description, openGraph: { title, description } };
 }
 
 // The words to show, from the database (never the model): the model's, if
@@ -120,14 +120,20 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   const nothingYet = summary.counts.homes === 0 && feed.cards.length === 0 && !before;
   const chipHref = (key: string, side: TopicSide) => href({ about: key, side });
   const current = about ? { key: about.toLowerCase(), side } : null;
-  // Everyone else sees only what they've kept on; they see it all, marked.
-  const loves = isMe ? story.loves : story.loves.filter((chip) => !chip.hidden);
-  const passChips = isMe ? story.passes : passes ? story.passes.filter((chip) => !chip.hidden) : [];
+  // Everyone else sees only what they've kept on; they see it all, marked,
+  // and counted from everything they've done (as their feed shows it).
+  const loves = isMe ? story.own.loves : story.loves.filter((chip) => !chip.hidden);
+  const passChips = isMe ? story.own.passes : passes ? story.passes.filter((chip) => !chip.hidden) : [];
   const showTaste =
     loves.length > 0 ||
     passChips.length > 0 ||
     Boolean(story.headline || story.template) ||
     (isMe && summary.counts.homes > 0);
+  // Their own card with nothing to say yet says how to get there.
+  const prompt =
+    isMe && (!story.enough || (!story.headline && !story.template && loves.length === 0 && passChips.length === 0));
+  // Anything to switch: a chip, or passes (kept private or not) even when no chip shows them.
+  const controllable = isMe && (loves.length > 0 || passChips.length > 0 || story.hasPasses || person.hidePasses);
   const filters = (Object.keys(PROFILE_FILTERS) as ProfileShow[]).filter((key) => key !== "passed" || passes);
 
   return (
@@ -136,8 +142,10 @@ export default async function ProfilePage({ params, searchParams }: Props) {
       // Whatever is focused in the feed scrolls clear of the filters stuck above it.
       style={{ "--filters": about ? "8rem" : "5rem" } as CSSProperties}
     >
-      {/* On short screens the column scrolls on its own, so nothing in it is out of reach. */}
-      <div className="flex flex-col gap-3 *:shrink-0 lg:sticky lg:top-2 lg:-m-1 lg:max-h-[calc(100dvh-1rem)] lg:overflow-y-auto lg:overscroll-contain lg:p-1">
+      {/* It stays put beside the feed only on screens tall enough to hold it (and then scrolls on
+          its own if it still runs long); on shorter ones it scrolls away with the page, so nothing
+          in it ever sits below the fold out of reach. */}
+      <div className="flex flex-col gap-3 *:shrink-0 lg:-m-1 lg:p-1 [@media(min-width:64rem)_and_(min-height:860px)]:sticky [@media(min-width:64rem)_and_(min-height:860px)]:top-2 [@media(min-width:64rem)_and_(min-height:860px)]:max-h-[calc(100dvh-1rem)] [@media(min-width:64rem)_and_(min-height:860px)]:overflow-y-auto [@media(min-width:64rem)_and_(min-height:860px)]:overscroll-contain">
         <ProfileHeader
           name={person.name}
           isMe={isMe}
@@ -152,12 +160,13 @@ export default async function ProfilePage({ params, searchParams }: Props) {
             name={person.name}
             isMe={isMe}
             headline={story.headline}
-            enough={story.enough}
+            prompt={prompt}
             loves={loves}
             passes={passChips}
             passesPrivate={isMe && person.hidePasses}
             shown={storyWriting() && story.template ? storyNow(person.id, story) : shownStory(null, story, false)}
             template={shownStory(null, story, false)}
+            updated={story.updated}
             counts={{
               likes: summary.counts.liked,
               passes: person.hidePasses ? 0 : summary.counts.passed,
@@ -166,8 +175,8 @@ export default async function ProfilePage({ params, searchParams }: Props) {
             current={current}
             chipHref={chipHref}
             controls={
-              isMe && (story.loves.length > 0 || story.passes.length > 0) ? (
-                <TasteControls loves={story.loves} passes={story.passes} hidePasses={person.hidePasses} />
+              controllable ? (
+                <TasteControls loves={story.own.loves} passes={story.own.passes} hidePasses={person.hidePasses} />
               ) : undefined
             }
           />
