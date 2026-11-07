@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { after } from "next/server";
 import { cache, type CSSProperties, type ReactNode } from "react";
+import { Toast } from "@/app/people/[id]/client";
 import { ProfileFeed } from "@/components/profile-feed";
 import { ProfileHeader } from "@/components/profile-header";
 import { TasteControls } from "@/components/taste-controls";
@@ -272,6 +273,8 @@ export default async function ProfilePage({ params, searchParams }: Props) {
           </>
         )}
       </div>
+      {/* What you just did on your page, said in a word: "Link copied", "Like removed". */}
+      {isMe && <Toast />}
     </main>
   );
 }

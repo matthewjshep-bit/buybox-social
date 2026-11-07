@@ -2,7 +2,7 @@
 // without scripts, and nothing from an agent's link, ever. The homes here are
 // ones no later spec counts likes on.
 import { readFileSync } from "node:fs";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 import type { Listing } from "../lib/listings/types";
 import {
   buildCards,
@@ -32,6 +32,7 @@ import {
   type TasteStory,
 } from "../lib/taste-story";
 import {
+  commentIn,
   createShare,
   heartOf,
   homeIn,
@@ -825,6 +826,180 @@ test("the taste story is written from the data, and what someone switches off st
   await expect(theirs.getByRole("group", { name: "Passes on" })).toHaveCount(0);
   await expect(theirs).not.toContainText(/tends to like|usually|From Nadia|Like a few more/);
   expect(pageErrors).toEqual([]);
+});
+
+// Your own page lets you take back what you did there: your like, what you
+// liked in a photo, a comment (unless someone else has answered it). Only
+// yours, and only there: nobody else gets the menu, and the server refuses a
+// comment that isn't yours, however it's asked. Everything made here is gone
+// again by the end.
+test("on your own page you can take back a like or a comment, and nobody else can", async ({ browser }) => {
+  test.setTimeout(180_000);
+  const FIRST = "Wildflowers right up to the door.";
+  const SECOND = "Is the meadow part of the lot?";
+  const ANSWER = "It is, all the way to the fence.";
+  const pia = await signUpBuyer(browser, "pia@example.com", "Pia Moreno");
+  const pageErrors: string[] = [];
+  pia.on("pageerror", (error) => pageErrors.push(error.message));
+
+  await pia.goto("/homes/SAMPLE-1010");
+  const heron = homeIn(pia, HERON);
+  await heartOf(heron).click();
+  await expect(heartOf(heron)).toHaveAttribute("aria-pressed", "true");
+  const siding = await likeInPhoto(heron, "the red siding");
+  await siding.getByRole("button", { name: "Close" }).click();
+  const thread = await openComments(pia, heron);
+  for (const words of [FIRST, SECOND]) {
+    // Once the last one has gone and the box is empty again.
+    await expect(thread.getByLabel("Add a comment")).toHaveValue("");
+    await thread.getByLabel("Add a comment").fill(words);
+    await thread.getByRole("button", { name: "Post", exact: true }).click();
+    await expect(thread.getByText(words)).toBeVisible();
+  }
+
+  // Saved, not just shown.
+  const card = (sentence: string) => pia.getByRole("link", { name: `${HERON}: ${sentence}`, exact: true });
+  await expect(async () => {
+    await pia.goto("/people/me");
+    await expect(card("liked the red siding")).toBeVisible({ timeout: 1000 });
+    await expect(pia.locator("main")).toContainText(SECOND, { timeout: 1000 });
+  }).toPass({ timeout: 20_000 });
+  const profileUrl = pia.url();
+
+  // "Share my page": the phone's share sheet where there is one; else the
+  // link is copied, and a toast says so.
+  await pia.evaluate(() => {
+    const w = window as unknown as { shared: unknown[]; copied: string[] };
+    w.shared = [];
+    w.copied = [];
+    Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (text: string) => void w.copied.push(text) },
+    });
+  });
+  await pia.getByRole("button", { name: "Share my page" }).click();
+  await expect(pia.getByRole("status").filter({ hasText: "Link copied" })).toBeVisible();
+  expect(await pia.evaluate(() => (window as unknown as { copied: string[] }).copied)).toEqual([profileUrl]);
+  await pia.evaluate(() => {
+    const w = window as unknown as { shared: unknown[] };
+    Object.defineProperty(navigator, "share", { configurable: true, value: async (data: unknown) => void w.shared.push(data) });
+  });
+  await pia.getByRole("button", { name: "Share my page" }).click();
+  await expect
+    .poll(() => pia.evaluate(() => (window as unknown as { shared: unknown[] }).shared))
+    .toEqual([{ title: "Pia on BuyBox Social", url: profileUrl }]);
+
+  // Everything on the card she can take back, by name.
+  const options = pia.getByRole("button", { name: `Options for ${HERON}` });
+  const sheet = pia.getByRole("dialog", { name: `Options for ${HERON}` });
+  const row = (name: string) => sheet.getByRole("button", { name, exact: true });
+  const deleteOf = (words: string) => row("Delete my comment").filter({ hasText: words });
+  await options.click();
+  await expect(sheet.getByRole("list").getByRole("button")).toHaveCount(4);
+  for (const name of ["Remove my like", "Remove my like of the red siding"]) await expect(row(name)).toBeVisible();
+  await expect(deleteOf(FIRST)).toHaveAccessibleDescription(`“${FIRST}”`);
+  await expect(deleteOf(SECOND)).toBeVisible();
+
+  // What deleting a comment sends names the comment; this once, it's kept
+  // back from the server, to send again below as someone it isn't theirs to delete.
+  const isAction = (route: Route) => route.request().method() === "POST" && Boolean(route.request().headers()["next-action"]);
+  let first = "";
+  await pia.route("**/people/**", (route) => {
+    if (!isAction(route)) return route.continue();
+    first = route.request().postData() ?? "";
+    return route.abort();
+  });
+  await deleteOf(FIRST).click();
+  await expect(sheet.getByText("Delete your comment?")).toBeVisible();
+  await sheet.getByRole("button", { name: "Delete comment" }).click();
+  await expect(sheet.getByRole("alert")).toHaveText("Couldn't do that. Try again.");
+  expect(first).toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
+  await pia.unroute("**/people/**");
+  await pia.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+
+  // Someone answers the first.
+  const quinn = await signUpBuyer(browser, "quinn@example.com", "Quinn Ash");
+  await quinn.goto("/homes/SAMPLE-1010");
+  const chat = await openComments(quinn, homeIn(quinn, HERON));
+  await commentIn(chat, "Pia", FIRST).getByRole("button", { name: "Reply to Pia" }).click();
+  await chat.getByLabel("Reply to Pia").fill(ANSWER);
+  await chat.getByRole("button", { name: "Post", exact: true }).first().click();
+  await expect(chat.getByRole("list", { name: "Replies to Pia" }).getByText(ANSWER)).toBeVisible();
+
+  // Now it can't go from her page, and the server says the same when asked directly.
+  await pia.reload();
+  await options.click();
+  await expect(deleteOf(FIRST)).toHaveAttribute("aria-disabled", "true");
+  await expect(deleteOf(FIRST)).toHaveAccessibleDescription(/Comments with replies can't be deleted here/);
+  await expect(deleteOf(SECOND)).not.toHaveAttribute("aria-disabled");
+  await pia.route("**/people/**", (route) => (isAction(route) ? route.continue({ postData: first }) : route.continue()));
+  await deleteOf(SECOND).click();
+  await sheet.getByRole("button", { name: "Delete comment" }).click();
+  await expect(sheet.getByRole("alert")).toHaveText("Comments with replies can't be deleted here.");
+  await pia.unroute("**/people/**");
+  await pia.keyboard.press("Escape");
+
+  // Quinn, sending her comment as his own to delete, is refused.
+  await quinn.goto("/people/me");
+  await quinn.waitForURL(/\/people\/[0-9a-f-]{36}$/);
+  await quinn.route("**/people/**", (route) => (isAction(route) ? route.continue({ postData: first }) : route.continue()));
+  await quinn.getByRole("button", { name: `Options for ${HERON}` }).click();
+  const quinnSheet = quinn.getByRole("dialog", { name: `Options for ${HERON}` });
+  await quinnSheet.getByRole("button", { name: "Delete my comment", exact: true }).click();
+  await quinnSheet.getByRole("button", { name: "Delete comment" }).click();
+  await expect(quinnSheet.getByRole("alert")).toHaveText("That comment isn't there anymore.");
+  await quinn.unroute("**/people/**");
+
+  // Anyone else: both comments still there, and no menu, not even in the HTML.
+  for (const anon of [
+    await (await browser.newContext()).newPage(),
+    await (await browser.newContext({ javaScriptEnabled: false })).newPage(),
+  ]) {
+    await anon.goto(profileUrl);
+    await expect(anon.getByRole("heading", { level: 1 })).toHaveText("Pia");
+    await expect(anon.locator("main")).toContainText(FIRST);
+    await expect(anon.locator("main")).toContainText(SECOND);
+    await expect(anon.getByRole("button", { name: /^Options for/ })).toHaveCount(0);
+    const html = await (await anon.request.get(profileUrl)).text();
+    for (const secret of ["Options for", "Remove my like", "Delete my comment"]) expect(html).not.toContain(secret);
+  }
+
+  // Quinn takes his answer back for real.
+  await quinnSheet.getByRole("button", { name: "Delete comment" }).click();
+  await expect(quinn.getByRole("status").filter({ hasText: "Comment deleted" })).toBeVisible();
+  await expect(quinn.getByText("Your page fills up as you go")).toBeVisible();
+
+  // Pia takes back one thing at a time; the card keeps up, and focus stays on its menu.
+  await pia.reload();
+  await options.click();
+  await row("Remove my like of the red siding").click();
+  await expect(pia.getByRole("status").filter({ hasText: "Like removed" })).toBeVisible();
+  await expect(sheet).toBeHidden();
+  await expect(card("liked this")).toBeVisible();
+  await expect(options).toBeFocused();
+  await options.click();
+  await row("Remove my like").click();
+  await expect(card("commented on this home")).toBeVisible();
+  await expect(pia.locator("main")).toContainText("0 liked · 0 passed · 2 comments");
+  for (const words of [FIRST, SECOND]) {
+    await options.click();
+    await expect(deleteOf(words)).not.toHaveAttribute("aria-disabled");
+    await deleteOf(words).click();
+    await sheet.getByRole("button", { name: "Delete comment" }).click();
+    await expect(pia.locator("main")).not.toContainText(words);
+  }
+  await expect(pia.getByRole("status").filter({ hasText: "Comment deleted" })).toBeVisible();
+  // With the last of it gone, the card goes, and focus moves on rather than off the page.
+  await expect(pia.getByText("Your page fills up as you go")).toBeVisible();
+  await expect(pia.getByRole("link", { name: "See homes" })).toBeFocused();
+  expect(pageErrors).toEqual([]);
+
+  // And off the home, for everyone.
+  await pia.goto("/homes/SAMPLE-1010");
+  const after = await openComments(pia, homeIn(pia, HERON));
+  for (const words of [FIRST, SECOND, ANSWER]) await expect(after.getByText(words)).toHaveCount(0);
 });
 
 // A small taste, without a server: enough rows to check the rules exactly.

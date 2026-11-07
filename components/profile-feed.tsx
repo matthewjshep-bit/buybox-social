@@ -2,7 +2,7 @@ import { Heart, Lock, MapPin, MessageCircle, Tag, ThumbsDown } from "lucide-reac
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { MoreText } from "@/app/people/[id]/client";
+import { CardMenu, MoreText } from "@/app/people/[id]/client";
 import { cn, formatPrice } from "@/lib/format";
 import { cardTime, dayHeading, type PinKind, type ProfileCard } from "@/lib/profile";
 
@@ -71,11 +71,12 @@ function Card({ card, name, isMe }: { card: ProfileCard; name: string; isMe: boo
       <Link
         href={href}
         aria-label={`${home.address}: ${card.sentence}`}
+        data-card-link={card.id}
         className="absolute inset-0 z-10 scroll-mt-[var(--filters)] rounded-2xl focus-visible:outline-offset-[-3px]!"
       />
       <div className="flex items-start gap-3 p-4 pb-3">
         <Avatar name={name} />
-        <p className="min-w-0 pt-1 text-[15px] leading-snug text-ink">
+        <p className="min-w-0 flex-1 pt-1 text-[15px] leading-snug text-ink">
           <strong className="font-semibold">{isMe ? "You" : name}</strong> {card.sentence}
           {" "}
           <span className="whitespace-nowrap text-[13px] text-stone-600">
@@ -83,6 +84,10 @@ function Card({ card, name, isMe }: { card: ProfileCard; name: string; isMe: boo
             <time dateTime={card.at}>{cardTime(card.at)}</time>
           </span>
         </p>
+        {/* Only on your own page: what you can take back from this card. */}
+        {isMe && card.controls.length > 0 && (
+          <CardMenu cardId={card.id} address={home.address} homeKey={home.key} controls={card.controls} />
+        )}
       </div>
 
       {photo && !quiet && <CardPhoto card={card} name={name} />}

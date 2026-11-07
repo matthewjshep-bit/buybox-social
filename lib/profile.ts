@@ -43,6 +43,14 @@ export type ProfileComment = {
   replies: number;
 };
 
+// What you can take back from a card, on your own page: your like or pass on
+// the home, your likes and dislikes of what's in it (one per name: "the front
+// door"), and your comments, which can't go once someone else has replied.
+export type CardControl =
+  | { kind: "reaction"; sentiment: Sentiment }
+  | { kind: "spots"; sentiment: Sentiment; name: string; spots: { mediaKey: string; tag: string }[] }
+  | { kind: "comment"; id: string; body: string; answered: boolean; replies: number };
+
 export type ProfileCard = {
   id: string;
   // The calendar day it all happened on, in PROFILE_TIME_ZONE: "2026-11-06".
@@ -75,6 +83,9 @@ export type ProfileCard = {
   likedComments: { author: string; body: string }[];
   // A day when all they did was like others' comments.
   quiet: boolean;
+  // What they can take back from it, on their own page: the like or pass,
+  // what's in it (newest first), then their comments as the card shows them.
+  controls: CardControl[];
   // In step with the counts at the top: a liked home's likes, a passed home's passes.
   liked: boolean;
   passed: boolean;
@@ -102,7 +113,7 @@ const utcDay = (day: string) => {
 };
 
 // How many days, and calendar months, a day is before today.
-const daysBefore = (day: string, now: Date | number) =>
+export const daysBefore = (day: string, now: Date | number) =>
   Math.round((+utcDay(dayOf(new Date(now))) - +utcDay(day)) / 86_400_000);
 const monthsBefore = (day: string, now: Date | number) => {
   const today = utcDay(dayOf(new Date(now)));
@@ -191,6 +202,8 @@ export type CommentRow = {
   reply_to_name: string | null;
   likes: number;
   replies: number;
+  // Replies from anyone else (unknown: treated as all of them).
+  others_replies?: number;
 };
 type CommentLikeRow = { listing_key: string; author: string; body: string; at: Date };
 
@@ -248,7 +261,9 @@ const loadRows = cache(async (visitorId: string, before: string | null, mine: bo
         coalesce(c.media_key, p.media_key) as media_key, coalesce(c.spot, p.spot) as spot,
         pv.id as reply_to_id, pv.first_name as reply_to_name,
         (select count(*)::int from public_comment_likes cl where cl.comment_id = c.id) as likes,
-        (select count(*)::int from public_comments r where r.parent_id = c.id) as replies
+        (select count(*)::int from public_comments r where r.parent_id = c.id) as replies,
+        (select count(*)::int from public_comments r
+          where r.parent_id = c.id and r.visitor_id <> c.visitor_id) as others_replies
       from public_comments c
       left join public_comments p on p.id = c.parent_id
       left join visitors pv on pv.id = p.visitor_id and pv.id <> c.visitor_id
@@ -432,6 +447,17 @@ function sentenceOf(listing: Listing, reaction: ReactionRow | null, likes: SpotR
   return describeReaction({ reaction: reaction?.reaction ?? null, liked: [], disliked: [] }, side(liked), side(disliked));
 }
 
+// One way to take back each thing they liked (or didn't) on a card, by how
+// it reads: two spots on the front door are one "the front door". Newest first.
+function spotControls(listing: Listing, sentiment: Sentiment, rows: SpotRow[]): CardControl[] {
+  const byName = new Map<string, { mediaKey: string; tag: string }[]>();
+  for (const row of [...rows].sort((a, b) => +b.at - +a.at)) {
+    const name = spotName(listing, { mediaKey: row.media_key, tag: row.tag });
+    byName.set(name, [...(byName.get(name) ?? []), { mediaKey: row.media_key, tag: row.tag }]);
+  }
+  return [...byName].map(([name, spots]) => ({ kind: "spots", sentiment, name, spots }));
+}
+
 // One card per home per day, newest first, from rows as `loadRows` gives them.
 export function buildCards(rows: ProfileRows): ProfileCard[] {
   type Bucket = {
@@ -598,6 +624,18 @@ export function buildCards(rows: ProfileRows): ProfileCard[] {
         })),
         likedComments: oldestFirst(b.commentLikes).map((like) => ({ author: like.author, body: like.body })),
         quiet: !b.reaction && !likes.length && !dislikes.length && !comments.length,
+        controls: [
+          ...(b.reaction?.reaction ? [{ kind: "reaction" as const, sentiment: b.reaction.reaction }] : []),
+          ...spotControls(listing, "like", likes),
+          ...spotControls(listing, "dislike", dislikes),
+          ...comments.map((c) => ({
+            kind: "comment" as const,
+            id: c.id,
+            body: c.body,
+            answered: (c.others_replies ?? c.replies) > 0,
+            replies: c.replies,
+          })),
+        ],
         liked: state.reaction === "like" || (likes.length > 0 && standing !== "dislike"),
         passed: state.reaction === "dislike" || (dislikes.length > 0 && standing === "dislike"),
         commented: comments.length > 0,
