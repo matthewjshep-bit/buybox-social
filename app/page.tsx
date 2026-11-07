@@ -1,7 +1,9 @@
 import { connection } from "next/server";
+import type { ComponentProps } from "react";
 import { FeedEnd } from "@/components/feed-end";
 import { JoinGate, JoinIntro } from "@/components/join";
 import { PUBLIC_PROMPT, publicReelActions } from "@/components/listing-detail";
+import { QuickSendReel } from "@/components/quick-send";
 import { ReelFeed } from "@/components/reel";
 import { SiteHeader } from "@/components/site-header";
 import { devLoginEnabled, getCurrentUser } from "@/lib/auth";
@@ -44,17 +46,20 @@ export default async function Home() {
     );
   }
 
-  return (
-    <ReelFeed
-      key="member"
-      initial={posts}
-      mode="public"
-      infinite
-      actions={publicReelActions}
-      myName={name}
-      prompt={PUBLIC_PROMPT}
-      header={<SiteHeader overlay />}
-      end={<FeedEnd taste={taste} account={user} />}
-    />
+  const feed: ComponentProps<typeof ReelFeed> = {
+    initial: posts,
+    mode: "public",
+    infinite: true,
+    actions: publicReelActions,
+    myName: name,
+    prompt: PUBLIC_PROMPT,
+    header: <SiteHeader overlay />,
+    end: <FeedEnd taste={taste} account={user} />,
+  };
+  // An agent's share button sends the home to a client.
+  return user.role === "agent" ? (
+    <QuickSendReel key="member" {...feed} profileComplete={Boolean(user.full_name)} />
+  ) : (
+    <ReelFeed key="member" {...feed} />
   );
 }

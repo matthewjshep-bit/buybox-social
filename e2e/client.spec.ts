@@ -99,7 +99,16 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
   await joe.reload();
   await expect(homeIn(joe, "812 N Corbel St")).toBeVisible();
 
-  // The dashboard lists the client by name.
+  // The dashboard lists the client by name, with how they came down on each home.
   await agent.goto("/dashboard");
-  await expect(agent.getByRole("link", { name: /Joe/ })).toBeVisible();
+  const row = agent.getByRole("region", { name: "Links you've sent" }).getByRole("link", { name: /Joe/ });
+  await expect(row).toBeVisible();
+  await expect(row.getByRole("listitem").filter({ hasText: "10421 Halvard Way NE" })).toContainText("1 liked");
+  await expect(row.getByRole("listitem").filter({ hasText: "1204 Quillan St SE" })).toContainText("1 passed");
+  await expect(row.getByRole("listitem").filter({ hasText: "812 N Corbel St" })).toContainText("No reactions yet");
+  // ...and what Joe said leads the page, never the public's.
+  const news = agent.getByRole("region", { name: "What's new" });
+  await expect(news.getByRole("link", { name: /^Joe commented: “Not a fan of farmhouse sinks\.”/ })).toBeVisible();
+  await expect(news).not.toContainText("Stella");
+  await expect(news).not.toContainText("that staircase!");
 });

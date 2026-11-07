@@ -20,8 +20,10 @@ test("one package, a link for each person: they react, the agent compares and re
   await expect(jamie.getByRole("heading", { level: 1 })).toHaveText(
     "Jamie, I picked these 2 homes for you",
   );
-  await expect(jamie.getByText("Alex Rivera", { exact: true })).toBeVisible();
-  await expect(jamie.getByText("Harbor & Pine Realty")).toBeVisible();
+  // The agent is named on the welcome screen (and in the header over every screen).
+  const welcome = jamie.getByRole("region", { name: "Welcome" });
+  await expect(welcome.getByText("Alex Rivera", { exact: true })).toBeVisible();
+  await expect(welcome.getByText("Harbor & Pine Realty")).toBeVisible();
   await expect(jamie.getByText(/Sample listings, fictional and not for sale/)).toBeVisible();
 
   const house = homeIn(jamie, "4127 Larkmoor Ave NE");
@@ -94,7 +96,8 @@ test("one package, a link for each person: they react, the agent compares and re
   thread = await openComments(jamie, house);
   await expect(thread.getByText("We can measure it at the showing.")).toBeVisible();
 
-  // The agent can remove a comment.
+  // The agent can remove a comment, from its "…" menu, asked once more.
+  await panel.getByRole("button", { name: "More for Sam's comment" }).click();
   await panel.getByRole("button", { name: "Remove comment from Sam" }).click();
   await expect(panel.getByText("The kitchen feels small.")).toHaveCount(0);
   await jamie.reload();
@@ -114,8 +117,11 @@ test("one package, a link for each person: they react, the agent compares and re
   const compare = agent.getByRole("region", { name: "What they each want" });
   await expect(compare).toContainText("Both like: Kitchen");
   await expect(compare).toContainText("Only Jamie: Marble counters");
-  await expect(compare.getByRole("row", { name: /4127 Larkmoor/ })).toContainText("Liked: kitchen, marble counters");
-  await expect(compare.getByRole("row", { name: /4127 Larkmoor/ })).toContainText("Passed");
+  // Home by home, on a phone a card each, with a line per person, one tap away.
+  await compare.locator("summary").filter({ hasText: "Home by home" }).click();
+  const larkmoor = compare.getByRole("listitem").filter({ hasText: "4127 Larkmoor Ave NE" });
+  await expect(larkmoor.getByRole("listitem").filter({ hasText: "Jamie" })).toContainText("liked Kitchen · Marble counters");
+  await expect(larkmoor.getByRole("listitem").filter({ hasText: "Sam" })).toContainText("Passed but liked Kitchen");
   // ...and homes they might both like, one tap from their links.
   const suggested = agent.getByRole("region", { name: "Homes they might both like" });
   await expect(suggested).toContainText("812 N Corbel St");
@@ -141,10 +147,13 @@ test("one package, a link for each person: they react, the agent compares and re
   // Includes hydration mismatches, which only show up as page errors.
   expect(pageErrors).toEqual([]);
 
-  // The agent got one email, not one per event.
+  // The agent got one email that the link was opened and one about the first
+  // thing done on it, not one per event.
   const log = readFileSync("test-results-server.log", "utf8");
   const emails = log.split("\n").filter((line) => line.includes("[email] to=alex@example.com"));
-  expect(emails).toHaveLength(1);
+  expect(emails).toHaveLength(2);
+  expect(emails.filter((email) => email.includes("Jamie opened your link to 2 homes"))).toHaveLength(1);
+  expect(emails.filter((email) => email.includes("Jamie liked this at 4127 Larkmoor Ave NE"))).toHaveLength(1);
 });
 
 test("link preview tags and image are in place", async ({ browser, request }) => {
@@ -153,8 +162,17 @@ test("link preview tags and image are in place", async ({ browser, request }) =>
   const html = await (await request.get(url)).text();
   const image = html.match(/property="og:image" content="([^"]+)"/)?.[1];
   expect(html).toContain("Priya Shah picked 812 N Corbel St for you");
+  // One home: what it is and where, then the agent's ask.
+  const description = "4 bd · 3 ba · 2,650 sq ft · Tacoma. Take a look and tell me what you think.";
+  expect(html).toContain(`<meta name="description" content="${description}"/>`);
+  expect(html).toContain(`<meta property="og:description" content="${description}"/>`);
   expect(html).toMatch(/name="robots" content="noindex/);
   expect(image).toBeTruthy();
+  // [P] Previews show on lock screens and in group chats: never who it's for,
+  // the note, or anything said.
+  const previewTags = (page: string) => (page.match(/<title>[^<]*<\/title>|<meta [^>]*>/g) ?? []).join("\n");
+  expect(previewTags(html)).not.toContain("Jamie");
+  expect(previewTags(html)).not.toContain("yard you mentioned");
 
   const res = await request.get(image!);
   expect(res.status()).toBe(200);
@@ -164,6 +182,16 @@ test("link preview tags and image are in place", async ({ browser, request }) =>
   const headers = (await request.get(url)).headers();
   expect(headers["x-robots-tag"]).toContain("noindex");
   expect(headers["referrer-policy"]).toBe("no-referrer");
+
+  // A home's own page has a picture of its own: the home, with no agent or people.
+  const homeHtml = await (await request.get("/homes/SAMPLE-1004")).text();
+  expect(homeHtml).toContain("$839,000 · 3 bd · 2 ba · 2,120 sq ft. See what people think.");
+  const homeImage = homeHtml.match(/property="og:image" content="([^"]+)"/)?.[1];
+  expect(homeImage).toContain("/homes/SAMPLE-1004/opengraph-image");
+  const homeRes = await request.get(homeImage!);
+  expect(homeRes.status()).toBe(200);
+  expect(homeRes.headers()["content-type"]).toContain("image/png");
+  expect((await homeRes.body()).length).toBeGreaterThan(50_000);
 });
 
 test("isolation: tokens, agents and signed-out visitors stay in their lane", async ({ browser, request }) => {

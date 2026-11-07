@@ -1,8 +1,12 @@
 import { requireAgent } from "@/lib/auth";
+import { sql } from "@/lib/db";
 import { ProfileForm } from "./form";
 
 export default async function ProfilePage() {
   const agent = await requireAgent();
+  // How clients reach them, and the phone they signed up with as a suggestion.
+  const [contact] = await sql<{ phone: string; contact_phone: string; contact_email: string }[]>`
+    select phone, contact_phone, contact_email from accounts where id = ${agent.id}`;
   return (
     <>
       <h1 className="font-display text-3xl">Your brand</h1>
@@ -12,6 +16,9 @@ export default async function ProfilePage() {
         brokerage={agent.brokerage}
         brandColor={agent.brand_color}
         photo={agent.photo_data_url}
+        contactPhone={contact?.contact_phone ?? ""}
+        contactEmail={contact?.contact_email ?? ""}
+        suggestedPhone={contact?.phone ?? ""}
       />
     </>
   );

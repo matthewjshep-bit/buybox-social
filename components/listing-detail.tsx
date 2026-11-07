@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import type { ComponentProps } from "react";
 import {
   commentInReel,
   joinPublic,
@@ -7,6 +8,7 @@ import {
   reactInStream,
 } from "@/app/homes/actions";
 import { FeedEnd } from "@/components/feed-end";
+import { QuickSendReel } from "@/components/quick-send";
 import { ReelFeed } from "@/components/reel";
 import { SiteHeader } from "@/components/site-header";
 import { getCurrentUser } from "@/lib/auth";
@@ -40,17 +42,21 @@ export async function ListingDetail({ listingKey, embedded = false }: { listingK
   if (!home) notFound();
   const rest = embedded ? [] : await getReel(viewer, device, taste, { exclude: [listingKey] });
 
-  return (
-    <ReelFeed
-      initial={[home, ...rest]}
-      mode="public"
-      infinite={!embedded}
-      embedded={embedded}
-      actions={publicReelActions}
-      myName={name}
-      prompt={PUBLIC_PROMPT}
-      header={embedded ? undefined : <SiteHeader overlay />}
-      end={embedded ? undefined : <FeedEnd taste={taste} account={viewer} />}
-    />
+  const feed: ComponentProps<typeof ReelFeed> = {
+    initial: [home, ...rest],
+    mode: "public",
+    infinite: !embedded,
+    embedded,
+    actions: publicReelActions,
+    myName: name,
+    prompt: PUBLIC_PROMPT,
+    header: embedded ? undefined : <SiteHeader overlay />,
+    end: embedded ? undefined : <FeedEnd taste={taste} account={viewer} />,
+  };
+  // An agent's share button sends the home to a client.
+  return viewer?.role === "agent" ? (
+    <QuickSendReel {...feed} profileComplete={Boolean(viewer.full_name)} />
+  ) : (
+    <ReelFeed {...feed} />
   );
 }
