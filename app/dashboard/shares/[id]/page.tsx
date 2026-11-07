@@ -6,10 +6,12 @@ import { z } from "zod";
 import { LiveRefresh } from "@/components/live-refresh";
 import { requireAgent } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { headlineFromTimeline, type FeedPost } from "@/lib/feed";
 import { appUrl, cn, formatPrice, timeAgo } from "@/lib/format";
-import { aspectOfTag, FACTS, mediaKeyOf, photoTags, tagPosition, thingOf } from "@/lib/photos";
+import { aspectOfTag, FACTS, mediaKeyOf, NO_PHOTO_LIKES, photoTags, tagPosition, thingOf } from "@/lib/photos";
 import { aspectLabel, NO_REACTION, type Aspect, type ReactionState } from "@/lib/reactions";
 import { comparePeople, suggestHomes, type Suggestion } from "@/lib/compare";
+import { getSharePhotoLikes, getShareTimelines, type TimelineReaction } from "@/lib/timeline";
 import {
   clientActivity,
   describeTake,
@@ -28,9 +30,12 @@ import { Opened } from "../../opened";
 import {
   AddPersonForm,
   ClientNameEditor,
+  CommentLike,
   CommentMenu,
+  HomeScorecards,
   MarkSeen,
   ReplyForm,
+  ScorecardButton,
   SendLink,
   ShowTarget,
   SpotChip,
@@ -78,129 +83,173 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
   const packageOpens = opens.filter((open) => !invitees.some((person) => person.id === open.participantId));
   const everyone = people.map((p) => ({ id: p.id, name: p.first_name }));
   const comparison = comparePeople(everyone, thread, listings);
-  const { suggestions, together } = await suggestHomes(everyone, thread, listings);
+  const [{ suggestions, together }, timelines, photoLikes] = await Promise.all([
+    suggestHomes(everyone, thread, listings),
+    // Each home's Scorecard: the link's own conversation, as its people see it.
+    getShareTimelines(share.id, listings, null),
+    getSharePhotoLikes(share.id, listings.map((listing) => listing.ListingKey), null),
+  ]);
+  // The clients' comments the agent has hearted, as their thread shows them.
+  const liked = new Set(
+    [...timelines.values()].flat().flatMap((item) => (item.kind === "comment" && item.likedBy ? [item.id] : [])),
+  );
   const oneHome = active.length === 1 ? { address: active[0].UnparsedAddress, price: active[0].ListPrice } : undefined;
   // Every photo on their link, for "saw 3 of 4 photos".
   const photos = active.reduce((sum, listing) => sum + listing.Media.length, 0);
+  // Each home as its Scorecard needs it, from this link alone: never anything
+  // public, and nobody from any other link.
+  const posts = listings.map(({ removedAt, ...listing }): FeedPost => {
+    const timeline = timelines.get(listing.ListingKey) ?? [];
+    const likes = timeline.filter(
+      (item): item is TimelineReaction =>
+        item.kind === "reaction" && (item.state.reaction === "like" || item.photos.length > 0),
+    );
+    return {
+      listing,
+      headline: headlineFromTimeline(timeline),
+      likes: likes.length,
+      likers: likes.map((item) => item.name),
+      dislikes: 0,
+      aspects: { liked: {}, disliked: {} },
+      publicComments: 0,
+      privateComments: 0,
+      timeline,
+      photoLikes: photoLikes.get(listing.ListingKey) ?? NO_PHOTO_LIKES,
+      mine: NO_REACTION,
+      buzz: { sends: 0, views: 0, lastActivityAt: null, trending: false },
+      reasons: [],
+      // The note is the caption of a link with one home, as the client sees it.
+      ...(active.length === 1 && !removedAt && share.note && { note: share.note }),
+      members: people.map((person) => person.first_name),
+    };
+  });
 
   return (
-    <div data-wide>
-      <LiveRefresh />
-      <MarkSeen shareId={share.id} latest={latest} />
-      <ShowTarget />
-      <Link href="/dashboard" className="flex min-h-11 w-fit items-center gap-1.5 text-sm font-medium">
-        <ArrowLeft aria-hidden size={16} /> All links
-      </Link>
-      <ClientNameEditor shareId={share.id} name={share.client_name} />
+    <HomeScorecards
+      posts={posts}
+      offLink={removed.map((listing) => listing.ListingKey)}
+      agentName={agent.full_name || "Your agent"}
+    >
+      {/* Two columns when there's room for them: on a wide screen, and still
+          beside the Scorecard's panel on a very wide one. */}
+      <div data-wide className="@container">
+        <LiveRefresh />
+        <MarkSeen shareId={share.id} latest={latest} />
+        <ShowTarget />
+        <Link href="/dashboard" className="flex min-h-11 w-fit items-center gap-1.5 text-sm font-medium">
+          <ArrowLeft aria-hidden size={16} /> All links
+        </Link>
+        <ClientNameEditor shareId={share.id} name={share.client_name} />
 
-      <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-8">
-        <div>
-          <section aria-labelledby="links-title" className="mt-4">
-            <h2 id="links-title" className="sr-only">
-              Their links
-            </h2>
-            <div className="flex flex-col gap-3">
-              {invitees.length > 0 ? (
-                <>
-                  {invitees.map((person) => (
-                    <SendLink
-                      key={person.id}
-                      url={`${appUrl()}/s/${person.token}`}
-                      clientName={person.first_name}
-                      count={active.length}
-                      home={oneHome}
-                      label={`${person.first_name}'s link`}
-                      status={
-                        <OpenedBy
-                          opens={opens.filter((o) => o.participantId === person.id)}
-                          name={person.first_name}
-                          photos={photos}
-                        />
-                      }
-                    />
-                  ))}
-                  {/* The package's own link, sent before anyone was added, still
-                      says who opened it. */}
-                  {packageOpens.length > 0 && (
-                    <div className="rounded-2xl bg-white p-4 text-sm ring-1 ring-stone-200">
-                      <p className="font-semibold">The link you sent first</p>
-                      <p className="mt-0.5 text-stone-600">
-                        <OpenedBy opens={packageOpens} photos={photos} />
-                      </p>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <SendLink
-                  url={`${appUrl()}/s/${share.token}`}
-                  clientName={share.client_name}
-                  count={active.length}
-                  home={oneHome}
-                  status={<OpenedBy opens={opens} photos={photos} />}
-                />
-              )}
-            </div>
-            <p className="mt-3 text-sm text-stone-600">
-              Everyone gets their own link, so you can see what each person likes, and where they agree.
-            </p>
-            <div className="mt-2">
-              <AddPersonForm shareId={share.id} />
-            </div>
-          </section>
-
-          <WhatTheyWant clientName={clientName} comparison={comparison} homeCount={listings.length} thread={thread} />
-          <Suggestions
-            shareId={share.id}
-            suggestions={suggestions}
-            together={together}
-            people={comparison.summaries.filter((s) => s.likes.length > 0).map((s) => s.person.name)}
-            everyone={everyone}
-            thread={thread}
-          />
-        </div>
-
-        <div>
-          <div className="mt-8 flex items-center justify-between gap-3 lg:mt-4">
-            <h2 id="homes-title" className="font-display text-2xl">
-              On their link
-            </h2>
-            <Link
-              href={`/dashboard/new?share=${share.id}`}
-              className="flex min-h-11 items-center gap-1.5 rounded-full border border-stone-300 bg-white px-4 text-sm font-semibold hover:bg-stone-50"
-            >
-              <Plus aria-hidden size={16} /> Add homes
-            </Link>
-          </div>
-          {active.length === 0 ? (
-            <p className="mt-3 rounded-2xl bg-white p-6 text-center text-stone-700 ring-1 ring-stone-200">
-              No homes on this link right now. Add some, or restore one below.
-            </p>
-          ) : (
-            <div className="mt-3 flex flex-col gap-5">
-              {active.map((listing) => (
-                <HomePanel key={listing.ListingKey} shareId={share.id} listing={listing} thread={thread} />
-              ))}
-            </div>
-          )}
-
-          {removed.length > 0 && (
-            <section aria-labelledby="removed-title" className="mt-10">
-              <h2 id="removed-title" className="font-display text-2xl">
-                Removed from their link
+        <div className="@4xl:grid @4xl:grid-cols-2 @4xl:items-start @4xl:gap-x-8">
+          <div>
+            <section aria-labelledby="links-title" className="mt-4">
+              <h2 id="links-title" className="sr-only">
+                Their links
               </h2>
-              <p className="text-sm text-stone-700">
-                {clientName} can&apos;t see these anymore. What they said about them still counts.
+              <div className="flex flex-col gap-3">
+                {invitees.length > 0 ? (
+                  <>
+                    {invitees.map((person) => (
+                      <SendLink
+                        key={person.id}
+                        url={`${appUrl()}/s/${person.token}`}
+                        clientName={person.first_name}
+                        count={active.length}
+                        home={oneHome}
+                        label={`${person.first_name}'s link`}
+                        status={
+                          <OpenedBy
+                            opens={opens.filter((o) => o.participantId === person.id)}
+                            name={person.first_name}
+                            photos={photos}
+                          />
+                        }
+                      />
+                    ))}
+                    {/* The package's own link, sent before anyone was added, still
+                        says who opened it. */}
+                    {packageOpens.length > 0 && (
+                      <div className="rounded-2xl bg-white p-4 text-sm ring-1 ring-stone-200">
+                        <p className="font-semibold">The link you sent first</p>
+                        <p className="mt-0.5 text-stone-600">
+                          <OpenedBy opens={packageOpens} photos={photos} />
+                        </p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <SendLink
+                    url={`${appUrl()}/s/${share.token}`}
+                    clientName={share.client_name}
+                    count={active.length}
+                    home={oneHome}
+                    status={<OpenedBy opens={opens} photos={photos} />}
+                  />
+                )}
+              </div>
+              <p className="mt-3 text-sm text-stone-600">
+                Everyone gets their own link, so you can see what each person likes, and where they agree.
               </p>
-              <div className="mt-3 flex flex-col gap-5">
-                {removed.map((listing) => (
-                  <HomePanel key={listing.ListingKey} shareId={share.id} listing={listing} thread={thread} />
-                ))}
+              <div className="mt-2">
+                <AddPersonForm shareId={share.id} />
               </div>
             </section>
-          )}
+
+            <WhatTheyWant clientName={clientName} comparison={comparison} homeCount={listings.length} thread={thread} />
+            <Suggestions
+              shareId={share.id}
+              suggestions={suggestions}
+              together={together}
+              people={comparison.likers.map((s) => s.person.name)}
+              everyone={everyone}
+              thread={thread}
+            />
+          </div>
+
+          <div>
+            <div className="mt-8 flex items-center justify-between gap-3 @4xl:mt-4">
+              <h2 id="homes-title" className="font-display text-2xl">
+                On their link
+              </h2>
+              <Link
+                href={`/dashboard/new?share=${share.id}`}
+                className="flex min-h-11 items-center gap-1.5 rounded-full border border-stone-300 bg-white px-4 text-sm font-semibold hover:bg-stone-50"
+              >
+                <Plus aria-hidden size={16} /> Add homes
+              </Link>
+            </div>
+            {active.length === 0 ? (
+              <p className="mt-3 rounded-2xl bg-white p-6 text-center text-stone-700 ring-1 ring-stone-200">
+                No homes on this link right now. Add some, or restore one below.
+              </p>
+            ) : (
+              <div className="mt-3 flex flex-col gap-5">
+                {active.map((listing) => (
+                  <HomePanel key={listing.ListingKey} shareId={share.id} listing={listing} thread={thread} liked={liked} />
+                ))}
+              </div>
+            )}
+
+            {removed.length > 0 && (
+              <section aria-labelledby="removed-title" className="mt-10">
+                <h2 id="removed-title" className="font-display text-2xl">
+                  Removed from their link
+                </h2>
+                <p className="text-sm text-stone-700">
+                  {clientName} can&apos;t see these anymore. What they said about them still counts.
+                </p>
+                <div className="mt-3 flex flex-col gap-5">
+                  {removed.map((listing) => (
+                    <HomePanel key={listing.ListingKey} shareId={share.id} listing={listing} thread={thread} liked={liked} />
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </HomeScorecards>
   );
 }
 
@@ -315,7 +364,7 @@ function WhatTheyWant({
   homeCount: number;
   thread: Thread;
 }) {
-  const { summaries, both, only, homes } = comparison;
+  const { summaries, homes, likers, both, only } = comparison;
   const several = summaries.length >= 2;
   // The table's cells, plus what each person didn't like in a home's photos
   // and facts, so a pass says why, and the spots they tapped that aren't on
@@ -348,7 +397,6 @@ function WhatTheyWant({
   const heard = summaries.filter((s) => tally[s.person.id].liked + tally[s.person.id].passed > 0);
   // Where they agree is worked out among those who've liked particular
   // things; when that isn't everyone, it says who.
-  const likers = summaries.filter((s) => s.likes.length > 0);
   const names = likers.map((s) => s.person.name);
   const inCommon =
     likers.length === summaries.length
@@ -400,6 +448,8 @@ function WhatTheyWant({
                 </p>
                 <Things label="Likes" tone="like" things={s.likes} />
                 <Things label="Passes on" tone="pass" things={s.passes} />
+                {/* Liked in one home, passed on in another: once, on its own. */}
+                <Things label="Depends on the home" tone="mixed" things={s.mixed} />
               </li>
             ))}
           </ul>
@@ -483,13 +533,20 @@ function WhatTheyWant({
   );
 }
 
-function Things({ label, tone, things }: { label: string; tone: "like" | "pass"; things: string[] }) {
+// Likes, Passes on, or (liked in one home, passed on in another) Depends on
+// the home, each with its things.
+function Things({ label, tone, things }: { label: string; tone: "like" | "pass" | "mixed"; things: string[] }) {
   if (things.length === 0) return null;
-  const Icon = tone === "like" ? Heart : ThumbsDown;
+  const Icon = tone === "like" ? Heart : tone === "pass" ? ThumbsDown : null;
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-sm">
-      <span className={cn("flex items-center gap-1 font-semibold", tone === "like" ? "text-rose-800" : "text-amber-900")}>
-        <Icon aria-hidden size={14} />
+      <span
+        className={cn(
+          "flex items-center gap-1 font-semibold",
+          tone === "like" ? "text-rose-800" : tone === "pass" ? "text-amber-900" : "text-stone-700",
+        )}
+      >
+        {Icon && <Icon aria-hidden size={14} />}
         {label}
       </span>
       {things.map((thing) => (
@@ -497,7 +554,11 @@ function Things({ label, tone, things }: { label: string; tone: "like" | "pass";
           key={thing}
           className={cn(
             "rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1",
-            tone === "like" ? "bg-rose-50 text-rose-900 ring-rose-200" : "bg-amber-50 text-amber-900 ring-amber-200",
+            tone === "like"
+              ? "bg-rose-50 text-rose-900 ring-rose-200"
+              : tone === "pass"
+                ? "bg-amber-50 text-amber-900 ring-amber-200"
+                : "bg-stone-100 text-stone-800 ring-stone-200",
           )}
         >
           {thing}
@@ -652,7 +713,18 @@ function CommentSpot({ listing, spot }: { listing: Listing; spot: NonNullable<Th
   );
 }
 
-function HomePanel({ shareId, listing, thread }: { shareId: string; listing: Listing; thread: Thread }) {
+function HomePanel({
+  shareId,
+  listing,
+  thread,
+  liked,
+}: {
+  shareId: string;
+  listing: Listing;
+  thread: Thread;
+  // The comments the agent has hearted.
+  liked: Set<string>;
+}) {
   // One line per person: their reaction plus what they liked, and didn't, in
   // the photos and the facts.
   const lines = new Map<string, { name: string; state: ReactionState; likes: TakeMark[]; dislikes: TakeMark[]; tags: string[] }>();
@@ -679,14 +751,15 @@ function HomePanel({ shareId, listing, thread }: { shareId: string; listing: Lis
     <section
       id={`home-${listing.ListingKey}`}
       aria-label={listing.UnparsedAddress}
-      className="scroll-mt-4 rounded-2xl bg-white p-4 ring-1 ring-stone-200 transition-[box-shadow] duration-1000 data-target:ring-2 data-target:ring-amber-300"
+      className="@container scroll-mt-4 rounded-2xl bg-white p-4 ring-1 ring-stone-200 transition-[box-shadow] duration-1000 data-target:ring-2 data-target:ring-amber-300"
     >
-      {/* On a phone, Remove sits under the words so they keep the width: the
+      {/* Narrow (a phone, or a column beside the Scorecard), the buttons sit
+          in a row of their own underneath, so the words keep the width: the
           address on one line, the price and city on the next. */}
-      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 @md:grid-cols-[auto_minmax(0,1fr)_auto]">
         <div
           className={cn(
-            "relative row-span-2 size-16 shrink-0 overflow-hidden rounded-xl bg-stone-200 sm:row-span-1 sm:size-18",
+            "relative size-16 shrink-0 overflow-hidden rounded-xl bg-stone-200 @md:size-18",
             isRemoved && "opacity-60 grayscale",
           )}
         >
@@ -702,20 +775,20 @@ function HomePanel({ shareId, listing, thread }: { shareId: string; listing: Lis
             <span className="whitespace-nowrap">· {listing.City}</span>
           </p>
         </div>
-        {/* C2: the Scorecard button goes here, before Remove. */}
-        <form
-          action={setHomeRemoved.bind(null, shareId, listing.ListingKey, !isRemoved)}
-          className="-ml-3 justify-self-start sm:-mr-1 sm:ml-0"
-        >
-          <button
-            type="submit"
-            className="flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-stone-700 hover:bg-stone-100"
-          >
-            {isRemoved ? <RotateCcw aria-hidden size={15} /> : <X aria-hidden size={15} />}
-            {isRemoved ? "Restore" : "Remove"}
-            <span className="sr-only"> {listing.UnparsedAddress}</span>
-          </button>
-        </form>
+        {/* What everyone on the link thinks of it, then Remove. */}
+        <div className="col-span-2 mt-3 flex flex-wrap items-center gap-1 @md:col-span-1 @md:-mr-1 @md:mt-0 @md:justify-self-end">
+          <ScorecardButton listingKey={listing.ListingKey} address={listing.UnparsedAddress} />
+          <form action={setHomeRemoved.bind(null, shareId, listing.ListingKey, !isRemoved)}>
+            <button
+              type="submit"
+              className="flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-stone-700 hover:bg-stone-100"
+            >
+              {isRemoved ? <RotateCcw aria-hidden size={15} /> : <X aria-hidden size={15} />}
+              {isRemoved ? "Restore" : "Remove"}
+              <span className="sr-only"> {listing.UnparsedAddress}</span>
+            </button>
+          </form>
+        </div>
       </div>
 
       {reactions.length > 0 ? (
@@ -738,7 +811,8 @@ function HomePanel({ shareId, listing, thread }: { shareId: string; listing: Lis
       )}
 
       {comments.length > 0 && (
-        <ul aria-label="Comments" className="mt-4 flex flex-col gap-4 border-t border-stone-100 pt-4">
+        // (The Scorecard's "See all" brings the keyboard here.)
+        <ul aria-label="Comments" tabIndex={-1} className="mt-4 flex scroll-mt-4 flex-col gap-4 border-t border-stone-100 pt-4">
           {comments.map((comment) => (
             <li
               key={comment.id}
@@ -771,6 +845,10 @@ function HomePanel({ shareId, listing, thread }: { shareId: string; listing: Lis
                 </p>
                 {comment.spot && <CommentSpot listing={listing} spot={comment.spot} />}
                 <p className="mt-0.5 whitespace-pre-line break-words text-[15px] leading-snug">{comment.body}</p>
+                {/* A client's words on a home still on their link: they'd see the heart. */}
+                {!comment.isAgent && !isRemoved && (
+                  <CommentLike commentId={comment.id} name={comment.name} liked={liked.has(comment.id)} />
+                )}
               </div>
               <CommentMenu commentId={comment.id} name={comment.name} />
             </li>

@@ -3,12 +3,14 @@ import { notFound } from "next/navigation";
 import { homeFacts } from "@/app/homes/[key]/preview";
 import { LiveRefresh } from "@/components/live-refresh";
 import { getCurrentUser } from "@/lib/auth";
+import { agentFirstName } from "@/lib/format";
 import { readDevice } from "@/lib/engagement";
 import { isSampleListing } from "@/lib/listings/types";
 import { NO_PHOTO_LIKES } from "@/lib/photos";
 import { NO_REACTION } from "@/lib/reactions";
 import { getParticipant, getShareByToken, getShareListings, getShareMembers, isPrivateTo } from "@/lib/shares";
 import { headlineFromTimeline, type FeedPost } from "@/lib/feed";
+import { eventsFromTimeline } from "@/lib/ticker";
 import { getSharePhotoLikes, getShareTimelines, type TimelineReaction } from "@/lib/timeline";
 import { addComment, askToSee, joinThread, likePhotoInShare, setCommentSharing, setReaction } from "./actions";
 import { ShareEnd, ShareReel, ShareWelcome } from "./client";
@@ -79,7 +81,7 @@ export default async function SharePage({ params }: Props) {
     !/[&,]| and /i.test(share.client_name)
       ? share.client_name
       : undefined;
-  const agentFirst = agent.full_name.trim().split(/\s+/)[0] || "Your agent";
+  const agentFirst = agentFirstName(agent.full_name, "Your agent");
   // Who else can open this link. Someone's own link opens as them, so it's theirs alone.
   const whoCanSee = person
     ? `This link is just for you, ${person.first_name}. Ask ${agentName} if someone else should see ${count > 1 ? "these" : "it"}.`
@@ -110,6 +112,13 @@ export default async function SharePage({ params }: Props) {
       // One home opens straight on it, so the agent's greeting and note are its caption.
       ...(count === 1 && { greeting, note: share.note || undefined }),
       members,
+      // The agent on their own link: what they said there is theirs, so the
+      // line above the price says "You", as it does for anyone's own.
+      ...(agentViewing && {
+        events: eventsFromTimeline(timeline).map((event) =>
+          event.who.tone === "agent" ? { ...event, who: { tone: "you" as const, name: null } } : event,
+        ),
+      }),
     };
   });
 

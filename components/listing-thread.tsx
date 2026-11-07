@@ -311,11 +311,14 @@ function Avatar({
   );
 }
 
-// A person's name, linking to their profile when they have a public one.
+// A person's name, linking to their profile when they have a public one. It
+// sits in a line of words, so it keeps the line's height (WCAG's inline
+// exception): a bigger touch area would cover the words under it. It stays
+// over the spot chip's touch area just below.
 function Who({ name, profileId }: { name: string; profileId?: string }) {
   if (!profileId) return <span className="font-semibold text-ink">{name}</span>;
   return (
-    <Link href={`/people/${profileId}`} className="font-semibold text-ink underline-offset-2 hover:underline">
+    <Link href={`/people/${profileId}`} className="relative z-[1] font-semibold text-ink underline-offset-2 hover:underline">
       {name}
     </Link>
   );
@@ -425,7 +428,7 @@ function CommentItem({
           <button
             type="button"
             onClick={() => spots.show(comment.spot!)}
-            className="mt-0.5 inline-flex min-h-7 items-center gap-1 rounded-full bg-stone-100 px-2 text-[12px] font-semibold text-stone-700 hover:bg-stone-200"
+            className="mt-0.5 inline-flex min-h-7 items-center gap-1 rounded-full bg-stone-100 px-2 text-[12px] font-semibold text-stone-700 hit-44 hover:bg-stone-200"
           >
             <MapPin aria-hidden size={12} />
             <span className="sr-only">About </span>
@@ -434,12 +437,23 @@ function CommentItem({
           </button>
         )}
         <p className="mt-0.5 whitespace-pre-line break-words text-[15px] leading-snug">{comment.body}</p>
+        {/* The agent hearted it, as a creator does on a reel: in stone, so it
+            never reads as something the agent said, and outlined, not filled,
+            so it reads as a note, not a button like the spot chip. */}
+        {comment.likedBy && (
+          <p className="mt-1.5 flex">
+            <span className="inline-flex h-6 items-center gap-1 rounded-full px-2 text-[12px] font-medium text-stone-600 ring-1 ring-inset ring-stone-200">
+              <Heart aria-hidden size={11} className="fill-rose-600 text-rose-600" />
+              Liked by {comment.likedBy}
+            </span>
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-x-4 text-[13px] font-semibold text-stone-500">
           {likeable && !reply && onReply && (
             <button
               type="button"
               onClick={() => onReply({ id: comment.id, name: comment.name, mine: comment.mine })}
-              className="flex min-h-9 items-center hover:text-ink"
+              className="flex min-h-9 items-center hit-44 hover:text-ink"
             >
               Reply
               <span className="sr-only"> to {comment.mine ? "your comment" : comment.name}</span>
@@ -469,7 +483,7 @@ function CommentItem({
                   await actions.setSharing!(comment.id, !comment.sharedPublicly);
                 })
               }
-              className="flex min-h-9 items-center text-brand underline-offset-2 hover:underline disabled:opacity-50"
+              className="flex min-h-9 items-center text-brand underline-offset-2 hit-44 hover:underline disabled:opacity-50"
             >
               {comment.sharedPublicly ? "Make private" : "Share anonymously"}
             </button>
@@ -481,7 +495,8 @@ function CommentItem({
               type="button"
               aria-expanded={open}
               onClick={() => setOpen(!open)}
-              className="flex min-h-9 items-center gap-2.5 text-[13px] font-semibold text-stone-500 hover:text-ink"
+              // (Over the edge of a Reply's touch area just above it.)
+              className="relative flex min-h-11 items-center gap-2.5 text-[13px] font-semibold text-stone-500 hover:text-ink"
             >
               <span aria-hidden className="h-px w-6 bg-stone-300" />
               {open ? "Hide replies" : `View ${replies.length} ${replies.length === 1 ? "reply" : "replies"}`}
@@ -519,7 +534,7 @@ function CommentHeart({ comment }: { comment: TimelineComment }) {
         });
       }}
       className={cn(
-        "-mr-1 flex size-9 shrink-0 flex-col items-center justify-center rounded-full text-[11px] font-semibold tabular-nums hover:bg-stone-100",
+        "-mr-1 flex size-9 shrink-0 flex-col items-center justify-center rounded-full text-[11px] font-semibold tabular-nums hit-44 hover:bg-stone-100",
         state.liked ? "text-rose-600" : "text-stone-500",
       )}
     >
@@ -620,7 +635,7 @@ export function CommentComposer({
               onCancelReply?.();
               field.current?.focus();
             }}
-            className="flex min-h-9 items-center px-1 font-semibold hover:text-ink"
+            className="flex min-h-9 items-center px-1 font-semibold hit-44 hover:text-ink"
           >
             Cancel<span className="sr-only"> reply</span>
           </button>
@@ -635,14 +650,16 @@ export function CommentComposer({
                 setBody((current) => current + emoji);
                 field.current?.focus();
               }}
-              className="flex size-10 items-center justify-center rounded-full text-[22px] transition-transform hover:bg-stone-100 active:scale-90"
+              className="flex size-10 items-center justify-center rounded-full text-[22px] transition-transform hit-44 hover:bg-stone-100 active:scale-90"
             >
               {emoji}
             </button>
           ))}
         </div>
       )}
-      <div className="flex items-end gap-2 rounded-3xl bg-stone-100 py-1 pl-4 pr-1 focus-within:ring-2 focus-within:ring-brand/80">
+      {/* The box itself is 44px tall, so a tap anywhere on the pill but its
+          thin edge lands in it. */}
+      <div className="flex items-end gap-2 rounded-3xl bg-stone-100 py-0.5 pl-4 pr-1 focus-within:ring-2 focus-within:ring-brand/80">
         <label htmlFor={inputId} className="sr-only">
           {who ? `Reply to ${who}` : (label ?? placeholder?.replace(/…$/, "") ?? "Add a comment")}
         </label>
@@ -665,24 +682,25 @@ export function CommentComposer({
           enterKeyHint="send"
           autoFocus={autoFocus}
           placeholder={who ? `Reply to ${who}…` : (placeholder ?? "Add a comment…")}
-          className="max-h-28 min-h-10 min-w-0 flex-1 resize-none bg-transparent py-2 text-base leading-6 outline-none [field-sizing:content] placeholder:text-stone-500"
+          className="max-h-29 min-h-11 min-w-0 flex-1 resize-none bg-transparent py-2.5 text-base leading-6 outline-none [field-sizing:content] placeholder:text-stone-500"
         />
         <button
           type="submit"
           aria-label="Post"
           disabled={pending || !body.trim()}
-          className="mb-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-brand text-white transition-opacity disabled:opacity-30"
+          className="mb-1 flex size-9 shrink-0 items-center justify-center rounded-full bg-brand text-white transition-opacity hit-44 disabled:opacity-30"
         >
           <ArrowUp aria-hidden size={18} strokeWidth={2.5} className={cn(pending && "animate-pulse")} />
         </button>
       </div>
       {sharing && (
-        <label className="mt-1.5 flex min-h-9 cursor-pointer items-center gap-2.5 px-2 text-[13px] text-stone-700">
+        <label className="mt-1.5 flex min-h-9 cursor-pointer items-center gap-2.5 px-2 text-[13px] text-stone-700 hit-44">
           <input
             type="checkbox"
             checked={sharePublicly}
             onChange={(event) => setSharePublicly(event.target.checked)}
-            className="size-4.5 shrink-0 accent-[var(--brand)]"
+            // Above the line's touch area, so a tap on the box is on the box.
+            className="relative z-[1] size-4.5 shrink-0 accent-[var(--brand)]"
           />
           <span>Also share this anonymously on the public listing page. Your name stays private.</span>
         </label>

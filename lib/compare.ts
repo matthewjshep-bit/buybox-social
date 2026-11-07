@@ -21,6 +21,9 @@ export type PersonSummary = {
   likes: string[];
   // Specifics behind their passes: "Price", "Yard".
   passes: string[];
+  // Liked in one home and passed on in another (the layout here, not
+  // there): neither a like nor a pass of theirs, so in neither list above.
+  mixed: string[];
 };
 
 export type HomeRow = {
@@ -29,6 +32,7 @@ export type HomeRow = {
 };
 
 const key = (thing: string) => thing.toLowerCase();
+const has = (things: string[], thing: string) => things.some((t) => key(t) === key(thing));
 
 function uniq(things: string[]) {
   const seen = new Set<string>();
@@ -36,30 +40,33 @@ function uniq(things: string[]) {
 }
 
 export function comparePeople(people: PackagePerson[], thread: Thread, listings: Listing[]) {
+  // In any one home, what someone picked when they passed wins over a heart
+  // in its photos: passing on the kitchen and hearting the kitchen photo
+  // isn't liking the kitchen (as in the Scorecard).
+  const passedIn = (personId: string, listingKey: string) =>
+    (thread.reactions.find((r) => r.participantId === personId && r.listingKey === listingKey)?.state.disliked ?? []).map(
+      aspectLabel,
+    );
+  const likedTags = (personId: string, listingKey?: string) =>
+    thread.photoLikes
+      .filter((l) => l.participantId === personId && (!listingKey || l.listingKey === listingKey))
+      .filter((l) => !isPointTag(l.tag) && !has(passedIn(personId, l.listingKey), l.tag))
+      .map((l) => l.tag);
+
   const summaries: PersonSummary[] = people.map((person) => {
     const reactions = thread.reactions.filter((r) => r.participantId === person.id);
-    const photoLikes = thread.photoLikes.filter((l) => l.participantId === person.id);
+    const likes = uniq([...likedTags(person.id), ...reactions.flatMap((r) => r.state.liked.map(aspectLabel))]);
+    const passes = uniq(reactions.flatMap((r) => r.state.disliked.map(aspectLabel)));
+    const mixed = likes.filter((thing) => has(passes, thing));
     return {
       person,
       liked: reactions.filter((r) => r.state.reaction === "like").length,
       passed: reactions.filter((r) => r.state.reaction === "dislike").length,
-      likes: uniq([...photoLikes.map((l) => l.tag).filter((tag) => !isPointTag(tag)), ...reactions.flatMap((r) => r.state.liked.map(aspectLabel))]),
-      passes: uniq(reactions.flatMap((r) => r.state.disliked.map(aspectLabel))),
+      likes: likes.filter((thing) => !has(mixed, thing)),
+      passes: passes.filter((thing) => !has(mixed, thing)),
+      mixed,
     };
   });
-
-  // Where they agree and differ, among those who've liked anything.
-  const active = summaries.filter((s) => s.likes.length > 0);
-  const both =
-    active.length >= 2
-      ? active[0].likes.filter((thing) => active.every((s) => s.likes.some((t) => key(t) === key(thing))))
-      : [];
-  const only = Object.fromEntries(
-    active.map((s) => [
-      s.person.id,
-      s.likes.filter((thing) => !active.some((o) => o !== s && o.likes.some((t) => key(t) === key(thing)))),
-    ]),
-  );
 
   const homes: HomeRow[] = listings.map((listing) => ({
     listing,
@@ -68,15 +75,11 @@ export function comparePeople(people: PackagePerson[], thread: Thread, listings:
         const state = thread.reactions.find(
           (r) => r.participantId === person.id && r.listingKey === listing.ListingKey,
         )?.state;
-        const tags = thread.photoLikes
-          .filter((l) => l.participantId === person.id && l.listingKey === listing.ListingKey)
-          .map((l) => l.tag)
-          .filter((tag) => !isPointTag(tag));
         return [
           person.id,
           {
             reaction: state?.reaction ?? null,
-            likes: uniq([...tags, ...(state?.liked ?? []).map(aspectLabel)]),
+            likes: uniq([...likedTags(person.id, listing.ListingKey), ...(state?.liked ?? []).map(aspectLabel)]),
             passes: (state?.disliked ?? []).map(aspectLabel),
           },
         ];
@@ -84,7 +87,32 @@ export function comparePeople(people: PackagePerson[], thread: Thread, listings:
     ),
   }));
 
-  return { summaries, both, only, homes };
+  // Where they agree and differ, among everyone who's liked anything. What
+  // depends on the home for one of them is agreed only where they all liked
+  // it in the same home, and says which: "Layout (96 Fernhollow Ln)". What
+  // only one of them likes leaves out anyone it depends on the home for.
+  const likers = summaries.filter((s) => s.likes.length + s.mixed.length > 0);
+  const agreed = new Set<string>();
+  const both: string[] = [];
+  if (likers.length >= 2) {
+    for (const thing of [...likers[0].likes, ...likers[0].mixed]) {
+      if (likers.every((s) => has(s.likes, thing))) both.push(thing);
+      else if (likers.every((s) => has(s.likes, thing) || has(s.mixed, thing))) {
+        const where = homes.filter((home) => likers.every((s) => has(home.cells[s.person.id]?.likes ?? [], thing)));
+        if (where.length === 0) continue;
+        both.push(`${thing} (${where.map((home) => home.listing.UnparsedAddress).join(", ")})`);
+      } else continue;
+      agreed.add(key(thing));
+    }
+  }
+  const only = Object.fromEntries(
+    likers.map((s) => [
+      s.person.id,
+      s.likes.filter((thing) => !agreed.has(key(thing)) && !likers.some((o) => o !== s && has(o.likes, thing))),
+    ]),
+  );
+
+  return { summaries, likers, both, only, homes };
 }
 
 export type Suggestion = {

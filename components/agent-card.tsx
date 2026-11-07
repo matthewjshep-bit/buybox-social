@@ -8,7 +8,7 @@ import { AgentAvatar } from "@/components/agent-avatar";
 import { useThread } from "@/components/listing-thread";
 import { Sheet } from "@/components/sheet";
 import { phoneDigits } from "@/lib/contact";
-import { cn } from "@/lib/format";
+import { agentFirstName, cn } from "@/lib/format";
 import type { ShareAgent } from "@/lib/shares";
 
 // An agent's link is the agent's space: their name and face at the top, and
@@ -19,8 +19,6 @@ import type { ShareAgent } from "@/lib/shares";
 export const focusOnDark = "focus-visible:outline-white! focus-visible:shadow-[0_0_0_6px_rgb(0_0_0/0.45)]";
 
 const looksLikeEmail = (value: string) => /^[^\s@?&#/]+@[^\s@?&#/]+\.[^\s@?&#/]+$/.test(value);
-
-export const agentFirstName = (name: string) => name.trim().split(/\s+/)[0] || "your agent";
 
 // The home on screen, for "About 4127 Larkmoor Ave NE" and asking to see it.
 export type HomeInView = { listingKey: string; address: string };

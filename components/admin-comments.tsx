@@ -15,6 +15,9 @@ export function CommentList({ comments, showHome = true }: { comments: CommentRo
       {comments.map((comment) => (
         <li key={`${comment.kind}:${comment.id}`} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-start sm:gap-4">
           <div className="min-w-0 flex-1">
+            {/* The name and the home are links in a line of words, so they keep
+                the line's height (WCAG's inline exception): a bigger touch area
+                would cover the comment under them. */}
             <p className="text-sm">
               {comment.accountId ? (
                 <Link href={`/admin/people/${comment.accountId}`} className="font-semibold hover:underline">
@@ -48,7 +51,7 @@ export function CommentList({ comments, showHome = true }: { comments: CommentRo
             )}
             <p className="mt-1 whitespace-pre-line break-words text-[15px]">{comment.body}</p>
           </div>
-          <div className="-ml-3 shrink-0 sm:ml-0">
+          <div className="-ml-4 shrink-0 sm:ml-0">
             {comment.kind === "public" ? (
               <ConfirmAction
                 action={deleteComment.bind(null, comment.id)}

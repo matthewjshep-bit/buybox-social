@@ -208,7 +208,7 @@ export function SearchView({
           <button
             type="submit"
             aria-label="Search"
-            className="absolute right-1 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full text-stone-700"
+            className="absolute right-0 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full text-stone-700"
           >
             <Search aria-hidden size={18} />
           </button>

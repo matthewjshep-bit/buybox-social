@@ -30,7 +30,7 @@ export default async function AdminHome({ params }: Props) {
 
   return (
     <>
-      <Link href="/admin/homes" className="mb-4 inline-flex min-h-9 items-center gap-1.5 text-sm font-semibold text-stone-600 hover:text-ink">
+      <Link href="/admin/homes" className="mb-2 flex min-h-11 w-fit items-center gap-1.5 text-sm font-semibold text-stone-600 hover:text-ink">
         <ArrowLeft aria-hidden size={16} /> Homes
       </Link>
 
@@ -46,7 +46,7 @@ export default async function AdminHome({ params }: Props) {
           <p className="text-stone-600">
             {listing.City}, {listing.StateOrProvince} {listing.PostalCode}
           </p>
-          <p className="mt-2 text-xl font-semibold tabular-nums">{formatPrice(listing.ListPrice)}</p>
+          <p className="mt-2 font-display text-2xl tabular-nums">{formatPrice(listing.ListPrice)}</p>
           <p className="text-sm text-stone-600">
             {listing.BedroomsTotal} beds · {listing.BathroomsTotalInteger} baths · {listing.LivingArea.toLocaleString("en-US")} sq ft
             {listing.YearBuilt && ` · Built ${listing.YearBuilt}`}
@@ -59,7 +59,7 @@ export default async function AdminHome({ params }: Props) {
           )}
           <Link
             href={`/homes/${encodeURIComponent(listing.ListingKey)}`}
-            className="mt-3 inline-flex min-h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold ring-1 ring-stone-300 hover:bg-white"
+            className="mt-3 inline-flex min-h-11 items-center gap-1.5 rounded-full px-4 text-sm font-semibold ring-1 ring-stone-300 hover:bg-white"
           >
             <ExternalLink aria-hidden size={15} /> See it on the site
           </Link>

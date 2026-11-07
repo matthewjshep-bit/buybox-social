@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { sql } from "./db";
+import { agentFirstName } from "./format";
 import type { Listing } from "./listings/types";
 import { likeId, mediaKeyOf, tagNameIn, type PhotoLikes } from "./photos";
 import { NO_REACTION, publicSideOf, type ReactionState } from "./reactions";
@@ -30,6 +31,9 @@ export type TimelineComment = {
   // On an agent's link: who said it, as a key that stays the same and gives
   // nothing away, so two people of the same first name stay two people.
   personKey?: string;
+  // On an agent's link: the agent hearted it. Their first name, for "Liked by
+  // Jordan". Never on public pages.
+  likedBy?: string;
 };
 
 export type TimelineReaction = {
@@ -262,10 +266,16 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
         shared_publicly: boolean;
         media_key: string | null;
         spot: string | null;
+        liked_by: string | null;
       }[]
     >`
       select c.id, c.listing_key, c.participant_id, p.first_name, a.full_name as agent_name,
-        c.body, c.created_at, c.shared_publicly, c.media_key, c.spot
+        c.body, c.created_at, c.shared_publicly, c.media_key, c.spot,
+        -- The link's agent, when they've hearted it.
+        (select coalesce(la.full_name, '') from share_comment_likes l
+          join shares s on s.id = c.share_id
+          left join accounts la on la.id = s.agent_id
+          where l.comment_id = c.id) as liked_by
       from comments c
       left join participants p on p.id = c.participant_id
       left join accounts a on a.id = c.agent_id
@@ -306,6 +316,7 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
             likedByMe: false,
             sharedPublicly: c.shared_publicly,
             personKey: personKey(c.participant_id ? `p:${c.participant_id}` : "agent"),
+            ...(c.liked_by !== null && { likedBy: agentFirstName(c.liked_by) }),
             ...spotOf(c),
           }),
         ),

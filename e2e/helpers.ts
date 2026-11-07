@@ -127,6 +127,23 @@ export const settle = (card: Locator) =>
     ]),
   );
 
+// Where taps miss across a fingertip (a 44px circle) centred on a control:
+// each point that lands on something else, as "dx,dy". It counts a touch area
+// grown around a small control (hit-44) only where a tap really reaches it, so
+// one clipped by a line clamp, or covered by something else, shows up here.
+// (A circle, not a square: a round pill's own corners aren't part of it.)
+export const missedTaps = (control: Locator) =>
+  control.evaluate((el) => {
+    el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+    const box = el.getBoundingClientRect();
+    const [x, y] = [box.left + box.width / 2, box.top + box.height / 2];
+    const points = [[0, 0], [-20, 0], [20, 0], [0, -20], [0, 20], [-14, -14], [14, -14], [-14, 14], [14, 14]];
+    return points.flatMap(([dx, dy]) => {
+      const hit = document.elementFromPoint(x + dx, y + dy);
+      return hit && el.contains(hit) ? [] : [`${dx},${dy}`];
+    });
+  });
+
 // Picks something in the photo on screen ("the floating staircase") the way a
 // keyboard does, which opens the same card a tap on it opens. Returns the card.
 export async function pick(home: Locator, thing: string) {

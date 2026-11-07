@@ -1,20 +1,21 @@
 "use client";
 
-import { ClipboardList, Hand, Heart, Lock, MapPin, MessageCircle, Sparkles, ThumbsDown, User } from "lucide-react";
+import { ClipboardList, EyeOff, Hand, Heart, Lock, MapPin, MessageCircle, Sparkles, Tag, ThumbsDown, User } from "lucide-react";
 import Image from "next/image";
-import { useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { AspectSummary } from "@/components/aspect-summary";
 import type { SpotRef } from "@/components/listing-thread";
 import type { FeedPost } from "@/lib/feed";
-import { cn, timeAgo } from "@/lib/format";
+import { agentFirstName, cn, timeAgo } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
-import { spotName, type FactTag } from "@/lib/photos";
+import { FACTS, mediaKeyOf, spotName, tagPosition, thingOf, type FactTag } from "@/lib/photos";
 import {
   buildScorecard,
   namesList,
   type AspectRow,
   type FactRow,
+  type PersonTake,
   type Scorecard,
   type ScorecardMode,
   type ScorecardViewer,
@@ -28,8 +29,7 @@ import type { TimelineComment } from "@/lib/timeline";
 
 // The agent, in a sentence: their name, or "your agent".
 const agentCalled = (agentName?: string) => (agentName && agentName !== "Your agent" ? agentName : "your agent");
-const firstOf = (agentName?: string) =>
-  agentName && agentName !== "Your agent" ? (agentName.split(" ")[0] ?? agentName) : "your agent";
+const firstOf = (agentName?: string) => (agentName === "Your agent" ? "your agent" : agentFirstName(agentName));
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 export function ScorecardBody({
@@ -40,6 +40,7 @@ export function ScorecardBody({
   viewer,
   myName,
   alone = false,
+  offLink = false,
   onShowSpot,
   onOpenFact,
   onAllComments,
@@ -61,6 +62,8 @@ export function ScorecardBody({
   // On an agent's link that's known to be yours alone: "Only you and {agent}
   // see this", as the comment box says.
   alone?: boolean;
+  // The agent's dashboard: a home they've taken off the link.
+  offLink?: boolean;
   // To a spot on the photo (or, for a fact, its card). `keyboard`: pressed
   // with a key, so the card that opens takes the keyboard.
   onShowSpot?: (spot: SpotRef, keyboard?: boolean) => void;
@@ -96,15 +99,27 @@ export function ScorecardBody({
         {share && (
           <p className="mt-2 inline-flex items-start gap-1.5 rounded-2xl bg-stone-100 px-2.5 py-1.5 text-[13px] leading-[18px] text-stone-700">
             <Lock aria-hidden size={12} className="mt-[3px] shrink-0" />
-            {alone && mode === "share"
-              ? `Only you and ${agent} see this`
-              : `From the people on this link · only they and ${agent} see this`}
+            {mode === "agent"
+              ? "From the people on this link · only they and you see this"
+              : alone
+                ? `Only you and ${agent} see this`
+                : `From the people on this link · only they and ${agent} see this`}
+          </p>
+        )}
+        {/* Said first, so nothing below reads as if they can still see it. */}
+        {mode === "agent" && offLink && (
+          <p className="mt-1.5 inline-flex items-start gap-1.5 rounded-2xl bg-white px-2.5 py-1.5 text-[13px] font-semibold leading-[18px] text-stone-800 ring-1 ring-stone-300">
+            <EyeOff aria-hidden size={12} className="mt-[3px] shrink-0" />
+            Off their link · they can&apos;t see it now
           </p>
         )}
       </div>
 
       {card.quiet ? (
-        <Quiet share={share} agent={agent} />
+        <>
+          <Quiet mode={mode} agent={agent} offLink={mode === "agent" && offLink} />
+          {card.compare && <CompareSection compare={card.compare} />}
+        </>
       ) : (
         <>
           <Section title="How people feel">
@@ -141,6 +156,7 @@ export function ScorecardBody({
                   <AspectDetail
                     row={(tone === "like" ? card.aspects.liked : (card.aspects.disliked ?? [])).find((r) => r.aspect === aspect)}
                     share={share}
+                    peek={mode === "agent"}
                     onShowSpot={showSpot}
                   />
                 )}
@@ -149,7 +165,8 @@ export function ScorecardBody({
           )}
 
           {card.agree && (
-            <Section title="Where you agree">
+            // (On the agent's dashboard, "you" is the agent.)
+            <Section title={mode === "agent" ? "Where they agree" : "Where you agree"}>
               <ul className="flex flex-col gap-1.5 text-[15px] leading-6">
                 {card.agree.map((line) => (
                   <li key={line.label}>
@@ -159,6 +176,8 @@ export function ScorecardBody({
               </ul>
             </Section>
           )}
+
+          {card.compare && <CompareSection compare={card.compare} />}
 
           {card.photos && (
             <Section title="In the photos">
@@ -180,34 +199,28 @@ export function ScorecardBody({
           )}
 
           <Section title="What people said">
-            <Said card={card} post={post} onShowSpot={showSpot} onAllComments={onAllComments} onCompose={onCompose} />
+            <Said
+              card={card}
+              post={post}
+              peek={mode === "agent"}
+              onShowSpot={showSpot}
+              onAllComments={onAllComments}
+              onCompose={onCompose}
+            />
           </Section>
         </>
       )}
 
       {mode === "agent" && card.people ? (
-        <Section title="What each person thinks">
-          <ul className="flex flex-col gap-4">
-            {card.people.map((person) => (
-              <li key={person.key} className="flex gap-3">
-                <Face name={person.name} />
-                <div className="min-w-0 flex-1 text-[15px] leading-6">
-                  <p>
-                    <span className="font-semibold">{person.name}</span>{" "}
-                    <span className="text-stone-600">· {person.verdict}</span>
-                  </p>
-                  {person.likes.length > 0 && <p className="text-[13px] text-stone-700">Likes: {person.likes.join(" · ")}</p>}
-                  {person.passes.length > 0 && <p className="text-[13px] text-stone-700">Passes on: {person.passes.join(" · ")}</p>}
-                  {person.comment && (
-                    <p className="mt-0.5 line-clamp-2 text-[13px] text-stone-600" suppressHydrationWarning>
-                      “{person.comment.body}” · {timeAgo(person.comment.at)}
-                    </p>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Section>
+        card.people.length > 0 && (
+          <Section title="What each person thinks">
+            <ul className="flex flex-col divide-y divide-stone-100">
+              {card.people.map((person) => (
+                <PersonRow key={person.key} person={person} />
+              ))}
+            </ul>
+          </Section>
+        )
       ) : (
         <Section title="Your take">
           <Take card={card} onLike={onLike} onPass={onPass} onOpenMore={onOpenMore} />
@@ -221,7 +234,7 @@ export function ScorecardBody({
       <Section title="About this home" id="about">
         {share && post.note && (
           <div className="mb-3 rounded-2xl bg-stone-50 p-4">
-            <p className="text-[13px] font-semibold text-stone-600">From {agent}</p>
+            <p className="text-[13px] font-semibold text-stone-600">{mode === "agent" ? "Your note to them" : `From ${agent}`}</p>
             <p className="mt-1 whitespace-pre-line text-base leading-[26px]">{post.note}</p>
           </div>
         )}
@@ -229,12 +242,6 @@ export function ScorecardBody({
         {card.about.listedBy && <p className={cn("text-[15px] text-stone-600", card.about.remarks && "mt-3")}>{card.about.listedBy}</p>}
         {card.about.sample && <p className="mt-1 text-[13px] text-stone-600">Sample listing, fictional and not for sale</p>}
       </Section>
-
-      {card.compare && (
-        <Section title={`Compare with the other ${card.compare.homes.length === 2 ? "home" : `${card.compare.homes.length - 1} homes`}`}>
-          <Compare compare={card.compare} />
-        </Section>
-      )}
 
       <div className="border-t border-stone-200 pt-4">
         {mode === "public" ? (
@@ -244,16 +251,23 @@ export function ScorecardBody({
             </p>
           )
         ) : mode === "agent" ? (
-          onReply && (
-            <button
-              type="button"
-              onClick={onReply}
-              className="flex min-h-11 items-center gap-2 rounded-full bg-brand px-5 text-[15px] font-semibold text-white hover:opacity-90"
-            >
-              <MessageCircle aria-hidden size={17} />
-              Reply to your client
-            </button>
-          )
+          <>
+            {onReply && (
+              <button
+                type="button"
+                onClick={onReply}
+                className="flex min-h-11 items-center gap-2 rounded-full bg-brand px-5 text-[15px] font-semibold text-white hover:opacity-90"
+              >
+                <MessageCircle aria-hidden size={17} />
+                Reply to your client
+              </button>
+            )}
+            {offLink && (
+              <p className={cn("text-[13px] text-stone-600", onReply && "mt-2")}>
+                You took this home off their link. What they said about it still counts.
+              </p>
+            )}
+          </>
         ) : (
           <>
             {onCompose && (
@@ -284,17 +298,22 @@ function Section({ title, id, children }: { title: string; id?: string; children
 }
 
 // Nobody's weighed in yet: one card in place of everything they'd have said.
-function Quiet({ share, agent }: { share: boolean; agent: string }) {
+// `offLink`: a home the agent has taken off the link, so nothing more can come.
+function Quiet({ mode, agent, offLink = false }: { mode: ScorecardMode; agent: string; offLink?: boolean }) {
   return (
     <div className="flex items-start gap-3 rounded-2xl bg-stone-50 p-4">
       <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white ring-1 ring-stone-200">
         <Hand size={17} className="text-stone-500" />
       </span>
       <div>
-        <p className="text-[15px] font-semibold">No one has weighed in yet.</p>
+        <p className="text-[15px] font-semibold">{offLink ? "No one weighed in on it." : "No one has weighed in yet."}</p>
         <p className="mt-0.5 text-[15px] leading-6 text-stone-600">
-          Tap anything in a photo to like it or say something about it.
-          {share && ` ${capital(agent)} sees what you like and say.`}
+          {offLink
+            ? "They didn't react to it before you took it off their link."
+            : mode === "agent"
+              ? "When they like something in its photos, pass on it or say something about it, you'll see it here."
+              : "Tap anything in a photo to like it or say something about it."}
+          {mode === "share" && ` ${capital(agent)} sees what you like and say.`}
         </p>
       </div>
     </div>
@@ -326,6 +345,11 @@ function Factoids({ card }: { card: Scorecard }) {
           </li>
         ))}
       </ul>
+      {card.feel.yours > 0 && (
+        <p className="mt-1.5 text-[13px] text-stone-600">
+          and {card.feel.yours} {card.feel.yours === 1 ? "reply" : "replies"} from you
+        </p>
+      )}
       {/* On a line of its own, under the numbers, so none of them wraps. */}
       {privateMore > 0 && (
         <p className="mt-1.5 text-[13px] text-stone-600">
@@ -337,7 +361,7 @@ function Factoids({ card }: { card: Scorecard }) {
 }
 
 function Feel({ card, myName }: { card: Scorecard; myName?: string | null }) {
-  const { named, passes, people, likedOnly, bar, comments } = card.feel;
+  const { named, passes, people, likedOnly, bar, comments, yours } = card.feel;
   if (named) {
     const faces = [...named.liked, ...named.passed].slice(0, 4);
     return (
@@ -370,6 +394,8 @@ function Feel({ card, myName }: { card: Scorecard; myName?: string | null }) {
         )}
         <p className="mt-1 text-[13px] text-stone-600">
           {comments} {comments === 1 ? "comment" : "comments"}
+          {/* (The agent's dashboard: their own replies are counted apart.) */}
+          {yours > 0 && ` · ${yours} ${yours === 1 ? "reply" : "replies"} from you`}
         </p>
         {named.notYet.length > 0 && <p className="mt-0.5 text-[13px] text-stone-600">Not yet: {namesList(named.notYet)}</p>}
       </div>
@@ -396,8 +422,19 @@ function Feel({ card, myName }: { card: Scorecard; myName?: string | null }) {
   );
 }
 
-// A face: their initial, or (unnamed) a person.
-function Face({ name, size = "md", ring = false }: { name: string | null; size?: "sm" | "md"; ring?: boolean }) {
+// A face: their initial (the agent's in ink, as in their threads), or
+// (unnamed) a person.
+function Face({
+  name,
+  size = "md",
+  ring = false,
+  agent = false,
+}: {
+  name: string | null;
+  size?: "sm" | "md";
+  ring?: boolean;
+  agent?: boolean;
+}) {
   const anonymous = !name || name === "A buyer";
   return (
     <span
@@ -405,7 +442,7 @@ function Face({ name, size = "md", ring = false }: { name: string | null; size?:
       className={cn(
         "flex shrink-0 items-center justify-center rounded-full font-semibold",
         size === "sm" ? "size-6 text-[11px]" : "size-8 text-[13px]",
-        anonymous ? "bg-stone-200 text-stone-600" : "bg-brand text-white",
+        anonymous ? "bg-stone-200 text-stone-600" : agent ? "bg-ink text-white" : "bg-brand text-white",
         ring && "ring-2 ring-white",
       )}
     >
@@ -418,12 +455,17 @@ function Face({ name, size = "md", ring = false }: { name: string | null; size?:
 function AspectDetail({
   row,
   share,
+  peek = false,
   onShowSpot,
 }: {
   row?: AspectRow;
   share: boolean;
+  // The agent's dashboard: a tap shows the photo bigger, here.
+  peek?: boolean;
   onShowSpot?: (spot: SpotRef, keyboard?: boolean) => void;
 }) {
+  const [big, setBig] = useState<number | null>(null);
+  const ids = useId();
   if (!row) return null;
   const who = [...row.names, ...(row.others > 0 ? [`${row.others} ${share ? (row.others === 1 ? "other" : "others") : row.others === 1 ? "buyer" : "buyers"}`] : [])];
   // Each photo once, with every spot on it, most liked first; a tap goes to
@@ -431,6 +473,8 @@ function AspectDetail({
   const byPhoto = new Map<number, SpotRow[]>();
   for (const spot of row.spots) byPhoto.set(spot.index, [...(byPhoto.get(spot.index) ?? []), spot]);
   const photos = [...byPhoto.values()].slice(0, 6);
+  const shown = photos.find((spots) => spots[0].index === big);
+  const then = (spots: SpotRow[]) => (peek ? (big === spots[0].index ? "Show it smaller" : "Show it bigger") : "Show it on the photo");
   return (
     <div className="flex flex-col gap-2.5 pl-0.5">
       {who.length > 0 && <p className="text-[13px] text-stone-700">{namesList(who)}</p>}
@@ -442,12 +486,16 @@ function AspectDetail({
               <li key={first.id}>
                 <button
                   type="button"
-                  disabled={!onShowSpot}
-                  onClick={(event) => onShowSpot?.(first.spot, event.detail === 0)}
+                  disabled={!onShowSpot && !peek}
+                  onClick={(event) =>
+                    peek ? setBig(big === first.index ? null : first.index) : onShowSpot?.(first.spot, event.detail === 0)
+                  }
+                  aria-expanded={peek ? big === first.index : undefined}
+                  aria-controls={peek && big === first.index ? `${ids}-peek` : undefined}
                   aria-label={
                     spots.length === 1
-                      ? `${first.name}, photo ${first.index + 1}. Show it on the photo`
-                      : `Photo ${first.index + 1}: ${namesList(spots.map((spot) => spot.name))}. Show it on the photo`
+                      ? `${first.name}, photo ${first.index + 1}. ${then(spots)}`
+                      : `Photo ${first.index + 1}: ${namesList(spots.map((spot) => spot.name))}. ${then(spots)}`
                   }
                   className="flex flex-col items-start gap-0.5 rounded-xl text-left disabled:cursor-default"
                 >
@@ -463,6 +511,16 @@ function AspectDetail({
           })}
         </ul>
       )}
+      {shown && (
+        <Peek
+          id={`${ids}-peek`}
+          photo={shown[0].photo}
+          index={shown[0].index}
+          dots={shown.flatMap((spot) => (spot.at ? [spot.at] : []))}
+          tone={shown[0].tone}
+          who={[...new Set(shown.flatMap((spot) => spot.names))]}
+        />
+      )}
       {row.comments.slice(0, 2).map((comment) => (
         <p key={comment.id} className="line-clamp-2 text-[13px] text-stone-700">
           <span className="font-semibold text-ink">{comment.name}:</span> {comment.body}
@@ -473,7 +531,8 @@ function AspectDetail({
 }
 
 // A photo in miniature, whole, at its own shape, with a dot where it happened
-// (or one for each spot on it).
+// (or one for each spot on it). `big`: as wide as there's room for, up to
+// 320px, with a larger dot.
 function Thumb({
   photo,
   at,
@@ -481,31 +540,70 @@ function Thumb({
   tone,
   width,
   height,
+  big = false,
+  alt = "",
 }: {
   photo: ListingMedia;
   at?: { x: number; y: number } | null;
   dots?: { x: number; y: number }[];
-  tone: "like" | "dislike";
+  tone: "like" | "dislike" | "comment";
   width?: number;
   height?: number;
+  big?: boolean;
+  alt?: string;
 }) {
   const ratio = photo.ImageWidth && photo.ImageHeight ? photo.ImageWidth / photo.ImageHeight : 4 / 3;
   const w = width ?? Math.round((height ?? 54) * ratio);
   const h = height ?? Math.round(w / ratio);
   return (
-    <span style={{ width: w, height: h }} className="relative block shrink-0 overflow-hidden rounded-xl bg-stone-200">
-      <Image src={photo.MediaURL} alt="" fill sizes={`${w}px`} className="object-contain" />
+    <span
+      style={big ? { aspectRatio: ratio } : { width: w, height: h }}
+      className={cn("relative block shrink-0 overflow-hidden rounded-xl bg-stone-200", big && "w-full max-w-80")}
+    >
+      <Image src={photo.MediaURL} alt={alt} fill sizes={big ? "320px" : `${w}px`} className="object-contain" />
       {(dots ?? (at ? [at] : [])).map((dot, i) => (
         <span
           key={i}
+          aria-hidden
+          data-spot-dot
           style={{ left: `${dot.x * 100}%`, top: `${dot.y * 100}%` }}
           className={cn(
-            "absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white",
-            tone === "like" ? "bg-rose-500" : "bg-amber-500",
+            "absolute -translate-x-1/2 -translate-y-1/2 rounded-full ring-white",
+            big ? "size-4 ring-[3px] shadow-[0_0_0_4px_rgb(0_0_0/0.18)]" : "size-2.5 ring-2",
+            tone === "like" ? "bg-rose-500" : tone === "dislike" ? "bg-amber-500" : "bg-brand",
           )}
         />
       ))}
     </span>
+  );
+}
+
+// The photo, big enough to see exactly where someone tapped (the agent's
+// dashboard, where a tap shows it here rather than going to the photo).
+function Peek({
+  id,
+  photo,
+  index,
+  dots,
+  tone,
+  who,
+}: {
+  id: string;
+  photo: ListingMedia;
+  index: number;
+  dots: { x: number; y: number }[];
+  tone: "like" | "dislike" | "comment";
+  // "Bea", "Bea and Cal": whose taps the dots are.
+  who: string[];
+}) {
+  return (
+    <figure id={id} data-spot-peek className="w-full max-w-80 pb-2 pt-1.5">
+      <Thumb photo={photo} dots={dots} tone={tone} big alt={photo.ShortDescription || `Photo ${index + 1}`} />
+      <figcaption className="mt-1 text-[12px] leading-4 text-stone-600">
+        Photo {index + 1}
+        {dots.length > 0 && `, where ${who.length > 0 && who.length <= 2 ? namesList(who) : "they"} tapped`}
+      </figcaption>
+    </figure>
   );
 }
 
@@ -544,6 +642,7 @@ function SpotList({
           // The room and who, as the eye reads them, said after the name.
           const where = `${ids}-${i}-where`;
           const whom = `${ids}-${i}-who`;
+          const peek = `${ids}-${i}-peek`;
           return (
             <li key={row.id}>
               <button
@@ -551,6 +650,7 @@ function SpotList({
                 aria-label={`${row.name}, photo ${row.index + 1}, ${what}. ${agent ? (big === row.id ? "Show it smaller" : "Show it bigger") : "Show it on the photo"}`}
                 aria-describedby={who.length > 0 ? `${where} ${whom}` : where}
                 aria-expanded={agent ? big === row.id : undefined}
+                aria-controls={agent && big === row.id ? peek : undefined}
                 disabled={!agent && !onShowSpot}
                 onClick={(event) => (agent ? setBig(big === row.id ? null : row.id) : onShowSpot?.(row.spot, event.detail === 0))}
                 className="-mx-2 flex min-h-16 w-[calc(100%+1rem)] items-center gap-3 rounded-xl px-2 py-1.5 text-left hover:bg-stone-50 disabled:cursor-default disabled:hover:bg-transparent"
@@ -577,9 +677,7 @@ function SpotList({
                 </span>
               </button>
               {agent && big === row.id && (
-                <div className="pb-2 pt-1">
-                  <Thumb photo={row.photo} at={row.at} tone={row.tone} width={320} />
-                </div>
+                <Peek id={peek} photo={row.photo} index={row.index} dots={row.at ? [row.at] : []} tone={row.tone} who={row.names} />
               )}
             </li>
           );
@@ -605,12 +703,15 @@ function SpotList({
 function Said({
   card,
   post,
+  peek = false,
   onShowSpot,
   onAllComments,
   onCompose,
 }: {
   card: Scorecard;
   post: FeedPost;
+  // The agent's dashboard: a spot a comment is about opens up here.
+  peek?: boolean;
   onShowSpot?: (spot: SpotRef, keyboard?: boolean) => void;
   onAllComments?: () => void;
   onCompose?: () => void;
@@ -622,12 +723,17 @@ function Said({
       {top.length === 0 ? (
         // Said only in private: one plain line, never "yet" and "more" at once.
         <p className="text-[15px] text-stone-600">
-          {privateMore > 0 ? `No one has commented in public yet. ${chats}` : "No one has commented yet."}
+          {privateMore > 0
+            ? `No one has commented in public yet. ${chats}`
+            : total > 0
+              ? // (The agent's dashboard, where only what you said yourself is here.)
+                "They haven't said anything about it yet."
+              : "No one has commented yet."}
         </p>
       ) : (
         <ul className="flex flex-col gap-4">
           {top.map((comment) => (
-            <SaidItem key={comment.id} comment={comment} post={post} onShowSpot={onShowSpot} />
+            <SaidItem key={comment.id} comment={comment} post={post} peek={peek} onShowSpot={onShowSpot} />
           ))}
         </ul>
       )}
@@ -663,16 +769,18 @@ function Said({
 function SaidItem({
   comment,
   post,
+  peek,
   onShowSpot,
 }: {
   comment: TimelineComment;
   post: FeedPost;
+  peek: boolean;
   onShowSpot?: (spot: SpotRef, keyboard?: boolean) => void;
 }) {
   const spot = comment.spot;
   return (
     <li className="flex gap-3">
-      <Face name={comment.fromPrivateChat ? null : comment.name} />
+      <Face name={comment.fromPrivateChat ? null : comment.name} agent={comment.isAgent} />
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-center gap-x-1.5 text-[13px] leading-5 text-stone-600">
           <span className="font-semibold text-ink">{comment.name}</span>
@@ -681,30 +789,32 @@ function SaidItem({
           )}
           <span suppressHydrationWarning>· {timeAgo(comment.at)}</span>
         </p>
-        {spot && (
-          <SpotChip listing={post.listing} spot={spot} onShowSpot={onShowSpot} />
-        )}
+        {spot && <SpotChip listing={post.listing} spot={spot} who={comment.name} peek={peek} onShowSpot={onShowSpot} />}
         <p className="mt-0.5 line-clamp-3 whitespace-pre-line break-words text-[15px] leading-snug">{comment.body}</p>
       </div>
     </li>
   );
 }
 
-// "the porch", to go there.
+// "the porch", to go there (or, on the agent's dashboard, to see it here).
 function SpotChip({
   listing,
   spot,
+  who,
+  peek,
   onShowSpot,
 }: {
   listing: FeedPost["listing"];
   spot: SpotRef;
+  who: string;
+  peek: boolean;
   onShowSpot?: (spot: SpotRef, keyboard?: boolean) => void;
 }) {
-  const name = spotName(listing, spot);
+  if (peek) return <AgentSpotChip listing={listing} spot={spot} who={who} />;
   const body = (
     <>
       <MapPin aria-hidden size={12} />
-      {name}
+      {spotName(listing, spot)}
     </>
   );
   const chip = "mt-1 inline-flex min-h-7 items-center gap-1 rounded-full bg-stone-100 px-2 text-[12px] font-semibold text-stone-700";
@@ -715,6 +825,56 @@ function SpotChip({
       {body}
       <span className="sr-only">: show it</span>
     </button>
+  );
+}
+
+// On the agent's dashboard, a comment's spot looks as it does in the thread
+// beside it: a fact with its tag ("Price"), or the photo cropped around the
+// spot with a dot where they tapped ("Covered porch"), which a tap shows
+// whole, here.
+function AgentSpotChip({ listing, spot, who }: { listing: FeedPost["listing"]; spot: SpotRef; who: string }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  if (spot.mediaKey === FACTS) {
+    return (
+      <span className="mt-1 inline-flex min-h-8 items-center gap-1.5 rounded-full bg-stone-100 px-3 text-[13px] font-semibold text-stone-700">
+        <Tag aria-hidden size={13} />
+        <span className="sr-only">About </span>
+        {spot.tag}
+      </span>
+    );
+  }
+  const index = listing.Media.findIndex((photo) => mediaKeyOf(photo) === spot.mediaKey);
+  const photo = listing.Media[index];
+  if (!photo) return null;
+  const label = thingOf(photo, spot.tag) ?? `A spot in photo ${index + 1}`;
+  const at = tagPosition(photo, spot.tag);
+  // Cropped around the spot, which keeps the dot where it is on the photo.
+  const crop = at ? { objectPosition: `${at.x * 100}% ${at.y * 100}%` } : undefined;
+  return (
+    <>
+      <button
+        type="button"
+        data-spot-chip
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        aria-label={`About ${label}: ${open ? "hide the photo" : "show it in the photo"}`}
+        onClick={() => setOpen((was) => !was)}
+        className="mt-1 flex min-h-11 max-w-full items-center gap-2 rounded-xl bg-stone-100 p-0.5 pr-3.5 text-left text-[13px] font-semibold text-stone-700 hover:bg-stone-200"
+      >
+        <span aria-hidden className="relative size-10 shrink-0 overflow-hidden rounded-[10px] bg-stone-200">
+          <Image src={photo.MediaURL} alt="" fill sizes="40px" style={crop} className="object-cover" />
+          {at && (
+            <span
+              style={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }}
+              className="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-brand shadow-[0_0_0_1px_rgb(0_0_0/0.3)]"
+            />
+          )}
+        </span>
+        <span className="min-w-0 truncate">{label}</span>
+      </button>
+      {open && <Peek id={id} photo={photo} index={index} dots={at ? [at] : []} tone="comment" who={[who]} />}
+    </>
   );
 }
 
@@ -847,7 +1007,11 @@ function Facts({ rows, onOpenFact }: { rows: FactRow[]; onOpenFact?: (tag: FactT
                   {value}
                 </button>
               ) : (
-                <span className="flex min-w-0 items-center justify-end gap-3">{value}</span>
+                <span className="flex min-w-0 items-center justify-end gap-3">
+                  {value}
+                  {/* The counts beside it, in words (the icons are hidden). */}
+                  {reacted && <span className="sr-only">: {tally.join(", ")}</span>}
+                </span>
               )}
             </dd>
           </div>
@@ -857,51 +1021,201 @@ function Facts({ rows, onOpenFact }: { rows: FactRow[]; onOpenFact?: (tag: FactT
   );
 }
 
-function Compare({ compare }: { compare: NonNullable<Scorecard["compare"]> }) {
+// One person on the link: their verdict at a glance, what they liked and
+// didn't, and the last thing they said.
+function PersonRow({ person }: { person: PersonTake }) {
   return (
-    <div className="-mx-1 overflow-x-auto px-1">
-      <table className="w-full min-w-max border-collapse text-[13px]">
-        <thead>
-          <tr>
-            <th scope="col" className="py-2 pr-3 text-left font-semibold text-stone-600">
-              <span className="sr-only">Aspect</span>
-            </th>
-            {compare.homes.map((home, i) => (
-              <th key={home} scope="col" className="max-w-28 truncate px-2 py-2 text-left font-semibold text-stone-700">
-                {i === 0 ? "This home" : home}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {compare.rows.map((row) => (
-            <tr key={row.aspect} className="border-t border-stone-100">
-              <th scope="row" className="py-2 pr-3 text-left font-normal text-ink">
-                {row.label}
-              </th>
-              {row.cells.map((cell, i) => (
-                <td key={i} className="px-2 py-2 tabular-nums text-stone-700">
-                  {cell.likes > 0 && (
-                    <span className="mr-2 inline-flex items-center gap-0.5">
-                      <Heart aria-hidden size={11} className="fill-rose-500 text-rose-500" />
-                      {cell.likes}
-                      <span className="sr-only"> {cell.likes === 1 ? "like" : "likes"}</span>
+    <li className="flex gap-3 py-3 first:pt-0 last:pb-0">
+      <Face name={person.name} />
+      <div className="min-w-0 flex-1 text-[15px] leading-6">
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="font-semibold">{person.name}</span>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full px-2 py-px text-[12px] font-semibold leading-5",
+              person.tone === "like"
+                ? "bg-rose-50 text-rose-800"
+                : person.tone === "pass"
+                  ? "bg-amber-50 text-amber-900"
+                  : "bg-stone-100 text-stone-600",
+            )}
+          >
+            {person.tone === "like" && <Heart aria-hidden size={12} className="fill-rose-500 text-rose-500" />}
+            {person.tone === "pass" && <ThumbsDown aria-hidden size={12} className="text-amber-700" />}
+            {person.verdict}
+          </span>
+        </p>
+        {person.likes.length > 0 && (
+          <p className="mt-0.5 flex items-start gap-1.5 text-[13px] leading-5 text-stone-700">
+            <Heart aria-hidden size={13} className="mt-[3px] shrink-0 text-rose-600" />
+            <span>
+              <span className="sr-only">Likes: </span>
+              {person.likes.join(" · ")}
+              {person.moreLikes > 0 && <span className="whitespace-nowrap text-stone-600"> · {person.moreLikes} more</span>}
+            </span>
+          </p>
+        )}
+        {person.passes.length > 0 && (
+          <p className="mt-0.5 flex items-start gap-1.5 text-[13px] leading-5 text-stone-700">
+            <ThumbsDown aria-hidden size={13} className="mt-[3px] shrink-0 text-amber-800" />
+            <span>
+              <span className="sr-only">Didn&apos;t like: </span>
+              {person.passes.join(" · ")}
+              {person.morePasses > 0 && <span className="whitespace-nowrap text-stone-600"> · {person.morePasses} more</span>}
+            </span>
+          </p>
+        )}
+        {person.comment && (
+          <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-stone-600" suppressHydrationWarning>
+            <span className="text-ink">“{person.comment.body}”</span> · {timeAgo(person.comment.at)}
+          </p>
+        )}
+      </div>
+    </li>
+  );
+}
+
+// "Compare with the other 2 homes": whether people liked each home, then each
+// aspect, a heart or pass count per home, this home first. Wider than a
+// phone with several homes, it scrolls sideways, the aspects kept in view:
+// the homes slide under them, and a fade at the right says there's more.
+function CompareSection({ compare }: { compare: NonNullable<Scorecard["compare"]> }) {
+  const others = compare.homes.length - 1;
+  const ids = useId();
+  const scroller = useRef<HTMLDivElement>(null);
+  // Whether it scrolls sideways at all (only then is it a stop for the
+  // keyboard), and whether it has been, and has further to go.
+  const [edges, setEdges] = useState({ scrolls: false, scrolled: false, more: false });
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const measure = () => {
+      const scrolls = el.scrollWidth > el.clientWidth + 1;
+      const next = {
+        scrolls,
+        scrolled: scrolls && el.scrollLeft > 1,
+        more: scrolls && el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
+      };
+      setEdges((was) => (was.scrolls === next.scrolls && was.scrolled === next.scrolled && was.more === next.more ? was : next));
+    };
+    // (It measures as soon as it starts watching, and again on any change.)
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    if (el.firstElementChild) watch.observe(el.firstElementChild);
+    el.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      watch.disconnect();
+      el.removeEventListener("scroll", measure);
+    };
+  }, []);
+  // The aspects' column, kept in view, with an edge the homes slide under.
+  const sticky = cn(
+    "sticky left-0 z-10 bg-white pr-3 text-left",
+    edges.scrolled &&
+      "after:pointer-events-none after:absolute after:inset-y-0 after:left-full after:w-4 after:border-l after:border-stone-200 after:bg-linear-to-r after:from-white after:to-transparent",
+  );
+  // The most likes in a row stand out, so the home people liked it best in is plain.
+  const most = (cells: { likes: number }[]) => Math.max(...cells.map((cell) => cell.likes));
+  const row = (label: string, cells: { likes: number; passes: number }[], strong = false) => {
+    const top = most(cells);
+    return (
+      <tr key={label} className="border-t border-stone-100">
+        <th
+          scope="row"
+          className={cn(
+            sticky,
+            "py-2.5 align-top text-[13px] leading-5",
+            strong ? "font-semibold text-ink" : "font-normal text-stone-800",
+          )}
+        >
+          {label}
+        </th>
+        {cells.map((cell, i) => (
+          <td key={compare.homes[i].key} className="px-2 py-2.5 align-top text-[13px] leading-5 tabular-nums text-stone-700">
+            {cell.likes + cell.passes === 0 ? (
+              <>
+                <span aria-hidden className="text-stone-500">
+                  –
+                </span>
+                <span className="sr-only">None</span>
+              </>
+            ) : (
+              <span className="inline-flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+                {cell.likes > 0 && (
+                  <span className={cn("inline-flex items-center gap-1", cell.likes === top && cells.length > 1 && "font-semibold text-ink")}>
+                    <Heart aria-hidden size={12} className="fill-rose-500 text-rose-500" />
+                    {cell.likes}
+                    <span className="sr-only"> {cell.likes === 1 ? "like" : "likes"}</span>
+                  </span>
+                )}{" "}
+                {cell.passes > 0 && (
+                  <span className="inline-flex items-center gap-1">
+                    <ThumbsDown aria-hidden size={12} className="text-amber-700" />
+                    {cell.passes}
+                    <span className="sr-only"> {cell.passes === 1 ? "pass" : "passes"}</span>
+                  </span>
+                )}
+              </span>
+            )}
+          </td>
+        ))}
+      </tr>
+    );
+  };
+  return (
+    <Section title={`Compare with the other ${others === 1 ? "home" : `${others} homes`}`}>
+      <p id={`${ids}-about`} className="-mt-1 mb-2 text-[13px] text-stone-600">
+        How many people on this link liked or passed on each, home by home.
+      </p>
+      <div className="relative -mx-1">
+        <div
+          ref={scroller}
+          className="overflow-x-auto px-1"
+          role="region"
+          aria-labelledby={`${ids}-caption`}
+          tabIndex={edges.scrolls ? 0 : undefined}
+        >
+          <table aria-describedby={`${ids}-about`} className="w-full border-collapse">
+            <caption id={`${ids}-caption`} className="sr-only">
+              This home beside the other {others === 1 ? "home" : `${others} homes`} on the link
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col" className={cn(sticky, "pb-2 align-top")}>
+                  <span className="sr-only">Aspect</span>
+                </th>
+                {/* Photos in a line along the top, whatever the address under each. */}
+                {compare.homes.map((home, i) => (
+                  <th key={home.key} scope="col" className="min-w-[4.75rem] max-w-28 px-2 pb-2 text-left align-top font-normal">
+                    {home.photo && (
+                      <span aria-hidden className="relative mb-1 block h-9 w-12 overflow-hidden rounded-lg bg-stone-200">
+                        <Image src={home.photo.MediaURL} alt="" fill sizes="48px" className="object-cover" />
+                      </span>
+                    )}
+                    <span className={cn("block text-[12px] leading-4", i === 0 ? "font-semibold text-ink" : "text-stone-700")}>
+                      {i === 0 ? (
+                        <>
+                          This home<span className="sr-only">, {home.address}</span>
+                        </>
+                      ) : (
+                        <span className="line-clamp-2 break-words">{home.address}</span>
+                      )}
                     </span>
-                  )}
-                  {cell.passes > 0 && (
-                    <span className="inline-flex items-center gap-0.5">
-                      <ThumbsDown aria-hidden size={11} className="text-amber-700" />
-                      {cell.passes}
-                      <span className="sr-only"> {cell.passes === 1 ? "pass" : "passes"}</span>
-                    </span>
-                  )}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {row("Overall", compare.overall, true)}
+              {compare.rows.map((r) => row(r.label, r.cells))}
+            </tbody>
+          </table>
+        </div>
+        {edges.more && (
+          <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-linear-to-l from-white to-transparent" />
+        )}
+      </div>
+    </Section>
   );
 }
 

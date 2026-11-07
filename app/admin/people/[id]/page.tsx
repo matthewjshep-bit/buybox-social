@@ -27,7 +27,7 @@ export default async function AdminPerson({ params }: Props) {
 
   return (
     <>
-      <Link href="/admin/people" className="mb-4 inline-flex min-h-9 items-center gap-1.5 text-sm font-semibold text-stone-600 hover:text-ink">
+      <Link href="/admin/people" className="mb-2 flex min-h-11 w-fit items-center gap-1.5 text-sm font-semibold text-stone-600 hover:text-ink">
         <ArrowLeft aria-hidden size={16} /> People
       </Link>
 
@@ -160,7 +160,7 @@ export default async function AdminPerson({ params }: Props) {
               <p className="mb-3 text-sm text-stone-600">
                 Spam, or asked to be removed? They never signed in, so there&apos;s nothing else of theirs to lose.
               </p>
-              <ConfirmAction action={deleteLead.bind(null, person.id)} label="Delete this lead" confirm="Delete lead" className="-ml-3" />
+              <ConfirmAction action={deleteLead.bind(null, person.id)} label="Delete this lead" confirm="Delete lead" className="-ml-4" />
             </Card>
           )}
         </div>
