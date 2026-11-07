@@ -17,14 +17,19 @@ const reactionsOf = (likes: PhotoLikes) =>
 
 // Your likes and dislikes on things in a home's photos ("the kitchen") and its
 // facts ("the price"), shown at once, with counts that include them. When the
-// server's copy changes, it wins.
+// server's copy changes, it wins, unless you're still saving a change of your
+// own (a copy from before it would undo it for a moment).
 export function usePhotoLikes(listingKey: string, likes: PhotoLikes) {
   const { actions, ensureName } = useThread();
   const [mine, setMine] = useState(() => reactionsOf(likes));
   const [base, setBase] = useState(likes);
+  // The last thing you liked or disliked here, and when: said at once in the
+  // line above the price, until the page hears it back.
+  const [last, setLast] = useState<{ mediaKey: string; tag: string; reaction: SpotReaction; at: string } | null>(null);
+  const [saving, setSaving] = useState(0);
   if (JSON.stringify([likes.mine, likes.mineDisliked]) !== JSON.stringify([base.mine, base.mineDisliked])) {
     setBase(likes);
-    setMine(reactionsOf(likes));
+    if (saving === 0) setMine(reactionsOf(likes));
   }
   const was = reactionsOf(base);
 
@@ -51,7 +56,9 @@ export function usePhotoLikes(listingKey: string, likes: PhotoLikes) {
         return next;
       });
     put(reaction);
-    const result = await actions.likePhoto(listingKey, keyOf(where), tag, reaction);
+    setLast({ mediaKey: keyOf(where), tag, reaction, at: new Date().toISOString() });
+    setSaving((n) => n + 1);
+    const result = await actions.likePhoto(listingKey, keyOf(where), tag, reaction).finally(() => setSaving((n) => n - 1));
     if (!result.ok) put(before);
   };
 
@@ -74,5 +81,10 @@ export function usePhotoLikes(listingKey: string, likes: PhotoLikes) {
     // Whether you'd liked anything in the photos when the page loaded, and now.
     hadAny: anyLiked(was),
     hasAny: anyLiked(mine),
+    // What you just did, while the page's copy doesn't have it yet.
+    unheard:
+      last && reactionOf(last.mediaKey, last.tag) === last.reaction && was.get(likeId(last.mediaKey, last.tag)) !== last.reaction
+        ? last
+        : null,
   };
 }

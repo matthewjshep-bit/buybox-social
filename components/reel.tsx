@@ -7,7 +7,6 @@ import {
   Ellipsis,
   Eye,
   Flame,
-  Hand,
   Heart,
   ImageIcon,
   MapPin,
@@ -25,6 +24,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useId,
@@ -35,6 +35,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { loadReel, recordView, reloadReelHome } from "@/app/homes/actions";
+import { ActivityTicker, useTicker } from "@/components/activity-ticker";
 import { AspectSummary } from "@/components/aspect-summary";
 import { AspectChips, useReactions } from "@/components/like-pass";
 import {
@@ -50,30 +51,34 @@ import { usePhotoLikes } from "@/components/photo-likes";
 import {
   ReactCard,
   SpotLayer,
-  spotName,
   spotThread,
   useFinePointer,
   type Photos,
   type PickedSpot,
+  type SpotLight,
 } from "@/components/photo-spots";
 import { photoFoot, photoPlace, ReelPhotos } from "@/components/reel-photos";
 import { Sheet } from "@/components/sheet";
 import { NudgeHint, useNudges, type Nudge } from "@/components/walkthrough";
-import type { FeedPost, Headline } from "@/lib/feed";
-import { cn, formatPrice, timeAgo } from "@/lib/format";
+import type { FeedPost } from "@/lib/feed";
+import { cn, formatPrice } from "@/lib/format";
 import { isSampleListing, type Listing, type ListingMedia } from "@/lib/listings/types";
 import {
   FACTS,
   isFactTag,
+  likeId,
   mediaKeyOf,
   photoTags,
   spotAt,
+  spotName,
   tagPhrase,
   tagPosition,
   type FactTag,
+  type SpotReaction,
 } from "@/lib/photos";
+import { eventsFromHeadline, eventsFromTimeline, onFact, onPhoto, type TickerEvent, type TickerTap } from "@/lib/ticker";
 import type { TimelineComment, TimelineItem } from "@/lib/timeline";
-import { describeReaction, NO_REACTION, type Aspect, type ReactionState } from "@/lib/reactions";
+import { NO_REACTION, publicSideOf, type Aspect, type ReactionState } from "@/lib/reactions";
 
 // The feed: one home per screen, scrolled up like a reel, for as long as you
 // keep going. On a phone the whole photo sits right on top of a block of words
@@ -93,6 +98,9 @@ const SPLIT_WIDE = true;
 const legacy = (classes: string) => (SPLIT_WIDE ? "" : classes);
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// How long after the last like or reaction a home's conversation reloads.
+const RELOAD_AFTER_MS = 1500;
 
 // A home, as the rail's Send hands it to the page.
 export type SendHome = {
@@ -212,7 +220,27 @@ export function ReelFeed({
     if (post) setReloaded((current) => ({ ...current, [listingKey]: post }));
   }, [mode]);
 
-  // On public pages, saving a comment reloads just that home's conversation.
+  // On public pages, saving a comment, a like or a reaction reloads just that
+  // home's conversation (and the line above its price). After a like or a
+  // reaction it waits till the taps stop: the page saves one thing at a time,
+  // and a reload queued between a like and the next tap would hold that tap
+  // up (the line says what you did at once, meanwhile).
+  const { likePhoto } = actions;
+  const soon = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    const timers = soon.current;
+    return () => timers.forEach((timer) => clearTimeout(timer));
+  }, []);
+  const reloadSoon = (listingKey: string) => {
+    clearTimeout(soon.current.get(listingKey));
+    soon.current.set(
+      listingKey,
+      setTimeout(() => {
+        soon.current.delete(listingKey);
+        reload(listingKey);
+      }, RELOAD_AFTER_MS),
+    );
+  };
   const threadActions: ThreadActions =
     mode === "share"
       ? actions
@@ -223,6 +251,18 @@ export function ReelFeed({
             if (result.ok) reload(listingKey);
             return result;
           },
+          react: async (listingKey, state) => {
+            const result = await actions.react(listingKey, state);
+            if (result.ok) reloadSoon(listingKey);
+            return result;
+          },
+          ...(likePhoto && {
+            likePhoto: async (listingKey: string, mediaKey: string, tag: string, reaction: SpotReaction) => {
+              const result = await likePhoto(listingKey, mediaKey, tag, reaction);
+              if (result.ok) reloadSoon(listingKey);
+              return result;
+            },
+          }),
         };
 
   // Who sees a comment, said under every comment box. Everyone on an agent's
@@ -517,7 +557,9 @@ function Feed({
   // phone opens its keyboard (it won't for focus that arrives later). The
   // box is still sliding in then, partly past the edge, and the feed mustn't
   // shift sideways to show it.
-  const openComments = (key: string, compose = false, spot?: SpotRef) => {
+  // From the line above the price, about one comment: the comments open on
+  // it, tinted for a moment so it's plain which.
+  const openComments = (key: string, compose = false, spot?: SpotRef, commentId?: string) => {
     const home = frame.current?.querySelector(`[data-home="${CSS.escape(key)}"]`);
     dock.current = wordsOf(key);
     flushSync(() => setSheet({ kind: "comments", key, spot, photoFoot: home ? photoFootIn(home, frame.current!) : undefined }));
@@ -525,6 +567,13 @@ function Feed({
       frame.current?.ownerDocument
         .querySelector<HTMLElement>("dialog[open] [data-composer]")
         ?.focus({ preventScroll: true });
+    }
+    const said =
+      commentId && frame.current?.ownerDocument.querySelector<HTMLElement>(`dialog[open] [data-comment="${CSS.escape(commentId)}"]`);
+    if (said) {
+      said.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
+      said.dataset.flash = "";
+      setTimeout(() => delete said.dataset.flash, 2000);
     }
   };
 
@@ -615,6 +664,9 @@ function Feed({
               onComments={() => openComments(key)}
               onCompose={() => openComments(key, true)}
               onCommentSpot={(spot) => openComments(key, true, spot)}
+              onCommentsAbout={(spot) => openComments(key, false, spot)}
+              onCommentAt={(id) => openComments(key, false, undefined, id)}
+              reactedAt={reactions.changedAt[key]}
               // Over the words on a phone; in the white panel's place, wide.
               covered={!wide && sheet?.kind === "comments" && sheet.key === key}
               docked={wide && sheet?.kind === "comments" && sheet.key === key}
@@ -834,6 +886,9 @@ function Panel({
   onComments,
   onCompose,
   onCommentSpot,
+  onCommentsAbout,
+  onCommentAt,
+  reactedAt,
   covered,
   docked,
   spotSheet,
@@ -877,6 +932,12 @@ function Panel({
   onCompose: () => void;
   // Comment on a spot in a photo, in the sheet below (touchscreens).
   onCommentSpot: (spot: SpotRef) => void;
+  // The comments about one spot, from the line above the price.
+  onCommentsAbout: (spot: SpotRef) => void;
+  // The comments, on one of them.
+  onCommentAt: (commentId: string) => void;
+  // When you last changed your reaction to it here.
+  reactedAt?: string;
   // Its comments are open, over the photo: the words and buttons under them step aside.
   covered: boolean;
   // Its comments are open in the white panel's place (wide): what's under
@@ -1026,6 +1087,113 @@ function Panel({
   const likesIn = (shown: ListingMedia) =>
     photos.likedTags(shown).reduce((sum, tag) => sum + photos.count(shown, tag), 0);
 
+  // What people did lately, for the line above the price: the page's, or on
+  // an agent's link, from the home's own thread (already only the link's).
+  const told = useMemo(
+    () => post.events ?? (mode === "share" ? eventsFromTimeline(post.timeline) : eventsFromHeadline(post.headline)),
+    [post.events, post.timeline, post.headline, mode],
+  );
+  // On public pages, what you just did shows there at once, as it will once
+  // the page hears it back (keyed the same, so nothing jumps when it does).
+  const { unheard } = photos;
+  const likedSpot = useMemo<TickerEvent | null>(
+    () =>
+      mode === "public" && unheard?.reaction === "like"
+        ? {
+            id: `you:like:${likeId(unheard.mediaKey, unheard.tag)}`,
+            kind: unheard.mediaKey === FACTS ? "fact-like" : "spot-like",
+            who: { tone: "you", name: null },
+            at: unheard.at,
+            mediaKey: unheard.mediaKey,
+            spot: unheard.tag,
+          }
+        : null,
+    [mode, unheard],
+  );
+  const likedHome = useMemo<TickerEvent | null>(() => {
+    const shown = mode === "public" && reactedAt && JSON.stringify(state) !== JSON.stringify(base) ? publicSideOf(state) : null;
+    return shown && reactedAt ? { id: "you:reaction", kind: "reaction", who: { tone: "you", name: null }, at: reactedAt, state: shown } : null;
+  }, [mode, reactedAt, state, base]);
+  const events = useMemo(() => {
+    const yours = [likedSpot, likedHome]
+      .filter((event): event is TickerEvent => Boolean(event))
+      .sort((a, b) => b.at.localeCompare(a.at))[0];
+    if (!yours) return told;
+    return [yours, ...told.filter((event) => event.id !== yours.id)].sort((a, b) => b.at.localeCompare(a.at));
+  }, [told, likedSpot, likedHome]);
+  // Paused while a finger's on the photo, and for two seconds after.
+  const [touching, setTouching] = useState(false);
+  const letGo = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(letGo.current), []);
+  const pressPhoto = (event: { target: EventTarget | null }) => {
+    const target = event.target as Element;
+    if (!target.closest('[aria-roledescription="carousel"]') || target.closest("button, a")) return;
+    clearTimeout(letGo.current);
+    setTouching(true);
+    const up = () => {
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      letGo.current = setTimeout(() => setTouching(false), 2000);
+    };
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
+  // A pointer on a spot on the photo, and whether the line's spot can be
+  // pointed at there.
+  const [pinHover, setPinHover] = useState<string | null>(null);
+  const [lightPlace, setLightPlace] = useState<{ tag: string; clear: boolean } | null>(null);
+  const settledKey = listing.Media[settled] ? mediaKeyOf(listing.Media[settled]) : undefined;
+  const ticker = useTicker({
+    events,
+    listing,
+    photoKey: settledKey,
+    mode,
+    // Beside the map it's just a look: the first, still.
+    active: active && !onOpen,
+    held: Boolean(picked) || sheetOver || docked || Boolean(nudge) || hidden || settled !== photo || touching,
+    pinHovered: pinHover,
+    likes,
+  });
+  const shownEvent = ticker.item;
+  // Its face on the photo, where they did it: only on the photo at rest, with
+  // nothing over it.
+  const light: SpotLight | null =
+    shownEvent && onPhoto(shownEvent) && shownEvent.mediaKey === settledKey && active && !onOpen && !hidden && !picked && !sheetOver && !docked && !nudge
+      ? {
+          event: shownEvent,
+          ripples: ticker.shown.first ? 2 : 1,
+          showing: ticker.shown.n,
+          emphasis: ticker.looking,
+          still: ticker.reduced,
+          dim: ticker.running,
+        }
+      : null;
+  // A fact it's about lights up, the same way.
+  const litFact = shownEvent && onFact(shownEvent) && active && !onOpen && !hidden && shownEvent.spot && isFactTag(shownEvent.spot) ? shownEvent.spot : null;
+  const unseen = Boolean(light && lightPlace && lightPlace.tag === light.event.spot && !lightPlace.clear);
+
+  // A tap on the line: to where it happened. After it, the line stays put on
+  // this home until you move on.
+  const tapActivity = (event: TickerEvent, tap: TickerTap, index: number) => {
+    const spot = event.mediaKey && event.spot ? { mediaKey: event.mediaKey, tag: event.spot } : null;
+    if (tap === "comment" && event.commentId) return onCommentAt(event.commentId);
+    if (!spot || tap === "home" || tap === "comment") return onComments();
+    if (spot.mediaKey === FACTS) {
+      if (tap === "spot-comments") return onCommentsAbout(spot);
+      return setPicked({ ...spot, x: 0, y: 0 });
+    }
+    const target = listing.Media[index];
+    const at = target && tagPosition(target, spot.tag);
+    if (!at) return onComments();
+    if (index !== photo) {
+      setShow((now) => ({ index, n: (now?.n ?? 0) + 1 }));
+      setPhoto(index);
+      setSettled(index);
+    }
+    setPicked({ ...spot, ...at });
+    if (tap === "spot-comments") onCommentsAbout(spot);
+  };
+
   const likeWhatsShown = (shown: ListingMedia) => {
     onDoubleTapLike();
     const subject = photoTags(shown)[0];
@@ -1056,6 +1224,7 @@ function Panel({
       data-panel={index}
       data-home={listing.ListingKey}
       aria-label={listing.UnparsedAddress}
+      onPointerDownCapture={onOpen ? undefined : pressPhoto}
       // Where the photo goes. On a phone: in the clear space between the
       // header and the words, right on top of them, so the photo and what it
       // is read as one, top to bottom, with a blurred copy of it filling the
@@ -1266,12 +1435,16 @@ function Panel({
             )}
           >
             <div className="flex h-12 items-center">
-              <ActivityLine
-                headline={post.headline}
+              <ActivityTicker
+                ticker={ticker}
                 listing={listing}
-                photo={settled}
+                photoKey={settledKey}
+                myName={myName}
+                liked={{ count: likes, names: post.likers, you: liked || photos.hasAny }}
+                unseen={unseen}
+                underline={Boolean(shownEvent?.spot && pinHover === shownEvent.spot && shownEvent.mediaKey === settledKey)}
                 // Beside the map, just to read; a tap there opens the home.
-                onOpen={onOpen ? undefined : onComments}
+                onTap={onOpen ? undefined : tapActivity}
                 hint={
                   onOpen
                     ? null
@@ -1287,6 +1460,7 @@ function Panel({
               trending={post.buzz.trending}
               // Beside the map, just a look.
               photos={onOpen || !photos.enabled ? null : photos}
+              lit={litFact}
               open={picked?.mediaKey === FACTS && isFactTag(picked.tag) ? picked.tag : null}
               onOpen={(tag) =>
                 setPicked((now) => (now?.mediaKey === FACTS && now.tag === tag ? null : { mediaKey: FACTS, tag, x: 0, y: 0 }))
@@ -1390,6 +1564,12 @@ function Panel({
             setPicked(null);
             onPins(true);
           }}
+          highlight={light}
+          myName={myName}
+          onHighlightClear={(tag, clear) =>
+            setLightPlace((now) => (now?.tag === tag && now.clear === clear ? now : { tag, clear }))
+          }
+          onPinHover={setPinHover}
         />
       )}
     </article>
@@ -1524,109 +1704,6 @@ function Rail({
   );
 }
 
-function headlineText(headline: Headline) {
-  if (headline.kind === "sent") {
-    return headline.who === "you" ? "You sent this to a client" : "An agent sent this to a buyer";
-  }
-  const who =
-    headline.who === "anonymous" ? "A buyer" : headline.who === "client" ? `${headline.name}, your client,` : headline.name;
-  if (headline.kind === "comment") return headline.who === "anonymous" ? "A buyer commented privately" : `${who} commented`;
-  if (headline.kind === "photo") return `${who} liked ${tagPhrase(headline.tag)}`;
-  return `${who} ${describeReaction(headline.state)}`;
-}
-
-// The latest thing someone did, in a slot of its own above the price that's
-// always the same height: who and what, then where and when. Opens the
-// conversation. With nothing yet, what you can do.
-function ActivityLine({
-  headline,
-  listing,
-  photo,
-  onOpen,
-  hint,
-}: {
-  headline: Headline | null;
-  listing: Listing;
-  // The photo on screen: a like on another one says which.
-  photo: number;
-  // Unset beside the map, where it's just to read.
-  onOpen?: () => void;
-  // Said when nobody has done anything yet (null: nothing).
-  hint: string | null;
-}) {
-  if (!headline) {
-    if (!hint) return null;
-    return (
-      <div className="flex min-w-0 items-center gap-2.5 text-white/70 split:text-stone-600">
-        <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white/10 split:bg-stone-100">
-          <Hand size={16} className="text-white/60 split:text-stone-500" />
-        </span>
-        <p className="line-clamp-2 text-[15px] leading-5">{hint}</p>
-      </div>
-    );
-  }
-  const named = "name" in headline;
-  const text = headlineText(headline);
-  // "Exterior · photo 1": where, when it was in a photo.
-  const index =
-    headline.kind === "photo" && headline.mediaKey
-      ? listing.Media.findIndex((m) => mediaKeyOf(m) === headline.mediaKey)
-      : -1;
-  const where =
-    index >= 0
-      ? [listing.Media[index].ImageOf, index !== photo ? `photo ${index + 1}` : null].filter(Boolean).join(" · ")
-      : null;
-  const ago = timeAgo(headline.at);
-  const glyph =
-    headline.kind === "comment" ? (
-      <MessageCircle size={10} strokeWidth={3} className="text-brand" />
-    ) : headline.kind === "sent" ? (
-      <Send size={9} strokeWidth={3} className="text-stone-600" />
-    ) : headline.kind === "react" && headline.state.reaction === "dislike" ? (
-      <ThumbsDown size={9} strokeWidth={3} className="text-amber-700" />
-    ) : (
-      <Heart size={10} strokeWidth={0} className="fill-rose-500" />
-    );
-  const body = (
-    <>
-      <span
-        aria-hidden
-        className={cn(
-          "relative flex size-8 shrink-0 items-center justify-center rounded-full text-[13px] font-bold [text-shadow:none]",
-          named ? "bg-brand text-white" : "bg-stone-500 text-white",
-        )}
-      >
-        {named ? headline.name[0]?.toUpperCase() : headline.kind === "sent" ? <Send size={14} /> : <User size={14} />}
-        <span className="absolute -bottom-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-white split:ring-1 split:ring-stone-200">
-          {glyph}
-        </span>
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[15px] font-semibold leading-5">{text}</span>
-        <span className="block truncate text-[13px] leading-[18px] text-white/75 split:text-stone-600" suppressHydrationWarning>
-          {where ? `${where} · ${ago}` : ago}
-        </span>
-      </span>
-    </>
-  );
-  // Said in full: "7h ago", but a date as it is ("Nov 2").
-  const spoken = /^\d+[mhd]$/.test(ago) ? `${ago} ago` : ago;
-  return onOpen ? (
-    <button
-      type="button"
-      onClick={onOpen}
-      aria-label={`${text}${where ? `, ${where}` : ""}, ${spoken}. See the comments`}
-      // The time is the server's until the page wakes up, as on the line itself.
-      suppressHydrationWarning
-      className="-mx-1 flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1 text-left split:hover:bg-stone-50"
-    >
-      {body}
-    </button>
-  ) : (
-    <div className="flex min-w-0 flex-1 items-center gap-2.5">{body}</div>
-  );
-}
-
 // What the home costs, what it is, and where: one line each, the way listings
 // read. Each fact can be liked, disliked or commented on, just like anything in
 // the photos: tap the price, and a card opens above it. What people thought of
@@ -1636,6 +1713,7 @@ function Facts({
   items,
   trending,
   photos,
+  lit = null,
   open,
   onOpen,
   onClose,
@@ -1647,6 +1725,8 @@ function Facts({
   trending: boolean;
   // Null where they're just to read (beside the map).
   photos: Photos | null;
+  // The one the line above is about just now: it lights up.
+  lit?: FactTag | null;
   open: FactTag | null;
   onOpen: (tag: FactTag) => void;
   onClose: () => void;
@@ -1672,6 +1752,7 @@ function Facts({
         photos={photos}
         comments={said(tag).length}
         open={open === tag}
+        lit={lit === tag}
         onOpen={() => onOpen(tag)}
         className={className}
       >
@@ -1841,6 +1922,7 @@ function FactButton({
   photos,
   comments,
   open,
+  lit = false,
   onOpen,
   className,
   children,
@@ -1852,6 +1934,8 @@ function FactButton({
   photos: Photos;
   comments: number;
   open: boolean;
+  // What the line above is about just now.
+  lit?: boolean;
   onOpen: () => void;
   className?: string;
   children: ReactNode;
@@ -1873,6 +1957,7 @@ function FactButton({
       className={cn(
         "-mx-1 inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded-md px-1 text-left transition-colors hit-44 hover:bg-white/10 active:bg-white/15 split:hover:bg-stone-100 split:active:bg-stone-200",
         open && "bg-white/15 split:bg-stone-100",
+        lit && "bg-white/15 ring-2 ring-white/70 split:bg-stone-100 split:ring-brand",
         className,
       )}
     >

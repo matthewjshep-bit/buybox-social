@@ -112,7 +112,8 @@ test("on a desktop, the comment box opens right where you click, and what's said
   await expect(trees).toBeHidden();
   // Right where it was said, with who said it.
   const pin = home.getByRole("button", { name: /^Mature trees: Jordan: These trees make the whole street/ });
-  const words = home.getByText("These trees make the whole street");
+  // (On the photo: the line above the price may be quoting them too.)
+  const words = home.locator("[data-photo-frame]").getByText("These trees make the whole street");
   await expect(pin).toBeVisible();
   await expect(words).toBeVisible();
 

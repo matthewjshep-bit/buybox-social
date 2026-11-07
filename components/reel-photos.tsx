@@ -187,11 +187,10 @@ export function ReelPhotos({
     };
   }, [embla]);
 
+  // Only a new request moves the photos (each one a new object).
   useEffect(() => {
     if (embla && show) embla.scrollTo(show.index, true);
-    // Only a new request should move the photos.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [embla, show?.n]);
+  }, [embla, show]);
 
   // A single tap waits to see whether a second follows.
   const single = useRef<ReturnType<typeof setTimeout> | null>(null);

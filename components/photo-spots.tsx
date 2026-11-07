@@ -14,19 +14,21 @@ import {
 import { CommentComposer, type SpotRef } from "@/components/listing-thread";
 import type { usePhotoLikes } from "@/components/photo-likes";
 import { CLEAR_MARGIN, isNear, keepClearOf, PhotoBox, photoFoot, photoPlace, type Box } from "@/components/reel-photos";
+import { SpotHighlight } from "@/components/spot-highlight";
 import { cn } from "@/lib/format";
-import type { Listing, ListingMedia } from "@/lib/listings/types";
+import type { ListingMedia } from "@/lib/listings/types";
 import {
-  FACTS,
   mediaKeyOf,
   photoTags,
   spotLabel,
+  spotName,
   spotPhrase,
   tagPhrase,
   tagPosition,
   thingOf,
   type PhotoSpot,
 } from "@/lib/photos";
+import type { TickerEvent } from "@/lib/ticker";
 import type { TimelineComment, TimelineItem } from "@/lib/timeline";
 
 // Tap anywhere on a photo to like, dislike or comment on that spot: the front
@@ -43,13 +45,7 @@ export type PickedSpot = PhotoSpot & { keyboard?: boolean };
 export type Photos = ReturnType<typeof usePhotoLikes>;
 
 // "the front door"; "a spot in photo 3"; "the price"
-export function spotName(listing: Listing, spot: SpotRef) {
-  if (spot.mediaKey === FACTS) return tagPhrase(spot.tag);
-  const index = listing.Media.findIndex((m) => mediaKeyOf(m) === spot.mediaKey);
-  const thing = thingOf(listing.Media[index], spot.tag);
-  if (thing) return tagPhrase(thing);
-  return index >= 0 ? `a spot in photo ${index + 1}` : "a spot in a photo";
-}
+export { spotName };
 
 // The comments about one spot, and their replies.
 export function spotThread(items: TimelineItem[], spot: SpotRef) {
@@ -96,6 +92,25 @@ const newest = (pin: Pin) => pin.comments.reduce((at, comment) => (comment.at > 
 const MOST_PINS = 5;
 // Spots closer than this, in pixels, gather into one count to tap.
 const CLUSTER_PX = 32;
+// How far clear of the words, the buttons and the comments toggle a face from
+// the activity line has to be to be drawn: it's bigger than a heart.
+const FACE_MARGIN = 18;
+
+// The activity line's item, when it's about a spot on this photo: their face
+// at the spot, and how it shows.
+export type SpotLight = {
+  event: TickerEvent;
+  // Rings that spread from it as it shows: two the first time, then one.
+  ripples: number;
+  // Counts showings, so its motion plays again each time.
+  showing: number;
+  // The line is being looked at: the face a little bolder, no ripple.
+  emphasis: boolean;
+  // Reduced motion: no pop, no ripple.
+  still: boolean;
+  // The line is going round: the other spots step back.
+  dim: boolean;
+};
 
 // Everything said and liked about spots in this photo, one pin per spot.
 function pinsOf(photo: ListingMedia, items: TimelineItem[], photos: Photos): Pin[] {
@@ -188,6 +203,10 @@ export function SpotLayer({
   onComment,
   onPosted,
   covered = false,
+  highlight = null,
+  myName = null,
+  onHighlightClear,
+  onPinHover,
 }: {
   listingKey: string;
   // The photo on screen, once it's settled; undefined hides everything.
@@ -205,12 +224,48 @@ export function SpotLayer({
   onPosted: () => void;
   // Its comments are open in the sheet below: just the ring shows where.
   covered?: boolean;
+  // Who the activity line is on, when it's about a spot: their face there.
+  highlight?: SpotLight | null;
+  myName?: string | null;
+  // Whether that spot can be pointed at, or is under the words, the buttons
+  // or the comments toggle (the line then says "this photo").
+  onHighlightClear?: (tag: string, clear: boolean) => void;
+  // A pointer on a spot, or off it (null).
+  onPinHover?: (tag: string | null) => void;
 }) {
   const fine = useFinePointer();
   const layer = useRef<HTMLDivElement>(null);
   const head = useRef<HTMLSpanElement>(null);
   const photoKey = photo?.ImageWidth && photo.ImageHeight ? mediaKeyOf(photo) : undefined;
   const shape = useWordsOver(layer, photoKey);
+  // Whether the activity line's spot is clear of everything over the photo
+  // (the comments toggle measured as it is now: it comes and goes).
+  const litTag = highlight && highlight.event.mediaKey === photoKey ? highlight.event.spot : undefined;
+  const [litClear, setLitClear] = useState<{ tag: string; clear: boolean } | null>(null);
+  const reportClear = useRef(onHighlightClear);
+  useLayoutEffect(() => {
+    reportClear.current = onHighlightClear;
+  });
+  useLayoutEffect(() => {
+    const el = layer.current;
+    const at = litTag && photo ? tagPosition(photo, litTag) : null;
+    if (!el || !shape || !litTag || !at) return;
+    const box = shape.photo;
+    const [x, y] = [box.left + at.x * (box.right - box.left), box.top + at.y * (box.bottom - box.top)];
+    const origin = el.getBoundingClientRect();
+    const toggle = el.querySelector("[data-pins-toggle]")?.getBoundingClientRect();
+    const underToggle =
+      toggle &&
+      isNear(
+        { left: toggle.left - origin.left, top: toggle.top - origin.top, right: toggle.right - origin.left, bottom: toggle.bottom - origin.top },
+        x,
+        y,
+        FACE_MARGIN,
+      );
+    const clear = !underToggle && !shape.words.some((word) => isNear(word, x, y, CLEAR_MARGIN + FACE_MARGIN));
+    setLitClear((now) => (now?.tag === litTag && now.clear === clear ? now : { tag: litTag, clear }));
+    reportClear.current?.(litTag, clear);
+  }, [litTag, photo, shape, items]);
   // Gathered spots someone asked to see one by one, on this photo, until
   // another photo shows.
   const [spread, setSpread] = useState<{ mediaKey: string; tags: string[] } | null>(null);
@@ -301,6 +356,10 @@ export function SpotLayer({
       ),
   );
   const loose = (pin: Pin) => isMine(pin) || spreadHere.includes(pin.tag);
+  // The activity line's spot, drawn when it's clear of everything (and no
+  // card is open on this photo).
+  const lit = highlight && litTag && !open && litClear?.tag === litTag && litClear.clear ? highlight : null;
+  const litAt = lit && litTag ? tagPosition(photo, litTag) : null;
 
   const ranked = [...pins].sort((a, b) => b.likes - a.likes || newest(b).localeCompare(newest(a)));
   const shown = ranked.filter(
@@ -380,6 +439,8 @@ export function SpotLayer({
               label={thingOf(photo, group[0].tag) ?? "A spot"}
               expanded={pinsShown}
               underWords={pinsShown && !isMine(group[0]) && underWords.includes(group[0].tag)}
+              dim={Boolean(lit?.dim) && group[0].tag !== lit?.event.spot}
+              onHover={onPinHover}
               // From the keyboard, the card takes it (and gives it back here).
               onOpen={(keyboard) =>
                 onPick({ mediaKey, tag: group[0].tag, x: group[0].x, y: group[0].y, keyboard })
@@ -395,6 +456,19 @@ export function SpotLayer({
               }}
             />
           ),
+        )}
+
+        {lit && litAt && (
+          <SpotHighlight
+            event={lit.event}
+            x={litAt.x}
+            y={litAt.y}
+            myName={myName}
+            ripples={lit.ripples}
+            emphasis={lit.emphasis}
+            still={lit.still}
+            showing={lit.showing}
+          />
         )}
 
         {open && (
@@ -452,6 +526,8 @@ function SpotPin({
   label,
   expanded,
   underWords = false,
+  dim = false,
+  onHover,
   onOpen,
 }: {
   pin: Pin;
@@ -459,6 +535,10 @@ function SpotPin({
   expanded: boolean;
   // A like under someone's words beside it: out of sight while they show.
   underWords?: boolean;
+  // Another spot is being pointed out: this one steps back.
+  dim?: boolean;
+  // A pointer on it (its tag), or off it (null).
+  onHover?: (tag: string | null) => void;
   // `keyboard`: pressed with a key, rather than tapped.
   onOpen: (keyboard: boolean) => void;
 }) {
@@ -478,6 +558,8 @@ function SpotPin({
         data-pin={pin.tag}
         data-like-only={pin.comments.length === 0 || undefined}
         onClick={(event) => onOpen(event.detail === 0)}
+        onPointerEnter={() => onHover?.(pin.tag)}
+        onPointerLeave={() => onHover?.(null)}
         aria-label={`${label}: ${[said, likes, dislikes].filter(Boolean).join(", ")}`}
         // A fingertip to tap; a small frosted dot to see, taking on the photo's
         // colours behind it.
@@ -485,7 +567,10 @@ function SpotPin({
       >
         <span
           aria-hidden
-          className="flex h-5 min-w-5 items-center justify-center gap-0.5 rounded-full bg-black/20 px-1 text-[10px] font-semibold leading-none text-white/90 opacity-85 ring-1 ring-white/35 backdrop-blur-sm transition-[opacity,background-color] group-hover:bg-black/40 group-hover:opacity-100"
+          className={cn(
+            "flex h-5 min-w-5 items-center justify-center gap-0.5 rounded-full bg-black/20 px-1 text-[10px] font-semibold leading-none text-white/90 ring-1 ring-white/35 backdrop-blur-sm transition-[opacity,background-color] duration-200 group-hover:bg-black/40 group-hover:opacity-100",
+            dim ? "opacity-40" : "opacity-85",
+          )}
         >
           {pin.likes > 0 ? (
             <>

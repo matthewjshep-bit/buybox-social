@@ -211,6 +211,39 @@ a {
   }
 }
 
+/* With reduced motion on, the activity line steps by hand, crossfading. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* A comment the activity line points to, when the comments open on it. */
+@keyframes comment-flash {
+  from {
+    background-color: color-mix(in srgb, var(--brand) 10%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+[data-flash] {
+  border-radius: 0.75rem;
+  animation: comment-flash 2s ease-in both;
+}
+
 /* Who did something, appearing on the photo where they did it. */
 @keyframes pin-in {
   from {
@@ -285,5 +318,13 @@ a {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+  /* A fade isn't motion: the activity line still crossfades as it steps,
+     and a comment pointed to still shows which. */
+  [data-crossfade] {
+    animation-duration: 150ms !important;
+  }
+  [data-flash] {
+    animation-duration: 2s !important;
   }
 }

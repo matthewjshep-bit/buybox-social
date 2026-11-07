@@ -44,12 +44,17 @@ test("public pages show activity, never private words, and private threads share
   await quinnWhy.getByRole("button", { name: "Yard" }).click();
   await expect(quinnWhy.getByRole("button", { name: "Yard" })).toHaveAttribute("aria-pressed", "true");
 
-  // The home's public page shows the activity without the words.
+  // The home's public page shows the activity: first the comment the client
+  // chose to share, without her name; in its turn, the private one, without
+  // its words.
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto("/homes/SAMPLE-1006");
   const post = homeIn(page, BRACKENFIELD);
-  await expect(post).toContainText("A buyer commented privately");
+  const activity = post.getByRole("group", { name: "Recent activity" });
+  await expect(activity).toContainText(`A buyer commented\u201c${SHARED}\u201d`);
+  await expect(post).toContainText("A buyer commented privately", { timeout: 30_000 });
+  await expect(activity).not.toContainText(SECRET);
   await expect(post).toContainText("Listed by Priya Natarajan");
   await expect(post).toContainText(/Traditional brick-front home/);
   await expect(post.getByRole("button", { name: `Like ${BRACKENFIELD}, 1 like` })).toBeVisible();
@@ -57,10 +62,10 @@ test("public pages show activity, never private words, and private threads share
   await expect(sheet.getByText("People like")).toBeVisible();
   await expect(sheet.getByText("Exterior 1")).toBeVisible();
   await expect(sheet.getByText("People pass on")).toHaveCount(0);
-  const activity = sheet.getByLabel("Activity");
-  await expect(activity).toContainText("sent to 1 buyer by agents");
-  await expect(activity).toContainText("2 comments in private chats");
-  await expect(activity).not.toContainText("pass");
+  const buzz = sheet.getByLabel("Activity");
+  await expect(buzz).toContainText("sent to 1 buyer by agents");
+  await expect(buzz).toContainText("2 comments in private chats");
+  await expect(buzz).not.toContainText("pass");
   const thread = sheet.getByRole("list", { name: "Comments and likes" });
   await expect(thread).toContainText("A buyer liked the brick front");
   await expect(thread).toContainText(SHARED);
