@@ -230,11 +230,15 @@ export function SpotLayer({
     if (!focusTo || focused.current === focusTo.n) return;
     focused.current = focusTo.n;
     const tag = CSS.escape(focusTo.tag);
-    const at =
-      layer.current?.querySelector<HTMLElement>(`[data-pin="${tag}"]`) ??
-      layer.current?.querySelector<HTMLElement>(`[data-thing="${tag}"]`);
     // Only when nothing else has the keyboard (it was on what just went away).
-    if (at && (document.activeElement === document.body || !document.activeElement)) at.focus({ preventScroll: true });
+    if (document.activeElement && document.activeElement !== document.body) return;
+    // (A spot with nothing left on it: the photo's comments, or the first
+    // thing in it, so the keyboard stays on the photo.)
+    for (const where of [`[data-pin="${tag}"]`, `[data-thing="${tag}"]`, "[data-pins-toggle]", "[data-thing]"]) {
+      const at = layer.current?.querySelector<HTMLElement>(where);
+      at?.focus({ preventScroll: true });
+      if (at && document.activeElement === at) break;
+    }
   }, [focusTo]);
   // Like dots that would sit under someone's words while those show step
   // aside (they stay in place, unseen, so they can be measured again).
@@ -612,6 +616,8 @@ function SpotCard({
           onPosted={onPosted}
           ref={card}
           style={top === null ? side(spot.x, spot.y) : { ...side(spot.x, spot.y), top, translate: "none" }}
+          // Over other spots' words (shown while the comments are open).
+          className="z-20"
         />
       )}
     </>

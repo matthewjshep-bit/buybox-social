@@ -117,6 +117,10 @@ test("on a desktop, the whole photo sits beside the words; press and hold to see
   await expect(price).toBeHidden();
   await expect(home.getByRole("button", { name: /^Comments/ })).toBeHidden();
   await expect(page.getByRole("link", { name: "BuyBox Social" })).toBeHidden();
+  // The photo stays just where it was while it's held.
+  const held = (await photo.boundingBox())!;
+  expect(Math.abs(held.x - box.x)).toBeLessThan(2);
+  expect(Math.abs(held.y - box.y)).toBeLessThan(2);
   await page.mouse.up();
   await expect(price).toBeVisible();
   await expect(page.getByRole("link", { name: "BuyBox Social" })).toBeVisible();

@@ -36,6 +36,8 @@ export type FeedPost = {
   listing: Listing;
   headline: Headline | null;
   likes: number;
+  // The latest few who liked it, by first name, never the viewer (the reel
+  // says "you" from what you've just done).
   likers: string[];
   dislikes: number;
   aspects: AspectTotals;
@@ -177,7 +179,8 @@ export async function getReel(
         select r.listing_key, vi.first_name,
           row_number() over (partition by r.listing_key order by r.updated_at desc) as n
         from public_reactions r join visitors vi on vi.id = r.visitor_id
-        where r.reaction = 'like' and r.listing_key in ${sql(keys)}) x
+        where r.reaction = 'like' and r.listing_key in ${sql(keys)}
+          and r.visitor_id is distinct from ${visitorId}::uuid) x
       where n <= 2`,
     // Everyone who liked the home, or anything in its photos, once each.
     sql<{ listing_key: string; n: number }[]>`

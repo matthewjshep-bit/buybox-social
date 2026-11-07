@@ -119,6 +119,12 @@ const sendHomeOf = ({ listing }: FeedPost): SendHome => ({
 // agent's link, or (an agent, on a home for sale) send it to a client.
 type ShareKind = "share" | "invite" | "send";
 
+// The agent, in a sentence: their name, or "your agent" when the page
+// doesn't know it (it says "Your agent" then).
+const agentCalled = (agentName?: string) => (agentName && agentName !== "Your agent" ? agentName : "your agent");
+const agentFirstName = (agentName?: string) =>
+  agentName && agentName !== "Your agent" ? (agentName.split(" ")[0] ?? agentName) : "your agent";
+
 // "8", "1,204", "10.2K"
 const countLabel = (n: number) =>
   n < 10_000 ? n.toLocaleString("en-US") : new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n);
@@ -219,14 +225,19 @@ export function ReelFeed({
           },
         };
 
-  // Who sees a comment, said under every comment box.
-  const agent = agentName || "your agent";
+  // Who sees a comment, said under every comment box. Everyone on an agent's
+  // link reads what's said there, each on a link of their own or not, so
+  // "only you" is said only when the page knows nobody else is on it.
+  const agent = agentCalled(agentName);
+  const alone = (initial[0]?.members?.length ?? 2) <= 1;
   const seenBy: SeenBy =
     mode === "public"
       ? { text: "Everyone can see your comment and first name.", private: false }
-      : canInvite
-        ? { text: `Only ${agent} and people on this link see this.`, private: true }
-        : { text: `Only you and ${agent} see this.`, private: true };
+      : !canInvite && alone
+        ? { text: `Only you and ${agent} see this.`, private: true }
+        : { text: `Only ${agent} and people on this link see this.`, private: true };
+  // Where the name prompt rises from: side by side, the white panel's foot.
+  const nameAnchor = useRef<HTMLElement | null>(null);
 
   return (
     <NameGate
@@ -236,8 +247,10 @@ export function ReelFeed({
       suggestedName={suggestedName}
       nameHint={nameHint}
       seenBy={seenBy}
+      anchor={nameAnchor}
     >
       <Feed
+        nameAnchorRef={nameAnchor}
         posts={posts}
         mode={mode}
         myName={myName}
@@ -287,6 +300,7 @@ function Feed({
   hasMore,
   loading,
   onNearEnd,
+  nameAnchorRef,
 }: {
   posts: FeedPost[];
   mode: "public" | "share";
@@ -306,6 +320,8 @@ function Feed({
   hasMore: boolean;
   loading: boolean;
   onNearEnd: () => void;
+  // Set to where the name prompt should rise from (none: the window's foot).
+  nameAnchorRef?: RefObject<HTMLElement | null>;
 }) {
   const frame = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -322,9 +338,15 @@ function Feed({
   // Each sheet closes only itself: one can open another without the first's
   // closing shutting the second.
   const closeSheet = (kind: "comments" | "more") => setSheet((now) => (now?.kind === kind ? null : now));
-  // Side by side (wide): comments open beside the photo, in the white panel's place.
-  const wide = useWide(frame);
+  // Side by side (wide): comments open beside the photo, in the white panel's
+  // place, and other sheets rise from the panel's foot. `narrow`: a phone's
+  // layout (comments rise to the photo's foot), whether or not wide screens
+  // are side by side.
+  const { wide, narrow } = useWidth(frame);
   const dock = useRef<HTMLElement | null>(null);
+  // A home's white panel, side by side.
+  const wordsOf = (key: string) =>
+    frame.current?.querySelector<HTMLElement>(`[data-home="${CSS.escape(key)}"] [data-words]`) ?? null;
   const [toast, setToast] = useState<string | null>(null);
   // Pressing and holding a home's photo clears everything off it, to see it
   // whole, until you let go.
@@ -422,16 +444,25 @@ function Feed({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus]);
 
-  // ↑ and ↓ (or J and K) move between homes, unless you're typing or a sheet is open.
+  // ↑ and ↓ move between homes, unless you're typing, or in a sheet (beside
+  // the photo, only while you're in it: from the photo they move on, which
+  // puts it away). J and K too, but only while the feed itself has the
+  // keyboard (a click on it anywhere but a button gives it the keyboard), so
+  // a letter meant for anything else, or a word said to the computer, never
+  // jumps homes.
   useEffect(() => {
     if (embedded) return;
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (target.closest("input, textarea, select, [contenteditable]") || document.querySelector("dialog[open]")) return;
+      if (target.closest("input, textarea, select, [contenteditable], dialog") || document.querySelector("dialog[open]:modal")) {
+        return;
+      }
       const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-      if (key === "ArrowDown" || key === "PageDown" || key === "j") goTo(active + 1);
-      else if (key === "ArrowUp" || key === "PageUp" || key === "k") goTo(active - 1);
+      const letters =
+        Boolean(scroller.current?.contains(target)) && !target.closest("button, a, summary, [role=button], [role=link]");
+      if (key === "ArrowDown" || key === "PageDown" || (key === "j" && letters)) goTo(active + 1);
+      else if (key === "ArrowUp" || key === "PageUp" || (key === "k" && letters)) goTo(active - 1);
       else return;
       event.preventDefault();
     };
@@ -439,15 +470,62 @@ function Feed({
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // On to another home with the keyboard on a button every home has (the
+  // chevrons, More), it moves to the same button on the home now on screen,
+  // rather than staying behind, out of sight, on the one before.
+  useEffect(() => {
+    const now = document.activeElement as HTMLElement | null;
+    const follow = now?.dataset.follow;
+    const home = scroller.current?.querySelector<HTMLElement>(`[data-panel="${active}"]`);
+    if (!now || !follow || !home || home.contains(now) || !scroller.current?.contains(now)) return;
+    const same = home.querySelector<HTMLElement>(`[data-follow="${follow}"]:not(:disabled)`);
+    (same ?? home.querySelector<HTMLElement>("[data-follow]:not(:disabled), button:not(:disabled)"))?.focus({
+      preventScroll: true,
+    });
+  }, [active]);
+
+  // The name prompt rises where the words are: side by side, from the foot
+  // of the white panel of the home on screen.
+  useLayoutEffect(() => {
+    if (nameAnchorRef) nameAnchorRef.current = wide && activeKey ? wordsOf(activeKey) : null;
+  });
+
+  // Beside the photo, the comments take the white panel's place, so Tab
+  // finds them there too: from the buttons down the side into them, and out
+  // of them on to whatever follows the panel (the panel itself is out of
+  // reach under them).
+  const dockedKey = wide && sheet?.kind === "comments" ? sheet.key : null;
+  useEffect(() => {
+    if (!dockedKey) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Tab" || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      const dialog = frame.current?.querySelector<HTMLDialogElement>(":scope > dialog[open]");
+      const panel = wordsOf(dockedKey);
+      if (!dialog || !panel || dialog.matches(":modal") || document.querySelector("dialog[open]:modal")) return;
+      const next = nextStop(document.activeElement, dialog, panel, event.shiftKey);
+      if (!next) return;
+      event.preventDefault();
+      next.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dockedKey]);
+
   // Comments rise from the bottom, to the photo's foot, so it stays in view
   // (wide, they open beside it, in the white panel's place). From the comment
   // bar, the cursor goes straight into the comment box, in the same tap, so a
-  // phone opens its keyboard (it won't for focus that arrives later).
+  // phone opens its keyboard (it won't for focus that arrives later). The
+  // box is still sliding in then, partly past the edge, and the feed mustn't
+  // shift sideways to show it.
   const openComments = (key: string, compose = false, spot?: SpotRef) => {
     const home = frame.current?.querySelector(`[data-home="${CSS.escape(key)}"]`);
-    dock.current = home?.querySelector<HTMLElement>("[data-words]") ?? null;
+    dock.current = wordsOf(key);
     flushSync(() => setSheet({ kind: "comments", key, spot, photoFoot: home ? photoFootIn(home, frame.current!) : undefined }));
-    if (compose) frame.current?.ownerDocument.querySelector<HTMLElement>("dialog[open] [data-composer]")?.focus();
+    if (compose) {
+      frame.current?.ownerDocument
+        .querySelector<HTMLElement>("dialog[open] [data-composer]")
+        ?.focus({ preventScroll: true });
+    }
   };
 
   const say = (message: string) => {
@@ -483,8 +561,10 @@ function Feed({
       ref={frame}
       data-dark-ground
       className={cn(
-        // Its size, not the window's, decides the layout of each home.
-        "overflow-hidden bg-night text-white @container-size/reel",
+        // Its size, not the window's, decides the layout of each home. What
+        // runs past its edges (the comments sliding in) is cut off, and it
+        // never scrolls sideways to show it.
+        "overflow-clip bg-night text-white @container-size/reel",
         // The photo starts just under the header, never beneath it. Side by
         // side, the stage and the panel start a little further down (in a
         // pop-out, below its close button in the corner).
@@ -498,6 +578,9 @@ function Feed({
       <div
         ref={scroller}
         data-reel
+        // A click on it (anywhere but a button) gives it the keyboard, for J
+        // and K; it's never a stop for Tab.
+        tabIndex={-1}
         className="h-full snap-y snap-mandatory overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {intro && (
@@ -532,8 +615,9 @@ function Feed({
               onComments={() => openComments(key)}
               onCompose={() => openComments(key, true)}
               onCommentSpot={(spot) => openComments(key, true, spot)}
-              // Over the words on a phone; beside them, wide.
+              // Over the words on a phone; in the white panel's place, wide.
               covered={!wide && sheet?.kind === "comments" && sheet.key === key}
+              docked={wide && sheet?.kind === "comments" && sheet.key === key}
               spotSheet={sheet?.kind === "comments" && sheet.key === key && Boolean(sheet.spot)}
               clear={clear === offset + i}
               onHoldPhoto={(holding) => setClear(holding ? offset + i : null)}
@@ -543,7 +627,10 @@ function Feed({
               onPins={(on) => pin(key, on)}
               goToSpot={goToSpot?.key === key ? goToSpot : null}
               onOpen={onOpen && (() => onOpen(key))}
-              onMore={() => setSheet({ kind: "more", key })}
+              onMore={() => {
+                dock.current = wordsOf(key);
+                setSheet({ kind: "more", key });
+              }}
               shareAs={kind}
               onShare={kind ? () => share(post) : undefined}
               // (Not in a pop-out, which has just the one home.)
@@ -621,7 +708,8 @@ function Feed({
         canShare={sheetPost ? reactions.states[sheetPost.listing.ListingKey]?.reaction === "like" : false}
         anchor={wide ? dock : frame}
         docked={wide}
-        photoFoot={sheet?.photoFoot}
+        // (Up to the photo's foot only in a phone's layout.)
+        photoFoot={narrow ? sheet?.photoFoot : undefined}
         onClose={() => closeSheet("comments")}
         // Posted about a spot: back to the photo, where it now shows.
         onPostedSpot={(key) => {
@@ -639,7 +727,8 @@ function Feed({
         post={sheet?.kind === "more" ? (sheetPost ?? null) : null}
         state={sheetPost ? (reactions.states[sheetPost.listing.ListingKey] ?? NO_REACTION) : NO_REACTION}
         agentName={agentName}
-        anchor={frame}
+        // Side by side, up from the foot of the white panel, like the comments.
+        anchor={wide ? dock : frame}
         onPass={() => sheetPost && reactions.choose(sheetPost.listing.ListingKey, "dislike")}
         onToggle={(aspect) => sheetPost && reactions.toggle(sheetPost.listing.ListingKey, aspect)}
         onNext={() => {
@@ -657,22 +746,62 @@ function Feed({
 }
 
 // Whether the feed is wide enough (64rem) to lay each home out side by side,
-// as its own layout decides by the same measure.
-function useWide(frame: RefObject<HTMLElement | null>) {
-  const [wide, setWide] = useState(false);
+// as its own layout decides by the same measure (`wide`), and whether it's
+// narrower than that, a phone's layout, side by side or not (`narrow`).
+function useWidth(frame: RefObject<HTMLElement | null>) {
+  const [size, setSize] = useState({ wide: false, narrow: true });
   useLayoutEffect(() => {
     const el = frame.current;
-    if (!el || !SPLIT_WIDE) return;
+    if (!el) return;
     const measure = () => {
       const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-      setWide(el.clientWidth >= 64 * rem);
+      const roomy = el.clientWidth >= 64 * rem;
+      setSize((now) =>
+        now.wide === (SPLIT_WIDE && roomy) && now.narrow === !roomy ? now : { wide: SPLIT_WIDE && roomy, narrow: !roomy },
+      );
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
   }, [frame]);
-  return wide;
+  return size;
+}
+
+// Everything Tab can stop on, in the page's order.
+function tabStops() {
+  return [
+    ...document.querySelectorAll<HTMLElement>("a[href], button, input, select, textarea, summary, [tabindex], [contenteditable]"),
+  ].filter(
+    (el) =>
+      el.tabIndex >= 0 &&
+      !(el as HTMLButtonElement).disabled &&
+      !el.closest("[inert]") &&
+      (el as HTMLInputElement).type !== "hidden" &&
+      // (Older browsers: whether it takes up any room at all.)
+      (typeof el.checkVisibility === "function"
+        ? el.checkVisibility({ visibilityProperty: true })
+        : el.getClientRects().length > 0),
+  );
+}
+
+// Where Tab (or Shift+Tab) goes from `now` with `dialog` read as though it
+// stood in `panel`'s place in the page. Undefined: wherever the browser
+// would take it.
+function nextStop(now: Element | null, dialog: HTMLElement, panel: HTMLElement, back: boolean) {
+  const stops = tabStops();
+  const inside = stops.filter((el) => dialog.contains(el));
+  const outside = stops.filter((el) => !dialog.contains(el));
+  const follows = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const after = outside.findIndex((el) => follows(panel, el));
+  const at = after === -1 ? outside.length : after;
+  const order = [...outside.slice(0, at), ...inside, ...outside.slice(at)];
+  const from = now ? order.indexOf(now as HTMLElement) : -1;
+  if (from !== -1) return order[from + (back ? -1 : 1)];
+  // On something in it that isn't a stop itself (its title): from there.
+  if (!now || !dialog.contains(now)) return undefined;
+  const first = inside.findIndex((el) => follows(now, el));
+  return order[at + (first === -1 ? inside.length : first) - (back ? 1 : 0)];
 }
 
 // Where the photo on screen ends, from the top of the feed.
@@ -706,6 +835,7 @@ function Panel({
   onCompose,
   onCommentSpot,
   covered,
+  docked,
   spotSheet,
   clear,
   onHoldPhoto,
@@ -749,6 +879,9 @@ function Panel({
   onCommentSpot: (spot: SpotRef) => void;
   // Its comments are open, over the photo: the words and buttons under them step aside.
   covered: boolean;
+  // Its comments are open in the white panel's place (wide): what's under
+  // them is out of reach.
+  docked: boolean;
   // The comments about one spot are open (over or beside the photo): its card
   // shows just where.
   spotSheet: boolean;
@@ -792,6 +925,9 @@ function Panel({
     setWasCovered(sheetOver);
     if (!sheetOver) setPicked(null);
   }
+  // A card open on the price or a fact, in the white panel, goes when the
+  // comments take the panel's place (it would sit over them).
+  if (docked && picked?.mediaKey === FACTS) setPicked(null);
   // To a spot from a comment about it: its photo, with its card open (or the
   // fact's card, for one about the price).
   const [show, setShow] = useState<{ index: number; n: number } | null>(null);
@@ -883,7 +1019,7 @@ function Panel({
   const comments = post.timeline.filter((item) => item.kind === "comment").length;
   // Nothing over the photo: held, or "Show the photo only".
   const hidden = clear || bare;
-  const agentFirst = agentName?.split(" ")[0] || "your agent";
+  const agentFirst = agentFirstName(agentName);
   // Side by side on a wide screen (never beside the map, just a look there).
   const split = SPLIT_WIDE && !onOpen;
   // Likes on things in a photo, for the strip of photos.
@@ -926,11 +1062,12 @@ function Panel({
       // band above. A phone on its side: the full-screen photo with the
       // words over it. The photo alone, on a phone: whole and centred in the
       // whole screen, its blurred copy all round it, rather than over an
-      // empty band where the words were. Side by side, wide: whole and
-      // centred on a stage on the left, over the strip of photos (when there
-      // are several), clear of the buttons and the white panel down the
-      // right; held, or alone, it stays put. (With SPLIT_WIDE off, wide is
-      // the full-screen photo with the words over it, centred.)
+      // empty band where the words were. Side by side, wide: whole, at the
+      // top of a stage on the left (level with the white panel), the strip
+      // of photos under it (when there are several), clear of the buttons
+      // and the panel down the right; held, it stays put; alone, it grows
+      // to the whole window, centred. (With SPLIT_WIDE off, wide is the
+      // full-screen photo with the words over it, centred.)
       data-split={split || undefined}
       className={cn(
         "relative h-full snap-start snap-always overflow-hidden bg-night",
@@ -942,8 +1079,13 @@ function Panel({
         legacy(
           "@5xl:[--backdrop-bottom:0px] @5xl:[--backdrop-shade:0] @5xl:[--backdrop-top:0px] @5xl:[--photo-align:0.5] @5xl:[--photo-fit:0] @5xl:[--photo-top:calc(var(--chrome-top,4rem)+0.5rem)] @5xl:[--words-gap:8px]",
         ),
-        "split:[--photo-align:0.5] split:[--photo-fit:1] split:[--photo-left:24px] split:[--photo-right:468px] split:[--photo-top:var(--stage-top)] split-xl:[--photo-right:508px]",
-        listing.Media.length > 1 ? "split:[--photo-bottom:120px]" : "split:[--photo-bottom:24px]",
+        "split:[--photo-fit:1] split:[--photo-left:24px]",
+        bare
+          ? "split:[--photo-align:0.5] split:[--photo-bottom:24px] split:[--photo-right:24px] split:[--photo-top:24px]"
+          : cn(
+              "split:[--photo-align:0] split:[--photo-right:468px] split:[--photo-top:var(--stage-top)] split-xl:[--photo-right:508px]",
+              listing.Media.length > 1 ? "split:[--photo-bottom:120px]" : "split:[--photo-bottom:24px]",
+            ),
       )}
       style={wordsHeight ? ({ "--words-height": `${wordsHeight}px` } as CSSProperties) : undefined}
     >
@@ -1045,6 +1187,7 @@ function Panel({
               <button
                 type="button"
                 aria-label="Go to the previous home"
+                data-follow="previous"
                 disabled={!onPrevious}
                 onClick={onPrevious}
                 className="flex size-11 items-center justify-center rounded-full bg-white/10 text-white ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-white/20 disabled:cursor-default disabled:opacity-35 disabled:hover:bg-white/10"
@@ -1054,6 +1197,7 @@ function Panel({
               <button
                 type="button"
                 aria-label="Go to the next home"
+                data-follow="next"
                 onClick={onNext}
                 className="flex size-11 items-center justify-center rounded-full bg-white/10 text-white ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-white/20"
               >
@@ -1090,6 +1234,7 @@ function Panel({
         <div
           ref={words}
           data-words
+          inert={docked || undefined}
           className={cn(
             "absolute inset-x-0 bottom-0 flex flex-col bg-night pb-(--words-pad) transition-[opacity,visibility] duration-300 [--words-pad:calc(12px+env(safe-area-inset-bottom))]",
             more ? "h-auto" : "h-[calc(296px+var(--words-pad))]",
@@ -1150,32 +1295,37 @@ function Panel({
               onComment={onCommentSpot}
               onPosted={() => setPicked(null)}
             />
-            <Caption
-              listing={listing}
-              greeting={post.greeting}
-              note={post.note}
-              open={more}
-              onToggle={onOpen ? undefined : () => setMore(!more)}
-            />
-            {/* Who's selling it runs short before "Sample listing" does: it's
-                the only sign on the home that it isn't real. */}
-            <p className="flex h-5 whitespace-nowrap text-[13px] leading-5 text-white/80 split:text-stone-600">
-              <span className="min-w-0 truncate">
-                {listing.ListAgentFullName && `Listed by ${listing.ListAgentFullName}`}
-                {listing.ListOfficeName && ` · ${listing.ListOfficeName}`}
-              </span>
-              {isSampleListing(listing) && <span className="shrink-0">&nbsp;· Sample listing</span>}
-            </p>
-            {split && likes > 0 && (
-              <LikedBy
-                likes={likes}
-                you={liked || photos.hasAny}
-                myName={myName}
-                names={post.likers}
-                onOpen={onComments}
-                className="hidden split:block"
+            {/* Side by side, a card on the price or a fact opens over these,
+                and they step aside for it rather than show round it. */}
+            <div className={cn(picked?.mediaKey === FACTS && "split:invisible")}>
+              <Caption
+                listing={listing}
+                greeting={post.greeting}
+                note={post.note}
+                open={more}
+                onToggle={onOpen ? undefined : () => setMore(!more)}
               />
-            )}
+              {/* Who's selling it runs short before "Sample listing" does: it's
+                  the only sign on the home that it isn't real. */}
+              <p className="flex h-5 whitespace-nowrap text-[13px] leading-5 text-white/80 split:text-stone-600">
+                <span className="min-w-0 truncate">
+                  {listing.ListAgentFullName && `Listed by ${listing.ListAgentFullName}`}
+                  {listing.ListOfficeName && ` · ${listing.ListOfficeName}`}
+                </span>
+                {isSampleListing(listing) && <span className="shrink-0">&nbsp;· Sample listing</span>}
+              </p>
+              {split && likes > 0 && (
+                <LikedBy
+                  likes={likes}
+                  you={liked || photos.hasAny}
+                  myName={myName}
+                  // Never you: you're said from what you've just done.
+                  names={post.likers}
+                  onOpen={onComments}
+                  className="hidden split:block"
+                />
+              )}
+            </div>
             {error && (
               <p
                 role="alert"
@@ -1210,7 +1360,7 @@ function Panel({
                 type="button"
                 data-keep-clear
                 onClick={onCompose}
-                className="flex h-12 w-full items-center gap-3 rounded-full bg-white/12 pl-5 pr-3 text-left text-base text-white/75 ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18 split:bg-stone-100 split:text-stone-500 split:ring-0 split:backdrop-blur-none split:hover:bg-stone-200"
+                className="flex h-12 w-full items-center gap-3 rounded-full bg-white/12 pl-5 pr-3 text-left text-base text-white/75 ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18 split:bg-stone-100 split:text-stone-600 split:ring-0 split:backdrop-blur-none split:hover:bg-stone-200"
               >
                 <span className="min-w-0 flex-1 truncate">
                   {mode === "share" ? `Tell ${agentFirst} what you think…` : "Add a comment…"}
@@ -1253,6 +1403,7 @@ function RailButton({
   onClick,
   children,
   name,
+  follow,
   ref,
 }: {
   label: string;
@@ -1261,12 +1412,15 @@ function RailButton({
   onClick: () => void;
   children: ReactNode;
   name: string;
+  // The same button on every home: the keyboard follows it to the next.
+  follow?: string;
   ref?: Ref<HTMLButtonElement>;
 }) {
   return (
     <button
       ref={ref}
       type="button"
+      data-follow={follow}
       aria-label={name}
       aria-pressed={pressed}
       onClick={onClick}
@@ -1363,7 +1517,7 @@ function Rail({
           <Share2 size={26} {...icon} />
         </RailButton>
       )}
-      <RailButton name="More options" label="More" onClick={onMore} ref={moreRef}>
+      <RailButton name="More options" label="More" onClick={onMore} ref={moreRef} follow="more">
         <Ellipsis size={28} {...icon} />
       </RailButton>
     </div>
@@ -1541,9 +1695,13 @@ function Facts({
     const panel = box?.closest("article");
     if (!open || !el || !box || !panel) return;
     const place = () => {
-      // Side by side, in the panel: just under the facts, over the words below them.
+      // Side by side, in the panel: right under the facts, the panel's width,
+      // over the words below them (its round corners above their first line).
       if (sideBySide(panel)) {
-        return setCardAt({ tag: open, style: { top: "100%", bottom: "auto", marginTop: 8, marginBottom: 0, left: 0 } });
+        return setCardAt({
+          tag: open,
+          style: { top: "100%", bottom: "auto", marginTop: 0, marginBottom: 0, left: 0, right: 0, width: "auto" },
+        });
       }
       const facts = box.getBoundingClientRect();
       const frame = panel.getBoundingClientRect();
@@ -1725,8 +1883,9 @@ function FactButton({
 
 // Side by side, under who listed it: who liked the home, a face or three and
 // their names, "Liked by Maya, Sam and 6 others", to see them all in the
-// comments. You first, then the people the page names (on an agent's link,
-// those on it; elsewhere, the latest few), then how many more.
+// comments. You first (as you are right now), then the people the page names
+// (on an agent's link, those on it; elsewhere, the latest few, never you),
+// then how many more.
 function LikedBy({
   likes,
   you,
@@ -1743,8 +1902,7 @@ function LikedBy({
   onOpen: () => void;
   className?: string;
 }) {
-  const others = names.filter((name) => !(you && name === myName));
-  const named = [...(you ? ["you"] : []), ...others].slice(0, Math.min(2, likes));
+  const named = [...(you ? ["you"] : []), ...names].slice(0, Math.min(2, likes));
   const rest = likes - named.length;
   const text =
     named.length === 0
@@ -1761,12 +1919,14 @@ function LikedBy({
         aria-label={`${text}. See who`}
         className="-mx-1 flex min-h-11 items-center gap-2.5 rounded-xl px-1 text-left text-sm text-stone-700 hover:bg-stone-50"
       >
-        <span aria-hidden className="flex shrink-0 pl-2">
+        {/* Each face over the next, so every initial reads whole. */}
+        <span aria-hidden className="flex shrink-0 pl-1.5">
           {faces.map((name, i) => (
             <span
               key={i}
+              style={{ zIndex: faces.length - i }}
               className={cn(
-                "-ml-2 flex size-6 items-center justify-center rounded-full text-[11px] font-semibold ring-2 ring-white",
+                "relative -ml-1.5 flex size-6 items-center justify-center rounded-full text-[11px] font-semibold ring-2 ring-white",
                 name ? "bg-brand text-white" : "bg-stone-200 text-stone-600",
               )}
             >
@@ -1832,15 +1992,16 @@ function Caption({
     <div
       ref={row}
       className={cn(
-        // Side by side: three lines in the panel, and all of it right there
-        // when opened (the panel scrolls).
+        // Side by side: up to ten lines in the panel (a listing's usual
+        // description whole), and all of it right there when opened (the
+        // panel scrolls).
         "mb-1 text-[15px] leading-[22px] text-white/85 split:mb-2 split:mt-1 split:leading-6 split:text-stone-700",
         open
           ? "pointer-events-auto max-h-[45dvh] overflow-y-auto overscroll-contain split:max-h-none split:overflow-visible"
-          : "h-11 short:mb-0 short:h-[22px] split:h-[72px]",
+          : "h-11 short:mb-0 short:h-[22px] split:h-auto split:max-h-60",
       )}
     >
-      <div ref={box} className={cn(!open && n === null && "line-clamp-2 short:line-clamp-1 split:line-clamp-3")}>
+      <div ref={box} className={cn(!open && n === null && "line-clamp-2 short:line-clamp-1 split:line-clamp-10")}>
         {greeting && <h1 className="inline font-semibold text-white split:text-ink">{greeting}</h1>}
         {greeting && text && " "}
         {text && <span>{cut ? clipped(text, n ?? 0) : text}</span>}
@@ -1862,7 +2023,9 @@ const clipped = (text: string, n: number) => text.slice(0, n).replace(/[\s.,;:\u
 // after them, at the end of a whole word (all of them, when "more" isn't
 // needed). Laid out in an unseen copy beside it, with the same type and width.
 function captionFit(row: HTMLElement, box: HTMLElement, text: string) {
-  const limit = row.clientHeight + 1;
+  // Its lines: a fixed height, or (side by side) as tall as it may grow.
+  const most = parseFloat(getComputedStyle(row).maxHeight);
+  const limit = (Number.isFinite(most) ? most : row.clientHeight) + 1;
   const probe = document.createElement("div");
   probe.style.cssText = `position:absolute;left:0;top:0;width:${box.clientWidth}px;visibility:hidden;pointer-events:none`;
   const words = document.createTextNode(text);
@@ -1929,12 +2092,16 @@ function CommentsSheet({
   const comments = items.filter((item) => item.kind === "comment").length;
   const name = post && spot ? spotName(post.listing, spot) : null;
 
-  // A new comment of yours scrolls into view at the bottom, where it lands.
+  // A new comment of yours scrolls into view where it lands, after the others
+  // (and before who liked what).
   const seen = useRef(items.length);
   useEffect(() => {
     const last = items.at(-1);
     if (items.length > seen.current && last?.kind === "comment" && last.mine) {
-      end.current?.scrollIntoView({ block: "end", behavior: reducedMotion() ? "auto" : "smooth" });
+      end.current
+        ?.closest("dialog")
+        ?.querySelector(`[data-comment="${CSS.escape(last.id)}"]`)
+        ?.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
     }
     seen.current = items.length;
   }, [items]);
@@ -1975,10 +2142,13 @@ function CommentsSheet({
               name
                 ? `Comment on ${name}…`
                 : mode === "share"
-                  ? `Tell ${agentName?.split(" ")[0] || "your agent"} what you think…`
+                  ? `Tell ${agentFirstName(agentName)} what you think…`
                   : undefined
             }
             label={name ? undefined : "Add a comment"}
+            // At a phone's two heights, the emoji wait for the box, so the
+            // comments get the room until you go to say something.
+            quickOnFocus={!spot && photoFoot !== undefined}
             onPosted={() => {
               setReplyTo(null);
               if (spot) onPostedSpot(post.listing.ListingKey);
@@ -1989,13 +2159,6 @@ function CommentsSheet({
     >
       {post && (
         <>
-          {mode === "public" && !spot && (
-            // Hidden when neither has anything to say yet.
-            <div className="mb-5 border-b border-stone-100 pb-4 empty:hidden">
-              <AspectSummary liked={post.aspects.liked} disliked={post.aspects.disliked} limit={4} />
-              <Buzz post={post} />
-            </div>
-          )}
           <Timeline
             listingKey={post.listing.ListingKey}
             items={items}
@@ -2003,7 +2166,9 @@ function CommentsSheet({
             onReply={(target) => {
               setReplyTo(target);
               // In the same tap, so a phone shows its keyboard.
-              end.current?.ownerDocument.querySelector<HTMLElement>("dialog[open] [data-composer]")?.focus();
+              end.current?.ownerDocument
+                .querySelector<HTMLElement>("dialog[open] [data-composer]")
+                ?.focus({ preventScroll: true });
             }}
             spots={
               spot
@@ -2019,6 +2184,14 @@ function CommentsSheet({
               ) : undefined
             }
           />
+          {mode === "public" && !spot && (
+            // The comments come first; what people like and pass on, after
+            // them (hidden when neither has anything to say yet).
+            <div className="mt-6 border-t border-stone-100 pt-4 empty:hidden">
+              <AspectSummary liked={post.aspects.liked} disliked={post.aspects.disliked} limit={4} />
+              <Buzz post={post} />
+            </div>
+          )}
           {mode === "public" && !spot && (
             <p className="mt-8 text-center text-xs text-stone-500">
               Comments here are public. Buyers&apos; private chats with their agents stay private unless they choose to
@@ -2098,7 +2271,7 @@ function MoreSheet({
           ) : (
             <p className="text-sm text-stone-600">
               Like it with the heart, or tell us it&apos;s not for you
-              {agentName ? `, and ${agentName} will know` : ""}. Either way, your picks get better.
+              {agentName ? `, and ${agentCalled(agentName)} will know` : ""}. Either way, your picks get better.
             </p>
           )}
           {passed && (

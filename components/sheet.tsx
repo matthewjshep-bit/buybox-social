@@ -1,7 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { cn } from "@/lib/format";
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -19,6 +19,20 @@ function notch() {
   return at;
 }
 
+// The keyboard goes back to what opened a sheet, as soon as that can take it
+// (it may still be fading back in from under the sheet), unless something
+// else has taken the keyboard meanwhile.
+function giveFocusBack(to: HTMLElement | null) {
+  let tries = 0;
+  const attempt = () => {
+    const now = document.activeElement;
+    if (!to?.isConnected || (now && now !== document.body)) return;
+    to.focus({ preventScroll: true });
+    if (document.activeElement !== to && ++tries < 30) requestAnimationFrame(attempt);
+  };
+  attempt();
+}
+
 // What a sheet beside the photo is placed within: the nearest positioned box around it.
 function holderOf(el: HTMLElement) {
   let at = el.parentElement;
@@ -34,9 +48,11 @@ function holderOf(el: HTMLElement) {
 // With `detents` it has two heights: it opens at medium, with its top on the
 // photo's foot so the whole photo stays in view (but between 35% and 55% of
 // the way down), and the handle drags it up to large, just under the header,
-// and back. `docked`, on a wide screen, it isn't over the home at all: it
-// takes the anchor's exact box beside the photo and leaves the photo free to
-// tap, rather than shutting everything else off.
+// and back (a tap on the handle, or Enter, switches too). `docked`, on a wide
+// screen, it isn't over the home at all: it takes the anchor's exact box
+// beside the photo and leaves the photo free to tap, rather than shutting
+// everything else off. Closed from inside, the keyboard goes back to what
+// opened it.
 export function Sheet({
   open,
   onClose,
@@ -72,12 +88,21 @@ export function Sheet({
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
-  const drag = useRef<{ y: number; at: number; dy: number; top: number } | null>(null);
+  const drag = useRef<{ y: number; at: number; dy: number; top: number; handle: boolean } | null>(null);
   const detent = useRef<"medium" | "large">("medium");
+  // The same, for the handle's name.
+  const [large, setLarge] = useState(false);
+  const toDetent = (to: "medium" | "large") => {
+    detent.current = to;
+    setLarge(to === "large");
+  };
   // Opened docked (or not): it reopens the other way if that changes.
   const openedDocked = useRef(false);
-  // What had the keyboard when it opened beside the photo, to give it back to.
+  // What had the keyboard when it opened, to give it back to.
   const opener = useRef<HTMLElement | null>(null);
+  // Closed (Escape, Close, a drag) while the keyboard was inside: what had it
+  // may be gone by the time it shuts (the comment box goes with the home).
+  const hadFocus = useRef(false);
   // The notch, measured once each time it opens.
   const notchAt = useRef<number | null>(null);
   const minTop = detents?.minTop;
@@ -111,6 +136,9 @@ export function Sheet({
     el.style.top = "";
     el.style.width = `${width}px`;
     el.style.bottom = `${Math.max(0, innerHeight - box.bottom)}px`;
+    // Rising from a box above the window's foot (the white panel), its
+    // bottom corners follow the box's round ones.
+    el.style.borderBottomLeftRadius = el.style.borderBottomRightRadius = innerHeight - box.bottom > 1 ? "1rem" : "";
     if (minTop !== undefined) {
       const { medium, large } = tops(box);
       el.style.height = `${box.bottom - (detent.current === "large" ? large : medium)}px`;
@@ -127,9 +155,14 @@ export function Sheet({
     const el = dialog.current;
     if (!el) return;
     const shut = () => {
-      // Beside the photo, the keyboard goes back to what opened it.
-      if (openedDocked.current && el.contains(document.activeElement)) opener.current?.focus({ preventScroll: true });
+      const inside = el.contains(document.activeElement) || hadFocus.current;
+      hadFocus.current = false;
+      // Beside the photo, the keyboard goes back to what opened it, before
+      // it closes; over the home, the browser hands it back as it closes,
+      // and if that's still out of sight, it follows once it's back.
+      if (openedDocked.current && inside) opener.current?.focus({ preventScroll: true });
       el.close();
+      if (inside || !openedDocked.current) giveFocusBack(opener.current);
     };
     if (!open) {
       if (el.open) shut();
@@ -139,11 +172,12 @@ export function Sheet({
     }
     if (el.open && openedDocked.current !== docked) shut();
     if (!el.open) {
-      detent.current = "medium";
+      toDetent("medium");
       notchAt.current = null;
       openedDocked.current = docked;
+      hadFocus.current = false;
+      opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       if (docked) {
-        opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         // Placed first: opening moves the keyboard into it, which would
         // otherwise scroll whatever holds it to wherever it was.
         place(el);
@@ -166,7 +200,11 @@ export function Sheet({
   // Slides back down (or, beside the photo, fades away), then closes.
   const dismiss = () => {
     const el = dialog.current;
-    if (!el || reducedMotion()) return onClose();
+    const close = () => {
+      hadFocus.current = Boolean(el?.contains(document.activeElement));
+      onClose();
+    };
+    if (!el || reducedMotion()) return close();
     const side = openedDocked.current;
     el.style.transition = side ? "opacity 150ms ease-in, transform 150ms ease-in" : "transform 180ms ease-in";
     el.style.transform = side ? "translateX(16px)" : "translateY(100%)";
@@ -174,10 +212,35 @@ export function Sheet({
     setTimeout(
       () => {
         el.style.transition = "";
-        onClose();
+        close();
       },
       side ? 150 : 180,
     );
+  };
+
+  // Beside the photo, Escape puts it away even when the keyboard is out on
+  // the photo, unless something there (a card) used it first.
+  const dismissRef = useRef(dismiss);
+  useLayoutEffect(() => {
+    dismissRef.current = dismiss;
+  });
+  useEffect(() => {
+    if (!open || !docked) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (dialog.current?.contains(event.target as Node) || document.querySelector("dialog[open]:modal")) return;
+      dismissRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, docked]);
+
+  // Medium to large, or back: a tap on the handle, or Enter on it.
+  const switchHeight = () => {
+    const el = dialog.current;
+    if (!el) return;
+    toDetent(detent.current === "large" ? "medium" : "large");
+    settleAt(el);
   };
 
   // Back to a height, gently.
@@ -236,11 +299,12 @@ export function Sheet({
           className="relative shrink-0 touch-none select-none pb-2 pt-2.5"
           onPointerDown={(event) => {
             const el = dialog.current;
-            if (!el || (event.target as HTMLElement).closest("button")) return;
+            const target = event.target as HTMLElement;
+            if (!el || target.closest("button:not([data-handle])")) return;
             event.currentTarget.setPointerCapture(event.pointerId);
             const { medium, large } = tops(anchorBox());
             const top = detent.current === "large" ? large : medium;
-            drag.current = { y: event.clientY, at: event.timeStamp, dy: 0, top };
+            drag.current = { y: event.clientY, at: event.timeStamp, dy: 0, top, handle: Boolean(target.closest("[data-handle]")) };
             el.style.transition = "none";
           }}
           onPointerMove={(event) => {
@@ -274,11 +338,13 @@ export function Sheet({
               el.style.transform = "";
               return;
             }
+            // A tap on the handle, not a drag: the other height.
+            if (moved.handle && Math.abs(moved.dy) < 6) return switchHeight();
             const { medium, large } = tops(anchorBox());
             const top = moved.top + moved.dy;
             if (top > medium + 110 || (flickDown && detent.current === "medium")) return dismiss();
             const flickUp = moved.dy < -30 && speed < -0.6;
-            detent.current = flickUp ? "large" : flickDown ? "medium" : top - large < medium - top ? "large" : "medium";
+            toDetent(flickUp ? "large" : flickDown ? "medium" : top - large < medium - top ? "large" : "medium");
             settleAt(el);
           }}
           onPointerCancel={() => {
@@ -286,10 +352,7 @@ export function Sheet({
             if (dialog.current) settleAt(dialog.current);
           }}
         >
-          <span aria-hidden className="mx-auto block h-1 w-10 rounded-full bg-stone-300" />
-          <h2 ref={heading} className="mt-2.5 px-14 text-center text-[15px] font-semibold">
-            {title}
-          </h2>
+          {/* First, so it's where the keyboard lands as it opens. */}
           <button
             type="button"
             onClick={dismiss}
@@ -298,6 +361,26 @@ export function Sheet({
           >
             <X aria-hidden size={20} />
           </button>
+          {minTop !== undefined ? (
+            // A fingertip to tap (a pointer's tap is caught above, where the
+            // drag is; the keyboard's press lands here).
+            <button
+              type="button"
+              data-handle
+              aria-label={`${large ? "Shrink" : "Expand"} ${label.toLowerCase()}`}
+              onClick={(event) => {
+                if (event.detail === 0) switchHeight();
+              }}
+              className="mx-auto -my-2 flex h-5 w-14 items-center justify-center rounded-full hit-44"
+            >
+              <span aria-hidden className="block h-1 w-10 rounded-full bg-stone-300" />
+            </button>
+          ) : (
+            <span aria-hidden className="mx-auto block h-1 w-10 rounded-full bg-stone-300" />
+          )}
+          <h2 ref={heading} className="mt-2.5 px-14 text-center text-[15px] font-semibold">
+            {title}
+          </h2>
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-2">{children}</div>

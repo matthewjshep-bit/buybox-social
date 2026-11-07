@@ -289,7 +289,13 @@ export function ReelPhotos({
       onContextMenu={(event) => onHold && event.preventDefault()}
       className="group/carousel absolute inset-0 [container-type:size]"
     >
-      <div ref={emblaRef} className="h-full overflow-hidden">
+      {/* What the photos slide across: the whole home on a phone (a swipe
+          over the words turns them too); side by side, just the stage, so
+          they never pass under the buttons or the white panel. */}
+      <div
+        ref={emblaRef}
+        className="h-full overflow-hidden split:absolute split:inset-y-0 split:left-(--photo-left,0px) split:right-(--photo-right,0px)"
+      >
         <div
           className={cn(
             "flex h-full touch-pan-y",
@@ -305,7 +311,8 @@ export function ReelPhotos({
               onPointerUp={release}
               onPointerCancel={release}
               onPointerLeave={release}
-              className="group/photo relative h-full w-full shrink-0 cursor-pointer select-none overflow-hidden [container-type:size] [-webkit-touch-callout:none]"
+              // (Side by side, the slide is the stage: the photo centres in it.)
+              className="group/photo relative h-full w-full shrink-0 cursor-pointer select-none overflow-hidden [container-type:size] [-webkit-touch-callout:none] split:[--photo-left:0px] split:[--photo-right:0px]"
             >
               {/* The same photo, blurred and dimmed, fills the space around it:
                   on a phone, only between the header and the words. Not on
@@ -379,6 +386,11 @@ export function ReelPhotos({
       {media.length > 1 && controls && (
         <Filmstrip
           media={media}
+          // Under the tallest of them, from the left edge of the widest, so
+          // it stays put from photo to photo, lined up with them (less the
+          // room a focus ring takes beside the first).
+          top={`calc(${photoFoot(most(media, (a, b) => a < b))} + 0.25rem)`}
+          left={`calc(${photoPlace(most(media, (a, b) => a > b)).left} - 0.25rem)`}
           index={index}
           likesOf={likesOf}
           onPick={(i) => embla?.scrollTo(i, true)}
@@ -420,20 +432,33 @@ export function ReelPhotos({
   );
 }
 
-// Wide screens: every photo in a row under the stage, in place of swiping
-// blind, the one on screen ringed, those people liked marked with a count. A
-// click goes straight there.
+// The photo shown tallest on the stage (the narrowest for its height:
+// `before` is <), or widest (>).
+const most = (media: ListingMedia[], before: (ratio: number, than: number) => boolean) =>
+  media.reduce<ListingMedia | undefined>((best, photo) => {
+    const [ratio, bestRatio] = [ratioOf(photo), ratioOf(best)];
+    return ratio && (!bestRatio || before(ratio, bestRatio)) ? photo : best;
+  }, undefined) ?? media[0];
+
+// Wide screens: every photo in a row just under the photo, in place of
+// swiping blind, the one on screen marked, those people liked marked with a
+// count. A click goes straight there.
 function Filmstrip({
   media,
   index,
   likesOf,
   onPick,
+  top,
+  left,
   className,
 }: {
   media: ListingMedia[];
   index: number;
   likesOf?: (photo: ListingMedia) => number;
   onPick: (index: number) => void;
+  // Where it starts, down and across the stage.
+  top: string;
+  left: string;
   className?: string;
 }) {
   const strip = useRef<HTMLUListElement>(null);
@@ -444,15 +469,14 @@ function Filmstrip({
     if (!list || !item || list.clientWidth === 0) return;
     const left = item.offsetLeft - list.offsetLeft;
     if (left < list.scrollLeft || left + item.offsetWidth > list.scrollLeft + list.clientWidth) {
-      list.scrollTo({ left: left - (list.clientWidth - item.offsetWidth) / 2, behavior: "smooth" });
+      const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      list.scrollTo({ left: left - (list.clientWidth - item.offsetWidth) / 2, behavior: still ? "auto" : "smooth" });
     }
   }, [index]);
   return (
     <div
-      className={cn(
-        "absolute bottom-6 left-(--photo-left,0px) right-(--photo-right,0px) hidden h-[88px] split:block",
-        className,
-      )}
+      style={{ top, left }}
+      className={cn("absolute right-(--photo-right,0px) hidden h-[88px] split:block", className)}
     >
       <ul
         ref={strip}
@@ -468,7 +492,7 @@ function Filmstrip({
             .filter(Boolean)
             .join(", ");
           return (
-            <li key={photo.MediaURL} className="shrink-0">
+            <li key={photo.MediaURL} className="relative shrink-0">
               <button
                 type="button"
                 aria-label={name}
@@ -476,7 +500,7 @@ function Filmstrip({
                 onClick={() => onPick(i)}
                 className={cn(
                   "relative block h-[72px] w-24 overflow-hidden rounded-lg bg-stone-800 transition-opacity",
-                  i === index ? "ring-2 ring-white" : "opacity-70 hover:opacity-100",
+                  i !== index && "opacity-60 hover:opacity-100 focus-visible:opacity-100",
                 )}
               >
                 {isVideo(photo) ? (
@@ -494,6 +518,14 @@ function Filmstrip({
                   </span>
                 )}
               </button>
+              {/* The one on screen: bright, with a bar under it (not a ring,
+                  which is how the keyboard shows where it is). */}
+              {i === index && (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute -bottom-[7px] left-1/2 h-[3px] w-10 -translate-x-1/2 rounded-full bg-white"
+                />
+              )}
             </li>
           );
         })}

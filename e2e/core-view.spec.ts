@@ -348,63 +348,167 @@ test("on a desktop, the photo has a stage of its own, the buttons a column besid
     home.getByRole("button", { name: /^\$[\d,]+/ }),
     home.getByRole("button", { name: /^\d+ beds?/ }),
     home.getByRole("button", { name: /^1880 Tamsen Ridge Pl SE, / }),
+    home.getByText(/^Clean modern lines under a mature shade tree/),
     home.getByText(/^Listed by/),
   ]) {
     expect((await box(words)).x).toBeGreaterThanOrEqual(photo.x + photo.width);
   }
+  // The panel has the room: the whole description, no "more".
+  await expect(home.getByRole("button", { name: "more", exact: true })).toHaveCount(0);
 
-  // Every photo in a strip under it: the one on screen marked, a click goes straight there.
+  // Every photo in a strip just under it, lined up with it: the one on screen
+  // marked, a click goes straight there.
   const strip = home.getByRole("list", { name: "Photos" });
   await expect(strip.getByRole("button")).toHaveCount(4);
   await expect(strip.getByRole("button").first()).toHaveAttribute("aria-current", "true");
+  const first = await box(strip.getByRole("button").first());
+  expect(Math.abs(first.x - photo.x)).toBeLessThanOrEqual(1);
+  expect(first.y - (photo.y + photo.height)).toBeGreaterThanOrEqual(0);
+  expect(first.y - (photo.y + photo.height)).toBeLessThanOrEqual(16);
   const third = strip.getByRole("button", { name: /^Photo 3: / });
   await third.click();
   await expect(home.getByText("Photo 3 of 4")).toBeAttached();
   await expect(third).toHaveAttribute("aria-current", "true");
-  expect((await box(strip)).y).toBeGreaterThanOrEqual(photo.y + photo.height);
 
-  // Up and down the homes from the top of the buttons' column, or with J and K.
+  // Up and down the homes from the top of the buttons' column.
   await expect(home.getByRole("button", { name: "Go to the previous home" })).toBeDisabled();
   await home.getByRole("button", { name: "Go to the next home" }).click();
-  await settled(page.getByRole("article").nth(1));
+  const second = page.getByRole("article").nth(1);
+  await settled(second);
+  // From the keyboard, again and again: the keyboard goes along to the same
+  // button on each home, never left behind out of sight.
+  await page.keyboard.press("Enter");
+  const third_ = page.getByRole("article").nth(2);
+  await settled(third_);
+  await expect(third_.getByRole("button", { name: "Go to the next home" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(third_.getByRole("button", { name: "Go to the previous home" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await settled(second);
+  await expect(second.getByRole("button", { name: "Go to the previous home" })).toBeFocused();
+  // J and K only while the feed itself has the keyboard: not on a button
+  // (a letter meant for it, or a word said to the computer), but after a
+  // click on the feed anywhere else.
+  await page.keyboard.press("j");
+  await page.waitForTimeout(600);
+  await settled(second);
+  const blank = await box(second.locator("[data-words]"));
+  await page.mouse.click(blank.x + blank.width / 2, blank.y + blank.height - 120);
   await page.keyboard.press("k");
   await settled(home);
+  await page.mouse.click(blank.x + blank.width / 2, blank.y + blank.height - 120);
   await page.keyboard.press("j");
-  await settled(page.getByRole("article").nth(1));
+  await settled(second);
   expect(pageErrors).toEqual([]);
 });
 
 test("on a desktop, comments sit beside the photo, which can still be tapped; Escape puts them away", async ({
   browser,
 }) => {
+  // (On a home already among the busiest this week by now: what's said here
+  // doesn't change which homes lead the feed in later tests.)
   const page = await phone(browser, DESKTOP);
-  await page.goto("/homes/SAMPLE-1001");
-  const home = homeIn(page, "4127 Larkmoor Ave NE");
+  await page.goto("/homes/SAMPLE-1007");
+  const home = homeIn(page, "3518 Wexford Ave N");
   await settled(home);
   const rail = home.getByRole("button", { name: /^Comments/ });
   await rail.click();
   const sheet = page.getByRole("dialog", { name: "Comments" });
   await expect(sheet).toBeVisible();
   // In the panel's place, and not shutting off the rest of the page.
-  const panel = await box(home.locator("[data-words]"));
+  const words = home.locator("[data-words]");
+  const panel = await box(words);
   await expect.poll(async () => Math.round((await box(sheet)).x)).toBe(Math.round(panel.x));
   expect(await sheet.evaluate((el) => el.matches(":modal"))).toBe(false);
-  // Escape closes it, and the keyboard goes back to the button that opened it.
+  // What's under it is out of reach: Tab goes from the buttons down the side
+  // into the comments, where the panel was, and back.
+  await expect(words).toHaveAttribute("inert");
+  const more = home.getByRole("button", { name: "More options" });
+  await more.focus();
+  await page.keyboard.press("Tab");
+  await expect(sheet.getByRole("button", { name: "Close" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(more).toBeFocused();
+  // Escape closes it from anywhere: from out on the buttons, the keyboard
+  // stays where it is.
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(more).toBeFocused();
+  await expect(words).not.toHaveAttribute("inert");
+  // From inside it, the keyboard goes back to the button that opened it.
+  await rail.press("Enter");
+  await expect(sheet).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(rail).toBeFocused();
+  // From the comment bar, the keyboard starts in the box. The first time,
+  // the name prompt rises from the foot of the panel, not across the photo.
+  const bar = home.getByRole("button", { name: "Add a comment…" });
+  await bar.click();
+  const field = sheet.getByLabel("Add a comment");
+  await expect(field).toBeFocused();
+  // (The box is focused while it's still sliding in: the feed doesn't shift.)
+  expect(await page.evaluate(() => document.querySelector("[data-dark-ground]")!.scrollLeft)).toBe(0);
+  await field.fill("The porch swing stays, I hope.");
+  await field.press("Enter");
+  const prompt = page.getByRole("dialog", { name: "What's your first name?" });
+  await expect(prompt).toBeVisible();
+  await expect.poll(async () => Math.round((await box(prompt)).y + (await box(prompt)).height)).toBe(Math.round(panel.y + panel.height));
+  expect(Math.abs((await box(prompt)).x - panel.x)).toBeLessThanOrEqual(1);
+  await joinAs(page, "Wren");
+  await expect(commentIn(sheet, "Wren", "The porch swing stays, I hope.")).toBeVisible();
+  // Escape, from the box, and the keyboard comes back to the bar.
+  await expect(field).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(bar).toBeFocused();
+  // From inside the list, back to the rail. What people said comes first;
+  // who liked what, after it, under its own heading.
+  await heartOf(home).click();
+  await expect(heartOf(home)).toHaveAttribute("aria-pressed", "true");
+  await page.reload();
+  await settled(home);
+  await rail.press("Enter");
+  await expect(sheet).toBeVisible();
+  const likes = sheet.getByRole("heading", { name: "Likes" });
+  await expect(likes).toBeVisible();
+  expect((await box(commentIn(sheet, "Wren", "The porch swing stays, I hope."))).y).toBeLessThan((await box(likes)).y);
+  await sheet.getByRole("button", { name: "Reply to your comment" }).focus();
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
   await expect(rail).toBeFocused();
 
-  // With it open, a tap on the photo still opens a card about that spot.
+  // A card open on the price goes when the comments take the panel's place.
+  await home.getByRole("button", { name: /^\$[\d,]+/ }).click();
+  await expect(home.locator("[data-spot-card]")).toBeVisible();
   await rail.click();
   await expect(sheet).toBeVisible();
-  await tapPhoto(home, "White Craftsman home with a covered front porch", 0.6, 0.66);
+  await expect(home.locator("[data-spot-card]")).toHaveCount(0);
+
+  // With it open, a tap on the photo still opens a card about that spot,
+  // whole, over anyone's words on the photo.
+  await tapPhoto(home, "Modern townhouse with a lit front entry at dusk", 0.6, 0.66);
   const card = home.locator("[data-spot-card]");
   await expect(card).toBeVisible();
   await expect(sheet).toBeVisible();
   await settle(card);
-  await card.getByRole("button", { name: "Close" }).click();
+  const cardBox = await box(card);
+  expect(
+    await page.evaluate(
+      ({ x, y }) => Boolean(document.elementFromPoint(x, y)?.closest("[data-spot-card]")),
+      { x: cardBox.x + cardBox.width / 2, y: cardBox.y + 20 },
+    ),
+  ).toBe(true);
+  // Escape puts the card away (the keyboard stays on the photo), then the comments.
+  await page.keyboard.press("Escape");
   await expect(card).toBeHidden();
+  await expect(sheet).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.activeElement !== document.body)).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
   // Moving on to another home puts them away.
+  await rail.click();
+  await expect(sheet).toBeVisible();
   await home.getByRole("button", { name: "Go to the next home" }).click();
   await settled(page.getByRole("article").nth(1));
   await expect(sheet).toBeHidden();
@@ -447,14 +551,22 @@ test("on a phone, comments rise to the photo's foot, and pull up to just under t
     await drag(320);
     await expect.poll(async () => Math.round((await box(sheet)).y)).toBe(Math.round(top));
     await expect(sheet).toBeVisible();
+    // Or, without dragging, the handle is a button that switches.
+    await sheet.getByRole("button", { name: "Expand comments" }).press("Enter");
+    await expect.poll(async () => Math.round((await box(sheet)).y)).toBe(HEADER);
+    await sheet.getByRole("button", { name: "Shrink comments" }).press("Enter");
+    await expect.poll(async () => Math.round((await box(sheet)).y)).toBe(Math.round(top));
+    // Closed, the keyboard goes back to the button that opened it (once it's
+    // back in view from under the sheet).
     await page.keyboard.press("Escape");
     await expect(sheet).toBeHidden();
+    await expect(home.getByRole("button", { name: /^Comments/ })).toBeFocused();
     await page.context().close();
   }
 });
 
 test("every comment box says who sees it, and the name prompt rises like a sheet", async ({ page, browser }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(90_000);
   await page.goto("/homes/SAMPLE-1008");
   const home = homeIn(page, "719 Saltmarsh Ln");
   await settled(home);
@@ -474,16 +586,35 @@ test("every comment box says who sees it, and the name prompt rises like a sheet
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
 
-  // On an agent's link of your own: only you and the agent, and the box asks
-  // you to tell them (still named "Add a comment").
+  // On an agent's link: the agent and everyone on the link read what's said
+  // there (each person's own link included), never "only you". (A home with
+  // link activity already, so the feed's order in later tests stays put.)
   const agent = await signInAgent(browser, "lane@example.com", "Lane Agent");
-  const { url } = await createShare(agent, ["4127 Larkmoor"], ["Ottilie"]);
-  const client = await (await browser.newContext()).newPage();
-  await client.goto(url);
-  const clientHome = homeIn(client, "4127 Larkmoor Ave NE");
-  await clientHome.getByRole("button", { name: "Tell Lane what you think…" }).click();
-  const private_ = client.getByRole("dialog", { name: "Comments" });
-  await expect(private_.getByLabel("Add a comment")).toHaveAttribute("placeholder", "Tell Lane what you think…");
-  await expect(private_.getByText("Only you and Lane Agent see this.")).toBeVisible();
-  await expect(private_.getByText(/Everyone can see/)).toHaveCount(0);
+  const { urls } = await createShare(agent, ["1204 Quillan"], ["Ottilie", "Pim"]);
+  for (const name of ["Ottilie", "Pim"]) {
+    const client = await (await browser.newContext()).newPage();
+    await client.goto(urls[name]);
+    const clientHome = homeIn(client, "1204 Quillan St SE");
+    // The box asks you to tell the agent (and is still named "Add a comment").
+    await clientHome.getByRole("button", { name: "Tell Lane what you think…" }).click();
+    const private_ = client.getByRole("dialog", { name: "Comments" });
+    await expect(private_.getByLabel("Add a comment")).toHaveAttribute("placeholder", "Tell Lane what you think…");
+    await expect(private_.getByText("Only Lane Agent and people on this link see this.")).toBeVisible();
+    await expect(private_.getByText(/Only you and/)).toHaveCount(0);
+    await expect(private_.getByText(/Everyone can see/)).toHaveCount(0);
+    if (name === "Pim") {
+      // Liked, you may share it on the public page too: ticked, the line says so.
+      await client.keyboard.press("Escape");
+      await expect(private_).toBeHidden();
+      await heartOf(clientHome).click();
+      await expect(heartOf(clientHome)).toHaveAttribute("aria-pressed", "true");
+      await clientHome.getByRole("button", { name: /^Comments/ }).click();
+      await private_.getByRole("checkbox").check();
+      await expect(private_.getByText("Your words also show on the public page, without your name.")).toBeVisible();
+      await expect(private_.getByText(/Only Lane Agent/)).toHaveCount(0);
+      await private_.getByRole("checkbox").uncheck();
+      await expect(private_.getByText("Only Lane Agent and people on this link see this.")).toBeVisible();
+    }
+    await client.context().close();
+  }
 });
