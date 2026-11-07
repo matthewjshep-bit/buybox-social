@@ -73,6 +73,9 @@ export async function saveProfile(_: ProfileState, form: FormData): Promise<Prof
       contact_phone = ${phone.data},
       contact_email = ${email.data}
     where id = ${agent.id}`;
+  // The frame around the page is drawn again too, so a new colour reaches the
+  // header's logo straight away.
+  refresh();
   redirect("/dashboard");
 }
 

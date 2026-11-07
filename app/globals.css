@@ -11,6 +11,17 @@
   --color-night: #0c0a09;
 }
 
+/* Nothing moves on its own for long: a loading shape breathes twice, then
+   holds still. (A spinner keeps turning while it waits: that's its meaning.) */
+@theme {
+  --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) 2;
+  @keyframes pulse {
+    50% {
+      opacity: 0.5;
+    }
+  }
+}
+
 /* The full-screen reel's own size decides its layout. Short (a phone on its
    side): the words go back over the photo. Under 700px tall: the buttons down
    the side get a little smaller. */
@@ -114,18 +125,8 @@ a {
   outline: none;
 }
 
-@keyframes rise-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-/* Sheets: up from the bottom on phones, in from the right on wide screens. */
+/* Sheets rise from the bottom. One docked beside the photo on a wide screen
+   (the comments, the Scorecard) slides in from the right instead. */
 @keyframes sheet-up {
   from {
     transform: translateY(100%);
@@ -141,16 +142,6 @@ a {
   }
   to {
     transform: none;
-  }
-}
-
-/* The photo on screen drifts in slowly, so a still photo feels alive. */
-@keyframes ken-burns {
-  from {
-    transform: scale(1);
-  }
-  to {
-    transform: scale(1.07);
   }
 }
 

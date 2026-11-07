@@ -298,7 +298,7 @@ export function ReelPhotos({
         <div
           className={cn(
             "flex h-full touch-pan-y",
-            peek && !touched && "animate-[peek_2.6s_ease-in-out_0.4s_2] motion-reduce:animate-none",
+            peek && !touched && "animate-[peek_2.2s_ease-in-out_0.4s_2] motion-reduce:animate-none",
           )}
         >
           {media.map((photo, i) => (

@@ -292,7 +292,7 @@ test("the agent's page about a client reads like the product: a card per home, s
   await agent.setViewportSize({ width: 393, height: 852 });
   await agent.goto(dashboardUrl);
   const nav = agent.getByRole("navigation", { name: "Dashboard" });
-  await expect(nav.getByRole("link", { name: "Your shares" })).toHaveAttribute("aria-current", "true");
+  await expect(nav.getByRole("link", { name: "Your links" })).toHaveAttribute("aria-current", "true");
   expect((await nav.getByRole("link", { name: "Your brand" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
   const compare = agent.getByRole("region", { name: "What they each want" });
   await expect(compare.getByRole("table")).toBeHidden();

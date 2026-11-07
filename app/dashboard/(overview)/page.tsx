@@ -1,7 +1,6 @@
 import { Heart, MessageCircle, Plus, ThumbsDown } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { LiveRefresh } from "@/components/live-refresh";
 import { requireAgent } from "@/lib/auth";
 import { sql } from "@/lib/db";
@@ -10,7 +9,7 @@ import type { Listing } from "@/lib/listings/types";
 import { tagNameIn } from "@/lib/photos";
 import type { ReactionState } from "@/lib/reactions";
 import { clientActivity, describeTake, photosSeenLine } from "@/lib/shares";
-import { Opened } from "./opened";
+import { Opened } from "../opened";
 
 // Each home on a link, and how its people came down on it.
 type Home = { key: string; address: string; liked: number; passed: number };
@@ -154,8 +153,8 @@ async function whatsNew(agentId: string): Promise<News[]> {
 }
 
 export default async function DashboardPage() {
+  // (An agent with no name yet was sent to add it: see layout.tsx.)
   const agent = await requireAgent();
-  if (!agent.full_name) redirect("/dashboard/profile");
 
   const [shares, news] = await Promise.all([
     // Per home, each person on the link once: liked (the home, or something
@@ -212,12 +211,12 @@ export default async function DashboardPage() {
     <>
       <LiveRefresh />
       <div className="flex items-center justify-between gap-4">
-        <h1 className="font-display text-3xl">Your shares</h1>
+        <h1 className="font-display text-3xl">Your links</h1>
         <Link
           href="/dashboard/new"
           className="flex min-h-11 items-center gap-1.5 rounded-xl bg-brand px-4 font-semibold text-white"
         >
-          <Plus aria-hidden size={18} /> New share
+          <Plus aria-hidden size={18} /> New link
         </Link>
       </div>
 

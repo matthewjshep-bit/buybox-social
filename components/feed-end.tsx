@@ -36,7 +36,7 @@ export function FeedEnd({
             href="/dashboard/new"
             className="flex min-h-11 items-center gap-1.5 rounded-xl bg-brand px-5 font-semibold text-white"
           >
-            <Plus aria-hidden size={17} /> New share
+            <Plus aria-hidden size={17} /> New link
           </Link>
         )}
         {!account && (

@@ -55,7 +55,7 @@ export default async function NewSharePage({
   return (
     <ShareBuilder
       // With a home already picked, the builder words its own heading as homes are added.
-      heading={addTo ? `Add homes for ${addTo.clientName || "this client"}` : "New share"}
+      heading={addTo ? `Add homes for ${addTo.clientName || "this client"}` : "New link"}
       intro={
         addTo
           ? "Pick up to 3 more homes for their link."
