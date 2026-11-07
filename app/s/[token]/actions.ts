@@ -2,6 +2,7 @@
 
 import { refresh } from "next/cache";
 import { after } from "next/server";
+import { getCurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import {
   checkAnchor,
@@ -17,8 +18,10 @@ import {
 } from "@/lib/engagement";
 import { notifyAgent } from "@/lib/notify";
 import {
+  deviceHashFor,
   getParticipant,
   getShareByToken,
+  getShareListings,
   shareHasListing,
 } from "@/lib/shares";
 import type { SpotReaction } from "@/lib/photos";
@@ -26,6 +29,7 @@ import { findSpot } from "@/lib/public";
 import { describeReaction, type ReactionState } from "@/lib/reactions";
 
 const MAX_PARTICIPANTS = 25;
+const MAX_OPEN_DEVICES = 200;
 
 export async function joinThread(token: string, firstName: string): Promise<ActionResult> {
   const name = nameSchema.safeParse(firstName);
@@ -40,13 +44,72 @@ export async function joinThread(token: string, firstName: string): Promise<Acti
     const [{ count }] = await sql<{ count: number }[]>`
       select count(*)::int as count from participants where share_id = ${found.share.id}`;
     if (count >= MAX_PARTICIPANTS) return fail("This conversation is full.");
-    await sql`
+    const [joined] = await sql<{ id: string }[]>`
       insert into participants (share_id, device_token, first_name)
       values (${found.share.id}, ${device}, ${name.data})
-      on conflict (share_id, device_token) do nothing`;
+      on conflict (share_id, device_token) do nothing
+      returning id`;
+    // The agent's "opened it" line can now say who.
+    if (joined) {
+      await sql`
+        update share_opens set participant_id = ${joined.id}
+        where share_id = ${found.share.id} and device_hash = ${deviceHashFor(device, found.share.id)}
+          and participant_id is null`;
+    }
   }
   refresh();
   return { ok: true };
+}
+
+// Tells the agent their link was opened, and when: called by the page once it's
+// on screen, so link previews and crawlers don't count. A device counts again
+// only after 10 minutes, and the agent's own look at their link never counts.
+// `photosSeen` is how many photos this device has looked at so far.
+export async function recordOpen(token: string, photosSeen?: unknown): Promise<void> {
+  const found = await getShareByToken(token);
+  if (!found) return;
+  const viewer = await getCurrentUser();
+  if (viewer?.id === found.share.agent_id) return;
+  const photos = Number.isInteger(photosSeen) ? Math.min(Math.max(photosSeen as number, 0), 10_000) : 0;
+
+  const device = await ensureDevice();
+  const participant = found.person ?? (await getParticipant(found.share.id, device));
+  const hash = deviceHashFor(device, found.share.id);
+  // Past MAX_OPEN_DEVICES only devices already counted are, so a link that
+  // gets passed around (or a script without cookies) can't grow it forever.
+  const [opened] = await sql<{ first: boolean }[]>`
+    insert into share_opens (share_id, device_hash, participant_id, photos_seen)
+    select ${found.share.id}::uuid, ${hash}::text, ${participant?.id ?? null}::uuid, ${photos}::int
+    where (select count(*) from share_opens where share_id = ${found.share.id}) < ${MAX_OPEN_DEVICES}::int
+      or exists (select 1 from share_opens where share_id = ${found.share.id} and device_hash = ${hash})
+    on conflict (share_id, device_hash) do update set
+      last_at = now(),
+      participant_id = coalesce(excluded.participant_id, share_opens.participant_id)
+    where share_opens.last_at < now() - interval '10 minutes'
+    returning first_at = last_at as first`;
+  if (photos > 0) {
+    await sql`
+      update share_opens set photos_seen = greatest(photos_seen, ${photos})
+      where share_id = ${found.share.id} and device_hash = ${hash}`;
+  }
+  // The first time a device opens it, in the agent's next email.
+  if (opened?.first) {
+    after(async () => {
+      const homes = await getShareListings(found.share.id);
+      const link =
+        homes.length === 0
+          ? "your link"
+          : `your link to ${homes.length === 1 ? homes[0].UnparsedAddress : `${homes.length} homes`}`;
+      await notifyAgent(
+        found.share.id,
+        participant
+          ? `${participant.first_name} opened ${link}`
+          : found.share.client_name
+            ? `Your link for ${found.share.client_name} was opened`
+            : `${link[0].toUpperCase()}${link.slice(1)} was opened`,
+      );
+    });
+  }
 }
 
 // Who's acting on a link. Someone's own link is them; on the package's own

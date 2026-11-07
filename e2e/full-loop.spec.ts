@@ -155,8 +155,17 @@ test("link preview tags and image are in place", async ({ browser, request }) =>
   const html = await (await request.get(url)).text();
   const image = html.match(/property="og:image" content="([^"]+)"/)?.[1];
   expect(html).toContain("Priya Shah picked 812 N Corbel St for you");
+  // One home: what it is and where, then the agent's ask.
+  const description = "4 bd · 3 ba · 2,650 sq ft · Tacoma. Take a look and tell me what you think.";
+  expect(html).toContain(`<meta name="description" content="${description}"/>`);
+  expect(html).toContain(`<meta property="og:description" content="${description}"/>`);
   expect(html).toMatch(/name="robots" content="noindex/);
   expect(image).toBeTruthy();
+  // [P] Previews show on lock screens and in group chats: never who it's for,
+  // the note, or anything said.
+  const previewTags = (page: string) => (page.match(/<title>[^<]*<\/title>|<meta [^>]*>/g) ?? []).join("\n");
+  expect(previewTags(html)).not.toContain("Jamie");
+  expect(previewTags(html)).not.toContain("yard you mentioned");
 
   const res = await request.get(image!);
   expect(res.status()).toBe(200);
@@ -166,6 +175,16 @@ test("link preview tags and image are in place", async ({ browser, request }) =>
   const headers = (await request.get(url)).headers();
   expect(headers["x-robots-tag"]).toContain("noindex");
   expect(headers["referrer-policy"]).toBe("no-referrer");
+
+  // A home's own page has a picture of its own: the home, with no agent or people.
+  const homeHtml = await (await request.get("/homes/SAMPLE-1004")).text();
+  expect(homeHtml).toContain("$839,000 · 3 bd · 2 ba · 2,120 sq ft. See what people think.");
+  const homeImage = homeHtml.match(/property="og:image" content="([^"]+)"/)?.[1];
+  expect(homeImage).toContain("/homes/SAMPLE-1004/opengraph-image");
+  const homeRes = await request.get(homeImage!);
+  expect(homeRes.status()).toBe(200);
+  expect(homeRes.headers()["content-type"]).toContain("image/png");
+  expect((await homeRes.body()).length).toBeGreaterThan(50_000);
 });
 
 test("isolation: tokens, agents and signed-out visitors stay in their lane", async ({ browser, request }) => {

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { homeFacts } from "@/app/homes/[key]/preview";
 import { LiveRefresh } from "@/components/live-refresh";
 import { readDevice } from "@/lib/engagement";
 import { isSampleListing } from "@/lib/listings/types";
@@ -21,7 +22,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const title = `${found.agent.full_name || "Your agent"} picked ${
     listings.length === 1 ? listings[0].UnparsedAddress : `${listings.length} homes`
   } for you`;
-  const description = "Take a look and tell me what you think.";
+  // The home's facts, for one; never the client's name, the note or anything said.
+  const facts = listings.length === 1 ? homeFacts(listings[0], { city: true }) : "";
+  const description = `${facts ? `${facts}. ` : ""}Take a look and tell me what you think.`;
   return {
     title,
     description,
@@ -88,6 +91,7 @@ export default async function SharePage({ params }: Props) {
     <div style={{ "--brand": agent.brand_color } as React.CSSProperties}>
       <LiveRefresh />
       <ShareReel
+        token={token}
         initial={posts}
         agent={agent}
         note={share.note}

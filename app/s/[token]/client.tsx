@@ -2,7 +2,7 @@
 
 import { ArrowDown, Check, Phone, Share2 } from "lucide-react";
 import Image from "next/image";
-import { createContext, useContext, useState, type ComponentProps } from "react";
+import { createContext, useContext, useEffect, useState, type ComponentProps } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { agentFirstName, focusOnDark, ShareHeader } from "@/components/agent-card";
 import { Backdrop } from "@/components/join";
@@ -10,7 +10,7 @@ import { ReelFeed } from "@/components/reel";
 import { cn } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
 import type { ShareAgent } from "@/lib/shares";
-import type { AskResult } from "./actions";
+import { recordOpen, type AskResult } from "./actions";
 
 type ReelProps = ComponentProps<typeof ReelFeed>;
 
@@ -33,6 +33,7 @@ const ContactAgent = createContext<{ open: () => void; first: string }>({ open: 
 // The agent's link: the homes, under the agent's own header. The header knows
 // which home is on screen, so "Contact" can be about that one.
 export function ShareReel({
+  token,
   agent,
   note,
   caption,
@@ -40,6 +41,7 @@ export function ShareReel({
   askToSee,
   ...reel
 }: Omit<ReelProps, "mode" | "header" | "onActiveChange"> & {
+  token: string;
   agent: ShareAgent;
   note: string;
   // The greeting and note, when no welcome screen carries them (one home).
@@ -55,6 +57,12 @@ export function ShareReel({
   const [onHome, setOnHome] = useState(!reel.intro && homes.length > 0);
   const [contact, setContact] = useState(false);
   const home = homes.find((listing) => listing.ListingKey === seen);
+
+  // Lets the agent see the link was opened, once it's really on someone's
+  // screen. Nothing shows for it here.
+  useEffect(() => {
+    recordOpen(token).catch(() => {});
+  }, [token]);
 
   return (
     <ContactAgent.Provider value={{ open: () => setContact(true), first: agentFirstName(agent.full_name) }}>

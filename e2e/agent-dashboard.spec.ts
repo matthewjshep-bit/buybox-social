@@ -1,5 +1,16 @@
-import { expect, test } from "@playwright/test";
-import { createShare, homeIn, signInAgent } from "./helpers";
+import { readFileSync } from "node:fs";
+import { expect, test, type Page } from "@playwright/test";
+import { createShare, heartOf, homeIn, openComments, openMore, signInAgent } from "./helpers";
+
+const emailsTo = (address: string) =>
+  readFileSync("test-results-server.log", "utf8")
+    .split("\n")
+    .filter((line) => line.includes(`[email] to=${address} `));
+
+// The page's next word to the server (a server action), answered: a link
+// saying it's been opened, or the agent's page saying it's been seen.
+const actionAnswered = (page: Page) =>
+  page.waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
 
 test("an agent's phone and email for clients: checked, kept as digits, and never the login email", async ({
   browser,
@@ -92,4 +103,83 @@ test("a home that's gone from the listings can't go on a new link, and nothing i
   // No link was made.
   await agent.goto("/dashboard");
   await expect(agent.getByRole("link", { name: /Zuri/ })).toHaveCount(0);
+});
+
+test("the dashboard leads with what's new, and says when each link was opened, never counting the agent", async ({
+  browser,
+  request,
+}) => {
+  test.setTimeout(90_000);
+  const agent = await signInAgent(browser, "olive-opens@example.com", "Olive Opens");
+  const { url } = await createShare(agent, ["88 Heron Bluff", "719 Saltmarsh"], ["Owen"]);
+  const row = agent.getByRole("region", { name: "Links you've sent" }).getByRole("link", { name: /Owen/ });
+  const news = agent.getByRole("region", { name: "What's new" });
+
+  // Sent, and nothing since.
+  await agent.goto("/dashboard");
+  await expect(row).toContainText("Not opened yet");
+  await expect(row.getByRole("listitem").filter({ hasText: "88 Heron Bluff Rd" })).toContainText("No reactions yet");
+  await expect(row).not.toHaveAccessibleName(/new since you last looked/);
+  await expect(news).toContainText("Nothing yet.");
+
+  // The agent looking at their own link doesn't count as it being opened.
+  await Promise.all([actionAnswered(agent), agent.goto(url)]);
+  await agent.goto("/dashboard");
+  await expect(row).toContainText("Not opened yet");
+
+  // Owen opens it: the agent sees when, and hears about it.
+  const owen = await (await browser.newContext()).newPage();
+  await Promise.all([actionAnswered(owen), owen.goto(url)]);
+  await agent.reload();
+  await expect(row).toContainText(/Opened (yesterday, )?\d{1,2}:\d{2} [ap]m/);
+  await expect(row).not.toContainText("Not opened yet");
+  await expect.poll(() => emailsTo("olive-opens@example.com").length).toBe(1);
+  expect(emailsTo("olive-opens@example.com")[0]).toContain("Owen opened your link to 2 homes");
+
+  // [P] Opens are for the agent only: the link never says it was seen.
+  await expect(owen.getByText(/opened/i)).toHaveCount(0);
+  expect(await (await request.get(url)).text()).not.toMatch(/opened/i);
+
+  // Owen likes one home, passes on the other, and says something.
+  const heron = homeIn(owen, "88 Heron Bluff Rd");
+  await heartOf(heron).click();
+  await expect(heartOf(heron)).toHaveAttribute("aria-pressed", "true");
+  const more = await openMore(owen, homeIn(owen, "719 Saltmarsh Ln"));
+  await more.getByRole("button", { name: "Not for me" }).click();
+  await expect(more.getByRole("button", { name: "Not for me" })).toHaveAttribute("aria-pressed", "true");
+  await owen.keyboard.press("Escape");
+  const chat = await openComments(owen, heron);
+  await chat.getByLabel("Add a comment").fill("Love the porch.");
+  await chat.getByRole("button", { name: "Post", exact: true }).click();
+  // The box empties once it's saved (its own text would match before then).
+  await expect(chat.getByLabel("Add a comment")).toHaveValue("");
+  await expect(chat.getByText("Love the porch.")).toBeVisible();
+
+  // One load of the dashboard has all of it: what's new first, a verdict on
+  // each home, when it was last busy, and a mark that there's something new.
+  await agent.goto("/dashboard");
+  const said = news.getByRole("link", { name: /^Owen commented: “Love the porch\.”/ });
+  await expect(said).toBeVisible();
+  await expect(news.getByRole("link", { name: /^Owen liked this/ })).toBeVisible();
+  await expect(news.getByRole("link", { name: /^Owen passed on this/ })).toBeVisible();
+  await expect(row.getByRole("listitem").filter({ hasText: "88 Heron Bluff Rd" })).toContainText("1 liked");
+  await expect(row.getByRole("listitem").filter({ hasText: "719 Saltmarsh Ln" })).toContainText("1 passed");
+  await expect(row).toContainText("1 comment");
+  await expect(row).toContainText(/Last activity (just now|\d+m ago)/);
+  await expect(row).toHaveAccessibleName(/new since you last looked/);
+
+  // Each item opens the thread it came from, and seeing it there clears the mark.
+  await Promise.all([actionAnswered(agent), said.click()]);
+  await expect(agent).toHaveURL(/\/dashboard\/shares\/[\w-]+#comment-[\w-]+$/);
+  await expect(agent.getByText("Love the porch.")).toBeInViewport();
+  await expect(agent.getByText(/^Owen opened it (at |yesterday, )\d/)).toBeVisible();
+  await agent.goto("/dashboard");
+  await expect(row).toBeVisible();
+  await expect(row).not.toHaveAccessibleName(/new since you last looked/);
+
+  // Opening it again soon after, or doing more, sends no more email.
+  await Promise.all([actionAnswered(owen), owen.reload()]);
+  await expect(owen.getByRole("heading", { level: 1 })).toHaveText("Owen, I picked these 2 homes for you");
+  await owen.waitForTimeout(1000);
+  expect(emailsTo("olive-opens@example.com")).toHaveLength(1);
 });

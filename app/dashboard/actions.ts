@@ -291,9 +291,10 @@ export async function claimQuickShare(input: { token: string; listingKey: string
   return { shareId: made.id, nextToken: await reserveSendTokenFor(agent.id) };
 }
 
-// Nobody has joined the link (`s`) or said anything on it yet.
+// Nobody has opened the link (`s`), joined it or said anything on it yet.
 const unopened = () => sql`
-  not exists (select 1 from participants p where p.share_id = s.id)
+  not exists (select 1 from share_opens o where o.share_id = s.id)
+  and not exists (select 1 from participants p where p.share_id = s.id)
   and not exists (select 1 from comments c where c.share_id = s.id)`;
 
 export type ReleaseResult = { released: boolean; opened?: boolean };
@@ -407,6 +408,20 @@ export async function moveQuickShare(shareId: string, targetShareId: string): Pr
   const [target] = await sql<{ client_name: string }[]>`
     select client_name from shares where id = ${targetShareId}`;
   return { clientName: target?.client_name ?? "", closed };
+}
+
+// A moment to the microsecond, as the database keeps it and the link's page reads it.
+const EXACT_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
+
+// The agent has looked at a link's page, with everything up to `latest` (the
+// newest thing a client did that the page showed), so the dashboard stops
+// marking it as new. Something newer still counts as new.
+export async function markShareSeen(shareId: string, latest: string): Promise<void> {
+  const agent = await requireAgent();
+  if (!uuid.safeParse(shareId).success || typeof latest !== "string" || !EXACT_TIME.test(latest)) return;
+  await sql`
+    update shares set agent_seen_at = greatest(agent_seen_at, least(${latest}::timestamptz, now()))
+    where id = ${shareId} and agent_id = ${agent.id}`;
 }
 
 export async function removeComment(commentId: string): Promise<void> {

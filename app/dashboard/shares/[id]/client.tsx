@@ -1,8 +1,17 @@
 "use client";
 
 import { Check, Copy, ExternalLink, MessageSquare, Pencil, UserPlus } from "lucide-react";
-import { useActionState, useId, useState, useTransition } from "react";
-import { addPerson, renameClient, replyAsAgent, type FormState } from "../../actions";
+import { useActionState, useEffect, useId, useState, useTransition, type ReactNode } from "react";
+import { addPerson, markShareSeen, renameClient, replyAsAgent, type FormState } from "../../actions";
+
+// Looking at this page counts as seeing what's on it, so the dashboard stops
+// marking the link as new; something that arrives while it's open counts too.
+export function MarkSeen({ shareId, latest }: { shareId: string; latest: string | null }) {
+  useEffect(() => {
+    if (latest) markShareSeen(shareId, latest).catch(() => {});
+  }, [shareId, latest]);
+  return null;
+}
 
 // The client's name as the page title, editable in place.
 export function ClientNameEditor({ shareId, name }: { shareId: string; name: string }) {
@@ -75,11 +84,14 @@ export function SendLink({
   clientName,
   count,
   label = "Your link is ready",
+  status,
 }: {
   url: string;
   clientName: string;
   count: number;
   label?: string;
+  // Whether it's been opened, and when.
+  status?: ReactNode;
 }) {
   const [copied, setCopied] = useState(false);
   const id = useId();
@@ -91,6 +103,7 @@ export function SendLink({
       <label htmlFor={id} className="text-sm font-semibold">
         {label}
       </label>
+      {status && <p className="mt-0.5 text-sm text-stone-600">{status}</p>}
       <input
         id={id}
         readOnly

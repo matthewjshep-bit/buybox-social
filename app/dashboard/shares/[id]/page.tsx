@@ -9,9 +9,10 @@ import { sql } from "@/lib/db";
 import { appUrl, cn, formatPrice, timeAgo } from "@/lib/format";
 import { describeReaction, NO_REACTION, type ReactionState } from "@/lib/reactions";
 import { comparePeople, suggestHomes, type Suggestion } from "@/lib/compare";
-import { getShareListings, getThread, type Share } from "@/lib/shares";
+import { clientActivity, getShareListings, getShareOpens, getThread, type Share, type ShareOpen } from "@/lib/shares";
 import { addSuggestedHome, removeComment, setHomeRemoved } from "../../actions";
-import { AddPersonForm, ClientNameEditor, ReplyForm, SendLink } from "./client";
+import { Opened } from "../../opened";
+import { AddPersonForm, ClientNameEditor, MarkSeen, ReplyForm, SendLink } from "./client";
 
 type Listings = Awaited<ReturnType<typeof getShareListings>>;
 type Thread = Awaited<ReturnType<typeof getThread>>;
@@ -27,7 +28,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
     where id = ${id} and agent_id = ${agent.id}`;
   if (!share) notFound();
 
-  const [listings, thread, people] = await Promise.all([
+  const [listings, thread, people, opens, [{ latest }]] = await Promise.all([
     getShareListings(share.id, { includeRemoved: true }),
     getThread(share.id),
     // Everyone on the package: people the agent added, and anyone who joined
@@ -36,6 +37,12 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
       select id, first_name, token from participants
       where share_id = ${id}
       order by invited_at nulls last, created_at, first_name`,
+    getShareOpens(share.id),
+    // The newest thing a client did here, to the microsecond, so seeing this
+    // page clears exactly that much from the dashboard's "new".
+    sql<{ latest: string | null }[]>`
+      select to_char(max(a.at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as latest
+      from (${clientActivity()}) a where a.share_id = ${id}`,
   ]);
   const active = listings.filter((l) => !l.removedAt);
   const removed = listings.filter((l) => l.removedAt);
@@ -48,6 +55,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
   return (
     <>
       <LiveRefresh />
+      <MarkSeen shareId={share.id} latest={latest} />
       <Link href="/dashboard" className="flex min-h-11 w-fit items-center gap-1.5 text-sm font-medium">
         <ArrowLeft aria-hidden size={16} /> All shares
       </Link>
@@ -66,10 +74,16 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
                 clientName={person.first_name}
                 count={active.length}
                 label={`${person.first_name}'s link`}
+                status={<OpenedBy opens={opens.filter((o) => o.participantId === person.id)} name={person.first_name} />}
               />
             ))
           ) : (
-            <SendLink url={`${appUrl()}/s/${share.token}`} clientName={share.client_name} count={active.length} />
+            <SendLink
+              url={`${appUrl()}/s/${share.token}`}
+              clientName={share.client_name}
+              count={active.length}
+              status={<OpenedBy opens={opens} />}
+            />
           )}
         </div>
         <p className="mt-3 text-sm text-stone-600">
@@ -124,6 +138,25 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
           </div>
         </section>
       )}
+    </>
+  );
+}
+
+// Who has opened a link, and when they last did: "Owen opened it Tuesday,
+// 2:14 pm". On someone's own link, it's them (`name`); on a package's link,
+// whoever has said their name on it, then anyone who hasn't yet.
+function OpenedBy({ opens, name }: { opens: ShareOpen[]; name?: string }) {
+  if (opens.length === 0) return <>{name ? `${name} hasn't opened it yet` : "Not opened yet"}</>;
+  const lines = opens.filter((open) => open.participantId).map((open) => ({ at: open.lastAt, name: name ?? open.name }));
+  const unnamed = opens.find((open) => !open.participantId);
+  if (unnamed) lines.push({ at: unnamed.lastAt, name: lines.length ? "Someone else" : name ?? null });
+  return (
+    <>
+      {lines.map((line, i) => (
+        <span key={i} className="block">
+          <Opened at={line.at} name={line.name} />
+        </span>
+      ))}
     </>
   );
 }
@@ -367,7 +400,11 @@ function HomePanel({
   const comments = thread.comments.filter((c) => c.listingKey === listing.ListingKey);
   const isRemoved = Boolean(listing.removedAt);
   return (
-    <section aria-label={listing.UnparsedAddress} className="rounded-2xl bg-white p-4 ring-1 ring-stone-200">
+    <section
+      id={`home-${listing.ListingKey}`}
+      aria-label={listing.UnparsedAddress}
+      className="scroll-mt-4 rounded-2xl bg-white p-4 ring-1 ring-stone-200"
+    >
       <div className="flex items-center gap-3">
         <div
           className={cn(
@@ -424,7 +461,7 @@ function HomePanel({
       {comments.length > 0 && (
         <ul aria-label="Comments" className="mt-4 flex flex-col gap-3">
           {comments.map((comment) => (
-            <li key={comment.id} className="flex gap-3">
+            <li key={comment.id} id={`comment-${comment.id}`} className="flex scroll-mt-4 gap-3">
               <span
                 aria-hidden
                 className={cn(

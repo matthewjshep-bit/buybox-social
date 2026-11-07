@@ -107,7 +107,7 @@ test("ask to see it: a first name, then the ask under the home and an email to t
   const agent = await signInAgent(browser, "ask-agent@example.com", "Priya Shah");
   const { url } = await packageLink(agent, ["812 N Corbel"]);
 
-  // Someone likes the home: the agent hears about it, and the next batched email is 10 minutes off.
+  // Someone opens it and likes the home: the agent hears about it, and the next batched email is 10 minutes off.
   const dana = await (await browser.newContext()).newPage();
   await dana.goto(url);
   const danaHome = homeIn(dana, "812 N Corbel St");

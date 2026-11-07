@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
 import { tagNameIn } from "./photos";
@@ -49,6 +49,50 @@ export type ThreadComment = {
 export const newShareToken = () => randomBytes(24).toString("base64url");
 
 export const isShareToken = (token: string) => /^[\w-]{32}$/.test(token);
+
+// Everything clients have done on links, one row each: a reaction (when last
+// changed), a comment, a like or dislike in a photo or on a fact. The agent's
+// own replies aren't in it. Columns: share_id, listing_key, participant_id, at.
+export const clientActivity = () => sql`
+  select share_id, listing_key, participant_id, updated_at as at from reactions
+  union all
+  select share_id, listing_key, participant_id, created_at from comments where participant_id is not null
+  union all
+  select share_id, listing_key, participant_id, created_at from photo_likes
+  union all
+  select share_id, listing_key, participant_id, created_at from photo_dislikes`;
+
+// A device, as one link knows it when counting opens: hashed with the link, so
+// the stored value can't be matched to the device's own token or across links.
+export const deviceHashFor = (device: string, shareId: string) =>
+  createHash("sha256").update(device + shareId).digest("base64url");
+
+export type ShareOpen = {
+  // The person's first name on the link, once they've given it.
+  name: string | null;
+  // Null stands for everyone who hasn't given a name yet, together.
+  participantId: string | null;
+  lastAt: string;
+};
+
+// Who has had a link open, and when they last did, newest first: for the agent
+// only. Anything someone did on it counts too, so a link sent before opens
+// were counted still shows who has been on it.
+export async function getShareOpens(shareId: string) {
+  const rows = await sql<{ participant_id: string | null; first_name: string | null; last_at: Date }[]>`
+    select x.participant_id, p.first_name, max(x.at) as last_at
+    from (
+      select participant_id, last_at as at from share_opens where share_id = ${shareId}
+      union all
+      select participant_id, at from (${clientActivity()}) a where a.share_id = ${shareId}
+    ) x
+    left join participants p on p.id = x.participant_id
+    group by x.participant_id, p.first_name
+    order by last_at desc`;
+  return rows.map(
+    (row): ShareOpen => ({ name: row.first_name, participantId: row.participant_id, lastAt: row.last_at.toISOString() }),
+  );
+}
 
 // The most link names one agent's open pages can hold at once, waiting for Send.
 const POOL_SIZE = 20;
