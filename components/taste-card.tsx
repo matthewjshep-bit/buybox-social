@@ -1,4 +1,5 @@
-import { Sparkles } from "lucide-react";
+import { ChevronRight, Sparkles } from "lucide-react";
+import Link from "next/link";
 import { AspectSummary } from "@/components/aspect-summary";
 import { cn } from "@/lib/format";
 import { describeBeds, describePriceRange, hasTaste, TASTE_MIN_REACTIONS, type Taste } from "@/lib/taste";
@@ -37,6 +38,14 @@ export function TasteCard({ taste, className }: { taste: Taste | null; className
             limit={6}
             className="mt-3"
           />
+          {/* The whole story, in words, on their own page. */}
+          <Link
+            href="/people/me"
+            className="-mb-2 mt-2 inline-flex min-h-11 items-center gap-0.5 text-sm font-semibold text-brand underline-offset-2 hover:underline"
+          >
+            See your taste
+            <ChevronRight aria-hidden size={16} />
+          </Link>
         </>
       )}
     </section>
