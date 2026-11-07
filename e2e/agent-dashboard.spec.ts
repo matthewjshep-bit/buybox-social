@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, openComments, openMore, signInAgent } from "./helpers";
+import { createShare, heartOf, homeIn, openComments, openMore, pick, settle, signInAgent, tapPhoto } from "./helpers";
 
 const emailsTo = (address: string) =>
   readFileSync("test-results-server.log", "utf8")
@@ -190,4 +190,163 @@ test("the dashboard leads with what's new, and says when each link was opened, n
   await expect(owen.getByRole("heading", { level: 1 })).toHaveText("Owen, I picked these 2 homes for you");
   await owen.waitForTimeout(1000);
   expect(emailsTo("olive-opens@example.com")).toHaveLength(2);
+});
+
+test("the agent's page about a client reads like the product: a card per home, spots, a careful delete, two columns", async ({
+  browser,
+}) => {
+  test.setTimeout(90_000);
+  const agent = await signInAgent(browser, "cora-cards@example.com", "Cora Cards");
+  // The phone runs Share… straight from the tap; this one notes what it was given.
+  await agent.addInitScript(() => {
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: async (data: ShareData) => {
+        (window as unknown as { shared: ShareData }).shared = data;
+      },
+    });
+  });
+  const { urls, dashboardUrl } = await createShare(agent, ["5902 Lakeview", "719 Saltmarsh"], ["Nina", "Ben"]);
+
+  // Nina likes the first home, likes a spot that isn't on anything named in
+  // the second home's second photo, and says something about its sofa.
+  const nina = await (await browser.newContext()).newPage();
+  // A phone that has had a link before: no swipe nudges moving the homes about.
+  await nina.addInitScript(() => localStorage.setItem("buybox:nudges", JSON.stringify({ photos: true, next: true })));
+  await nina.goto(urls.Nina);
+  const lakeview = homeIn(nina, "5902 Lakeview Terrace SE");
+  await heartOf(lakeview).click();
+  await expect(heartOf(lakeview)).toHaveAttribute("aria-pressed", "true");
+  const saltmarsh = homeIn(nina, "719 Saltmarsh Ln");
+  await saltmarsh.scrollIntoViewIfNeeded();
+  await expect(saltmarsh).toBeInViewport({ ratio: 0.9 });
+  await saltmarsh.getByRole("button", { name: "Next photo" }).click();
+  // Once the photo has slid all the way in.
+  const living = saltmarsh.getByRole("img", { name: "Living room with a white sofa and teal pillows" });
+  await expect(living).toBeInViewport({ ratio: 0.95 });
+  let was = NaN;
+  await expect
+    .poll(async () => {
+      const x = (await living.boundingBox())!.x;
+      const still = x === was;
+      was = x;
+      return still;
+    })
+    .toBe(true);
+  await tapPhoto(saltmarsh, "Living room with a white sofa and teal pillows", 0.7, 0.45);
+  const spot = saltmarsh.getByRole("group", { name: "This spot" });
+  await expect(spot).toBeVisible();
+  await settle(spot);
+  await spot.getByRole("button", { name: "Like this spot", exact: true }).click();
+  await expect(spot.getByRole("button", { name: "Like this spot, 1 like", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  // Picking the sofa puts its card in this one's place.
+  const sofa = await pick(saltmarsh, "the white sofa");
+  await expect(spot).toBeHidden();
+  await sofa.getByRole("button", { name: "Comment" }).click();
+  const sheet = nina.getByRole("dialog", { name: "Comments" });
+  await sheet.getByLabel("Comment on the white sofa").fill("Where would the TV go?");
+  await sheet.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(sheet).toBeHidden();
+
+  // Ben passes on the first, for its price.
+  const ben = await (await browser.newContext()).newPage();
+  await ben.goto(urls.Ben);
+  const more = await openMore(ben, homeIn(ben, "5902 Lakeview Terrace SE"));
+  await more.getByRole("button", { name: "Not for me" }).click();
+  const why = more.getByRole("group", { name: "What made you pass?" });
+  await why.getByRole("button", { name: "Price" }).click();
+  await expect(why.getByRole("button", { name: "Price" })).toHaveAttribute("aria-pressed", "true");
+
+  // On a phone, home by home is a card each, a line per person, nothing cut off.
+  await agent.setViewportSize({ width: 393, height: 852 });
+  await agent.goto(dashboardUrl);
+  const nav = agent.getByRole("navigation", { name: "Dashboard" });
+  await expect(nav.getByRole("link", { name: "Your shares" })).toHaveAttribute("aria-current", "true");
+  expect((await nav.getByRole("link", { name: "Your brand" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  const compare = agent.getByRole("region", { name: "What they each want" });
+  await expect(compare.getByRole("table")).toBeHidden();
+  const card = compare.getByRole("listitem").filter({ hasText: "5902 Lakeview Terrace SE" });
+  const benSays = card.getByRole("listitem").filter({ hasText: "Ben" });
+  const ninaSays = card.getByRole("listitem").filter({ hasText: "Nina" });
+  await expect(benSays).toContainText("passed on Price");
+  await expect(ninaSays).toContainText("Liked");
+  for (const line of [benSays, ninaSays]) {
+    const box = (await line.boundingBox())!;
+    expect(box.x + box.width).toBeLessThanOrEqual(393);
+  }
+  expect(await compare.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await expect(
+    compare
+      .getByRole("listitem")
+      .filter({ hasText: "719 Saltmarsh Ln" })
+      .getByRole("listitem")
+      .filter({ hasText: "Nina" }),
+  ).toContainText("liked A spot in photo 2");
+  // Suggestions say "price range" once, not once per person.
+  await expect(agent.getByText(/their price range/)).toHaveCount(0);
+
+  // Likes are rose hearts here too: no green thumbs.
+  await expect(compare.locator(".lucide-heart").first()).toBeVisible();
+  expect(await agent.locator("[class*='emerald'], .lucide-thumbs-up").count()).toBe(0);
+
+  // The thread: who, then what they said; a spot shows the photo with a dot
+  // where they tapped, and says which photo a bare spot was in.
+  const home = agent.getByRole("region", { name: "719 Saltmarsh Ln" });
+  await expect(home).toContainText("Nina liked a spot in photo 2");
+  const said = home.getByRole("listitem").filter({ hasText: "Where would the TV go?" });
+  const who = (await said.getByText("Nina", { exact: true }).boundingBox())!;
+  const words = (await said.getByText("Where would the TV go?").boundingBox())!;
+  expect(who.y + who.height).toBeLessThanOrEqual(words.y + 1);
+  const chip = said.getByRole("button", { name: /^About White sofa/ });
+  const thumb = (await chip.locator("[data-spot-thumb]").boundingBox())!;
+  const dot = (await chip.locator("[data-spot-dot]").boundingBox())!;
+  // The sofa sits half way across and 82% down its photo.
+  expect(Math.abs(dot.x + dot.width / 2 - (thumb.x + thumb.width * 0.5))).toBeLessThan(2);
+  expect(Math.abs(dot.y + dot.height / 2 - (thumb.y + thumb.height * 0.82))).toBeLessThan(2);
+  await chip.click();
+  await expect(chip).toHaveAttribute("aria-expanded", "true");
+  await expect(said.getByRole("img", { name: "Photo 2 of 2" })).toBeVisible();
+
+  // Removing a comment takes two taps, and can be called off.
+  const menu = said.getByRole("button", { name: "More for Nina's comment" });
+  await menu.click();
+  const ask = agent.getByRole("dialog", { name: "Remove this comment? Your client won't see it." });
+  await expect(ask).toBeVisible();
+  await ask.getByRole("button", { name: "Cancel" }).click();
+  await expect(ask).toHaveCount(0);
+  await expect(menu).toBeFocused();
+  await expect(said).toBeVisible();
+  await menu.click();
+  await ask.getByRole("button", { name: "Remove comment from Nina" }).click();
+  await expect(home.getByText("Where would the TV go?")).toHaveCount(0);
+
+  // Wide: what they want on the left, the homes and what was said on the right,
+  // and the side-by-side table, its homes kept in view as it scrolls.
+  await agent.setViewportSize({ width: 1440, height: 900 });
+  await agent.reload();
+  const left = (await compare.boundingBox())!;
+  const right = (await agent.getByRole("heading", { name: "On their link" }).boundingBox())!;
+  expect(right.x).toBeGreaterThan(left.x + left.width);
+  await expect(compare.getByRole("table")).toBeVisible();
+  await expect(compare.getByRole("row", { name: /^5902 Lakeview Terrace SE/ })).toContainText("passed on Price");
+  expect(await compare.getByRole("rowheader").first().evaluate((el) => getComputedStyle(el).position)).toBe("sticky");
+
+  // With one home left on it, the link's message names the home, and Share…
+  // hands it to the phone's share sheet from the tap itself.
+  await home.getByRole("button", { name: "Remove 719 Saltmarsh Ln" }).click();
+  await expect(agent.getByRole("region", { name: "Removed from their link" })).toBeVisible();
+  // (The first link on the page, whoever's it is.)
+  const firstUrl = await agent.locator("input[readonly]").first().inputValue();
+  await expect(agent.getByRole("link", { name: "Text" }).first()).toHaveAttribute(
+    "href",
+    new RegExp(encodeURIComponent("I picked a home for you: 5902 Lakeview Terrace SE.")),
+  );
+  await agent.getByRole("button", { name: "Share…" }).first().click();
+  await expect.poll(() => agent.evaluate(() => (window as unknown as { shared?: ShareData }).shared?.url)).toBe(firstUrl);
+  expect(await agent.evaluate(() => (window as unknown as { shared: ShareData }).shared.text)).toContain(
+    "I picked a home for you: 5902 Lakeview Terrace SE.",
+  );
 });

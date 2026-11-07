@@ -1,8 +1,19 @@
 "use client";
 
-import { Check, Copy, ExternalLink, MessageSquare, Pencil, UserPlus } from "lucide-react";
-import { useActionState, useEffect, useId, useState, useTransition, type ReactNode } from "react";
-import { addPerson, markShareSeen, renameClient, replyAsAgent, type FormState } from "../../actions";
+import { Check, Copy, ExternalLink, MessageSquare, MoreHorizontal, Pencil, Share, UserPlus } from "lucide-react";
+import Image from "next/image";
+import {
+  useActionState,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+  type ReactNode,
+} from "react";
+import { cn } from "@/lib/format";
+import { addPerson, markShareSeen, removeComment, renameClient, replyAsAgent, type FormState } from "../../actions";
 
 // Looking at this page counts as seeing what's on it, so the dashboard stops
 // marking the link as new; something that arrives while it's open counts too.
@@ -59,7 +70,7 @@ export function ClientNameEditor({ shareId, name }: { shareId: string; name: str
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-stone-700 hover:bg-stone-200/60"
+          className="flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-stone-700 hover:bg-stone-200/60"
         >
           <Pencil aria-hidden size={15} />
           {name ? "Rename" : "Add their name"}
@@ -95,35 +106,53 @@ export function ClientNameEditor({ shareId, name }: { shareId: string; name: str
       <button
         type="submit"
         disabled={pending}
-        className="min-h-12 rounded-xl bg-brand px-5 font-semibold text-white disabled:opacity-60"
+        className="min-h-12 rounded-full bg-brand px-5 font-semibold text-white disabled:opacity-60"
       >
         {pending ? "Saving…" : "Save"}
       </button>
-      <button type="button" onClick={() => setEditing(false)} className="min-h-12 rounded-xl px-4 font-medium">
+      <button
+        type="button"
+        onClick={() => setEditing(false)}
+        className="min-h-12 rounded-full px-4 font-medium hover:bg-stone-200/60"
+      >
         Cancel
       </button>
     </form>
   );
 }
 
+// Whether this browser can hand a link to the phone's own share sheet. Only
+// known in the browser, so the page first renders without it.
+const canShare = () => typeof navigator !== "undefined" && typeof navigator.share === "function";
+const never = () => () => {};
+
 export function SendLink({
   url,
   clientName,
   count,
+  address,
   label = "Your link is ready",
   status,
 }: {
   url: string;
   clientName: string;
   count: number;
+  // The home, when the link has just one: the message names it.
+  address?: string;
   label?: string;
   // Whether it's been opened, and when.
   status?: ReactNode;
 }) {
   const [copied, setCopied] = useState(false);
   const id = useId();
+  const field = useRef<HTMLInputElement>(null);
+  const share = useSyncExternalStore(never, canShare, () => false);
   const greeting = clientName ? `Hi ${clientName}, ` : "";
-  const message = `${greeting}I picked ${count === 1 ? "a home" : `${count} homes`} for you. Tell me what you think: ${url}`;
+  const picked =
+    count === 1 && address ? `I picked a home for you: ${address}.` : `I picked ${count === 1 ? "a home" : `${count} homes`} for you.`;
+  const words = `${greeting}${picked} Tell me what you think`;
+  const message = `${words}: ${url}`;
+  const button = "flex min-h-11 items-center justify-center gap-1.5 rounded-full";
 
   return (
     <div className="rounded-2xl bg-white p-4 ring-1 ring-stone-200">
@@ -132,37 +161,47 @@ export function SendLink({
       </label>
       {status && <p className="mt-0.5 text-sm text-stone-600">{status}</p>}
       <input
+        ref={field}
         id={id}
         readOnly
         value={url}
         onFocus={(event) => event.target.select()}
         className="mt-2 w-full rounded-xl bg-stone-100 px-3 py-2.5 text-sm"
       />
-      <div className="mt-3 grid grid-cols-3 gap-2 text-sm font-semibold">
-        <a
-          href={`sms:?&body=${encodeURIComponent(message)}`}
-          className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-brand text-white"
-        >
+      <div className={cn("mt-3 grid gap-2 text-sm font-semibold", share ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")}>
+        <a href={`sms:?&body=${encodeURIComponent(message)}`} className={cn(button, "bg-brand text-white")}>
           <MessageSquare aria-hidden size={16} /> Text
         </a>
+        {/* The phone's share sheet, straight from this tap: WhatsApp, Mail, AirDrop. */}
+        {share && (
+          <button
+            type="button"
+            onClick={() => {
+              navigator.share({ text: `${words}.`, url }).catch(() => {});
+            }}
+            className={cn(button, "border border-stone-300 hover:bg-stone-50")}
+          >
+            <Share aria-hidden size={16} /> Share…
+          </button>
+        )}
         <button
           type="button"
           onClick={async () => {
-            await navigator.clipboard.writeText(url);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
+            try {
+              await navigator.clipboard.writeText(url);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            } catch {
+              // Copying isn't allowed here: the link is selected, ready to copy by hand.
+              field.current?.focus();
+            }
           }}
-          className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-stone-300"
+          className={cn(button, "border border-stone-300 hover:bg-stone-50")}
         >
           {copied ? <Check aria-hidden size={16} /> : <Copy aria-hidden size={16} />}
           {copied ? "Copied" : "Copy"}
         </button>
-        <a
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-stone-300"
-        >
+        <a href={url} target="_blank" rel="noreferrer" className={cn(button, "border border-stone-300 hover:bg-stone-50")}>
           <ExternalLink aria-hidden size={16} /> Preview
         </a>
       </div>
@@ -200,7 +239,7 @@ export function ReplyForm({ shareId, listingKey }: { shareId: string; listingKey
           maxLength={1000}
           onChange={(event) => setBody(event.target.value)}
           placeholder="Reply…"
-          className="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
+          className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
         />
         {error && (
           <p role="alert" className="mt-1 text-sm text-red-700">
@@ -211,7 +250,7 @@ export function ReplyForm({ shareId, listingKey }: { shareId: string; listingKey
       <button
         type="submit"
         disabled={pending || !body.trim()}
-        className="min-h-11 rounded-xl bg-brand px-4 font-semibold text-white disabled:opacity-50"
+        className="min-h-11 rounded-full bg-brand px-5 font-semibold text-white disabled:opacity-50"
       >
         Reply
       </button>
@@ -246,11 +285,192 @@ export function AddPersonForm({ shareId }: { shareId: string }) {
       <button
         type="submit"
         disabled={pending}
-        className="flex min-h-11 items-center gap-1.5 rounded-xl border border-stone-300 bg-white px-4 text-sm font-semibold disabled:opacity-60"
+        className="flex min-h-11 items-center gap-1.5 rounded-full border border-stone-300 bg-white px-4 text-sm font-semibold hover:bg-stone-50 disabled:opacity-60"
       >
         <UserPlus aria-hidden size={16} />
         {pending ? "Adding…" : "Add a person"}
       </button>
     </form>
+  );
+}
+
+// The spot a comment is about: the photo, small, with a dot where the client
+// tapped. Tapped, it opens up so the agent can see exactly where.
+export function SpotChip({
+  label,
+  photo,
+  at,
+  photoNumber,
+  photoCount,
+}: {
+  // "Covered porch", or "A spot in photo 2".
+  label: string;
+  photo: string;
+  // Where in the photo, as fractions; none for the photo's subject ("Kitchen").
+  at: { x: number; y: number } | null;
+  photoNumber: number;
+  photoCount: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  // The photo is cropped around the spot, which puts the spot at the same
+  // place in the crop as in the whole photo.
+  const dot = at ? { left: `${at.x * 100}%`, top: `${at.y * 100}%` } : undefined;
+  const crop = at ? { objectPosition: `${at.x * 100}% ${at.y * 100}%` } : undefined;
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        data-spot-chip
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen((v) => !v)}
+        className="flex min-h-11 max-w-full items-center gap-2 rounded-xl bg-stone-100 p-0.5 pr-3.5 text-left text-[13px] font-semibold text-stone-700 hover:bg-stone-200"
+      >
+        {/* Square, so a spot near a corner isn't cut off. */}
+        <span data-spot-thumb className="relative size-10 shrink-0 overflow-hidden rounded-[10px] bg-stone-200">
+          <Image src={photo} alt="" fill sizes="40px" style={crop} className="object-cover" />
+          {dot && (
+            <span
+              aria-hidden
+              data-spot-dot
+              style={dot}
+              className="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-brand shadow-[0_0_0_1px_rgb(0_0_0/0.3)]"
+            />
+          )}
+        </span>
+        <span className="min-w-0 truncate">
+          <span className="sr-only">About </span>
+          {label}
+          <span className="sr-only">{open ? ": hide the photo" : ": show it in the photo"}</span>
+        </span>
+      </button>
+      {open && (
+        <figure id={id} className="mt-2 w-full max-w-80">
+          <div className="relative aspect-[3/2] overflow-hidden rounded-xl bg-stone-200">
+            <Image
+              src={photo}
+              alt={`Photo ${photoNumber} of ${photoCount}`}
+              fill
+              sizes="320px"
+              style={crop}
+              className="object-cover"
+            />
+            {dot && (
+              <span
+                aria-hidden
+                style={dot}
+                className="absolute size-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-white/20 shadow-[0_0_0_2px_rgb(0_0_0/0.25),0_4px_12px_rgb(0_0_0/0.35)]"
+              />
+            )}
+          </div>
+          <figcaption className="mt-1 text-xs text-stone-600">
+            Photo {photoNumber} of {photoCount}
+            {at ? ", where they tapped" : ""}
+          </figcaption>
+        </figure>
+      )}
+    </div>
+  );
+}
+
+// "…" on a comment: removing it, asked once more first.
+export function CommentMenu({ commentId, name }: { commentId: string; name: string }) {
+  const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const id = useId();
+
+  const close = (refocus: boolean) => {
+    setOpen(false);
+    setError(false);
+    if (refocus) trigger.current?.focus();
+  };
+
+  // A tap anywhere else, or Escape, puts it away.
+  useEffect(() => {
+    if (!open) return;
+    const away = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (panel.current?.contains(target) || trigger.current?.contains(target)) return;
+      setOpen(false);
+      setError(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      setError(false);
+      trigger.current?.focus();
+    };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative -mr-2 -mt-2 shrink-0 self-start">
+      <button
+        ref={trigger}
+        type="button"
+        aria-label={`More for ${name}'s comment`}
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        onClick={() => (open ? close(false) : setOpen(true))}
+        className="flex size-11 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-ink aria-expanded:bg-stone-100 aria-expanded:text-ink"
+      >
+        <MoreHorizontal aria-hidden size={18} />
+      </button>
+      {open && (
+        <div
+          ref={panel}
+          id={id}
+          role="dialog"
+          aria-labelledby={`${id}-ask`}
+          className="absolute right-0 top-full z-20 mt-1 w-64 rounded-2xl bg-white p-3 text-sm shadow-lg ring-1 ring-stone-200"
+        >
+          <p id={`${id}-ask`}>
+            <span className="font-semibold">Remove this comment?</span> Your client won&apos;t see it.
+          </p>
+          {error && (
+            <p role="alert" className="mt-1 text-red-700">
+              That didn&apos;t work. Try again.
+            </p>
+          )}
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              type="button"
+              autoFocus
+              disabled={pending}
+              onClick={() => close(true)}
+              className="min-h-11 rounded-full px-4 font-semibold text-stone-700 hover:bg-stone-100"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() =>
+                startTransition(async () => {
+                  try {
+                    await removeComment(commentId);
+                  } catch {
+                    setError(true);
+                  }
+                })
+              }
+              className="min-h-11 rounded-full bg-red-700 px-4 font-semibold text-white disabled:opacity-60"
+            >
+              {pending ? "Removing…" : "Remove"}
+              <span className="sr-only"> comment from {name}</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

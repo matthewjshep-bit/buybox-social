@@ -96,7 +96,8 @@ test("one package, a link for each person: they react, the agent compares and re
   thread = await openComments(jamie, house);
   await expect(thread.getByText("We can measure it at the showing.")).toBeVisible();
 
-  // The agent can remove a comment.
+  // The agent can remove a comment, from its "…" menu, asked once more.
+  await panel.getByRole("button", { name: "More for Sam's comment" }).click();
   await panel.getByRole("button", { name: "Remove comment from Sam" }).click();
   await expect(panel.getByText("The kitchen feels small.")).toHaveCount(0);
   await jamie.reload();
@@ -116,8 +117,10 @@ test("one package, a link for each person: they react, the agent compares and re
   const compare = agent.getByRole("region", { name: "What they each want" });
   await expect(compare).toContainText("Both like: Kitchen");
   await expect(compare).toContainText("Only Jamie: Marble counters");
-  await expect(compare.getByRole("row", { name: /4127 Larkmoor/ })).toContainText("Liked: kitchen, marble counters");
-  await expect(compare.getByRole("row", { name: /4127 Larkmoor/ })).toContainText("Passed");
+  // Home by home, on a phone a card each, with a line per person.
+  const larkmoor = compare.getByRole("listitem").filter({ hasText: "4127 Larkmoor Ave NE" });
+  await expect(larkmoor.getByRole("listitem").filter({ hasText: "Jamie" })).toContainText("liked Kitchen · Marble counters");
+  await expect(larkmoor.getByRole("listitem").filter({ hasText: "Sam" })).toContainText("Passed but liked Kitchen");
   // ...and homes they might both like, one tap from their links.
   const suggested = agent.getByRole("region", { name: "Homes they might both like" });
   await expect(suggested).toContainText("812 N Corbel St");

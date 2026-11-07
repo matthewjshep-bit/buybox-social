@@ -8,8 +8,8 @@ import { sql } from "@/lib/db";
 import { cn, timeAgo } from "@/lib/format";
 import type { Listing } from "@/lib/listings/types";
 import { tagNameIn } from "@/lib/photos";
-import { describeReaction, type ReactionState } from "@/lib/reactions";
-import { clientActivity } from "@/lib/shares";
+import type { ReactionState } from "@/lib/reactions";
+import { clientActivity, describeTake } from "@/lib/shares";
 import { Opened } from "./opened";
 
 // Each home on a link, and how its people came down on it.
@@ -134,7 +134,12 @@ async function whatsNew(agentId: string): Promise<News[]> {
         kind: passed ? "pass" : "like",
         name: t.first_name,
         // Across every link, a bare "liked this" needs to say what "this" is.
-        what: describeReaction({ reaction: t.reaction, liked: t.liked, disliked: t.disliked }, likes, dislikes)
+        what: describeTake(
+          t.data,
+          { reaction: t.reaction, liked: t.liked, disliked: t.disliked },
+          t.photo_likes.map((m) => ({ mediaKey: m.media, tag: m.tag })),
+          t.photo_dislikes.map((m) => ({ mediaKey: m.media, tag: m.tag })),
+        )
           .replace(/^liked this(?=,|$)/, "liked this home")
           .replace(/^passed on this$/, "passed on this home"),
         address: t.data.UnparsedAddress,

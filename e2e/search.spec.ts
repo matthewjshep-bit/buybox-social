@@ -23,6 +23,35 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await expect(pins(page)).toHaveCount(13);
   await expect(page.getByRole("article").first()).toBeInViewport();
   await expect(page.getByRole("button", { name: /\$\d[\d,]*$/, pressed: true })).toHaveCount(1);
+  // Every pin shows its price, zoomed out too.
+  await expect(pins(page)).toHaveText(Array(13).fill(/^\$\d+(\.\d+)?[KM]$/));
+  // The map starts right under the filters, with no gap between.
+  const filters = (await page.getByRole("search", { name: "Filter homes" }).boundingBox())!;
+  const map = (await page.locator(".maplibregl-map").boundingBox())!;
+  expect(Math.abs(map.y - (filters.y + filters.height))).toBeLessThan(2);
+
+  // Beside the map, a list of what was found: a card per home, in its own
+  // scroll, each bringing its home up and lighting its pin.
+  const results = page.getByRole("list", { name: "Homes found" });
+  const cards = results.getByRole("link");
+  await expect(cards).toHaveCount(13);
+  for (const name of await cards.evaluateAll((links) => links.map((a) => a.getAttribute("aria-label") ?? ""))) {
+    expect(name).toMatch(/^Show \d+ /);
+    expect(name).not.toMatch(/\$[\d,]+$/);
+  }
+  expect(await results.evaluate((el) => getComputedStyle(el).overflowY)).toBe("auto");
+  expect(await results.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  const firstHome = await page.getByRole("article").first().getAttribute("aria-label");
+  await results.evaluate((el) => el.scrollBy({ top: 400 }));
+  await expect.poll(() => results.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(page.getByRole("article", { name: firstHome! })).toBeInViewport({ ratio: 0.9 });
+  const halvardCard = page.getByRole("link", { name: "Show 10421 Halvard Way NE", exact: true });
+  await halvardCard.click();
+  await expect(homeIn(page, "10421 Halvard Way NE")).toBeInViewport({ ratio: 0.9 });
+  await expect(page.getByRole("button", { name: "10421 Halvard Way NE, $1,349,000" })).toHaveAttribute("aria-pressed", "true");
+  await expect(halvardCard).toHaveAttribute("aria-current", "true");
+  await expect(page.getByRole("button", { name: /\$\d[\d,]*$/, pressed: true })).toHaveCount(1);
 
   // Each filter narrows the homes and the map, and lands in the URL.
   await page.getByLabel("Bedrooms").selectOption("5");
@@ -101,7 +130,8 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await expect(page).toHaveURL(/\/search\?beds=4&home=SAMPLE-1005$/);
   await expect(homeIn(page, "10421 Halvard Way NE")).toBeInViewport({ ratio: 0.9 });
 
-  // "Liked by buyers" keeps only homes with likes.
+  // "Liked by buyers" keeps only homes with likes. A like is a heart here too.
+  await expect(page.locator("label").filter({ hasText: "Liked by buyers" }).locator(".lucide-heart")).toBeVisible();
   await page.getByLabel("Liked by buyers").check();
   await expect(page).toHaveURL(/liked=1/);
   await expect(homeIn(page, "10421 Halvard Way NE")).toBeAttached();
@@ -129,9 +159,21 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
 });
 
 test("on a phone, homes and the map are a tap apart, and a pin opens its home", async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 852 });
   await page.goto("/search");
   await expect(page.locator(".maplibregl-canvas")).toBeHidden();
   await expect(page.getByRole("article").first()).toBeVisible();
+  // The filters scroll sideways, faded at the edge with more past it.
+  const row = page.locator("[data-filter-row]");
+  await expect(row).toHaveAttribute("data-fade", "end");
+  expect(await row.evaluate((el) => getComputedStyle(el).maskImage)).toContain("linear-gradient");
+  await row.evaluate((el) => el.scrollTo({ left: el.scrollWidth }));
+  await expect(row).toHaveAttribute("data-fade", "start");
+  // What was found, and the sort, on one line; no list here.
+  const count = (await page.getByText("13 homes", { exact: true }).boundingBox())!;
+  const sort = (await page.getByRole("combobox", { name: "Sort:" }).boundingBox())!;
+  expect(Math.abs(count.y + count.height / 2 - (sort.y + sort.height / 2))).toBeLessThan(4);
+  await expect(page.getByRole("list", { name: "Homes found" })).toBeHidden();
   await page.getByRole("button", { name: "Map", exact: true }).click();
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
   await page.waitForTimeout(1000);

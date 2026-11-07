@@ -1,10 +1,11 @@
 "use client";
 
-import { Home, Map as MapIcon, Search, ThumbsUp } from "lucide-react";
+import { Heart, Home, Map as MapIcon, Search } from "lucide-react";
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition, type ReactNode } from "react";
 import type { ThreadActions } from "@/components/listing-thread";
 import type { MapHome } from "@/components/listing-map";
 import { SendPill, sendHomeFrom, useQuickSend } from "@/components/quick-send";
@@ -24,6 +25,53 @@ const MAX_PRICES = [600_000, 800_000, 1_000_000, 1_500_000, 2_000_000, 3_000_000
 
 const pill =
   "h-11 shrink-0 rounded-full border border-stone-300 bg-white px-4 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand";
+
+// "3 bd · 2 ba · 2,120 sq ft"
+const factsOf = (listing: FeedPost["listing"]) =>
+  [
+    Number.isFinite(listing.BedroomsTotal) && `${listing.BedroomsTotal} bd`,
+    Number.isFinite(listing.BathroomsTotalInteger) && `${listing.BathroomsTotalInteger} ba`,
+    listing.LivingArea > 0 && `${listing.LivingArea.toLocaleString("en-US")} sq ft`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+// A row of filters that scrolls sideways on a phone fades out at whichever
+// edge has more past it, so it's clear there's more to see.
+function FilterRow({ children }: { children: ReactNode }) {
+  const row = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState({ start: false, end: false });
+  useEffect(() => {
+    const el = row.current;
+    if (!el) return;
+    const measure = () => {
+      const start = el.scrollLeft > 1;
+      const end = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+      setMore((was) => (was.start === start && was.end === end ? was : { start, end }));
+    };
+    measure();
+    el.addEventListener("scroll", measure, { passive: true });
+    const resized = new ResizeObserver(measure);
+    resized.observe(el);
+    return () => {
+      el.removeEventListener("scroll", measure);
+      resized.disconnect();
+    };
+  }, []);
+  const fade = `linear-gradient(to right, ${more.start ? "transparent, black 2.5rem" : "black"}, ${more.end ? "black calc(100% - 2.5rem), transparent" : "black"})`;
+  const faded = more.start || more.end;
+  return (
+    <div
+      ref={row}
+      data-filter-row
+      data-fade={[more.start && "start", more.end && "end"].filter(Boolean).join(" ") || undefined}
+      style={faded ? { maskImage: fade, WebkitMaskImage: fade } : undefined}
+      className="-mx-4 flex w-[calc(100%+2rem)] gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:w-auto sm:flex-wrap sm:overflow-visible sm:px-0"
+    >
+      {children}
+    </div>
+  );
+}
 
 // The map on the left; on the right, a look at one home at a time. Picking a
 // pin brings that home up; scrolling the homes moves the map along with them;
@@ -103,6 +151,16 @@ export function SearchView({
     setMobileMap(false);
   };
 
+  // The list keeps the home showing in view as the homes scroll by.
+  const list = useRef<HTMLOListElement>(null);
+  useEffect(() => {
+    const item = activeKey ? list.current?.querySelector<HTMLElement>(`[data-key="${CSS.escape(activeKey)}"]`) : null;
+    if (!item || !list.current?.offsetParent) return;
+    const box = list.current.getBoundingClientRect();
+    const at = item.getBoundingClientRect();
+    if (at.top < box.top || at.bottom > box.bottom) list.current.scrollBy({ top: at.top - box.top - box.height / 3 });
+  }, [activeKey]);
+
   const count = `${total} ${total === 1 ? "home" : "homes"}`;
   // Only a home that's still for sale.
   const sendable = sender
@@ -111,7 +169,9 @@ export function SearchView({
   const sending = sendable ? sendHomeFrom(sendable.listing) : null;
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem-1px)] flex-col">
+    // Phones: the filters, what was found, then the homes or the map. Wide
+    // screens: the filters across the top; the map, the list and one home below.
+    <div className="flex h-[calc(100dvh-3.5rem-1px)] flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_17rem_min(40rem,44%)] lg:grid-rows-[auto_minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_20rem_min(44rem,44%)]">
       <form
         role="search"
         aria-label="Filter homes"
@@ -119,7 +179,7 @@ export function SearchView({
           event.preventDefault();
           update({ q: String(new FormData(event.currentTarget).get("q") ?? "").trim() });
         }}
-        className="flex flex-wrap items-center gap-2 border-b border-stone-200 bg-white px-4 py-3"
+        className="flex flex-wrap items-center gap-2 bg-white px-4 pb-1 pt-3 lg:col-span-3 lg:border-b lg:border-stone-200 lg:pb-3"
       >
         <div className="relative w-full sm:w-72">
           <label htmlFor="search-q" className="sr-only">
@@ -142,7 +202,7 @@ export function SearchView({
           </button>
         </div>
         {/* One swipeable row on phones; wraps on wider screens. */}
-        <div className="-mx-4 flex w-[calc(100%+2rem)] gap-2 overflow-x-auto px-4 sm:mx-0 sm:w-auto sm:flex-wrap sm:overflow-visible sm:px-0">
+        <FilterRow>
           <select
             aria-label="Minimum price"
             value={shown.minPrice ?? ""}
@@ -208,32 +268,39 @@ export function SearchView({
               </option>
             ))}
           </select>
-          <label className={cn(pill, "flex cursor-pointer items-center gap-2 has-[:checked]:border-emerald-700 has-[:checked]:bg-emerald-50")}>
+          <label className={cn(pill, "flex cursor-pointer items-center gap-2 has-[:checked]:border-rose-600 has-[:checked]:bg-rose-50")}>
             <input
               type="checkbox"
               checked={shown.liked}
               onChange={(event) => update({ liked: event.target.checked })}
-              className="size-4 accent-emerald-700"
+              className="size-4 accent-rose-600"
             />
-            <ThumbsUp aria-hidden size={15} className="text-emerald-700" />
+            <Heart aria-hidden size={15} className="text-rose-600" />
             Liked by buyers
           </label>
-        </div>
-        <div className="flex w-full items-center justify-between gap-3 lg:ml-auto lg:w-auto">
-          <div className="flex items-baseline gap-2">
-            <h1 id="results-title" className="text-sm font-semibold">
-              {filters.q ? `Homes matching “${filters.q}”` : "Washington homes for sale"}
-            </h1>
-            <p className="text-sm text-stone-600" aria-live="polite">
-              {count}
-            </p>
-          </div>
-          <label className="flex items-center gap-1.5 text-sm">
-            <span className="text-stone-700">Sort:</span>
+        </FilterRow>
+      </form>
+
+      {/* What was found, on one line on a phone. Wide screens: a list of the
+          homes beside the map, each bringing its home up and lighting its pin. */}
+      <section
+        aria-labelledby="results-title"
+        className="flex flex-col border-b border-stone-200 bg-white lg:col-start-2 lg:row-start-2 lg:min-h-0 lg:border-b-0 lg:border-l"
+      >
+        <div className="flex items-center justify-between gap-x-3 px-4 lg:flex-wrap lg:pt-2">
+          <h1 id="results-title" className="text-sm font-semibold max-lg:sr-only lg:w-full lg:truncate lg:pt-1">
+            {filters.q ? `Homes matching “${filters.q}”` : "Washington homes for sale"}
+          </h1>
+          <p className="text-sm font-semibold text-ink lg:font-normal lg:text-stone-600" aria-live="polite">
+            {count}
+          </p>
+          <label className="flex min-w-0 items-center gap-1.5 text-sm">
+            {/* The narrowest list column has room for the choice only. */}
+            <span className="shrink-0 text-stone-700 lg:max-xl:sr-only">Sort:</span>
             <select
               value={shown.sort}
               onChange={(event) => update({ sort: event.target.value })}
-              className="min-h-11 rounded-lg bg-transparent font-semibold text-brand outline-none"
+              className="min-h-11 min-w-0 rounded-lg bg-transparent font-semibold text-brand outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
               {Object.entries(SORTS).map(([value, label]) => (
                 <option key={value} value={value}>
@@ -243,68 +310,112 @@ export function SearchView({
             </select>
           </label>
         </div>
-      </form>
+        {posts.length > 0 && (
+          <ol
+            ref={list}
+            aria-label="Homes found"
+            className="hidden min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-stone-200 lg:block"
+          >
+            {posts.map(({ listing }) => {
+              const key = listing.ListingKey;
+              const query = filtersQuery(filters);
+              return (
+                <li key={key} data-key={key}>
+                  <a
+                    href={`/search?${query ? `${query}&` : ""}home=${encodeURIComponent(key)}`}
+                    aria-label={`Show ${listing.UnparsedAddress}`}
+                    aria-describedby={`result-${key}`}
+                    aria-current={key === activeKey ? "true" : undefined}
+                    onClick={(event) => {
+                      // A new tab still opens the link; here, it brings the home up.
+                      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                      event.preventDefault();
+                      pick(key);
+                    }}
+                    onMouseEnter={() => setHoveredKey(key)}
+                    onMouseLeave={() => setHoveredKey(null)}
+                    className="flex items-center gap-3 border-b border-stone-100 px-4 py-2.5 outline-none hover:bg-stone-50 focus-visible:bg-stone-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand aria-[current=true]:bg-stone-100 aria-[current=true]:shadow-[inset_3px_0_0_var(--brand)]"
+                  >
+                    <span className="relative h-14 w-18 shrink-0 overflow-hidden rounded-lg bg-stone-200">
+                      {listing.Media[0] && (
+                        <Image src={listing.Media[0].MediaURL} alt="" fill sizes="72px" className="object-cover" />
+                      )}
+                    </span>
+                    <span id={`result-${key}`} className="min-w-0 flex-1 leading-snug">
+                      <span className="block font-display text-lg text-ink">{formatPrice(listing.ListPrice)}</span>
+                      <span className="block truncate text-[13px] text-stone-700">{factsOf(listing)}</span>
+                      <span className="block truncate text-[13px] text-stone-600">
+                        {listing.UnparsedAddress}, {listing.City}
+                      </span>
+                    </span>
+                  </a>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </section>
 
-      <div className="flex min-h-0 flex-1">
-        <div className={cn("relative min-h-0 flex-1", mobileMap ? "block" : "hidden lg:block")}>
-          <ListingMap
-            homes={homes}
-            activeKey={activeKey}
-            hoveredKey={hoveredKey}
-            onHover={setHoveredKey}
-            onSelect={pick}
-          />
-        </div>
-
-        <section
-          ref={pane}
-          aria-label="Homes"
-          aria-busy={pending}
-          className={cn(
-            "relative min-h-0 bg-stone-950 transition-opacity lg:block lg:w-[min(46rem,50%)] lg:flex-none",
-            mobileMap ? "hidden" : "block flex-1",
-            pending && "opacity-60",
-          )}
-        >
-          {/* Wide screens: over the top of the photo, clear of the words at the bottom. */}
-          {sending && (
-            <SendPill home={sending} quick={quick} className="absolute left-3 top-3 z-30 hidden lg:flex" />
-          )}
-          {posts.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center bg-surface p-8 text-center">
-              <p className="font-semibold">No homes match those filters.</p>
-              <Link href="/search" className="mt-2 inline-block font-semibold text-brand underline">
-                Clear all filters
-              </Link>
-            </div>
-          ) : (
-            <ReelFeed
-              // A new search is a new set of homes.
-              key={posts.map((post) => post.listing.ListingKey).join()}
-              initial={posts}
-              mode="public"
-              embedded
-              actions={actions}
-              myName={myName}
-              prompt={prompt}
-              focus={focus}
-              onActiveChange={setActiveKey}
-              // Just a look here: a tap opens it full screen, with the rest of
-              // this search to scroll through.
-              onOpen={(key) => {
-                const query = filtersQuery(latest.current);
-                router.push(`/homes?${query ? `${query}&` : ""}home=${encodeURIComponent(key)}`);
-              }}
-              end={
-                <div className="max-w-sm">
-                  <h2 className="font-display text-2xl">That&apos;s every home in this search</h2>
-                  <p className="mt-2 text-white/80">Zoom out on the map or change the filters to see more.</p>
-                </div>
-              }
-            />
-          )}
-        </section>
+      <div
+        className={cn("relative min-h-0 flex-1 lg:col-start-1 lg:row-start-2", mobileMap ? "block" : "hidden lg:block")}
+      >
+        <ListingMap
+          homes={homes}
+          activeKey={activeKey}
+          hoveredKey={hoveredKey}
+          onHover={setHoveredKey}
+          onSelect={pick}
+        />
       </div>
+
+      <section
+        ref={pane}
+        aria-label="Homes"
+        aria-busy={pending}
+        className={cn(
+          "relative min-h-0 bg-stone-950 transition-opacity lg:col-start-3 lg:row-start-2 lg:block",
+          mobileMap ? "hidden" : "block flex-1",
+          pending && "opacity-60",
+        )}
+      >
+        {/* Wide screens: over the top of the photo, clear of the words at the bottom. */}
+        {sending && (
+          <SendPill home={sending} quick={quick} className="absolute left-3 top-3 z-30 hidden lg:flex" />
+        )}
+        {posts.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center bg-surface p-8 text-center">
+            <p className="font-semibold">No homes match those filters.</p>
+            <Link href="/search" className="mt-2 inline-block font-semibold text-brand underline">
+              Clear all filters
+            </Link>
+          </div>
+        ) : (
+          <ReelFeed
+            // A new search is a new set of homes.
+            key={posts.map((post) => post.listing.ListingKey).join()}
+            initial={posts}
+            mode="public"
+            embedded
+            actions={actions}
+            myName={myName}
+            prompt={prompt}
+            focus={focus}
+            onActiveChange={setActiveKey}
+            // Just a look here: a tap opens it full screen, with the rest of
+            // this search to scroll through.
+            onOpen={(key) => {
+              const query = filtersQuery(latest.current);
+              router.push(`/homes?${query ? `${query}&` : ""}home=${encodeURIComponent(key)}`);
+            }}
+            end={
+              <div className="max-w-sm">
+                <h2 className="font-display text-2xl">That&apos;s every home in this search</h2>
+                <p className="mt-2 text-white/80">Zoom out on the map or change the filters to see more.</p>
+              </div>
+            }
+          />
+        )}
+      </section>
 
       {/* Phones: along the bottom, in the space the home's words leave for
           these buttons, so they never cover the words on a short screen. */}

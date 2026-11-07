@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
-import { tagNameIn } from "./photos";
-import type { Aspect, ReactionState } from "./reactions";
+import { mediaKeyOf, tagNameIn } from "./photos";
+import { describeReaction, type Aspect, type ReactionState } from "./reactions";
 
 export type CommentTag = "like" | "dislike";
 
@@ -44,6 +44,9 @@ export type ThreadComment = {
   body: string;
   createdAt: string;
   sharedPublicly: boolean;
+  // The spot in a photo it's about ("@62.3,68.1" or "Covered porch"), or one of
+  // the facts (media key "facts", tag "Price").
+  spot?: { mediaKey: string; tag: string } | null;
 };
 
 export const newShareToken = () => randomBytes(24).toString("base64url");
@@ -200,10 +203,12 @@ export async function getThread(shareId: string) {
       body: string;
       created_at: Date;
       shared_publicly: boolean;
+      media_key: string | null;
+      spot: string | null;
     }[]
   >`
     select c.id, c.listing_key, c.participant_id, p.first_name,
-           a.full_name as agent_name, c.tag, c.body, c.created_at, c.shared_publicly
+           a.full_name as agent_name, c.tag, c.body, c.created_at, c.shared_publicly, c.media_key, c.spot
     from comments c
     left join participants p on p.id = c.participant_id
     left join accounts a on a.id = c.agent_id
@@ -234,6 +239,7 @@ export async function getThread(shareId: string) {
       participantId: l.participant_id,
       name: l.first_name,
       tag: tagNameIn(l.data, l.media_key, l.tag),
+      mediaKey: l.media_key,
     })),
     // What each person liked in the photos.
     photoLikes: photoLikes.map((l) => ({
@@ -243,6 +249,7 @@ export async function getThread(shareId: string) {
       // A spot reads as the thing it's on ("the front door").
       tag: tagNameIn(l.data, l.media_key, l.tag),
       aspect: l.aspect,
+      mediaKey: l.media_key,
     })),
     reactions: reactions.map(
       (r): ThreadReaction => ({
@@ -263,6 +270,7 @@ export async function getThread(shareId: string) {
         body: c.body,
         createdAt: c.created_at.toISOString(),
         sharedPublicly: c.shared_publicly,
+        spot: c.media_key && c.spot ? { mediaKey: c.media_key, tag: c.spot } : null,
       }),
     ),
   };
@@ -281,4 +289,50 @@ export async function shareHasListing(shareId: string, listingKey: string) {
     select 1 from share_listings
     where share_id = ${shareId} and listing_key = ${listingKey} and removed_at is null`;
   return Boolean(row);
+}
+
+// Something one person liked or didn't in a home: a tag in a photo (or on the
+// facts), as it was saved.
+export type TakeMark = { mediaKey: string; tag: string };
+
+// Which photo of the home a mark is on, counting from 1, or 0 for the facts.
+export const photoNumberOf = (listing: Listing, mediaKey: string) =>
+  listing.Media.findIndex((photo) => mediaKeyOf(photo) === mediaKey) + 1;
+
+// "a spot in photo 2", "2 spots in photo 3", "3 spots in photos 1 and 4".
+export function spotsWhere(listing: Listing, spots: TakeMark[]) {
+  const photos = [...new Set(spots.map((s) => photoNumberOf(listing, s.mediaKey)))].filter((n) => n > 0).sort((a, b) => a - b);
+  if (photos.length === 0) return null;
+  const where = photos.length === 1 ? `photo ${photos[0]}` : `photos ${photos.slice(0, -1).join(", ")} and ${photos.at(-1)}`;
+  return spots.length === 1 ? `a spot in ${where}` : `${spots.length} spots in ${where}`;
+}
+
+// One person's take on a home, for the agent, worded as the link words it
+// ("liked the kitchen and a spot in a photo"), except that it says which photo
+// a spot is in: the agent has no photo open beside it.
+export function describeTake(listing: Listing, state: ReactionState, likes: TakeMark[], dislikes: TakeMark[]) {
+  const named = (marks: TakeMark[]) => marks.map((m) => tagNameIn(listing, m.mediaKey, m.tag));
+  const likeTags = named(likes);
+  const dislikeTags = named(dislikes);
+  let text = describeReaction(state, likeTags, dislikeTags);
+  // Spots that aren't on a named thing keep their "@x,y" name.
+  const side = (marks: TakeMark[], tags: string[]) => {
+    const spots = marks.filter((_, i) => tags[i].startsWith("@"));
+    if (spots.length === 0) return null;
+    return { from: spots.length === 1 ? "a spot in a photo" : `${spots.length} spots in the photos`, to: spotsWhere(listing, spots) };
+  };
+  const liked = side(likes, likeTags);
+  const disliked = side(dislikes, dislikeTags);
+  // Only "passed, didn't like … but liked …" names the dislikes first.
+  const order = text.startsWith("passed, didn't like") ? [disliked, liked] : [liked, disliked];
+  let from = 0;
+  for (const part of order) {
+    if (!part) continue;
+    const at = text.indexOf(part.from, from);
+    if (at < 0) continue;
+    const to = part.to ?? part.from;
+    text = text.slice(0, at) + to + text.slice(at + part.from.length);
+    from = at + to.length;
+  }
+  return text;
 }
