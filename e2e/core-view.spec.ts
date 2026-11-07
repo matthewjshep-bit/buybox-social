@@ -78,16 +78,17 @@ test("on a phone, the whole photo sits right on top of the words, in the same pl
   }
 });
 
-test("the buttons down the right: like, comments, share, more, each with its label, just over the comment bar", async ({
+test("the buttons down the right: like, comments, scorecard, share, more, each with its label, just over the comment bar", async ({
   page,
 }) => {
   await page.goto("/homes/SAMPLE-1013");
   const home = homeIn(page, "5902 Lakeview Terrace SE");
   await settled(home);
   const rail = home.locator("[data-keep-clear]").filter({ has: home.page().getByRole("button", { name: /^Like (?!the )/ }) });
-  const names = [/^Like 5902 Lakeview Terrace SE/, /^Comments/, "Share", "More options"];
+  const names = [/^Like 5902 Lakeview Terrace SE/, /^Comments/, "Scorecard", "Share", "More options"];
   await expect(rail.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(rail.getByRole("button").nth(i)).toHaveAccessibleName(name);
+  await expect(rail).toContainText("Scorecard");
   await expect(rail).toContainText("Share");
   await expect(rail).toContainText("More");
   const bar = await box(home.getByRole("button", { name: "Add a comment…" }));
@@ -176,7 +177,7 @@ test("a phone on its side keeps the words over the photo, the description to one
   );
 });
 
-test("the description: two lines, then more right after the last word, one button that keeps the keyboard", async ({
+test("the description: two lines, then more right after the last word, which opens the rest in the Scorecard", async ({
   browser,
 }) => {
   const page = await phone(browser, IPHONE);
@@ -184,7 +185,7 @@ test("the description: two lines, then more right after the last word, one butto
   const home = homeIn(page, "4127 Larkmoor Ave NE");
   await settled(home);
   const more = home.getByRole("button", { name: "more", exact: true });
-  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await expect(more).toHaveAttribute("aria-haspopup", "dialog");
   // The words come first, then "more", right after them on the second line.
   const text = home.getByText(/^A warm Ravenna-area Craftsman/);
   const caption = await box(text.locator("xpath=.."));
@@ -203,13 +204,16 @@ test("the description: two lines, then more right after the last word, one butto
     { x: at.x + at.width / 2, y: at.y + at.height + 9 },
   );
   expect(hit).toBe("more");
-  // From the keyboard, it opens and closes in place, and stays where the keyboard is.
+  // It opens the Scorecard at "About this home", with all of it there; put
+  // away, the keyboard is back on "more".
   await more.focus();
   await page.keyboard.press("Enter");
-  const less = home.getByRole("button", { name: "less", exact: true });
-  await expect(less).toBeFocused();
-  await expect(less).toHaveAttribute("aria-expanded", "true");
-  await page.keyboard.press("Enter");
+  const card = page.getByRole("dialog", { name: "Scorecard" });
+  await expect(card).toBeVisible();
+  await expect(card.getByRole("heading", { name: "About this home" })).toBeInViewport();
+  await expect(card.getByText(/^A warm Ravenna-area Craftsman.+a short walk away\.$/)).toBeInViewport({ ratio: 0.5 });
+  await page.keyboard.press("Escape");
+  await expect(card).toBeHidden();
   await expect(more).toBeFocused();
   await page.context().close();
 });

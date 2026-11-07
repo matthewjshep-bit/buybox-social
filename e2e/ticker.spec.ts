@@ -202,7 +202,7 @@ test("after three rounds it rests on who liked the home; a photo with more on it
       { timeout: 60_000, intervals: [0] },
     )
     .toMatch(/liked this$/);
-  await expect(lineOf(home)).toHaveAccessibleName(/liked this\. See the comments\.$/);
+  await expect(lineOf(home)).toHaveAccessibleName(/liked this\. See the scorecard\.$/);
   await expect(activityOf(home).getByRole("button", { name: "Play activity" })).toBeVisible();
   await expect(home.locator("[data-spot-highlight]")).toHaveCount(0);
 

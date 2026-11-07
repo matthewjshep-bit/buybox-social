@@ -82,6 +82,14 @@ export async function openComments(page: Page, home: Locator) {
   return sheet;
 }
 
+// A home's Scorecard: what everyone thinks of it, from the button on its rail.
+export async function openScorecard(page: Page, home: Locator) {
+  await home.getByRole("button", { name: "Scorecard", exact: true }).click();
+  const sheet = page.getByRole("dialog", { name: "Scorecard" });
+  await expect(sheet).toBeVisible();
+  return sheet;
+}
+
 export async function openMore(page: Page, home: Locator) {
   await home.getByRole("button", { name: "More options" }).click();
   const sheet = page.getByRole("dialog", { name: "More" });

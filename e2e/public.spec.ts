@@ -1,5 +1,16 @@
 import { expect, test } from "@playwright/test";
-import { commentIn, createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, openMore, signInAgent } from "./helpers";
+import {
+  commentIn,
+  createShare,
+  heartOf,
+  homeIn,
+  joinAs,
+  likeInPhoto,
+  openComments,
+  openMore,
+  openScorecard,
+  signInAgent,
+} from "./helpers";
 
 const SECRET = "We could go 50k over asking.";
 const SHARED = "That fenced yard is perfect for our dog.";
@@ -59,13 +70,9 @@ test("public pages show activity, never private words, and private threads share
   await expect(post).toContainText(/Traditional brick-front home/);
   await expect(post.getByRole("button", { name: `Like ${BRACKENFIELD}, 1 like` })).toBeVisible();
   let sheet = await openComments(page, post);
-  await expect(sheet.getByText("People like")).toBeVisible();
-  await expect(sheet.getByText("Exterior 1")).toBeVisible();
+  // The private pass shows nowhere: not in the comments...
   await expect(sheet.getByText("People pass on")).toHaveCount(0);
-  const buzz = sheet.getByLabel("Activity");
-  await expect(buzz).toContainText("sent to 1 buyer by agents");
-  await expect(buzz).toContainText("2 comments in private chats");
-  await expect(buzz).not.toContainText("pass");
+  await expect(sheet).not.toContainText(/pass/i);
   const thread = sheet.getByRole("list", { name: "Comments and likes" });
   await expect(thread).toContainText("A buyer liked the brick front");
   await expect(thread).toContainText(SHARED);
@@ -73,6 +80,21 @@ test("public pages show activity, never private words, and private threads share
   await expect(page.getByText(SECRET)).toHaveCount(0);
   await expect(page.getByText(/Riley|Quinn/)).toHaveCount(0);
   await page.keyboard.press("Escape");
+  // ...nor in the Scorecard, which has what people like and the quiet signals.
+  let card = await openScorecard(page, post);
+  await expect(card.getByText("People like", { exact: true })).toBeVisible();
+  await expect(card.getByText("Exterior 1")).toBeVisible();
+  await expect(card.getByText("People pass on")).toHaveCount(0);
+  await expect(card.getByLabel(/passed$/)).toHaveCount(0);
+  await expect(card).not.toContainText(/pass/i);
+  const buzz = card.getByLabel("Activity");
+  await expect(buzz).toContainText("agents sent it to 1 buyer");
+  await expect(buzz).toContainText("2 comments in private chats");
+  await expect(buzz).not.toContainText("pass");
+  await expect(card.getByText(SECRET)).toHaveCount(0);
+  await expect(card.getByText(/Riley|Quinn/)).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(card).toBeHidden();
 
   // Any visitor can react and comment in public.
   await heartOf(post).click();
@@ -86,7 +108,9 @@ test("public pages show activity, never private words, and private threads share
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(commentIn(thread, "Morgan", "Love the quiet cul-de-sac.")).toBeVisible();
   await expect(thread).toContainText("You liked the natural light");
-  await expect(sheet.getByText("Natural light 1")).toBeVisible();
+  await page.keyboard.press("Escape");
+  card = await openScorecard(page, post);
+  await expect(card.getByText("Natural light 1")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(post.getByRole("button", { name: `Like ${BRACKENFIELD}, 2 likes` })).toBeVisible();
 
@@ -110,9 +134,13 @@ test("public pages show activity, never private words, and private threads share
   ).toHaveAttribute("aria-pressed", "true");
   await other.reload();
   otherSheet = await openComments(other, otherPost);
-  await expect(otherSheet.getByText("People pass on")).toBeVisible();
-  await expect(otherSheet.getByText("Price 1")).toBeVisible();
   await expect(otherSheet.getByText("You passed, didn't like the price")).toBeVisible();
+  await other.keyboard.press("Escape");
+  const otherCard = await openScorecard(other, otherPost);
+  await expect(otherCard.getByText("People pass on")).toBeVisible();
+  await expect(otherCard.getByText("Price 1")).toBeVisible();
+  await expect(otherCard.getByText(/Riley|Quinn/)).toHaveCount(0);
+  await other.keyboard.press("Escape");
 
   // Private words and names are not in the public HTML at all.
   for (const path of ["/", "/homes/SAMPLE-1006"]) {

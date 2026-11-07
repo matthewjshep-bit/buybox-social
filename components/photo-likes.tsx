@@ -70,6 +70,8 @@ export function usePhotoLikes(listingKey: string, likes: PhotoLikes) {
   };
 
   const anyLiked = (reactions: Map<string, string>) => [...reactions.values()].includes("like");
+  const ids = { liked: [] as string[], disliked: [] as string[] };
+  for (const [id, reaction] of mine) (reaction === "like" ? ids.liked : ids.disliked).push(id);
   return {
     enabled: Boolean(actions.likePhoto),
     reactionOf,
@@ -81,6 +83,8 @@ export function usePhotoLikes(listingKey: string, likes: PhotoLikes) {
     // Whether you'd liked anything in the photos when the page loaded, and now.
     hadAny: anyLiked(was),
     hasAny: anyLiked(mine),
+    // Yours as they are now, by likeId.
+    ids,
     // What you just did, while the page's copy doesn't have it yet.
     unheard:
       last && reactionOf(last.mediaKey, last.tag) === last.reaction && was.get(likeId(last.mediaKey, last.tag)) !== last.reaction

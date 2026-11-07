@@ -1,7 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import { cn } from "@/lib/format";
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -53,7 +53,8 @@ function holderOf(el: HTMLElement) {
 // screen, it isn't over the home at all: it takes the anchor's exact box
 // beside the photo and leaves the photo free to tap, rather than shutting
 // everything else off. Closed from inside, the keyboard goes back to what
-// opened it.
+// opened it. Beside the photo, `tabs` can stand in for the title: a switch
+// between what it holds, which changes in place, never closing.
 export function Sheet({
   open,
   onClose,
@@ -65,6 +66,9 @@ export function Sheet({
   tall = false,
   detents,
   docked = false,
+  tabs,
+  bodyRef,
+  footerHidden = false,
   className,
 }: {
   open: boolean;
@@ -85,6 +89,12 @@ export function Sheet({
   detents?: { minTop: number };
   // Beside the photo, in the anchor's box, not shutting off the page (wide screens).
   docked?: boolean;
+  // Beside the photo: in the title's place, a switch between what it holds.
+  tabs?: ReactNode;
+  // The part that scrolls.
+  bodyRef?: Ref<HTMLDivElement>;
+  // The footer stays (what's typed in it too) but out of sight.
+  footerHidden?: boolean;
   className?: string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -180,10 +190,11 @@ export function Sheet({
       opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       if (docked) {
         // Placed first: opening moves the keyboard into it, which would
-        // otherwise scroll whatever holds it to wherever it was.
+        // otherwise scroll whatever holds it to wherever it was. With tabs,
+        // the keyboard starts on the one that's showing.
         place(el);
         el.show();
-        heading.current?.focus({ preventScroll: true });
+        (el.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') ?? heading.current)?.focus({ preventScroll: true });
       } else {
         place(el);
         el.showModal();
@@ -197,6 +208,19 @@ export function Sheet({
     // `place` reads only what's listed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, anchor, tall, docked, minTop]);
+
+  // What it holds changes while it's open (the comments, then the
+  // Scorecard): the keyboard stays in it, on its title, rather than falling
+  // out of the page with the button that changed it.
+  const shownLabel = useRef(label);
+  useLayoutEffect(() => {
+    const el = dialog.current;
+    const was = shownLabel.current;
+    shownLabel.current = label;
+    if (!open || !el?.open || was === label) return;
+    const now = document.activeElement;
+    if (!now || now === document.body || !el.contains(now)) heading.current?.focus({ preventScroll: true });
+  }, [open, label]);
 
   // Slides back down (or, beside the photo, fades away), then closes.
   const dismiss = () => {
@@ -280,18 +304,24 @@ export function Sheet({
       )}
     >
       {docked ? (
-        <div className="relative flex shrink-0 items-center border-b border-stone-100 py-2 pl-5 pr-2">
-          <h2 ref={heading} tabIndex={-1} className="min-w-0 flex-1 truncate text-[15px] font-semibold">
-            {title}
-          </h2>
+        <div className={cn("relative flex shrink-0 items-center border-b border-stone-100 py-2 pr-2", tabs ? "pl-3" : "pl-5")}>
+          {/* Close first for the keyboard (in from the buttons beside it),
+              last on screen. */}
           <button
             type="button"
             onClick={dismiss}
             aria-label="Close"
-            className="flex size-11 shrink-0 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-ink"
+            className="order-last flex size-11 shrink-0 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-ink"
           >
             <X aria-hidden size={20} />
           </button>
+          {tabs ? (
+            <div className="min-w-0 flex-1">{tabs}</div>
+          ) : (
+            <h2 ref={heading} tabIndex={-1} className="min-w-0 flex-1 truncate text-[15px] font-semibold">
+              {title}
+            </h2>
+          )}
         </div>
       ) : (
         // The handle and title: drag them down to close (or, with two
@@ -379,14 +409,17 @@ export function Sheet({
           ) : (
             <span aria-hidden className="mx-auto block h-1 w-10 rounded-full bg-stone-300" />
           )}
-          <h2 ref={heading} className="mt-2.5 px-14 text-center text-[15px] font-semibold">
+          <h2 ref={heading} tabIndex={-1} className="mt-2.5 px-14 text-center text-[15px] font-semibold outline-none">
             {title}
           </h2>
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-2">{children}</div>
+      <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-2">
+        {children}
+      </div>
       {footer && (
         <div
+          hidden={footerHidden}
           className={cn(
             "shrink-0 bg-white",
             docked

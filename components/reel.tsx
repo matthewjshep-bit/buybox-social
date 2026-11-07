@@ -3,7 +3,9 @@
 import {
   ArrowUp,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
+  ClipboardList,
   Ellipsis,
   Eye,
   Flame,
@@ -14,7 +16,6 @@ import {
   MessageCircle,
   Send,
   Share2,
-  Sparkles,
   ThumbsDown,
   User,
   UserPlus,
@@ -36,7 +37,6 @@ import {
 import { flushSync } from "react-dom";
 import { loadReel, recordView, reloadReelHome } from "@/app/homes/actions";
 import { ActivityTicker, useTicker } from "@/components/activity-ticker";
-import { AspectSummary } from "@/components/aspect-summary";
 import { AspectChips, useReactions } from "@/components/like-pass";
 import {
   CommentComposer,
@@ -58,6 +58,7 @@ import {
   type SpotLight,
 } from "@/components/photo-spots";
 import { photoFoot, photoPlace, ReelPhotos } from "@/components/reel-photos";
+import { ScorecardBody, WhatPeopleThink } from "@/components/scorecard";
 import { Sheet } from "@/components/sheet";
 import { NudgeHint, useNudges, type Nudge } from "@/components/walkthrough";
 import type { FeedPost } from "@/lib/feed";
@@ -79,6 +80,7 @@ import {
 import { eventsFromHeadline, eventsFromTimeline, onFact, onPhoto, type TickerEvent, type TickerTap } from "@/lib/ticker";
 import type { TimelineComment, TimelineItem } from "@/lib/timeline";
 import { NO_REACTION, publicSideOf, type Aspect, type ReactionState } from "@/lib/reactions";
+import type { ScorecardViewer } from "@/lib/scorecard";
 
 // The feed: one home per screen, scrolled up like a reel, for as long as you
 // keep going. On a phone the whole photo sits right on top of a block of words
@@ -126,6 +128,9 @@ const sendHomeOf = ({ listing }: FeedPost): SendHome => ({
 // What the rail's fourth button does: share the page, invite someone onto an
 // agent's link, or (an agent, on a home for sale) send it to a client.
 type ShareKind = "share" | "invite" | "send";
+
+// What can rise over a home.
+type SheetKind = "comments" | "more" | "scorecard";
 
 // The agent, in a sentence: their name, or "your agent" when the page
 // doesn't know it (it says "Your agent" then).
@@ -367,19 +372,24 @@ function Feed({
   const scroller = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
   // A sheet over the home: its comments (all of them, or those about one spot
-  // in a photo), or More. `photoFoot`: where the photo ended when it opened,
-  // so the comments rise to just there.
+  // in a photo), its Scorecard, or More. `photoFoot`: where the photo ended
+  // when it opened, so the sheet rises to just there.
   const [sheet, setSheet] = useState<{
-    kind: "comments" | "more";
+    kind: SheetKind;
     key: string;
     spot?: SpotRef;
     photoFoot?: number;
     // Opened on one comment (from the line above the price).
     commentId?: string;
+    // The Scorecard, opened at a part of it (the description's "more").
+    section?: "about";
   } | null>(null);
   // Each sheet closes only itself: one can open another without the first's
-  // closing shutting the second.
-  const closeSheet = (kind: "comments" | "more") => setSheet((now) => (now?.kind === kind ? null : now));
+  // closing shutting the second. (The comments and the Scorecard are one
+  // sheet, which changes in place from one to the other.)
+  const closeSheet = (...kinds: SheetKind[]) => setSheet((now) => (now && kinds.includes(now.kind) ? null : now));
+  // The comments or the Scorecard, about this home.
+  const about = (key: string) => (sheet?.kind === "comments" || sheet?.kind === "scorecard") && sheet.key === key;
   // Side by side (wide): comments open beside the photo, in the white panel's
   // place, and other sheets rise from the panel's foot. `narrow`: a phone's
   // layout (comments rise to the photo's foot), whether or not wide screens
@@ -413,9 +423,27 @@ function Feed({
   const offset = intro ? 1 : 0;
   const panelCount = offset + posts.length + 1;
   const activePost = posts[active - offset];
-  // Comments beside the photo belong to the home on screen: moving on to
-  // another closes them.
-  if (wide && sheet?.kind === "comments" && sheet.key !== (activePost?.listing.ListingKey ?? null)) setSheet(null);
+  // Comments (or the Scorecard) beside the photo belong to the home on
+  // screen: moving on to another closes them.
+  if (wide && (sheet?.kind === "comments" || sheet?.kind === "scorecard") && sheet.key !== (activePost?.listing.ListingKey ?? null)) {
+    setSheet(null);
+  }
+  // What you've liked and not in each home's photos just now, as its photos
+  // have it, for the Scorecard.
+  const [yours, setYours] = useState<Record<string, { liked: string[]; disliked: string[] }>>({});
+  const tellYours = useCallback((key: string, liked: string[], disliked: string[]) => {
+    setYours((now) =>
+      JSON.stringify(now[key]) === JSON.stringify({ liked, disliked }) ? now : { ...now, [key]: { liked, disliked } },
+    );
+  }, []);
+  const viewerOf = (post: FeedPost): ScorecardViewer => {
+    const key = post.listing.ListingKey;
+    return {
+      state: reactions.states[key] ?? post.mine,
+      liked: yours[key]?.liked ?? post.photoLikes.mine,
+      disliked: yours[key]?.disliked ?? post.photoLikes.mineDisliked,
+    };
+  };
 
   // Which screen is showing.
   useEffect(() => {
@@ -536,7 +564,7 @@ function Feed({
   // finds them there too: from the buttons down the side into them, and out
   // of them on to whatever follows the panel (the panel itself is out of
   // reach under them).
-  const dockedKey = wide && sheet?.kind === "comments" ? sheet.key : null;
+  const dockedKey = wide && (sheet?.kind === "comments" || sheet?.kind === "scorecard") ? sheet.key : null;
   useEffect(() => {
     if (!dockedKey) return;
     const onKey = (event: KeyboardEvent) => {
@@ -580,6 +608,19 @@ function Feed({
       setTimeout(() => delete said.dataset.flash, 2000);
     }
   };
+
+  // The Scorecard: up from the bottom like the comments (wide, beside the
+  // photo, in the white panel's place), or turned to from them in place.
+  const openScorecard = (key: string, section?: "about") => {
+    const home = frame.current?.querySelector(`[data-home="${CSS.escape(key)}"]`);
+    dock.current = wordsOf(key);
+    flushSync(() =>
+      setSheet({ kind: "scorecard", key, section, photoFoot: home ? photoFootIn(home, frame.current!) : undefined }),
+    );
+  };
+  // From the comments to the Scorecard, or back: the same sheet, in place.
+  const switchSheet = (key: string, kind: "comments" | "scorecard") =>
+    setSheet((now) => (now && now.key === key ? { kind, key, photoFoot: now.photoFoot } : now));
 
   const say = (message: string) => {
     setToast(message);
@@ -658,6 +699,7 @@ function Feed({
               counter={mode === "share" && posts.length > 1 ? `Home ${i + 1} of ${posts.length}` : undefined}
               active={active === offset + i}
               wide={wide}
+              narrow={narrow}
               near={Math.abs(active - (offset + i)) <= 1}
               nudge={active === offset + i ? nudges.showing : null}
               onSwipe={active === offset + i ? nudges.onSwipe : undefined}
@@ -671,10 +713,12 @@ function Feed({
               onCommentSpot={(spot) => openComments(key, true, spot)}
               onCommentsAbout={(spot) => openComments(key, false, spot)}
               onCommentAt={(id) => openComments(key, false, undefined, id)}
+              onScorecard={(section) => openScorecard(key, section)}
+              onYours={tellYours}
               reactedAt={reactions.changedAt[key]}
               // Over the words on a phone; in the white panel's place, wide.
-              covered={!wide && sheet?.kind === "comments" && sheet.key === key}
-              docked={wide && sheet?.kind === "comments" && sheet.key === key}
+              covered={!wide && about(key)}
+              docked={wide && about(key)}
               spotSheet={sheet?.kind === "comments" && sheet.key === key && Boolean(sheet.spot)}
               clear={clear === offset + i}
               onHoldPhoto={(holding) => setClear(holding ? offset + i : null)}
@@ -757,18 +801,24 @@ function Feed({
         </p>
       )}
 
-      <CommentsSheet
-        post={sheet?.kind === "comments" ? (sheetPost ?? null) : null}
+      <HomeSheet
+        post={sheet?.kind === "comments" || sheet?.kind === "scorecard" ? (sheetPost ?? null) : null}
+        kind={sheet?.kind === "scorecard" ? "scorecard" : "comments"}
         spot={sheet?.kind === "comments" ? sheet.spot : undefined}
         opened={sheet?.kind === "comments" ? sheet.commentId : undefined}
+        section={sheet?.kind === "scorecard" ? sheet.section : undefined}
         mode={mode}
         agentName={agentName}
+        viewer={sheetPost ? viewerOf(sheetPost) : undefined}
+        myName={myName}
         canShare={sheetPost ? reactions.states[sheetPost.listing.ListingKey]?.reaction === "like" : false}
         anchor={wide ? dock : frame}
         docked={wide}
         // (Up to the photo's foot only in a phone's layout.)
         photoFoot={narrow ? sheet?.photoFoot : undefined}
-        onClose={() => closeSheet("comments")}
+        onClose={() => closeSheet("comments", "scorecard")}
+        onSwitch={(key, kind) => switchSheet(key, kind)}
+        onCompose={(key) => openComments(key, true)}
         // Posted about a spot: back to the photo, where it now shows.
         onPostedSpot={(key) => {
           setSheet(null);
@@ -779,6 +829,29 @@ function Feed({
           setSheet(null);
           pin(key, true);
           setGoToSpot((current) => ({ key, spot, n: (current?.n ?? 0) + 1 }));
+        }}
+        // From the Scorecard: to the spot on its photo, with its card open
+        // (beside the photo, the Scorecard stays).
+        onScorecardSpot={(key, spot) => {
+          if (!wide) setSheet(null);
+          setGoToSpot((current) => ({ key, spot, n: (current?.n ?? 0) + 1 }));
+        }}
+        // A fact's card opens in the words the sheet is over (or beside the
+        // photo, in the white panel it stands in for), so it goes first.
+        onOpenFact={(key, tag) => {
+          setSheet(null);
+          setGoToSpot((current) => ({ key, spot: { mediaKey: FACTS, tag }, n: (current?.n ?? 0) + 1 }));
+        }}
+        onLike={(key) => reactions.choose(key, "like")}
+        // "Not for me", then More, to say why.
+        onPass={async (key) => {
+          if (!(await reactions.choose(key, "dislike"))) return;
+          dock.current = wordsOf(key);
+          setSheet((now) => (now?.key === key ? { kind: "more", key } : now));
+        }}
+        onOpenMore={(key) => {
+          dock.current = wordsOf(key);
+          setSheet({ kind: "more", key });
         }}
       />
       <MoreSheet
@@ -882,6 +955,7 @@ function Panel({
   counter,
   active,
   wide,
+  narrow,
   near,
   nudge,
   onSwipe,
@@ -895,6 +969,8 @@ function Panel({
   onCommentSpot,
   onCommentsAbout,
   onCommentAt,
+  onScorecard,
+  onYours,
   reactedAt,
   covered,
   docked,
@@ -926,6 +1002,8 @@ function Panel({
   active: boolean;
   // The feed is wide enough to lay a home out side by side.
   wide: boolean;
+  // A phone's layout (narrower than 64rem), side by side or not.
+  narrow: boolean;
   // Close enough to load its photos.
   near: boolean;
   nudge: Nudge | null;
@@ -945,12 +1023,17 @@ function Panel({
   onCommentsAbout: (spot: SpotRef) => void;
   // The comments, on one of them.
   onCommentAt: (commentId: string) => void;
+  // Its Scorecard (at "About this home", from the description's "more").
+  onScorecard: (section?: "about") => void;
+  // What you've liked and not in its photos and facts just now (likeIds).
+  onYours?: (listingKey: string, liked: string[], disliked: string[]) => void;
   // When you last changed your reaction to it here.
   reactedAt?: string;
-  // Its comments are open, over the photo: the words and buttons under them step aside.
+  // Its comments (or Scorecard) are open, over the photo: the words and
+  // buttons under them step aside.
   covered: boolean;
-  // Its comments are open in the white panel's place (wide): what's under
-  // them is out of reach.
+  // Its comments (or Scorecard) are open in the white panel's place (wide):
+  // what's under them is out of reach.
   docked: boolean;
   // The comments about one spot are open (over or beside the photo): its card
   // shows just where.
@@ -1010,11 +1093,12 @@ function Panel({
     const index = listing.Media.findIndex((m) => mediaKeyOf(m) === goToSpot.spot.mediaKey);
     const target = listing.Media[index];
     const at = target && tagPosition(target, goToSpot.spot.tag);
-    if (index >= 0 && at) {
+    // (The photo as a whole, liked: just the photo.)
+    if (index >= 0) {
       setShow({ index, n: goToSpot.n });
       setPhoto(index);
       setSettled(index);
-      setPicked({ ...goToSpot.spot, ...at });
+      if (at) setPicked({ ...goToSpot.spot, ...at });
     }
   }
   // Tell the page which photos have been seen, as each settles on screen.
@@ -1071,6 +1155,23 @@ function Panel({
   const [loaded, setLoaded] = useState(near);
   if (near && !loaded) setLoaded(true);
   const photos = usePhotoLikes(listing.ListingKey, post.photoLikes);
+  // The Scorecard (outside the home) counts what you've just done here.
+  const { ids: yourIds } = photos;
+  const tell = useRef(onYours);
+  useLayoutEffect(() => {
+    tell.current = onYours;
+  });
+  const yourKey = JSON.stringify(yourIds);
+  useEffect(() => {
+    tell.current?.(listing.ListingKey, yourIds.liked, yourIds.disliked);
+    // Only when they change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [yourKey, listing.ListingKey]);
+  const viewer = useMemo<ScorecardViewer>(
+    () => ({ state, liked: yourIds.liked, disliked: yourIds.disliked }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state, yourKey],
+  );
   const liked = state.reaction === "like";
   // Everyone who liked the home or anything in its photos, once each; yours
   // counts the moment you tap.
@@ -1092,6 +1193,9 @@ function Panel({
   const agentFirst = agentFirstName(agentName);
   // Side by side on a wide screen (never beside the map, just a look there).
   const split = SPLIT_WIDE && !onOpen;
+  // The whole description opens where it is (side by side, in the panel;
+  // before that, wide, over the photo); on a phone, in the Scorecard.
+  const inPlace = (split && wide) || (!SPLIT_WIDE && !narrow);
   // Likes on things in a photo, for the strip of photos.
   const likesIn = (shown: ListingMedia) =>
     photos.likedTags(shown).reduce((sum, tag) => sum + photos.count(shown, tag), 0);
@@ -1205,7 +1309,9 @@ function Panel({
   const tapActivity = (event: TickerEvent, tap: TickerTap, index: number, keyboard: boolean) => {
     const spot = event.mediaKey && event.spot ? { mediaKey: event.mediaKey, tag: event.spot } : null;
     if (tap === "comment" && event.commentId) return onCommentAt(event.commentId);
-    if (!spot || tap === "home" || tap === "comment") return onComments();
+    // About the home as a whole: what everyone thinks of it.
+    if (tap === "home") return onScorecard();
+    if (!spot || tap === "comment") return onComments();
     if (spot.mediaKey === FACTS) {
       if (tap === "spot-comments") return onCommentsAbout(spot);
       return setPicked({ ...spot, x: 0, y: 0, keyboard, fromLine: true });
@@ -1422,6 +1528,7 @@ function Panel({
               shareAs={shareAs}
               onLike={onLike}
               onComments={onComments}
+              onScorecard={() => onScorecard()}
               onShare={onShare}
               onMore={onMore}
               moreRef={moreButton}
@@ -1522,7 +1629,10 @@ function Panel({
                 greeting={post.greeting}
                 note={post.note}
                 open={more}
-                onToggle={onOpen ? undefined : () => setMore(!more)}
+                // On a phone, the rest of it is in the Scorecard, under
+                // "About this home"; side by side, it opens in the panel.
+                inPlace={inPlace}
+                onToggle={onOpen ? undefined : inPlace ? () => setMore(!more) : () => onScorecard("about")}
               />
               {/* Who's selling it runs short before "Sample listing" does: it's
                   the only sign on the home that it isn't real. */}
@@ -1540,9 +1650,13 @@ function Panel({
                   myName={myName}
                   // Never you: you're said from what you've just done.
                   names={post.likers}
-                  onOpen={onComments}
+                  onOpen={() => onScorecard()}
                   className="hidden split:block"
                 />
+              )}
+              {/* Side by side, in brief: how people feel and what they say. */}
+              {split && wide && (
+                <WhatPeopleThink post={post} mode={mode} viewer={viewer} myName={myName} onOpen={() => onScorecard()} />
               )}
             </div>
             {error && (
@@ -1665,7 +1779,8 @@ function RailButton({
 type Thing = { tag: string; liked: boolean; count: number; toggle: () => void };
 
 // Down the right, in reach of a thumb, bottom up from just over the comment
-// bar: like, comments, share (or invite, or send), more. Each keeps its label.
+// bar: like, comments, the Scorecard, share (or invite, or send), more. Each
+// keeps its label.
 function Rail({
   address,
   things,
@@ -1675,6 +1790,7 @@ function Rail({
   shareAs,
   onLike,
   onComments,
+  onScorecard,
   onShare,
   onMore,
   moreRef,
@@ -1687,6 +1803,7 @@ function Rail({
   shareAs: ShareKind | null;
   onLike: () => void;
   onComments: () => void;
+  onScorecard: () => void;
   onShare?: () => void;
   onMore: () => void;
   moreRef?: Ref<HTMLButtonElement>;
@@ -1727,6 +1844,9 @@ function Rail({
         onClick={onComments}
       >
         <MessageCircle size={28} {...icon} />
+      </RailButton>
+      <RailButton name="Scorecard" label="Scorecard" onClick={onScorecard} follow="scorecard">
+        <ClipboardList size={26} {...icon} />
       </RailButton>
       {onShare && shareAs === "send" && (
         <RailButton name="Send to a client" label="Send" onClick={onShare}>
@@ -2013,8 +2133,8 @@ function FactButton({
 }
 
 // Side by side, under who listed it: who liked the home, a face or three and
-// their names, "Liked by Maya, Sam and 6 others", to see them all in the
-// comments. You first (as you are right now), then the people the page names
+// their names, "Liked by Maya, Sam and 6 others", and a tap to what everyone
+// thinks, in the Scorecard. You first (as you are right now), then the people the page names
 // (on an agent's link, those on it; elsewhere, the latest few, never you),
 // then how many more.
 function LikedBy({
@@ -2047,7 +2167,7 @@ function LikedBy({
       <button
         type="button"
         onClick={onOpen}
-        aria-label={`${text}. See who`}
+        aria-label={`${text}. See the scorecard`}
         className="-mx-1 flex min-h-11 items-center gap-2.5 rounded-xl px-1 text-left text-sm text-stone-700 hover:bg-stone-50"
       >
         {/* Each face over the next, so every initial reads whole. */}
@@ -2072,20 +2192,24 @@ function LikedBy({
 }
 
 // Two lines of the description (or, on an agent's link, their greeting and
-// note), then "… more" right after the last word that fits, to read it all in
-// place, and "less" to put it away: one button that stays where the keyboard
-// is, after the words it opens, a fingertip to tap.
+// note), then "… more" right after the last word that fits, a fingertip to
+// tap. On a phone it opens the Scorecard at "About this home", where all of
+// it is; side by side, it reads it all in place, and "less" puts it away (one
+// button, which stays where the keyboard is).
 function Caption({
   listing,
   greeting,
   note,
   open,
+  inPlace = true,
   onToggle,
 }: {
   listing: Listing;
   greeting?: string;
   note?: string;
   open: boolean;
+  // "more" opens it right here (false: it opens the rest elsewhere, a sheet).
+  inPlace?: boolean;
   // Unset beside the map, where it's just a look.
   onToggle?: () => void;
 }) {
@@ -2138,7 +2262,13 @@ function Caption({
         {text && <span>{cut ? clipped(text, n ?? 0) : text}</span>}
         {cut && <span aria-hidden>…</span>}{" "}
         {onToggle && (open || cut) && (
-          <button type="button" aria-expanded={open} onClick={onToggle} className="font-semibold text-white hit-44 split:text-ink">
+          <button
+            type="button"
+            aria-expanded={inPlace ? open : undefined}
+            aria-haspopup={inPlace ? undefined : "dialog"}
+            onClick={onToggle}
+            className="font-semibold text-white hit-44 split:text-ink"
+          >
             {open ? "less" : "more"}
           </button>
         )}
@@ -2187,27 +2317,45 @@ function captionFit(row: HTMLElement, box: HTMLElement, text: string) {
 
 const NO_ITEMS: FeedPost["timeline"] = [];
 
-function CommentsSheet({
+// The comments and the Scorecard: one sheet, which turns from one to the
+// other in place (on a phone, from a link in each; beside the photo, tabs).
+function HomeSheet({
   post,
+  kind,
   spot,
   opened,
+  section,
   mode,
   agentName,
+  viewer,
+  myName,
   canShare,
   anchor,
   docked,
   photoFoot,
   onClose,
+  onSwitch,
+  onCompose,
   onPostedSpot,
   onShowSpot,
+  onScorecardSpot,
+  onOpenFact,
+  onLike,
+  onPass,
+  onOpenMore,
 }: {
   post: FeedPost | null;
+  kind: "comments" | "scorecard";
   // Only the comments about this spot in a photo, and a box to add one.
   spot?: SpotRef;
   // Opened on this comment: if it's a reply, its replies show.
   opened?: string;
+  // The Scorecard, opened at this part of it.
+  section?: "about";
   mode: "public" | "share";
   agentName?: string;
+  viewer?: ScorecardViewer;
+  myName: string | null;
   canShare: boolean;
   // The feed (phones), or the white panel it takes the place of (wide).
   anchor: RefObject<HTMLElement | null>;
@@ -2216,15 +2364,28 @@ function CommentsSheet({
   // Where the photo ends, from the top of the feed, when it opened.
   photoFoot?: number;
   onClose: () => void;
+  onSwitch: (listingKey: string, kind: "comments" | "scorecard") => void;
+  onCompose: (listingKey: string) => void;
   onPostedSpot: (listingKey: string) => void;
   onShowSpot: (listingKey: string, spot: SpotRef) => void;
+  onScorecardSpot: (listingKey: string, spot: SpotRef) => void;
+  onOpenFact: (listingKey: string, tag: FactTag) => void;
+  onLike: (listingKey: string) => void;
+  onPass: (listingKey: string) => void;
+  onOpenMore: (listingKey: string) => void;
 }) {
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const end = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLDivElement>(null);
   const all = post?.timeline ?? NO_ITEMS;
   const items = post && spot ? spotThread(all, spot) : all;
   const comments = items.filter((item) => item.kind === "comment").length;
   const name = post && spot ? spotName(post.listing, spot) : null;
+  const key = post?.listing.ListingKey ?? null;
+  const scorecard = kind === "scorecard";
+  // Tabs beside the photo (not about one spot, which has its own title).
+  const tabbed = docked && !spot;
+  const tabsId = useId();
 
   // A new comment of yours scrolls into view where it lands, after the others
   // (and before who liked what).
@@ -2240,29 +2401,93 @@ function CommentsSheet({
     seen.current = items.length;
   }, [items]);
 
+  // The Scorecard opens where you left it on this home (while the page is
+  // open), or at the part asked for; the comments, at the top.
+  const kept = useRef(new Map<string, number>());
+  useLayoutEffect(() => {
+    const el = body.current;
+    if (!el || !key) return;
+    if (!scorecard) {
+      el.scrollTop = 0;
+      return;
+    }
+    const part = section && el.querySelector<HTMLElement>(`[data-section="${section}"]`);
+    el.scrollTop = part
+      ? el.scrollTop + part.getBoundingClientRect().top - el.getBoundingClientRect().top - 8
+      : (kept.current.get(key) ?? 0);
+    const keep = () => kept.current.set(key, el.scrollTop);
+    el.addEventListener("scroll", keep, { passive: true });
+    return () => el.removeEventListener("scroll", keep);
+  }, [key, scorecard, section]);
+
   const close = () => {
     setReplyTo(null);
     onClose();
   };
 
+  // Beside the photo: "Comments 9 | Scorecard", arrows move between them.
+  const tab = (which: "comments" | "scorecard") => `${tabsId}-${which}`;
+  const tabs = tabbed && key && (
+    <div role="tablist" aria-label="Comments and scorecard" className="flex gap-1">
+      {(["comments", "scorecard"] as const).map((which) => {
+        const selected = kind === which;
+        return (
+          <button
+            key={which}
+            type="button"
+            role="tab"
+            id={tab(which)}
+            aria-selected={selected}
+            aria-controls={`${tabsId}-panel`}
+            tabIndex={selected ? 0 : -1}
+            onClick={() => onSwitch(key, which)}
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "Home" && event.key !== "End") return;
+              event.preventDefault();
+              const to = event.key === "Home" ? "comments" : event.key === "End" ? "scorecard" : which === "comments" ? "scorecard" : "comments";
+              flushSync(() => onSwitch(key, to));
+              document.getElementById(tab(to))?.focus();
+            }}
+            className={cn(
+              "flex min-h-11 items-center gap-1.5 rounded-full px-4 text-[15px] font-semibold transition-colors",
+              selected ? "bg-stone-100 text-ink" : "text-stone-600 hover:bg-stone-50 hover:text-ink",
+            )}
+          >
+            {which === "comments" ? "Comments" : "Scorecard"}
+            {which === "comments" && comments > 0 && (
+              <span className="tabular-nums text-stone-500">{comments.toLocaleString("en-US")}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   return (
     <Sheet
       open={Boolean(post)}
       onClose={close}
-      label="Comments"
+      label={scorecard ? "Scorecard" : "Comments"}
       title={
-        name
-          ? `On ${name}`
-          : comments
-            ? `${comments} ${comments === 1 ? "comment" : "comments"}`
-            : "Comments"
+        scorecard
+          ? "Scorecard"
+          : name
+            ? `On ${name}`
+            : comments
+              ? `${comments} ${comments === 1 ? "comment" : "comments"}`
+              : "Comments"
       }
+      tabs={tabs || undefined}
       anchor={anchor}
       docked={docked}
-      // All of them: up to the photo's foot, and taller by dragging. About
-      // one spot: just tall enough, so the photo stays in view above it.
-      tall={!spot}
-      detents={!spot && photoFoot !== undefined ? { minTop: photoFoot } : undefined}
+      bodyRef={body}
+      // All of them, or the Scorecard: up to the photo's foot, and taller by
+      // dragging. About one spot: just tall enough, so the photo stays in
+      // view above it.
+      tall={scorecard || !spot}
+      detents={(scorecard || !spot) && photoFoot !== undefined ? { minTop: photoFoot } : undefined}
+      // (What's typed in the box stays, over at the Scorecard and back.)
+      footerHidden={scorecard}
       footer={
         post && (
           <CommentComposer
@@ -2292,67 +2517,78 @@ function CommentsSheet({
       }
     >
       {post && (
-        <>
-          <Timeline
-            listingKey={post.listing.ListingKey}
-            items={items}
-            opened={opened}
-            canShare={canShare}
-            onReply={(target) => {
-              setReplyTo(target);
-              // In the same tap, so a phone shows its keyboard.
-              end.current?.ownerDocument
-                .querySelector<HTMLElement>("dialog[open] [data-composer]")
-                ?.focus({ preventScroll: true });
-            }}
-            spots={
-              spot
-                ? undefined
-                : {
-                    name: (s) => spotName(post.listing, s),
-                    show: (s) => onShowSpot(post.listing.ListingKey, s),
-                  }
-            }
-            empty={
-              name ? (
-                <p className="px-2 py-3 text-center text-sm text-stone-600">Be the first to say something about {name}.</p>
-              ) : undefined
-            }
-          />
-          {mode === "public" && !spot && (
-            // The comments come first; what people like and pass on, after
-            // them (hidden when neither has anything to say yet).
-            <div className="mt-6 border-t border-stone-100 pt-4 empty:hidden">
-              <AspectSummary liked={post.aspects.liked} disliked={post.aspects.disliked} limit={4} />
-              <Buzz post={post} />
-            </div>
+        <div
+          role={tabbed ? "tabpanel" : undefined}
+          id={tabbed ? `${tabsId}-panel` : undefined}
+          aria-labelledby={tabbed ? tab(kind) : undefined}
+        >
+          {scorecard ? (
+            <ScorecardBody
+              post={post}
+              mode={mode}
+              agentName={agentName}
+              viewer={viewer}
+              myName={myName}
+              onShowSpot={(at) => onScorecardSpot(post.listing.ListingKey, at)}
+              onOpenFact={(tag) => onOpenFact(post.listing.ListingKey, tag)}
+              onAllComments={() => onSwitch(post.listing.ListingKey, "comments")}
+              onCompose={() => onCompose(post.listing.ListingKey)}
+              onLike={() => onLike(post.listing.ListingKey)}
+              onPass={() => onPass(post.listing.ListingKey)}
+              onOpenMore={() => onOpenMore(post.listing.ListingKey)}
+            />
+          ) : (
+            <>
+              <Timeline
+                listingKey={post.listing.ListingKey}
+                items={items}
+                opened={opened}
+                canShare={canShare}
+                onReply={(target) => {
+                  setReplyTo(target);
+                  // In the same tap, so a phone shows its keyboard.
+                  end.current?.ownerDocument
+                    .querySelector<HTMLElement>("dialog[open] [data-composer]")
+                    ?.focus({ preventScroll: true });
+                }}
+                spots={
+                  spot
+                    ? undefined
+                    : {
+                        name: (s) => spotName(post.listing, s),
+                        show: (s) => onShowSpot(post.listing.ListingKey, s),
+                      }
+                }
+                empty={
+                  name ? (
+                    <p className="px-2 py-3 text-center text-sm text-stone-600">Be the first to say something about {name}.</p>
+                  ) : undefined
+                }
+              />
+              {!spot && !tabbed && (
+                // What everyone thinks of the home, after what they said.
+                <button
+                  type="button"
+                  onClick={() => onSwitch(post.listing.ListingKey, "scorecard")}
+                  className="mt-6 flex min-h-11 w-full items-center gap-2.5 rounded-xl border-t border-stone-100 pt-3 text-left text-[15px] font-semibold text-ink hover:text-stone-700"
+                >
+                  <ClipboardList aria-hidden size={18} className="shrink-0 text-brand" />
+                  <span className="min-w-0 flex-1">See the scorecard: what people think of this home</span>
+                  <ChevronRight aria-hidden size={18} className="shrink-0 text-stone-400" />
+                </button>
+              )}
+              {mode === "public" && !spot && (
+                <p className="mt-6 text-center text-xs text-stone-500">
+                  Comments here are public. Buyers&apos; private chats with their agents stay private unless they choose to
+                  share.
+                </p>
+              )}
+              <div ref={end} />
+            </>
           )}
-          {mode === "public" && !spot && (
-            <p className="mt-8 text-center text-xs text-stone-500">
-              Comments here are public. Buyers&apos; private chats with their agents stay private unless they choose to
-              share.
-            </p>
-          )}
-          <div ref={end} />
-        </>
+        </div>
       )}
     </Sheet>
-  );
-}
-
-// The quiet signals: views, agents sending it, private conversations.
-function Buzz({ post }: { post: FeedPost }) {
-  const parts = [
-    post.buzz.views > 0 && `${post.buzz.views} ${post.buzz.views === 1 ? "view" : "views"}`,
-    post.buzz.sends > 0 && `sent to ${post.buzz.sends} ${post.buzz.sends === 1 ? "buyer" : "buyers"} by agents`,
-    post.privateComments > 0 &&
-      `${post.privateComments} ${post.privateComments === 1 ? "comment" : "comments"} in private chats`,
-  ].filter(Boolean);
-  if (parts.length === 0) return null;
-  return (
-    <p aria-label="Activity" className="mt-2 text-sm text-stone-600">
-      {parts.join(" · ")}
-    </p>
   );
 }
 
@@ -2382,13 +2618,6 @@ function MoreSheet({
     <Sheet open={Boolean(post)} onClose={onClose} label="More" title="More" anchor={anchor}>
       {post && (
         <div className="flex flex-col gap-5">
-          {/* Why it fits your taste: here for now, off the words on the photo. */}
-          {post.reasons.length > 0 && (
-            <p className="-mb-1 flex items-start gap-1.5 text-sm font-semibold text-stone-800">
-              <Sparkles aria-hidden size={15} className="mt-0.5 shrink-0 text-brand" />
-              For you: {post.reasons.join(" · ")}
-            </p>
-          )}
           <button
             type="button"
             aria-pressed={passed}

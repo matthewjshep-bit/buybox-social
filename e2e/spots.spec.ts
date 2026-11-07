@@ -207,11 +207,14 @@ test("nothing on a photo shows under the words or the buttons, and a tap on the 
   await expect(home.locator("[data-spot-card]")).toHaveCount(0);
   await expect.poll(() => heartsAt(home, [x, y])).toBe(1);
 
-  // The whole description opens over the photo, so the heart under it steps
-  // out of the way, and comes back when the description's put away.
+  // The whole description is in the Scorecard, at "About this home"; the
+  // heart is back where it was when that's put away.
   await home.getByRole("button", { name: "more", exact: true }).click();
-  await expect.poll(() => heartsAt(home, [x, y])).toBe(0);
-  await home.getByRole("button", { name: "less", exact: true }).click();
+  const scorecard = page.getByRole("dialog", { name: "Scorecard" });
+  await expect(scorecard).toBeVisible();
+  await expect(scorecard.getByRole("heading", { name: "About this home" })).toBeInViewport();
+  await page.keyboard.press("Escape");
+  await expect(scorecard).toBeHidden();
   await expect.poll(() => heartsAt(home, [x, y])).toBe(1);
 });
 

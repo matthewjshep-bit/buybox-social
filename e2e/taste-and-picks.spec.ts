@@ -1,7 +1,17 @@
 // Runs after the other specs (alphabetically last) because it likes a lot of
 // homes, which would throw off their counts.
 import { expect, test } from "@playwright/test";
-import { heartOf, homeIn, joinAs, likeInPhoto, openComments, openMore, scrollToEnd, signUpBuyer } from "./helpers";
+import {
+  heartOf,
+  homeIn,
+  joinAs,
+  likeInPhoto,
+  openComments,
+  openMore,
+  openScorecard,
+  scrollToEnd,
+  signUpBuyer,
+} from "./helpers";
 
 test("the feed learns your taste from what you like and pass on", async ({ browser }) => {
   test.setTimeout(90_000);
@@ -37,14 +47,14 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
   await expect(taste).toContainText("From 4 reactions: liked 3, passed 1.");
   await expect(taste.getByText("Vibe 1")).toBeVisible();
   await expect(taste.getByText("Exterior 1")).toBeVisible();
-  // Homes that match it say why, under More.
+  // Homes that match it say why, in the Scorecard, under your take.
   let fits = false;
   for (let i = 0; i < (await homes.count()) && !fits; i++) {
-    const more = await openMore(pia, homes.nth(i));
-    fits = (await more.getByText(/^For you:/).count()) > 0;
-    if (fits) await expect(more.getByText(/^For you:/)).toBeVisible();
+    const card = await openScorecard(pia, homes.nth(i));
+    fits = (await card.getByText(/^For you:/).count()) > 0;
+    if (fits) await expect(card.getByText(/^For you:/)).toBeVisible();
     await pia.keyboard.press("Escape");
-    await expect(more).toBeHidden();
+    await expect(card).toBeHidden();
   }
   expect(fits).toBe(true);
   expect(pageErrors).toEqual([]);
@@ -67,10 +77,15 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   const dev = await signUpBuyer(browser, "dev@example.com", "Dev Shah");
   await dev.goto("/homes/SAMPLE-1012");
   const devHome = homeIn(dev, FOXGLOVE);
-  const devChat = await openComments(dev, devHome);
+  let devChat = await openComments(dev, devHome);
   await expect(devChat.getByText("Cleo liked the three-car garage")).toBeVisible();
-  await expect(devChat.getByText("People like")).toBeVisible();
-  await expect(devChat.getByText("Exterior 1")).toBeVisible();
+  await dev.keyboard.press("Escape");
+  const devCard = await openScorecard(dev, devHome);
+  await expect(devCard.getByText("People like", { exact: true })).toBeVisible();
+  await expect(devCard.getByText("Exterior 1")).toBeVisible();
+  await dev.keyboard.press("Escape");
+  await expect(devCard).toBeHidden();
+  devChat = await openComments(dev, devHome);
 
   // Dev likes Cleo's comment and replies to it.
   await devChat.getByRole("button", { name: "Like Cleo's comment" }).click();

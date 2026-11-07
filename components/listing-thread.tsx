@@ -248,7 +248,7 @@ export function Timeline({
           <h3 className="text-[13px] font-semibold text-stone-500">
             {reacted.some(passedOn) ? "Likes and passes" : "Likes"}
           </h3>
-          <ul className="mt-3 flex flex-col gap-4">
+          <ul className="mt-2 flex flex-col gap-2.5">
             {reacted.map((item) => (
               <ReactionItem key={item.id} item={item} />
             ))}
@@ -271,26 +271,34 @@ function Avatar({
   agent = false,
   badge,
   small = false,
+  tiny = false,
 }: {
   name: string;
   anonymous?: boolean;
   agent?: boolean;
   badge?: ReactNode;
   small?: boolean;
+  // A line under "Likes": just a face.
+  tiny?: boolean;
 }) {
   return (
     <span aria-hidden className="relative shrink-0">
       <span
         className={cn(
           "flex items-center justify-center rounded-full font-semibold",
-          small ? "size-7 text-xs" : "size-9 text-sm",
+          tiny ? "size-6 text-[11px]" : small ? "size-7 text-xs" : "size-9 text-sm",
           anonymous ? "bg-stone-200 text-stone-600" : agent ? "bg-ink text-white" : "bg-brand text-white",
         )}
       >
-        {anonymous ? <User size={small ? 14 : 16} /> : name[0]?.toUpperCase()}
+        {anonymous ? <User size={tiny ? 12 : small ? 14 : 16} /> : name[0]?.toUpperCase()}
       </span>
       {badge && (
-        <span className="absolute -bottom-1 -right-1 flex size-4.5 items-center justify-center rounded-full bg-white ring-1 ring-stone-200">
+        <span
+          className={cn(
+            "absolute flex items-center justify-center rounded-full bg-white ring-1 ring-stone-200",
+            tiny ? "-bottom-1 -right-1.5 size-3.5" : "-bottom-1 -right-1 size-4.5",
+          )}
+        >
           {badge}
         </span>
       )}
@@ -316,19 +324,20 @@ function When({ at }: { at: string }) {
   );
 }
 
-// "Morgan liked the marble counters" with a thumbnail of the photo.
+// "Morgan liked the marble counters" with a thumbnail of the photo: one
+// short line each, under the comments (the Scorecard has the detail).
 function ReactionItem({ item }: { item: TimelineReaction }) {
   const badge = passedOn(item) ? (
-    <ThumbsDown size={10} className="text-amber-800" />
+    <ThumbsDown size={8} className="text-amber-800" />
   ) : (
-    <Heart size={10} className="fill-rose-600 text-rose-600" />
+    <Heart size={8} className="fill-rose-600 text-rose-600" />
   );
   // The photo of the latest thing they liked.
   const thumb = item.photos.findLast((photo) => photo.mediaUrl)?.mediaUrl;
   return (
-    <li className="flex items-center gap-3">
-      <Avatar name={item.name} anonymous={item.fromPrivateChat} badge={badge} />
-      <p className="min-w-0 flex-1 break-words text-[15px] leading-snug">
+    <li className="flex items-center gap-2.5">
+      <Avatar name={item.name} anonymous={item.fromPrivateChat} badge={badge} tiny />
+      <p className="line-clamp-1 min-w-0 flex-1 break-words text-[13px] leading-5">
         <Who name={item.mine ? "You" : item.name} profileId={item.profileId} />{" "}
         {describeReaction(
           item.state,
@@ -342,8 +351,8 @@ function ReactionItem({ item }: { item: TimelineReaction }) {
         </span>
       </p>
       {thumb && (
-        <span className="relative size-10 shrink-0 overflow-hidden rounded-md bg-stone-200">
-          <Image src={thumb} alt="" fill sizes="40px" className="object-cover" />
+        <span className="relative size-8 shrink-0 overflow-hidden rounded-md bg-stone-200">
+          <Image src={thumb} alt="" fill sizes="32px" className="object-cover" />
         </span>
       )}
     </li>

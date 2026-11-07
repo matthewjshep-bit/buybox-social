@@ -55,8 +55,13 @@ export function useReactions(server: Record<string, ReactionState>) {
     });
     const count = (by: number) => setSaving((current) => ({ ...current, [key]: (current[key] ?? 0) + by }));
     count(1);
-    const result = await actions.react(key, next).finally(() => count(-1));
-    if (!result.ok) setErrors((current) => ({ ...current, [key]: result.error }));
+    // Done as far as you're concerned (true: it's showing) while it saves.
+    actions
+      .react(key, next)
+      .finally(() => count(-1))
+      .then((result) => {
+        if (!result.ok) setErrors((current) => ({ ...current, [key]: result.error }));
+      });
     return true;
   };
 
