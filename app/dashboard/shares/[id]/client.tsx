@@ -13,6 +13,33 @@ export function MarkSeen({ shareId, latest }: { shareId: string; latest: string 
   return null;
 }
 
+// Coming from "What's new", the comment or home it was about is marked for a
+// few seconds, with the home's name above it in view when there's room.
+export function ShowTarget() {
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const show = () => {
+      const id = decodeURIComponent(window.location.hash.slice(1));
+      const target = id ? document.getElementById(id) : null;
+      if (!target) return;
+      const home = target.parentElement?.closest("section");
+      if (home && target.getBoundingClientRect().bottom - home.getBoundingClientRect().top < window.innerHeight * 0.9) {
+        home.scrollIntoView({ block: "start" });
+      }
+      target.dataset.target = "";
+      clearTimeout(timer);
+      timer = setTimeout(() => delete target.dataset.target, 3000);
+    };
+    show();
+    window.addEventListener("hashchange", show);
+    return () => {
+      window.removeEventListener("hashchange", show);
+      clearTimeout(timer);
+    };
+  }, []);
+  return null;
+}
+
 // The client's name as the page title, editable in place.
 export function ClientNameEditor({ shareId, name }: { shareId: string; name: string }) {
   const [editing, setEditing] = useState(false);

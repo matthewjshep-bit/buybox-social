@@ -143,10 +143,13 @@ test("one package, a link for each person: they react, the agent compares and re
   // Includes hydration mismatches, which only show up as page errors.
   expect(pageErrors).toEqual([]);
 
-  // The agent got one email, not one per event.
+  // The agent got one email that the link was opened and one about the first
+  // thing done on it, not one per event.
   const log = readFileSync("test-results-server.log", "utf8");
   const emails = log.split("\n").filter((line) => line.includes("[email] to=alex@example.com"));
-  expect(emails).toHaveLength(1);
+  expect(emails).toHaveLength(2);
+  expect(emails.filter((email) => email.includes("Jamie opened your link to 2 homes"))).toHaveLength(1);
+  expect(emails.filter((email) => email.includes("Jamie liked this at 4127 Larkmoor Ave NE"))).toHaveLength(1);
 });
 
 test("link preview tags and image are in place", async ({ browser, request }) => {

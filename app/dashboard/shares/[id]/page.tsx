@@ -12,7 +12,7 @@ import { comparePeople, suggestHomes, type Suggestion } from "@/lib/compare";
 import { clientActivity, getShareListings, getShareOpens, getThread, type Share, type ShareOpen } from "@/lib/shares";
 import { addSuggestedHome, removeComment, setHomeRemoved } from "../../actions";
 import { Opened } from "../../opened";
-import { AddPersonForm, ClientNameEditor, MarkSeen, ReplyForm, SendLink } from "./client";
+import { AddPersonForm, ClientNameEditor, MarkSeen, ReplyForm, SendLink, ShowTarget } from "./client";
 
 type Listings = Awaited<ReturnType<typeof getShareListings>>;
 type Thread = Awaited<ReturnType<typeof getThread>>;
@@ -48,6 +48,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
   const removed = listings.filter((l) => l.removedAt);
   const clientName = share.client_name || "Unnamed client";
   const invitees = people.filter((p) => p.token);
+  const packageOpens = opens.filter((open) => !invitees.some((person) => person.id === open.participantId));
   const everyone = people.map((p) => ({ id: p.id, name: p.first_name }));
   const comparison = comparePeople(everyone, thread, listings);
   const { suggestions, together } = await suggestHomes(everyone, thread, listings);
@@ -56,6 +57,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
     <>
       <LiveRefresh />
       <MarkSeen shareId={share.id} latest={latest} />
+      <ShowTarget />
       <Link href="/dashboard" className="flex min-h-11 w-fit items-center gap-1.5 text-sm font-medium">
         <ArrowLeft aria-hidden size={16} /> All shares
       </Link>
@@ -67,16 +69,28 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
         </h2>
         <div className="flex flex-col gap-3">
           {invitees.length > 0 ? (
-            invitees.map((person) => (
-              <SendLink
-                key={person.id}
-                url={`${appUrl()}/s/${person.token}`}
-                clientName={person.first_name}
-                count={active.length}
-                label={`${person.first_name}'s link`}
-                status={<OpenedBy opens={opens.filter((o) => o.participantId === person.id)} name={person.first_name} />}
-              />
-            ))
+            <>
+              {invitees.map((person) => (
+                <SendLink
+                  key={person.id}
+                  url={`${appUrl()}/s/${person.token}`}
+                  clientName={person.first_name}
+                  count={active.length}
+                  label={`${person.first_name}'s link`}
+                  status={<OpenedBy opens={opens.filter((o) => o.participantId === person.id)} name={person.first_name} />}
+                />
+              ))}
+              {/* The package's own link, sent before anyone was added, still
+                  says who opened it. */}
+              {packageOpens.length > 0 && (
+                <div className="rounded-2xl bg-white p-4 text-sm ring-1 ring-stone-200">
+                  <p className="font-semibold">The link you sent first</p>
+                  <p className="mt-0.5 text-stone-600">
+                    <OpenedBy opens={packageOpens} />
+                  </p>
+                </div>
+              )}
+            </>
           ) : (
             <SendLink
               url={`${appUrl()}/s/${share.token}`}
@@ -403,7 +417,7 @@ function HomePanel({
     <section
       id={`home-${listing.ListingKey}`}
       aria-label={listing.UnparsedAddress}
-      className="scroll-mt-4 rounded-2xl bg-white p-4 ring-1 ring-stone-200"
+      className="scroll-mt-4 rounded-2xl bg-white p-4 ring-1 ring-stone-200 transition-[box-shadow] duration-1000 data-target:ring-2 data-target:ring-amber-300"
     >
       <div className="flex items-center gap-3">
         <div
@@ -461,7 +475,11 @@ function HomePanel({
       {comments.length > 0 && (
         <ul aria-label="Comments" className="mt-4 flex flex-col gap-3">
           {comments.map((comment) => (
-            <li key={comment.id} id={`comment-${comment.id}`} className="flex scroll-mt-4 gap-3">
+            <li
+              key={comment.id}
+              id={`comment-${comment.id}`}
+              className="-mx-2 -my-1 flex scroll-mt-4 gap-3 rounded-xl px-2 py-1 transition-[background-color,box-shadow] duration-1000 data-target:bg-amber-50 data-target:ring-2 data-target:ring-amber-200"
+            >
               <span
                 aria-hidden
                 className={cn(

@@ -107,14 +107,17 @@ test("ask to see it: a first name, then the ask under the home and an email to t
   const agent = await signInAgent(browser, "ask-agent@example.com", "Priya Shah");
   const { url } = await packageLink(agent, ["812 N Corbel"]);
 
-  // Someone opens it and likes the home: the agent hears about it, and the next batched email is 10 minutes off.
+  // Someone opens it and likes the home: the agent hears about both, the
+  // open never holding back the like, and the next batched email is 10 minutes off.
   const dana = await (await browser.newContext()).newPage();
   await dana.goto(url);
   const danaHome = homeIn(dana, "812 N Corbel St");
   await heartOf(danaHome).click();
   await joinAs(dana, "Dana");
   await expect(heartOf(danaHome)).toHaveAttribute("aria-pressed", "true");
-  await expect.poll(() => emailsTo("ask-agent@example.com").length).toBe(1);
+  await expect.poll(() => emailsTo("ask-agent@example.com").length).toBe(2);
+  expect(emailsTo("ask-agent@example.com").filter((email) => email.includes("was opened"))).toHaveLength(1);
+  expect(emailsTo("ask-agent@example.com").filter((email) => email.includes("Dana liked"))).toHaveLength(1);
 
   // Someone else asks to see it, from Contact. Their first name first.
   const eli = await (await browser.newContext()).newPage();
@@ -133,9 +136,10 @@ test("ask to see it: a first name, then the ask under the home and an email to t
   const done = contact.getByRole("button", { name: "Asked to see it" });
   await expect(done).toBeFocused();
   await expect(done).toHaveAttribute("aria-disabled", "true");
-  // Straight away, though another email went out a moment ago.
-  await expect.poll(() => emailsTo("ask-agent@example.com").length).toBe(2);
-  expect(emailsTo("ask-agent@example.com")[1]).toContain("Eli asked to see 812 N Corbel St");
+  // Straight away, though another email went out a moment ago (and Eli
+  // opening it, so soon after Dana, sent none).
+  await expect.poll(() => emailsTo("ask-agent@example.com").length).toBe(3);
+  expect(emailsTo("ask-agent@example.com")[2]).toContain("Eli asked to see 812 N Corbel St");
 
   // Asking again the same day asks nothing new.
   await eli.keyboard.press("Escape");
@@ -150,7 +154,7 @@ test("ask to see it: a first name, then the ask under the home and an email to t
   const thread = await openComments(dana, homeIn(dana, "812 N Corbel St"));
   await expect(commentIn(thread, "Eli", "Can we see it in person?")).toHaveCount(1);
   await dana.waitForTimeout(1000);
-  expect(emailsTo("ask-agent@example.com")).toHaveLength(2);
+  expect(emailsTo("ask-agent@example.com")).toHaveLength(3);
 });
 
 test("several homes open on a word from the agent over the first one's photo, with a button down to it", async ({

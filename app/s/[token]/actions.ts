@@ -75,8 +75,8 @@ export async function recordOpen(token: string, photosSeen?: unknown): Promise<v
   const device = await ensureDevice();
   const participant = found.person ?? (await getParticipant(found.share.id, device));
   const hash = deviceHashFor(device, found.share.id);
-  // Past MAX_OPEN_DEVICES only devices already counted are, so a link that
-  // gets passed around (or a script without cookies) can't grow it forever.
+  // Past MAX_OPEN_DEVICES, only devices already counted are updated, so a link
+  // that gets passed around (or a script without cookies) can't grow forever.
   const [opened] = await sql<{ first: boolean }[]>`
     insert into share_opens (share_id, device_hash, participant_id, photos_seen)
     select ${found.share.id}::uuid, ${hash}::text, ${participant?.id ?? null}::uuid, ${photos}::int
@@ -92,7 +92,9 @@ export async function recordOpen(token: string, photosSeen?: unknown): Promise<v
       update share_opens set photos_seen = greatest(photos_seen, ${photos})
       where share_id = ${found.share.id} and device_hash = ${hash}`;
   }
-  // The first time a device opens it, in the agent's next email.
+  // The first time a device opens it, the agent hears about it: in an email of
+  // its own, at most one every 10 minutes, apart from the one about what the
+  // client then likes or says.
   if (opened?.first) {
     after(async () => {
       const homes = await getShareListings(found.share.id);
@@ -107,6 +109,7 @@ export async function recordOpen(token: string, photosSeen?: unknown): Promise<v
           : found.share.client_name
             ? `Your link for ${found.share.client_name} was opened`
             : `${link[0].toUpperCase()}${link.slice(1)} was opened`,
+        { open: true },
       );
     });
   }

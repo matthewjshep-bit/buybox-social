@@ -59,9 +59,20 @@ export function ShareReel({
   const home = homes.find((listing) => listing.ListingKey === seen);
 
   // Lets the agent see the link was opened, once it's really on someone's
-  // screen. Nothing shows for it here.
+  // screen: a page loaded out of sight (a preview, a tab opened behind) waits
+  // until it's shown. Nothing shows for it here.
   useEffect(() => {
-    recordOpen(token).catch(() => {});
+    const record = () => {
+      if (document.visibilityState !== "visible") return false;
+      recordOpen(token).catch(() => {});
+      return true;
+    };
+    if (record()) return;
+    const onShow = () => {
+      if (record()) document.removeEventListener("visibilitychange", onShow);
+    };
+    document.addEventListener("visibilitychange", onShow);
+    return () => document.removeEventListener("visibilitychange", onShow);
   }, [token]);
 
   return (

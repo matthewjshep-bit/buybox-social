@@ -133,7 +133,10 @@ async function whatsNew(agentId: string): Promise<News[]> {
         href: `/dashboard/shares/${t.share_id}#home-${encodeURIComponent(t.listing_key)}`,
         kind: passed ? "pass" : "like",
         name: t.first_name,
-        what: describeReaction({ reaction: t.reaction, liked: t.liked, disliked: t.disliked }, likes, dislikes),
+        // Across every link, a bare "liked this" needs to say what "this" is.
+        what: describeReaction({ reaction: t.reaction, liked: t.liked, disliked: t.disliked }, likes, dislikes)
+          .replace(/^liked this(?=,|$)/, "liked this home")
+          .replace(/^passed on this$/, "passed on this home"),
         address: t.data.UnparsedAddress,
         at: t.at,
       };
@@ -284,6 +287,7 @@ function WhatsNew({ news }: { news: News[] }) {
 }
 
 function ShareRow({ share }: { share: Row }) {
+  const reacted = share.homes.some((home) => home.liked + home.passed > 0);
   return (
     <Link
       href={`/dashboard/shares/${share.id}`}
@@ -301,35 +305,46 @@ function ShareRow({ share }: { share: Row }) {
           {share.unread && <span aria-hidden data-unread className="size-2.5 shrink-0 rounded-full bg-brand" />}
         </p>
         <p className="truncate text-sm text-stone-700">{homesLine(share.homes)}</p>
-        {share.homes.length > 1 ? (
-          <ul className="mt-1 flex flex-col gap-0.5 text-sm">
-            {share.homes.map((home) => (
-              // The verdict goes under the address when both don't fit on one line.
-              <li key={home.key} className="flex flex-wrap items-baseline gap-x-2">
-                <span className="max-w-full truncate text-stone-700">{home.address}</span>{" "}
-                <span className="ml-auto shrink-0">
+        {share.homes.length > 1 &&
+          (reacted ? (
+            // Phones: each address with its verdict under it. Wider: the
+            // verdicts in a column just after the longest address.
+            <ul className="mt-1 flex flex-col gap-2 text-sm sm:grid sm:w-fit sm:max-w-full sm:grid-cols-[minmax(0,auto)_auto] sm:gap-x-6 sm:gap-y-0.5">
+              {share.homes.map((home) => (
+                <li key={home.key} className="flex min-w-0 flex-col sm:col-span-2 sm:grid sm:grid-cols-subgrid">
+                  <span className="truncate text-stone-700">{home.address}</span>
                   <Verdict home={home} />
-                </span>
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <ul className="mt-1 flex flex-col gap-0.5 text-sm text-stone-700">
+              {share.homes.map((home) => (
+                <li key={home.key} className="truncate">
+                  {home.address}
+                </li>
+              ))}
+            </ul>
+          ))}
+        {share.homes.length === 1 ? (
+          <p className="mt-1 text-sm">
+            <Verdict home={share.homes[0]} />
+          </p>
         ) : (
-          share.homes[0] && (
-            <p className="mt-1 text-sm">
-              <Verdict home={share.homes[0]} />
-            </p>
-          )
+          // Said once for the link, not under every home.
+          share.homes.length > 1 && !reacted && <p className="mt-1 text-sm text-stone-600">No reactions yet</p>
         )}
+        <p className="mt-2 text-sm text-stone-700">
+          {share.opened_at ? <Opened at={share.opened_at.toISOString()} /> : "Not opened yet"}
+        </p>
         {/* Each part stays whole when the line wraps. */}
-        <p className="mt-1.5 text-xs text-stone-600 [&>span]:whitespace-nowrap">
-          <span>{share.opened_at ? <Opened at={share.opened_at.toISOString()} /> : "Not opened yet"}</span>
+        <p className="mt-0.5 text-[13px] text-stone-600 [&>span]:whitespace-nowrap">
           {share.comment_count > 0 && (
             <>
-              {" · "}
               <span>{`${share.comment_count} ${share.comment_count === 1 ? "comment" : "comments"}`}</span>
+              {" · "}
             </>
           )}
-          {" · "}
           <span>
             {share.last_activity ? `Last activity ${ago(share.last_activity)}` : `Sent ${ago(share.created_at)}`}
           </span>
@@ -341,9 +356,9 @@ function ShareRow({ share }: { share: Row }) {
 
 // "2 liked · 1 passed", in the colours used everywhere for liking and passing.
 function Verdict({ home }: { home: Home }) {
-  if (home.liked + home.passed === 0) return <span className="text-stone-600">No reactions yet</span>;
+  if (home.liked + home.passed === 0) return <span className="whitespace-nowrap text-stone-600">No reactions yet</span>;
   return (
-    <span className="text-stone-800">
+    <span className="whitespace-nowrap text-stone-800">
       {home.liked > 0 && (
         <>
           <Heart aria-hidden size={13} className="mr-1 inline-block fill-rose-600 align-[-1px] text-rose-600" />
