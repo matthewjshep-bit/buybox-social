@@ -2,20 +2,36 @@
 // is one line ("Jules, Ivy and 2 others liked your comment…"), and days fall
 // under Today, This week and Earlier. This spec runs first, so everything it
 // makes is deleted again at the end, from each person's own page: no later
-// spec sees a comment, a reply or a like from here.
+// spec sees a comment, a reply or a like from here, even if it stops halfway.
 import { expect, test, type Page } from "@playwright/test";
 import {
+  ACTIVITY_SECTIONS,
   activitySection,
   describeActivity,
   groupActivity,
+  quoteOf,
+  sectionId,
   whoText,
   type ActivityItem,
 } from "../lib/activity";
 import { homeIn, openComments, settle, signUpBuyer } from "./helpers";
+import { takeBackAll } from "./own-page";
 
 const LAKEVIEW = "5902 Lakeview Terrace SE";
 const WORDS = "That courtyard would be my office.";
 const REPLY = "Same, with a coffee in hand.";
+
+// Set while Lakeview has something from here on it.
+let made = false;
+
+// Stopped halfway: Grace's reply goes first (it keeps Ana's comment), then
+// Ana's comment, and its likes with it.
+test.afterEach(async ({ browser }) => {
+  if (!made) return;
+  await takeBackAll(await signUpBuyer(browser, "grace.activity@example.com", "Grace Hill"), LAKEVIEW);
+  await takeBackAll(await signUpBuyer(browser, "ana.activity@example.com", "Ana Reyes"), LAKEVIEW);
+  made = false;
+});
 
 // Deletes your one comment on Lakeview from your own page, after the second tap.
 async function deleteMine(page: Page) {
@@ -45,6 +61,7 @@ test("activity shows people and homes, with repeats on one comment on one line",
 
   await ana.goto("/homes/SAMPLE-1013");
   const thread = await openComments(ana, homeIn(ana, LAKEVIEW));
+  made = true;
   await thread.getByLabel("Add a comment").fill(WORDS);
   await thread.getByRole("button", { name: "Post", exact: true }).click();
   await expect(thread.getByText(WORDS)).toBeVisible();
@@ -139,6 +156,7 @@ test("activity shows people and homes, with repeats on one comment on one line",
   const after = await openComments(ana, homeIn(ana, LAKEVIEW));
   await expect(after.getByText(WORDS)).toHaveCount(0);
   await expect(after.getByText(REPLY)).toHaveCount(0);
+  made = false;
 });
 
 // The grouping and the sections, without a server.
@@ -205,6 +223,16 @@ test("repeats group by comment and Seattle day, under Today, This week and Earli
     "Grace, Hannah and 2 others",
     "Grace, Hannah and 3 others",
   ]);
+  // Several people's words say whose they are; a like is of your own.
+  expect(rows.map(quoteOf)).toEqual([
+    "“About c1”",
+    "“About c1”",
+    "“About c1”",
+    "Mo: “About SAMPLE-1001”",
+    "“About c2”",
+  ]);
+  // Each section is named by its heading, so its id has no spaces.
+  expect(ACTIVITY_SECTIONS.map(sectionId)).toEqual(["activity-today", "activity-this-week", "activity-earlier"]);
   // Six days back is still this week; seven is earlier.
   expect(activitySection("2026-10-31T19:00:00Z", NOW)).toBe("This week");
   expect(activitySection("2026-10-30T19:00:00Z", NOW)).toBe("Earlier");

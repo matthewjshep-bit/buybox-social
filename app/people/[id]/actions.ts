@@ -101,16 +101,22 @@ export async function deleteMyComment(id: string): Promise<ActionResult> {
   if (typeof id !== "string" || id.length > 64) return fail("That comment isn't there anymore.");
   const visitor = await ownVisitor();
   if (!visitor) return fail("Please add your name first.");
-  const [deleted] = await sql`
-    delete from public_comments c
-    where c.id::text = ${id} and c.visitor_id = ${visitor.id}
-      and not exists (select 1 from public_comments r where r.parent_id = c.id and r.visitor_id <> ${visitor.id})
-    returning c.id`;
-  if (!deleted) {
-    // Someone else's reads as gone, so it doesn't even say there's one there.
-    const [kept] = await sql`select 1 from public_comments where id::text = ${id} and visitor_id = ${visitor.id}`;
-    return fail(kept ? "Comments with replies can't be deleted here." : "That comment isn't there anymore.");
-  }
+  const outcome = await sql.begin(async (tx) => {
+    // Held first, so a reply being saved this moment finishes and is counted
+    // below rather than going with the comment. Someone else's reads as gone,
+    // so it doesn't even say there's one there.
+    const [mine] = await tx`
+      select id from public_comments where id::text = ${id} and visitor_id = ${visitor.id} for update`;
+    if (!mine) return "gone";
+    const [deleted] = await tx`
+      delete from public_comments c
+      where c.id = ${mine.id}
+        and not exists (select 1 from public_comments r where r.parent_id = c.id and r.visitor_id <> ${visitor.id})
+      returning c.id`;
+    return deleted ? "deleted" : "answered";
+  });
+  if (outcome === "gone") return fail("That comment isn't there anymore.");
+  if (outcome === "answered") return fail("Comments with replies can't be deleted here.");
   refresh();
   return { ok: true };
 }

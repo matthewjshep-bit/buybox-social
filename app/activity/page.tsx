@@ -7,6 +7,8 @@ import {
   activitySection,
   describeActivity,
   getActivityRows,
+  quoteOf,
+  sectionId,
   whoOf,
   type ActivityRow,
 } from "@/lib/activity";
@@ -58,18 +60,21 @@ export default async function ActivityPage() {
         </div>
       ) : (
         <div className="mt-2 flex flex-col gap-6">
-          {sections.map((section) => (
-            <section key={section.title} aria-labelledby={`activity-${section.title}`}>
-              <h2 id={`activity-${section.title}`} className="px-1 pt-2 text-[15px] font-semibold text-stone-600">
-                {section.title}
-              </h2>
-              <ul className="mt-2 flex flex-col gap-2">
-                {section.rows.map((row) => (
-                  <Row key={row.id} row={row} />
-                ))}
-              </ul>
-            </section>
-          ))}
+          {sections.map((section) => {
+            const id = sectionId(section.title);
+            return (
+              <section key={section.title} aria-labelledby={id}>
+                <h2 id={id} className="px-1 pt-2 text-[15px] font-semibold text-stone-600">
+                  {section.title}
+                </h2>
+                <ul className="mt-2 flex flex-col gap-2">
+                  {section.rows.map((row) => (
+                    <Row key={row.id} row={row} />
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
         </div>
       )}
     </main>
@@ -109,7 +114,7 @@ function Row({ row }: { row: ActivityRow }) {
             {describeActivity(row)}
             {row.unread && <span className="sr-only"> (new)</span>}
           </span>
-          <span className="mt-0.5 block truncate text-sm text-stone-700">&ldquo;{row.body}&rdquo;</span>
+          <span className="mt-0.5 block truncate text-sm text-stone-700">{quoteOf(row)}</span>
           <span className="mt-0.5 flex items-center gap-1.5 text-[13px] text-stone-600">
             {row.unread && <span aria-hidden className="size-2 shrink-0 rounded-full bg-brand" />}
             <time dateTime={row.at} className={cn(row.unread && "font-semibold text-brand")}>

@@ -44,6 +44,7 @@ import {
   signInAgent,
   signUpBuyer,
 } from "./helpers";
+import { takeBackAll } from "./own-page";
 
 const CORBEL = "812 N Corbel St";
 const HERON = "88 Heron Bluff Rd";
@@ -473,6 +474,11 @@ test("a card's sentence names a few things and counts the rest", () => {
   const spots = empty();
   spots.likes.push(like("SAMPLE-1001-4", "@3,97", 1), like("SAMPLE-1001-4", "@97,3", 2));
   expect(buildCards(spots)[0].sentence).toBe("liked 2 spots in the photos");
+  // Each is its own to take back, told apart, newest first.
+  expect(buildCards(spots)[0].controls).toEqual([
+    { kind: "spots", sentiment: "like", name: "a spot in photo 4", spots: [{ mediaKey: "SAMPLE-1001-4", tag: "@97,3" }] },
+    { kind: "spots", sentiment: "like", name: "a second spot in photo 4", spots: [{ mediaKey: "SAMPLE-1001-4", tag: "@3,97" }] },
+  ]);
   const fact = empty();
   fact.likes.push(like("facts", "Price", 1));
   expect(buildCards(fact)[0].sentence).toBe("liked the price");
@@ -828,22 +834,36 @@ test("the taste story is written from the data, and what someone switches off st
   expect(pageErrors).toEqual([]);
 });
 
+// Set while Heron has something on it from the test below.
+let madeOnHeron = false;
+
+// Stopped halfway: Quinn's answer goes first (it keeps Pia's comment), then
+// all of Pia's, so no later spec sees them.
+test.afterEach(async ({ browser }) => {
+  if (!madeOnHeron) return;
+  await takeBackAll(await signUpBuyer(browser, "quinn@example.com", "Quinn Ash"), HERON);
+  await takeBackAll(await signUpBuyer(browser, "pia.own@example.com", "Pia Moreno"), HERON);
+  madeOnHeron = false;
+});
+
 // Your own page lets you take back what you did there: your like, what you
 // liked in a photo, a comment (unless someone else has answered it). Only
 // yours, and only there: nobody else gets the menu, and the server refuses a
 // comment that isn't yours, however it's asked. Everything made here is gone
-// again by the end.
+// again by the end, even if it stops halfway.
 test("on your own page you can take back a like or a comment, and nobody else can", async ({ browser }) => {
   test.setTimeout(180_000);
   const FIRST = "Wildflowers right up to the door.";
   const SECOND = "Is the meadow part of the lot?";
   const ANSWER = "It is, all the way to the fence.";
-  const pia = await signUpBuyer(browser, "pia@example.com", "Pia Moreno");
+  // Her own email: nobody another spec signs up.
+  const pia = await signUpBuyer(browser, "pia.own@example.com", "Pia Moreno");
   const pageErrors: string[] = [];
   pia.on("pageerror", (error) => pageErrors.push(error.message));
 
   await pia.goto("/homes/SAMPLE-1010");
   const heron = homeIn(pia, HERON);
+  madeOnHeron = true;
   await heartOf(heron).click();
   await expect(heartOf(heron)).toHaveAttribute("aria-pressed", "true");
   const siding = await likeInPhoto(heron, "the red siding");
@@ -911,7 +931,12 @@ test("on your own page you can take back a like or a comment, and nobody else ca
     return route.abort();
   });
   await deleteOf(FIRST).click();
-  await expect(sheet.getByText("Delete your comment?")).toBeVisible();
+  await expect(sheet.getByRole("heading", { name: "Delete your comment?" })).toBeVisible();
+  // Asked first, with focus on Cancel: a second Enter doesn't delete it for good.
+  await expect(sheet.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await expect(sheet.getByRole("button", { name: "Delete comment" })).toHaveAccessibleDescription(
+    new RegExp(`${FIRST}.*You can't undo this`),
+  );
   await sheet.getByRole("button", { name: "Delete comment" }).click();
   await expect(sheet.getByRole("alert")).toHaveText("Couldn't do that. Try again.");
   expect(first).toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
@@ -966,16 +991,41 @@ test("on your own page you can take back a like or a comment, and nobody else ca
     for (const secret of ["Options for", "Remove my like", "Delete my comment"]) expect(html).not.toContain(secret);
   }
 
+  // Her own page without scripts: nothing there that can't work without them.
+  const still = await (
+    await browser.newContext({ javaScriptEnabled: false, storageState: await pia.context().storageState() })
+  ).newPage();
+  await still.goto(profileUrl);
+  await expect(still.getByRole("heading", { level: 1 })).toHaveText("Pia (you)");
+  for (const name of ["Share my page", `Options for ${HERON}`]) {
+    const button = still.getByRole("button", { name, includeHidden: true });
+    await expect(button).toHaveCount(1);
+    await expect(button).toBeHidden();
+  }
+  await still.context().close();
+
   // Quinn takes his answer back for real.
   await quinnSheet.getByRole("button", { name: "Delete comment" }).click();
   await expect(quinn.getByRole("status").filter({ hasText: "Comment deleted" })).toBeVisible();
   await expect(quinn.getByText("Your page fills up as you go")).toBeVisible();
 
   // Pia takes back one thing at a time; the card keeps up, and focus stays on its menu.
+  // While one is on its way it says so, and the rest wait.
   await pia.reload();
   await options.click();
+  let release = () => {};
+  const held = new Promise<void>((done) => (release = done));
+  await pia.route("**/people/**", async (route) => {
+    if (!isAction(route)) return route.continue();
+    await held;
+    return route.continue();
+  });
   await row("Remove my like of the red siding").click();
+  await expect(row("Removing…")).toBeVisible();
+  await expect(row("Remove my like")).toHaveAttribute("aria-disabled", "true");
+  release();
   await expect(pia.getByRole("status").filter({ hasText: "Like removed" })).toBeVisible();
+  await pia.unroute("**/people/**");
   await expect(sheet).toBeHidden();
   await expect(card("liked this")).toBeVisible();
   await expect(options).toBeFocused();
@@ -1000,6 +1050,7 @@ test("on your own page you can take back a like or a comment, and nobody else ca
   await pia.goto("/homes/SAMPLE-1010");
   const after = await openComments(pia, homeIn(pia, HERON));
   for (const words of [FIRST, SECOND, ANSWER]) await expect(after.getByText(words)).toHaveCount(0);
+  madeOnHeron = false;
 });
 
 // A small taste, without a server: enough rows to check the rules exactly.

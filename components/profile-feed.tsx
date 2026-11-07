@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { CardMenu, MoreText } from "@/app/people/[id]/client";
 import { cn, formatPrice } from "@/lib/format";
-import { cardTime, dayHeading, type PinKind, type ProfileCard } from "@/lib/profile";
+import { cardTime, dayHeading, dayName, type PinKind, type ProfileCard } from "@/lib/profile";
 
 // Everything someone has done, Facebook-style: one card per home per day,
 // under "Today", "Yesterday" and so on. Each card shows the photo with the
@@ -30,6 +30,9 @@ export function ProfileFeed({
   earlierHref: string | null;
 }) {
   const days: { heading: string; cards: ProfileCard[] }[] = [];
+  // A home on more than one day here: each card's menu says which day it's for.
+  const seen = new Map<string, number>();
+  for (const card of cards) seen.set(card.home.key, (seen.get(card.home.key) ?? 0) + 1);
   for (const card of cards) {
     const heading = dayHeading(card.day);
     if (days.at(-1)?.heading === heading) days.at(-1)!.cards.push(card);
@@ -42,7 +45,13 @@ export function ProfileFeed({
           <h2 className="px-1 text-[15px] font-semibold text-stone-600">{day.heading}</h2>
           <ul className="mt-2 flex flex-col gap-3">
             {day.cards.map((card) => (
-              <Card key={card.id} card={card} name={name} isMe={isMe} />
+              <Card
+                key={card.id}
+                card={card}
+                name={name}
+                isMe={isMe}
+                day={seen.get(card.home.key)! > 1 ? dayName(card.day) : undefined}
+              />
             ))}
           </ul>
         </section>
@@ -59,7 +68,7 @@ export function ProfileFeed({
   );
 }
 
-function Card({ card, name, isMe }: { card: ProfileCard; name: string; isMe: boolean }) {
+function Card({ card, name, isMe, day }: { card: ProfileCard; name: string; isMe: boolean; day?: string }) {
   const { home, photo } = card;
   const href = `/homes/${encodeURIComponent(home.key)}${photo ? `?photo=${photo.index}` : ""}`;
   // A day when all they did was like someone's comment: a small card, no photo.
@@ -78,7 +87,8 @@ function Card({ card, name, isMe }: { card: ProfileCard; name: string; isMe: boo
         <Avatar name={name} />
         <p className="min-w-0 flex-1 pt-1 text-[15px] leading-snug text-ink">
           <strong className="font-semibold">{isMe ? "You" : name}</strong> {card.sentence}
-          {" "}
+          {/* Held to the last word, so the time never starts a line on its own. */}
+          {"\u00a0"}
           <span className="whitespace-nowrap text-[13px] text-stone-600">
             {"· "}
             <time dateTime={card.at}>{cardTime(card.at)}</time>
@@ -86,7 +96,7 @@ function Card({ card, name, isMe }: { card: ProfileCard; name: string; isMe: boo
         </p>
         {/* Only on your own page: what you can take back from this card. */}
         {isMe && card.controls.length > 0 && (
-          <CardMenu cardId={card.id} address={home.address} homeKey={home.key} controls={card.controls} />
+          <CardMenu cardId={card.id} address={home.address} day={day} homeKey={home.key} controls={card.controls} />
         )}
       </div>
 

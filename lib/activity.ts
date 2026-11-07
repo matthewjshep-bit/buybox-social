@@ -2,7 +2,7 @@ import { cache } from "react";
 import { sql } from "./db";
 import type { ListingMedia } from "./listings/types";
 import { FACTS, mediaKeyOf } from "./photos";
-import { daysBefore, dayOf, isVideo } from "./profile";
+import { daysBefore, dayOf, isVideo, PROFILE_TIME_ZONE } from "./profile";
 
 // What's happened around someone's public activity: replies to and likes on
 // their comments, and new comments on homes they liked. Read from the tables
@@ -33,8 +33,11 @@ export type ActivityRow = Omit<ActivityItem, "who" | "whoId"> & {
   people: { id: string; name: string }[];
 };
 
-// However much has happened, the page reads this many of the newest.
-const ACTIVITY_LIMIT = 99;
+// However much has happened, the page reads this many of the newest events,
+// and shows this many lines of them: plenty, so a comment with a hundred likes
+// in a day is one line with the rest still under it.
+const EVENT_LIMIT = 500;
+const ROW_LIMIT = 40;
 
 type EventRow = {
   id: string;
@@ -49,42 +52,46 @@ type EventRow = {
   unread: boolean;
 };
 
-// The newest events, once per request: the bell and the page share them.
+// Everything that's happened around someone: replies to their comments, likes
+// of them, and new comments on homes they liked.
+const eventsOf = (visitorId: string) => sql`
+  select 'reply:' || c.id as id, 'reply' as kind, v.first_name as who, v.id as who_id, c.body,
+    mine.id::text as about, c.listing_key, mine.media_key, c.created_at as at
+  from public_comments c
+  join public_comments mine on mine.id = c.parent_id and mine.visitor_id = ${visitorId}
+  join visitors v on v.id = c.visitor_id
+  where c.visitor_id <> ${visitorId}
+  union all
+  select 'like:' || cl.comment_id || ':' || cl.visitor_id, 'comment_like', v.first_name, v.id, mine.body,
+    mine.id::text, mine.listing_key, mine.media_key, cl.created_at
+  from public_comment_likes cl
+  join public_comments mine on mine.id = cl.comment_id and mine.visitor_id = ${visitorId}
+  join visitors v on v.id = cl.visitor_id
+  where cl.visitor_id <> ${visitorId}
+  union all
+  select 'comment:' || c.id, 'comment', v.first_name, v.id, c.body, c.listing_key, c.listing_key,
+    c.media_key, c.created_at
+  from public_comments c
+  join public_reactions r on r.listing_key = c.listing_key
+    and r.visitor_id = ${visitorId} and r.reaction = 'like'
+  join visitors v on v.id = c.visitor_id
+  where c.visitor_id <> ${visitorId} and c.parent_id is null and c.created_at > r.updated_at`;
+
+// The newest events for the page.
 const loadEvents = cache(
   (visitorId: string) => sql<EventRow[]>`
     with me as (select activity_seen_at from visitors where id = ${visitorId}),
-    events as (
-      select 'reply:' || c.id as id, 'reply' as kind, v.first_name as who, v.id as who_id, c.body,
-        mine.id::text as about, c.listing_key, mine.media_key, c.created_at as at
-      from public_comments c
-      join public_comments mine on mine.id = c.parent_id and mine.visitor_id = ${visitorId}
-      join visitors v on v.id = c.visitor_id
-      where c.visitor_id <> ${visitorId}
-      union all
-      select 'like:' || cl.comment_id || ':' || cl.visitor_id, 'comment_like', v.first_name, v.id, mine.body,
-        mine.id::text, mine.listing_key, mine.media_key, cl.created_at
-      from public_comment_likes cl
-      join public_comments mine on mine.id = cl.comment_id and mine.visitor_id = ${visitorId}
-      join visitors v on v.id = cl.visitor_id
-      where cl.visitor_id <> ${visitorId}
-      union all
-      select 'comment:' || c.id, 'comment', v.first_name, v.id, c.body, c.listing_key, c.listing_key,
-        c.media_key, c.created_at
-      from public_comments c
-      join public_reactions r on r.listing_key = c.listing_key
-        and r.visitor_id = ${visitorId} and r.reaction = 'like'
-      join visitors v on v.id = c.visitor_id
-      where c.visitor_id <> ${visitorId} and c.parent_id is null and c.created_at > r.updated_at
-    )
+    events as (${eventsOf(visitorId)})
     select e.id, e.kind, e.who, e.who_id, e.body, e.about, e.listing_key, e.media_key, e.at,
       e.at > (select activity_seen_at from me) as unread
     from events e
     order by e.at desc
-    limit ${ACTIVITY_LIMIT}`,
+    limit ${EVENT_LIMIT}`,
 );
 
 // The same thing on the same comment (or, for new comments, the same home) on
-// the same day is one row. Days are the homes' days, as on profiles.
+// the same day is one row. Days are the homes' days, as on profiles (and as
+// the bell counts them, in the database).
 const rowKey = (item: { kind: string; about: string; at: Date | string }) =>
   `${item.kind}|${item.about}|${dayOf(item.at)}`;
 
@@ -169,8 +176,20 @@ export function describeActivity(row: Pick<ActivityRow, "kind" | "address">) {
   return `commented on ${row.address}, a home you liked`;
 }
 
+// The words under a line, in quotes. A like is of your own comment; replies
+// and new comments from several people quote the newest, so it says whose:
+// "Hannah: “Same, with a coffee in hand.”"
+export function quoteOf(row: Pick<ActivityRow, "kind" | "body" | "people">) {
+  const quote = `“${row.body}”`;
+  return row.kind !== "comment_like" && row.people.length > 1 ? `${row.people[0].name}: ${quote}` : quote;
+}
+
 export const ACTIVITY_SECTIONS = ["Today", "This week", "Earlier"] as const;
 export type ActivitySection = (typeof ACTIVITY_SECTIONS)[number];
+
+// A section's id, which its heading names it by: no spaces, or "This week"
+// would name nothing. "activity-this-week".
+export const sectionId = (title: ActivitySection) => `activity-${title.toLowerCase().replace(/\s+/g, "-")}`;
 
 // "Today", "This week" (the six days before), or "Earlier".
 export function activitySection(at: string, now: Date | number = Date.now()): ActivitySection {
@@ -180,11 +199,18 @@ export function activitySection(at: string, now: Date | number = Date.now()): Ac
 
 // The page's rows, newest first.
 export async function getActivityRows(visitorId: string) {
-  return groupActivity(await loadActivity(visitorId));
+  return groupActivity(await loadActivity(visitorId)).slice(0, ROW_LIMIT);
 }
 
-// What the bell counts: rows with something new in them, as the page shows them.
+// What the bell counts: rows with something new in them, as the page shows
+// them. Only what's new is read, and only counted.
 export async function countUnreadActivity(visitorId: string): Promise<number> {
-  const events = await loadEvents(visitorId);
-  return new Set(events.filter((event) => event.unread).map(rowKey)).size;
+  const [{ lines }] = await sql<{ lines: number }[]>`
+    with events as (${eventsOf(visitorId)})
+    select count(*)::int as lines from (
+      select distinct e.kind, e.about, (e.at at time zone ${PROFILE_TIME_ZONE})::date
+      from events e
+      where e.at > (select activity_seen_at from visitors where id = ${visitorId})
+    ) line`;
+  return lines;
 }

@@ -135,6 +135,21 @@ export function dayHeading(day: string, now: Date | number = Date.now()) {
   });
 }
 
+// One exact day, to tell two cards of one home apart: "Today", "Yesterday",
+// "November 4", or "September 14, 2025" in another year.
+export function dayName(day: string, now: Date | number = Date.now()) {
+  const days = daysBefore(day, now);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  const date = utcDay(day);
+  return date.toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    month: "long",
+    day: "numeric",
+    ...(date.getUTCFullYear() !== utcDay(dayOf(new Date(now))).getUTCFullYear() && { year: "numeric" }),
+  });
+}
+
 const CLOCK = new Intl.DateTimeFormat("en-US", { timeZone: PROFILE_TIME_ZONE, hour: "numeric", minute: "2-digit" });
 const WEEKDAY = new Intl.DateTimeFormat("en-US", { timeZone: PROFILE_TIME_ZONE, weekday: "short" });
 const MONTH_DAY = new Intl.DateTimeFormat("en-US", { timeZone: PROFILE_TIME_ZONE, month: "short", day: "numeric" });
@@ -447,13 +462,26 @@ function sentenceOf(listing: Listing, reaction: ReactionRow | null, likes: SpotR
   return describeReaction({ reaction: reaction?.reaction ?? null, liked: [], disliked: [] }, side(liked), side(disliked));
 }
 
+// "a second", "a third"… for spots with no name that share a photo.
+const ORDINALS = ["second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
+
 // One way to take back each thing they liked (or didn't) on a card, by how
-// it reads: two spots on the front door are one "the front door". Newest first.
+// it reads: two spots on the front door are one "the front door". Spots with
+// no name stay apart, each its own: "a spot in photo 3", "a second spot in
+// photo 3". Newest first.
 function spotControls(listing: Listing, sentiment: Sentiment, rows: SpotRow[]): CardControl[] {
   const byName = new Map<string, { mediaKey: string; tag: string }[]>();
+  const unnamed = new Map<string, number>();
   for (const row of [...rows].sort((a, b) => +b.at - +a.at)) {
-    const name = spotName(listing, { mediaKey: row.media_key, tag: row.tag });
-    byName.set(name, [...(byName.get(name) ?? []), { mediaKey: row.media_key, tag: row.tag }]);
+    const spot = { mediaKey: row.media_key, tag: row.tag };
+    let name = spotName(listing, spot);
+    const photo = listing.Media.find((m) => mediaKeyOf(m) === row.media_key);
+    if (row.media_key !== FACTS && !thingOf(photo, row.tag)) {
+      const n = unnamed.get(name) ?? 0;
+      unnamed.set(name, n + 1);
+      if (n > 0) name = name.replace(/^a spot/, ORDINALS[n - 1] ? `a ${ORDINALS[n - 1]} spot` : `spot ${n + 1}`);
+    }
+    byName.set(name, [...(byName.get(name) ?? []), spot]);
   }
   return [...byName].map(([name, spots]) => ({ kind: "spots", sentiment, name, spots }));
 }

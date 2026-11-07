@@ -1,6 +1,6 @@
 "use client";
 
-import { HeartOff, MoreHorizontal, Share2, Trash2, Undo2 } from "lucide-react";
+import { HeartOff, LoaderCircle, MoreHorizontal, Share2, Trash2, Undo2 } from "lucide-react";
 import {
   useEffect,
   useId,
@@ -92,7 +92,8 @@ export function ShareMyPage({ name }: { name: string }) {
     <button
       type="button"
       onClick={share}
-      className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-4 text-[15px] font-semibold text-ink ring-1 ring-stone-300 hover:bg-stone-50"
+      // It can't share or copy without scripts, so without them it isn't there.
+      className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-4 text-[15px] font-semibold text-ink ring-1 ring-stone-300 hover:bg-stone-50 [@media(scripting:none)]:hidden"
     >
       <Share2 aria-hidden size={16} />
       Share my page
@@ -134,15 +135,17 @@ const take = (homeKey: string, control: CardControl): Promise<ActionResult> =>
 // "…" on a card on your own page: take back your like, what you liked in its
 // photos, or a comment (after a second tap, since that can't be undone). The
 // card changes as soon as it's done; if nothing's left on it, it goes, and
-// the next card takes its focus.
+// the next card takes its focus. `day` tells apart two cards of one home.
 export function CardMenu({
   cardId,
   address,
+  day,
   homeKey,
   controls,
 }: {
   cardId: string;
   address: string;
+  day?: string;
   homeKey: string;
   controls: CardControl[];
 }) {
@@ -151,9 +154,12 @@ export function CardMenu({
   const [asking, setAsking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  // The row being taken back, which says so until it's done.
+  const [running, setRunning] = useState<string | null>(null);
   const rows = useRef(new Map<string, HTMLButtonElement>());
-  // Where focus goes if this card is gone once the page catches up: the
-  // cards after it, then those before, then the filters.
+  // Where focus goes if this menu is gone once the page catches up: its own
+  // card if that's still there, else the cards after it, then those before,
+  // then the filters.
   const next = useRef<string[] | null>(null);
   const id = useId();
 
@@ -182,14 +188,16 @@ export function CardMenu({
     setOpen(false);
     setAsking(null);
     setError(null);
+    setRunning(null);
   };
 
   const run = (control: CardControl) => {
     if (pending) return;
     setError(null);
+    setRunning(keyOf(control));
     const ids = [...document.querySelectorAll<HTMLElement>("[data-card-link]")].map((el) => el.dataset.cardLink!);
     const at = ids.indexOf(cardId);
-    next.current = [...ids.slice(at + 1), ...ids.slice(0, Math.max(0, at)).reverse()];
+    next.current = [cardId, ...ids.slice(at + 1), ...ids.slice(0, Math.max(0, at)).reverse()];
     start(async () => {
       let result: ActionResult;
       try {
@@ -199,6 +207,7 @@ export function CardMenu({
       }
       if (!result.ok) {
         next.current = null;
+        setRunning(null);
         setError(result.error);
         return;
       }
@@ -208,6 +217,7 @@ export function CardMenu({
   };
 
   const comment = asking ? controls.find((c) => c.kind === "comment" && c.id === asking) : undefined;
+  const label = day ? `Options for ${address}, ${day}` : `Options for ${address}`;
 
   return (
     <>
@@ -215,28 +225,44 @@ export function CardMenu({
         type="button"
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={`Options for ${address}`}
+        aria-label={label}
         onClick={() => setOpen(true)}
         // Nothing to open without scripts, so without them it isn't there.
         className="relative z-20 -mr-2 -mt-1.5 flex size-11 shrink-0 items-center justify-center rounded-full text-stone-600 hover:bg-stone-100 hover:text-ink [@media(scripting:none)]:hidden"
       >
         <MoreHorizontal aria-hidden size={22} />
       </button>
-      <Sheet open={open} onClose={close} label={`Options for ${address}`} title={address}>
+      <Sheet
+        open={open}
+        onClose={close}
+        label={label}
+        title={
+          <>
+            {address}
+            {day && <span className="block text-[13px] font-normal text-stone-600">{day}</span>}
+          </>
+        }
+      >
         {comment?.kind === "comment" ? (
-          <div className="flex flex-col gap-3 pb-1">
-            <p className="text-[17px] font-semibold">Delete your comment?</p>
-            <p className="line-clamp-3 break-words rounded-2xl bg-stone-50 p-3 text-[15px] leading-snug text-ink">
+          // Focus starts on Cancel: a second Enter shouldn't delete for good.
+          <div role="group" aria-labelledby={`${id}-ask`} className="flex flex-col gap-3 pb-1">
+            <h3 id={`${id}-ask`} className="text-[17px] font-semibold">
+              Delete your comment?
+            </h3>
+            <p
+              id={`${id}-quote`}
+              className="line-clamp-3 break-words rounded-2xl bg-stone-50 p-3 text-[15px] leading-snug text-ink"
+            >
               &ldquo;{comment.body}&rdquo;
             </p>
-            <p className="text-[15px] leading-snug text-stone-700">
+            <p id={`${id}-warn`} className="text-[15px] leading-snug text-stone-700">
               It comes off this home and your page for everyone
               {comment.replies > 0 ? ", with your replies to it" : ""}. You can&apos;t undo this.
             </p>
             <button
               type="button"
-              autoFocus
               aria-disabled={pending || undefined}
+              aria-describedby={`${id}-quote ${id}-warn`}
               onClick={() => run(comment)}
               className="flex min-h-12 items-center justify-center gap-2 rounded-full bg-red-700 px-5 text-[15px] font-semibold text-white hover:bg-red-800 aria-disabled:opacity-70"
             >
@@ -245,6 +271,7 @@ export function CardMenu({
             </button>
             <button
               type="button"
+              autoFocus
               aria-disabled={pending || undefined}
               onClick={() => {
                 if (pending) return;
@@ -263,9 +290,18 @@ export function CardMenu({
             {controls.map((control) => {
               const key = keyOf(control);
               const locked = control.kind === "comment" && control.answered;
+              // This one is on its way; the rest wait, dimmed, until it's done.
+              const busy = pending && running === key;
+              const waiting = pending && running !== key;
+              const text = busy ? "Removing…" : labelOf(control);
               const hint = `${id}-${key}`;
-              const Icon =
-                control.kind === "comment" ? Trash2 : control.sentiment === "like" ? HeartOff : Undo2;
+              const Icon = busy
+                ? LoaderCircle
+                : control.kind === "comment"
+                  ? Trash2
+                  : control.sentiment === "like"
+                    ? HeartOff
+                    : Undo2;
               return (
                 <li key={key}>
                   <button
@@ -275,7 +311,7 @@ export function CardMenu({
                     }}
                     type="button"
                     // Named for what it does; the comment it's about is read after.
-                    aria-label={labelOf(control)}
+                    aria-label={text}
                     aria-disabled={locked || pending || undefined}
                     aria-describedby={control.kind === "comment" ? hint : undefined}
                     onClick={() => {
@@ -286,8 +322,9 @@ export function CardMenu({
                       } else run(control);
                     }}
                     className={cn(
-                      "flex min-h-12 w-full items-start gap-3 rounded-xl px-2 py-3 text-left",
-                      locked ? "cursor-not-allowed" : "hover:bg-stone-50",
+                      "flex min-h-12 w-full items-start gap-3 rounded-xl px-2 py-3 text-left transition-opacity",
+                      locked ? "cursor-not-allowed" : pending ? "cursor-wait" : "hover:bg-stone-50",
+                      waiting && "opacity-60",
                     )}
                   >
                     <Icon
@@ -295,13 +332,15 @@ export function CardMenu({
                       size={20}
                       className={cn(
                         "mt-px shrink-0",
-                        locked
-                          ? "text-stone-400"
-                          : control.kind === "comment"
-                            ? "text-red-700"
-                            : control.sentiment === "like"
-                              ? "text-rose-600"
-                              : "text-amber-700",
+                        busy
+                          ? "animate-spin text-stone-600"
+                          : locked
+                            ? "text-stone-400"
+                            : control.kind === "comment"
+                              ? "text-red-700"
+                              : control.sentiment === "like"
+                                ? "text-rose-600"
+                                : "text-amber-700",
                       )}
                     />
                     <span className="min-w-0 flex-1">
@@ -311,7 +350,7 @@ export function CardMenu({
                           locked ? "text-stone-500" : control.kind === "comment" ? "text-red-700" : "text-ink",
                         )}
                       >
-                        {labelOf(control)}
+                        {text}
                       </span>
                       {control.kind === "comment" && (
                         <span id={hint} className="block text-[13px] leading-snug text-stone-600">
