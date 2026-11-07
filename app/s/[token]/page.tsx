@@ -52,8 +52,11 @@ export default async function SharePage({ params }: Props) {
     // guessed from who has joined, since the package's own link may be out.
     person ? isPrivateTo(share.id, person.id) : false,
   ]);
-  // The agent looking at their own link: never taken for the client.
+  // The agent looking at their own link (Preview, on the client's page): never
+  // taken for the client. The header says so, and nothing they do here is
+  // saved as anyone (actions.ts).
   const agentViewing = viewer?.id === share.agent_id;
+  const preview = agentViewing ? `Viewing as ${person?.first_name || share.client_name || "your client"}` : undefined;
   // Someone's own link is them; otherwise it's whoever this device joined as.
   const me = person ?? (await getParticipant(share.id, device));
   const keys = listings.map((listing) => listing.ListingKey);
@@ -132,6 +135,7 @@ export default async function SharePage({ params }: Props) {
         note={share.note}
         whoCanSee={whoCanSee}
         askToSee={askToSee.bind(null, token)}
+        preview={preview}
         // (No name: the feed says "your agent".)
         agentName={agent.full_name || undefined}
         // A personal link opens as its owner, so it isn't one to pass around.
@@ -144,7 +148,8 @@ export default async function SharePage({ params }: Props) {
           setSharing: setCommentSharing.bind(null, token),
           likePhoto: likePhotoInShare.bind(null, token),
         }}
-        myName={me?.first_name ?? null}
+        // (The agent's own look is never asked a name: nothing there is saved.)
+        myName={me?.first_name ?? (agentViewing ? agentFirstName(agent.full_name, "You") : null)}
         prompt={`So ${agentName} and anyone else on this link know who's talking. No account or password needed.`}
         suggestedName={expected}
         nameHint={expected && `${agentFirst} sent this to ${expected}. Not ${expected}? Type your name.`}

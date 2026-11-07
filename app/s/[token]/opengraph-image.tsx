@@ -1,10 +1,23 @@
-import { ImageResponse } from "next/og";
-import { loadPhoto, PreviewFrame, PreviewHome } from "@/app/homes/[key]/preview";
+import { loadPhoto, PREVIEW_SIZE, PREVIEW_TYPE, PreviewFrame, PreviewHome, previewImage } from "@/app/homes/[key]/preview";
 import { getShareByToken, getShareListings } from "@/lib/shares";
 
-export const alt = "A home picked for you by your agent";
-export const size = { width: 1200, height: 630 };
-export const contentType = "image/png";
+// Drawn fresh for each request (a day's keeping is up to whoever asks), so a
+// home the agent adds or takes off shows the next day at the latest, never a
+// picture kept for good.
+export const dynamic = "force-dynamic";
+
+// Read out in place of the picture, said the way the link's title says it:
+// "3 homes picked for you by Jordan Rivera". Never who it's for.
+export async function generateImageMetadata({ params }: { params: { token: string } }) {
+  const found = await getShareByToken(params.token);
+  const listings = found ? await getShareListings(found.share.id) : [];
+  const by = found?.agent.full_name || "your agent";
+  const alt =
+    listings.length === 0
+      ? "BuyBox Social"
+      : `${listings.length === 1 ? listings[0].UnparsedAddress : `${listings.length} homes`} picked for you by ${by}`;
+  return [{ id: "card", alt, size: PREVIEW_SIZE, contentType: PREVIEW_TYPE }];
+}
 
 // The picture shown in the text message when an agent sends a link: the home
 // and who it's from, never who it's for or anything said on it.
@@ -16,7 +29,7 @@ export default async function Image({ params }: { params: Promise<{ token: strin
   const photo = await loadPhoto(listing?.Media[0]?.MediaURL);
   const agent = found?.agent;
 
-  return new ImageResponse(
+  return previewImage(
     <PreviewFrame photo={photo} color={agent?.brand_color}>
       {listing ? (
         listings.length > 1 ? (
@@ -42,6 +55,5 @@ export default async function Image({ params }: { params: Promise<{ token: strin
         </div>
       )}
     </PreviewFrame>,
-    size,
   );
 }

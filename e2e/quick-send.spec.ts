@@ -137,14 +137,14 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
   await agent.goto("/dashboard");
   await expect(agent.getByRole("link", { name: /Toby/ })).toContainText("1 home · 96 Fernhollow Ln");
 
-  // The agent looking at their own link isn't taken for Toby.
+  // The agent looking at their own link isn't taken for Toby: it's a
+  // preview, with no name asked, and nothing they tap is saved.
   await agent.goto(url);
-  await heartOf(homeIn(agent, "96 Fernhollow Ln")).click();
-  const own = agent.getByRole("dialog", { name: "What's your first name?" });
-  await expect(own.getByRole("textbox", { name: "First name" })).toHaveValue("");
-  await expect(own.getByText(/sent this to/)).toHaveCount(0);
-  await own.getByRole("button", { name: "Not now" }).click();
-  await expect(own).toBeHidden();
+  const own = homeIn(agent, "96 Fernhollow Ln");
+  await expect(agent.getByRole("banner")).toContainText("Viewing as Toby");
+  await heartOf(own).click();
+  await expect(own.getByRole("alert")).toHaveText("You're previewing what Toby sees. Nothing here is saved.");
+  await expect(agent.getByRole("dialog", { name: "What's your first name?" })).toBeHidden();
 
   // [P] The link carries nothing of the agent's but what they chose to show,
   // and no other link: not another client's, not the one waiting for the next Send.

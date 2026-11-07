@@ -173,11 +173,15 @@ test("link preview tags and image are in place", async ({ browser, request }) =>
   const previewTags = (page: string) => (page.match(/<title>[^<]*<\/title>|<meta [^>]*>/g) ?? []).join("\n");
   expect(previewTags(html)).not.toContain("Jamie");
   expect(previewTags(html)).not.toContain("yard you mentioned");
+  expect(html).toContain('<meta property="og:image:alt" content="812 N Corbel St picked for you by Priya Shah"/>');
 
+  // A photo-sized JPEG (not a 1-2 MB PNG), kept for a day by whatever fetches it.
   const res = await request.get(image!);
   expect(res.status()).toBe(200);
-  expect(res.headers()["content-type"]).toContain("image/png");
-  expect((await res.body()).length).toBeGreaterThan(50_000);
+  expect(res.headers()["content-type"]).toContain("image/jpeg");
+  expect((await res.body()).length).toBeGreaterThan(30_000);
+  expect((await res.body()).length).toBeLessThan(400_000);
+  expect(res.headers()["cache-control"]).toBe("public, max-age=86400");
 
   const headers = (await request.get(url)).headers();
   expect(headers["x-robots-tag"]).toContain("noindex");
@@ -190,8 +194,10 @@ test("link preview tags and image are in place", async ({ browser, request }) =>
   expect(homeImage).toContain("/homes/SAMPLE-1004/opengraph-image");
   const homeRes = await request.get(homeImage!);
   expect(homeRes.status()).toBe(200);
-  expect(homeRes.headers()["content-type"]).toContain("image/png");
-  expect((await homeRes.body()).length).toBeGreaterThan(50_000);
+  expect(homeRes.headers()["content-type"]).toContain("image/jpeg");
+  expect((await homeRes.body()).length).toBeGreaterThan(30_000);
+  expect((await homeRes.body()).length).toBeLessThan(400_000);
+  expect(homeRes.headers()["cache-control"]).toBe("public, max-age=86400");
 });
 
 test("isolation: tokens, agents and signed-out visitors stay in their lane", async ({ browser, request }) => {

@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { ImageResponse } from "next/og";
+import type { ReactElement, ReactNode } from "react";
 import { appUrl, BRAND_COLORS, formatPrice } from "@/lib/format";
 import type { Listing } from "@/lib/listings/types";
 
@@ -7,6 +8,7 @@ import type { Listing } from "@/lib/listings/types";
 // for, or anything anyone said.
 
 export const PREVIEW_SIZE = { width: 1200, height: 630 };
+export const PREVIEW_TYPE = "image/jpeg";
 
 // "3 bd · 2 ba · 1,850 sq ft", then "· Kirkland" when the city isn't shown
 // elsewhere.
@@ -21,19 +23,33 @@ export function homeFacts(listing: Listing, { city = false } = {}) {
     .join(" · ");
 }
 
-// Passed to the renderer as bytes, since it won't fetch from private addresses.
-// A preview without the photo is better than no preview at all.
+// Passed to the renderer as bytes, since it won't fetch from private addresses,
+// and cut to the preview's own size first, so there's less to draw. A preview
+// without the photo is better than no preview at all.
 export async function loadPhoto(path: string | undefined) {
   if (!path) return null;
   try {
     const res = await fetch(new URL(path, appUrl()));
     if (!res.ok) return null;
-    const type = res.headers.get("content-type") ?? "image/jpeg";
-    const bytes = Buffer.from(await res.arrayBuffer()).toString("base64");
-    return `data:${type};base64,${bytes}`;
+    const { default: sharp } = await import("sharp");
+    const bytes = await sharp(Buffer.from(await res.arrayBuffer()))
+      .resize(PREVIEW_SIZE.width, PREVIEW_SIZE.height, { fit: "cover" })
+      .jpeg({ quality: 85 })
+      .toBuffer();
+    return `data:image/jpeg;base64,${bytes.toString("base64")}`;
   } catch {
     return null;
   }
+}
+
+// The picture itself, as a JPEG. Drawn as a PNG, a photo comes to 1-2 MB,
+// which a phone fetches over its data each time the link is pasted; as a JPEG
+// it's a tenth of that. (next.config.ts lets it be kept for a day.)
+export async function previewImage(element: ReactElement) {
+  const png = Buffer.from(await new ImageResponse(element, PREVIEW_SIZE).arrayBuffer());
+  const { default: sharp } = await import("sharp");
+  const jpeg = await sharp(png).jpeg({ quality: 80, mozjpeg: true }).toBuffer();
+  return new Response(new Uint8Array(jpeg), { headers: { "Content-Type": PREVIEW_TYPE } });
 }
 
 // The home's photo, full bleed, darkened at the bottom under the words.

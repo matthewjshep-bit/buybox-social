@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, Check, Phone, Share2 } from "lucide-react";
+import { ArrowDown, Check, Phone, UserPlus } from "lucide-react";
 import Image from "next/image";
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
@@ -61,6 +61,7 @@ export function ShareReel({
   note,
   whoCanSee,
   askToSee,
+  preview,
   ...reel
 }: Omit<ReelProps, "mode" | "header" | "onActiveChange" | "onPhotoSeen"> & {
   token: string;
@@ -68,6 +69,8 @@ export function ShareReel({
   note: string;
   whoCanSee: string;
   askToSee: (listingKey: string) => Promise<AskResult>;
+  // The agent's own look at their link, said in the header ("Viewing as Dana").
+  preview?: string;
 }) {
   const homes = reel.initial.map((post) => post.listing);
   // The home on screen, or the last one seen (from the end screen). Before any,
@@ -184,6 +187,7 @@ export function ShareReel({
             }}
             open={contact}
             onOpenChange={setContact}
+            preview={preview}
           />
         }
       />
@@ -362,7 +366,7 @@ function InviteButton({ token }: { token: string }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const Icon = copied ? Check : Share2;
+  const Icon = copied ? Check : UserPlus;
   return (
     <button
       type="button"

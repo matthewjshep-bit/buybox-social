@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowDown, CalendarCheck, Check, Home, Mail, MessageSquare, Phone, type LucideIcon } from "lucide-react";
+import { ArrowDown, CalendarCheck, Check, Eye, Home, Mail, MessageSquare, Phone, type LucideIcon } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { AskResult } from "@/app/s/[token]/actions";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { useThread } from "@/components/listing-thread";
@@ -20,6 +20,19 @@ const looksLikeEmail = (value: string) => /^[^\s@?&#/]+@[^\s@?&#/]+\.[^\s@?&#/]+
 // The home on screen, for "About 4127 Larkmoor Ave NE" and asking to see it.
 export type HomeInView = { listingKey: string; address: string };
 
+// Side by side, the white panel beside the home on screen: Contact rises from
+// its foot, as More and Send do there. Otherwise (a phone's layout, or a
+// welcome or end screen on screen) none, and it rises from the window's foot.
+function panelBeside(listingKey: string | undefined) {
+  if (!listingKey) return null;
+  const home = document.querySelector<HTMLElement>(`[data-home="${CSS.escape(listingKey)}"]`);
+  if (!home?.hasAttribute("data-split")) return null;
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  const box = home.getBoundingClientRect();
+  if (home.clientWidth < 64 * rem || Math.abs(box.top) > box.height / 2) return null;
+  return home.querySelector<HTMLElement>("[data-words]");
+}
+
 // Across the top of every agent's link, in place of the site's own header, so
 // the client stays in the agent's branded space. It sits inside the feed's
 // name prompt, which "Ask to see it" may need. (On a link of one home, the
@@ -34,6 +47,7 @@ export function ShareHeader({
   onSeeHomes,
   open,
   onOpenChange,
+  preview,
 }: {
   agent: ShareAgent;
   note: string;
@@ -45,12 +59,35 @@ export function ShareHeader({
   onSeeHomes?: () => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  // The agent looking at their own link: "Viewing as Dana".
+  preview?: string;
 }) {
+  // What Contact rises from, worked out each time it's placed (as it opens,
+  // and if the window changes size meanwhile).
+  const listingKey = home?.listingKey;
+  const panel = useMemo(
+    () => ({
+      get current() {
+        return panelBeside(listingKey);
+      },
+    }),
+    [listingKey],
+  );
   return (
     <>
       {/* The sheet sits beside the header, not in it, so the header holds just what it shows. */}
-      <header className="bg-linear-to-b from-black/65 via-black/35 to-transparent pb-6 pt-[env(safe-area-inset-top)] text-white">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-3 sm:px-6">
+      <header
+        className={cn(
+          // Clear of a notch, top and sides, like the site's own header.
+          "pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)] text-white",
+          // A shade only on a phone on its side, where the photo runs up under
+          // it. Elsewhere it sits above the photo, and leaves all of it to tap.
+          "short:bg-[linear-gradient(to_bottom,rgb(0_0_0/0.75),rgb(0_0_0/0.6)_55%,rgb(0_0_0/0.25)_80%,transparent)] short:pb-3",
+        )}
+      >
+        {/* Side by side, edge to edge, as the site's header is: the logo over
+            the photo's left edge, Contact over the white panel's right edge. */}
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-3 sm:px-6 split:max-w-none split:px-6">
           {/* Every agent colour is dark: over the photo, focus is white with a dark edge. */}
           <Link href="/" className={cn("flex size-11 shrink-0 items-center justify-center rounded-xl", focusOnDark)}>
             <span aria-hidden className="flex size-9 items-center justify-center rounded-xl bg-brand ring-1 ring-white/30">
@@ -62,7 +99,20 @@ export function ShareHeader({
           <div className="min-w-0 flex-1 leading-tight [text-shadow:0_1px_3px_rgb(0_0_0/0.5)]">
             <p className="truncate text-body font-semibold">{agent.full_name}</p>
             {/* Full white: over a bright photo, anything fainter falls short of easy reading. */}
-            {agent.brokerage && <p className="truncate text-meta">{agent.brokerage}</p>}
+            {preview ? (
+              // The agent on their own link, in place of their brokerage (which
+              // they know): it's a preview, said in the space the header
+              // already has, so the home sits just where it does for the client.
+              <p className="flex items-center gap-1 text-meta font-medium">
+                <Eye aria-hidden size={14} className="shrink-0" />
+                <span className="truncate">
+                  <span className="sr-only">Preview, </span>
+                  {preview}
+                </span>
+              </p>
+            ) : (
+              agent.brokerage && <p className="truncate text-meta">{agent.brokerage}</p>
+            )}
           </div>
           <button
             type="button"
@@ -81,6 +131,7 @@ export function ShareHeader({
       <Sheet
         open={open}
         onClose={() => onOpenChange(false)}
+        anchor={panel}
         label={`Contact ${agent.full_name}`}
         // Their name heads the sheet for screen readers; on screen it's beside
         // their photo just below, rather than said twice.

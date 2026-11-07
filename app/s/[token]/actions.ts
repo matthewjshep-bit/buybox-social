@@ -36,6 +36,9 @@ export async function joinThread(token: string, firstName: string): Promise<Acti
   if (!name.success) return fail("Please enter your first name.");
   const found = await getShareByToken(token);
   if (!found) return fail("This link is no longer available.");
+  // The agent never joins their own link as someone on it.
+  const preview = await previewing(found);
+  if (preview) return fail(`${preview} Nothing here is saved.`);
   // Someone's own link already knows who they are.
   if (found.person) return { ok: true };
 
@@ -115,16 +118,32 @@ export async function recordOpen(token: string, photosSeen?: unknown): Promise<v
   }
 }
 
+type Found = NonNullable<Awaited<ReturnType<typeof getShareByToken>>>;
+
+// The agent opening their own link (Preview, on the client's page) sees what
+// the client sees, but nothing they tap or write there is saved as anyone:
+// not as the client, not as an open, and no email goes out. Says so, naming
+// who they're previewing, or null for everyone else.
+async function previewing(found: Found) {
+  const viewer = await getCurrentUser();
+  if (viewer?.id !== found.share.agent_id) return null;
+  const who = found.person?.first_name ?? found.share.client_name;
+  if (!who) return "You're previewing your link.";
+  return `You're previewing what ${who} ${!found.person && /[&,]| and /i.test(who) ? "see" : "sees"}.`;
+}
+
 // Who's acting on a link. Someone's own link is them; on the package's own
 // link the device cookie picks the person. Either way a link can only ever
 // act on its own package.
-async function personOn(found: NonNullable<Awaited<ReturnType<typeof getShareByToken>>>) {
+async function personOn(found: Found) {
   return found.person ?? (await getParticipant(found.share.id, await readDevice()));
 }
 
 async function resolveActor(token: string, listingKey: string) {
   const found = await getShareByToken(token);
   if (!found || !(await shareHasListing(found.share.id, listingKey))) return null;
+  const preview = await previewing(found);
+  if (preview) return { preview };
   const participant = await personOn(found);
   return participant ? { share: found.share, participant } : null;
 }
@@ -154,6 +173,7 @@ export async function setReaction(
   const state = parsed.data;
   const actor = await resolveActor(token, listingKey);
   if (!actor) return fail("Please add your name first.");
+  if ("preview" in actor) return fail(`${actor.preview} Nothing here is saved.`);
 
   if (state.reaction === null) {
     await sql`
@@ -194,6 +214,7 @@ export async function addComment(
   if (!parsed.success) return fail("Comments can be up to 1,000 characters.");
   const actor = await resolveActor(token, listingKey);
   if (!actor) return fail("Please add your name first.");
+  if ("preview" in actor) return fail(`${actor.preview} To say something, reply from your dashboard.`);
   const anchor = await checkAnchor(listingKey, spot);
   if (anchor === false) return fail("That photo isn't there anymore.");
   // A comment goes public only when its author asks, and only once they like
@@ -233,6 +254,8 @@ export async function askToSee(token: string, listingKey: string): Promise<AskRe
   if (!(await shareHasListing(found.share.id, listingKey))) {
     return { ok: false, error: "That home isn't on this link anymore." };
   }
+  const preview = await previewing(found);
+  if (preview) return { ok: false, error: `${preview} Nothing was sent.` };
   const participant = await personOn(found);
   if (!participant) return { ok: false, error: "Please add your name first." };
   // The ask's own record says whether they've asked today, not the words of a
@@ -269,6 +292,8 @@ export async function setCommentSharing(
   if (!found || typeof commentId !== "string" || commentId.length > 64) {
     return fail("We couldn't find that comment.");
   }
+  const preview = await previewing(found);
+  if (preview) return fail(`${preview} Nothing here is saved.`);
   const participant = await personOn(found);
   if (!participant) return fail("We couldn't find that comment.");
   // Taking a comment back is always allowed; sharing it needs a like.
@@ -299,6 +324,7 @@ export async function likePhotoInShare(
   if (!input.success) return fail("We couldn't save that.");
   const actor = await resolveActor(token, listingKey);
   if (!actor) return fail("Please add your name first.");
+  if ("preview" in actor) return fail(`${actor.preview} Nothing here is saved.`);
   const spot = await findSpot(listingKey, mediaKey, tag);
   if (!spot) return fail("That photo isn't there anymore.");
   const where = sql`participant_id = ${actor.participant.id} and listing_key = ${listingKey}
