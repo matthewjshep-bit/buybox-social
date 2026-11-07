@@ -89,7 +89,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
       <MarkSeen shareId={share.id} latest={latest} />
       <ShowTarget />
       <Link href="/dashboard" className="flex min-h-11 w-fit items-center gap-1.5 text-sm font-medium">
-        <ArrowLeft aria-hidden size={16} /> All shares
+        <ArrowLeft aria-hidden size={16} /> All links
       </Link>
       <ClientNameEditor shareId={share.id} name={share.client_name} />
 

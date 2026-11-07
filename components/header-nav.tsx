@@ -1,9 +1,9 @@
 "use client";
 
-import { Bell, LayoutDashboard, LogOut, UserRound } from "lucide-react";
+import { Bell, Home, LayoutDashboard, LogOut, UserRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
 import { signOut } from "@/app/login/actions";
 import { cn } from "@/lib/format";
 
@@ -14,6 +14,27 @@ function useCurrent(href: string, section: boolean) {
   if (pathname === href) return "page" as const;
   if (section && pathname.startsWith(`${href}/`)) return "true" as const;
   return undefined;
+}
+
+// The logo, which always goes home. Over the feed its tile gets a faint edge.
+export function SiteLogo({ overlay = false }: { overlay?: boolean }) {
+  return (
+    <Link
+      href="/"
+      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-xl font-display text-lg font-semibold"
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "flex size-9 items-center justify-center rounded-xl bg-brand text-white",
+          overlay && "ring-1 ring-white/30",
+        )}
+      >
+        <Home size={18} />
+      </span>
+      <span className="max-[420px]:sr-only">BuyBox Social</span>
+    </Link>
+  );
 }
 
 // A link in the header that says when it's where you are.
@@ -36,8 +57,9 @@ export function NavLink({
 }
 
 // You, as your initial: a tap opens your places and the way to sign out. It
-// works before scripts load (the browser opens it), closes on a tap anywhere
-// else or Escape, and closes when you go somewhere from it.
+// works before scripts load (the browser opens it). It closes on a tap
+// anywhere else (which does nothing more than close it), on Escape, when
+// the keyboard moves on past it, and when you go somewhere from it.
 export function AccountMenu({
   profile,
   initial,
@@ -57,12 +79,14 @@ export function AccountMenu({
   overlay: boolean;
 }) {
   const menu = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   // Until it's first opened, the browser says whether it is.
   const [open, setOpen] = useState<boolean>();
   const pathname = usePathname();
 
+  const isOpen = () => Boolean(menu.current?.matches(":popover-open"));
   const close = () => {
-    if (menu.current?.matches(":popover-open")) menu.current.hidePopover();
+    if (isOpen()) menu.current?.hidePopover();
   };
 
   useEffect(() => {
@@ -78,20 +102,87 @@ export function AccountMenu({
     if (menu.current?.matches(":popover-open")) menu.current.hidePopover();
   }, [pathname]);
 
+  // A tap outside only closes it, as a phone's own menus do: it doesn't also
+  // open the photo or the home that was under it. (A click from the keyboard
+  // is never held back.)
+  useEffect(() => {
+    let swallow = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const down = (event: PointerEvent) => {
+      clearTimeout(timer);
+      swallow = Boolean(menu.current?.matches(":popover-open")) && !within(menu.current, trigger.current, event.target);
+      // A tap's click follows straight after; a drag or a scroll has none.
+      if (swallow) timer = setTimeout(() => (swallow = false), 1000);
+    };
+    const cancel = () => (swallow = false);
+    const click = (event: MouseEvent) => {
+      if (!swallow || event.detail === 0) return;
+      swallow = false;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener("pointerdown", down, true);
+    window.addEventListener("pointercancel", cancel, true);
+    window.addEventListener("click", click, true);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("pointerdown", down, true);
+      window.removeEventListener("pointercancel", cancel, true);
+      window.removeEventListener("click", click, true);
+    };
+  }, []);
+
+  // Tab past the last of it (or back before the button): it closes, so
+  // what's next is never hidden under it. Focus stays where it went.
+  const leave = (event: FocusEvent) => {
+    if (!event.relatedTarget || within(menu.current, trigger.current, event.relatedTarget)) return;
+    setTimeout(() => {
+      if (!within(menu.current, trigger.current, document.activeElement)) close();
+    });
+  };
+
+  // ↑ and ↓ (and Home, End) move through it, and go no further: the feed
+  // behind it stays where it is.
+  const arrows = (event: KeyboardEvent) => {
+    const keys = ["ArrowDown", "ArrowUp", "Home", "End", "PageDown", "PageUp"];
+    if (!keys.includes(event.key) || !isOpen()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const items = [...(menu.current?.querySelectorAll<HTMLElement>("a, button") ?? [])];
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    const next =
+      event.key === "Home" || event.key === "PageUp"
+        ? 0
+        : event.key === "End" || event.key === "PageDown"
+          ? items.length - 1
+          : event.key === "ArrowDown"
+            ? (at + 1) % items.length
+            : at <= 0
+              ? items.length - 1
+              : at - 1;
+    items[next]?.focus();
+  };
+
   return (
     <>
       <button
+        ref={trigger}
         type="button"
         popoverTarget="account-menu"
         aria-label="Your profile"
         aria-expanded={open}
+        onBlur={leave}
+        onKeyDown={arrows}
         className="flex size-11 shrink-0 items-center justify-center rounded-full [anchor-name:--account-menu]"
       >
+        {/* The colour you have everywhere: a buyer's is the brand's, an
+            agent's is ink. */}
         <span
           aria-hidden
           className={cn(
-            "flex size-9 items-center justify-center rounded-full text-sm font-semibold",
-            overlay ? "bg-white/25" : "bg-stone-200 text-ink",
+            "flex size-9 items-center justify-center rounded-full text-sm font-semibold text-white [text-shadow:none]",
+            agent ? "bg-ink" : "bg-brand",
+            overlay && "ring-1 ring-white/30",
           )}
         >
           {initial}
@@ -102,8 +193,10 @@ export function AccountMenu({
         id="account-menu"
         popover="auto"
         data-light
+        onBlur={leave}
+        onKeyDown={arrows}
         className={cn(
-          "m-0 w-64 max-w-[calc(100vw-1.5rem)] rounded-2xl border-0 bg-white p-1.5 text-ink shadow-[0_12px_40px_rgb(0_0_0/0.22)] ring-1 ring-black/5",
+          "m-0 w-64 max-w-[calc(100vw-1.5rem)] rounded-2xl border-0 bg-white p-1.5 text-ink shadow-[0_12px_40px_rgb(0_0_0/0.22)] ring-1 ring-black/5 [text-shadow:none]",
           // Just under the initial, its right edge in line with it.
           "inset-auto mt-1.5 [position-anchor:--account-menu] top-[anchor(bottom)] right-[anchor(right)]",
           // A browser that can't place it there: under the header, at the right.
@@ -148,6 +241,11 @@ export function AccountMenu({
       </div>
     </>
   );
+}
+
+// Whether something is in the menu, or is the button that opens it.
+function within(menu: HTMLElement | null, trigger: HTMLElement | null, node: EventTarget | null) {
+  return node instanceof Node && Boolean(menu?.contains(node) || trigger?.contains(node));
 }
 
 const menuItem =

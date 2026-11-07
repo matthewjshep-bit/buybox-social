@@ -452,7 +452,7 @@ test("the longer way to send one home starts with it picked, and keeps it in vie
 
   // A home that isn't for sale: the usual way to start.
   await agent.goto("/dashboard/new?home=SAMPLE-SOLD");
-  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("New share");
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("New link");
   await expect(agent.getByRole("searchbox")).toBeVisible();
   await expect(agent.getByRole("button", { pressed: true })).toHaveCount(0);
 });

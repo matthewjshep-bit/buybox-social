@@ -5,12 +5,13 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/format";
 
 const LINKS = [
-  { href: "/dashboard", label: "Your shares" },
+  { href: "/dashboard", label: "Your links" },
   { href: "/dashboard/profile", label: "Your brand" },
 ];
 
-// The dashboard's two places. A client's page and a new share count as part
-// of "Your shares".
+// The dashboard's two places. A client's page and a new link count as part
+// of "Your links". The one you're in is marked the way the header marks the
+// page you're on: a soft grey pill, in ink.
 export function DashboardNav() {
   const pathname = usePathname();
   return (
@@ -26,7 +27,7 @@ export function DashboardNav() {
             className={cn(
               "flex min-h-11 items-center rounded-full px-4",
               // Marked quietly, so the page's own buttons lead.
-              within ? "bg-white font-semibold text-ink shadow-sm ring-1 ring-stone-300" : "text-stone-700 hover:bg-stone-200/60",
+              within ? "bg-stone-200 font-semibold text-ink" : "text-stone-700 hover:bg-stone-200/60",
             )}
           >
             {label}

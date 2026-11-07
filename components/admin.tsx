@@ -35,8 +35,9 @@ export function AdminNav({ superAdmin }: { superAdmin: boolean }) {
                 href={href}
                 aria-current={current ? "page" : undefined}
                 className={cn(
-                  "flex min-h-11 items-center gap-2.5 rounded-xl px-3 text-sm font-medium",
-                  current ? "bg-ink text-white" : "text-stone-700 hover:bg-stone-200/70",
+                  "flex min-h-11 items-center gap-2.5 rounded-full px-3.5 text-sm font-medium",
+                  // Marked as the header and the dashboard mark where you are.
+                  current ? "bg-stone-200 font-semibold text-ink" : "text-stone-700 hover:bg-stone-200/60",
                 )}
               >
                 <Icon aria-hidden size={17} className="max-sm:hidden" />
