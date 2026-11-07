@@ -30,8 +30,12 @@ export const NO_REACTION: ReactionState = { reaction: null, liked: [], disliked:
 
 export type AspectCounts = Partial<Record<Aspect, number>>;
 
-// A home is "trending" with this many reactions or comments in the past week.
+// A home is "trending" with this many reactions or comments in the past week,
+// from at least this many people (one person tapping three things isn't a
+// trend), and only if that puts it among the busiest few homes for sale.
 export const TRENDING_MIN_THIS_WEEK = 3;
+export const TRENDING_MIN_PEOPLE = 2;
+export const TRENDING_TOP = 3;
 
 // Tapping Like or Dislike itself: on, or off again.
 export function toggleOverall(state: ReactionState, sentiment: Sentiment): ReactionState {

@@ -17,6 +17,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // Edge to edge on phones with a notch; the pages pad themselves clear of it.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children, modal }: LayoutProps<"/">) {

@@ -1,7 +1,17 @@
 // Runs after the other specs (alphabetically last) because it likes a lot of
 // homes, which would throw off their counts.
 import { expect, test } from "@playwright/test";
-import { heartOf, homeIn, likeInPhoto, openComments, openMore, scrollToEnd, signUpBuyer } from "./helpers";
+import {
+  heartOf,
+  homeIn,
+  joinAs,
+  likeInPhoto,
+  openComments,
+  openMore,
+  openScorecard,
+  scrollToEnd,
+  signUpBuyer,
+} from "./helpers";
 
 test("the feed learns your taste from what you like and pass on", async ({ browser }) => {
   test.setTimeout(90_000);
@@ -37,12 +47,21 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
   await expect(taste).toContainText("From 4 reactions: liked 3, passed 1.");
   await expect(taste.getByText("Vibe 1")).toBeVisible();
   await expect(taste.getByText("Exterior 1")).toBeVisible();
-  await expect(pia.getByText(/^For you:/).first()).toBeAttached();
+  // Homes that match it say why, in the Scorecard, under your take.
+  let fits = false;
+  for (let i = 0; i < (await homes.count()) && !fits; i++) {
+    const card = await openScorecard(pia, homes.nth(i));
+    fits = (await card.getByText(/^For you:/).count()) > 0;
+    if (fits) await expect(card.getByText(/^For you:/)).toBeVisible();
+    await pia.keyboard.press("Escape");
+    await expect(card).toBeHidden();
+  }
+  expect(fits).toBe(true);
   expect(pageErrors).toEqual([]);
 });
 
 test("replies, comment likes, the activity bell, trending, and who liked what", async ({ browser }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(120_000);
   const FOXGLOVE = "24611 SE Foxglove Pl";
   const cleo = await signUpBuyer(browser, "cleo@example.com", "Cleo Ray");
   await cleo.goto("/homes/SAMPLE-1012");
@@ -58,10 +77,15 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   const dev = await signUpBuyer(browser, "dev@example.com", "Dev Shah");
   await dev.goto("/homes/SAMPLE-1012");
   const devHome = homeIn(dev, FOXGLOVE);
-  const devChat = await openComments(dev, devHome);
+  let devChat = await openComments(dev, devHome);
   await expect(devChat.getByText("Cleo liked the three-car garage")).toBeVisible();
-  await expect(devChat.getByText("People like")).toBeVisible();
-  await expect(devChat.getByText("Exterior 1")).toBeVisible();
+  await dev.keyboard.press("Escape");
+  const devCard = await openScorecard(dev, devHome);
+  await expect(devCard.getByText("People like", { exact: true })).toBeVisible();
+  await expect(devCard.getByText("Exterior 1")).toBeVisible();
+  await dev.keyboard.press("Escape");
+  await expect(devCard).toBeHidden();
+  devChat = await openComments(dev, devHome);
 
   // Dev likes Cleo's comment and replies to it.
   await devChat.getByRole("button", { name: "Like Cleo's comment" }).click();
@@ -78,6 +102,30 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   await heartOf(devHome).click();
   await expect(heartOf(devHome)).toHaveAttribute("aria-pressed", "true");
 
+  // Two more people like it, and plenty in its photo. (Trending takes
+  // several people, and a place among the busiest homes this week. The other
+  // tests make some homes busy too, so this one gets a clear lead of its own:
+  // 14 things this week, where the busiest of theirs has 12.)
+  const fay = await signUpBuyer(browser, "fay@example.com", "Fay Lin");
+  await fay.goto("/homes/SAMPLE-1012");
+  const fayHome = homeIn(fay, FOXGLOVE);
+  await heartOf(fayHome).click();
+  await expect(heartOf(fayHome)).toHaveAttribute("aria-pressed", "true");
+  for (const thing of ["the front door", "the front lawn", "the arched window", "the three-car garage"]) {
+    const card = await likeInPhoto(fayHome, thing);
+    await card.getByRole("button", { name: "Close" }).click();
+  }
+  const gus = await (await browser.newContext()).newPage();
+  await gus.goto("/homes/SAMPLE-1012");
+  const gusHome = homeIn(gus, FOXGLOVE);
+  await heartOf(gusHome).click();
+  await joinAs(gus, "Gus");
+  await expect(heartOf(gusHome)).toHaveAttribute("aria-pressed", "true");
+  for (const thing of ["the front door", "the front lawn", "the arched window"]) {
+    const card = await likeInPhoto(gusHome, thing);
+    await card.getByRole("button", { name: "Close" }).click();
+  }
+
   // A third person comments on the home Cleo liked.
   const eli = await signUpBuyer(browser, "eli@example.com", "Eli Moss");
   await eli.goto("/homes/SAMPLE-1012");
@@ -85,9 +133,9 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   // Real activity this week makes it trending.
   await expect(eliHome.getByText("Trending")).toBeVisible();
   // Liking just something in a photo counts toward the home's likes too.
-  await expect(eliHome.getByRole("button", { name: `Like ${FOXGLOVE}, 2 likes` })).toBeVisible();
+  await expect(eliHome.getByRole("button", { name: `Like ${FOXGLOVE}, 4 likes` })).toBeVisible();
   await likeInPhoto(eliHome, "the stone and shingle");
-  await expect(eliHome.getByRole("button", { name: `Like ${FOXGLOVE}, 3 likes` })).toHaveAttribute(
+  await expect(eliHome.getByRole("button", { name: `Like ${FOXGLOVE}, 5 likes` })).toHaveAttribute(
     "aria-pressed",
     "false",
   );

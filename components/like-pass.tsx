@@ -26,29 +26,42 @@ const same = (a: ReactionState | undefined, b: ReactionState | undefined) => JSO
 
 // Your own reactions, one per home, kept here so taps show instantly and pages
 // that save quietly (without reloading) stay right. When the server's copy
-// changes (say you reacted in another tab), that home takes the server's copy.
+// changes (say you reacted in another tab), that home takes the server's copy,
+// unless you're still saving a change to it.
 export function useReactions(server: Record<string, ReactionState>) {
   const { actions, ensureName } = useThread();
   const [states, setStates] = useState(server);
   const [base, setBase] = useState(server);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // When you last changed your reaction to each home here.
+  const [changedAt, setChangedAt] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState<Record<string, number>>({});
 
   const changed = Object.keys(server).filter((key) => !same(server[key], base[key]));
   if (changed.length > 0) {
     setBase(server);
-    setStates((current) => ({ ...current, ...Object.fromEntries(changed.map((key) => [key, server[key]])) }));
+    const settled = changed.filter((key) => !saving[key]);
+    setStates((current) => ({ ...current, ...Object.fromEntries(settled.map((key) => [key, server[key]])) }));
   }
 
   const save = async (key: string, next: ReactionState) => {
     if (!(await ensureName())) return false;
     setStates((current) => ({ ...current, [key]: next }));
+    setChangedAt((current) => ({ ...current, [key]: new Date().toISOString() }));
     setErrors((current) => {
       const rest = { ...current };
       delete rest[key];
       return rest;
     });
-    const result = await actions.react(key, next);
-    if (!result.ok) setErrors((current) => ({ ...current, [key]: result.error }));
+    const count = (by: number) => setSaving((current) => ({ ...current, [key]: (current[key] ?? 0) + by }));
+    count(1);
+    // Done as far as you're concerned (true: it's showing) while it saves.
+    actions
+      .react(key, next)
+      .finally(() => count(-1))
+      .then((result) => {
+        if (!result.ok) setErrors((current) => ({ ...current, [key]: result.error }));
+      });
     return true;
   };
 
@@ -56,6 +69,7 @@ export function useReactions(server: Record<string, ReactionState>) {
     states,
     errors,
     base,
+    changedAt,
     // Like or "not for me": on, or off again.
     choose: (key: string, sentiment: Sentiment) => save(key, toggleOverall(states[key], sentiment)),
     // Like, and leave it liked: a double-tap never un-likes.

@@ -112,7 +112,8 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await expect(buyer.getByRole("article")).toHaveCount(13);
 
   // The buyer's activity is tied to their account, and on a desktop screen
-  // the home spreads across it, with the buttons down the right.
+  // the home spreads across it: the photo on the left, the words in a panel
+  // on the right, and the buttons between them.
   const elsewhere = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   await elsewhere.goto("/login");
   await elsewhere.getByLabel("Email").fill("bea@example.com");
@@ -124,9 +125,13 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await expect(heartOf(again)).toHaveAttribute("aria-pressed", "true");
   await again.scrollIntoViewIfNeeded();
   expect((await again.boundingBox())!.width).toBeGreaterThan(1400);
-  const price = await again.getByText("$839,000").boundingBox();
-  const heart = await heartOf(again).boundingBox();
-  expect(heart!.x).toBeGreaterThan(price!.x + 600);
+  const price = (await again.getByText("$839,000").boundingBox())!;
+  const heart = (await heartOf(again).boundingBox())!;
+  const photo = (await again.locator("[data-photo-frame] img").first().boundingBox())!;
+  const panel = (await again.locator("[data-words]").boundingBox())!;
+  expect(price.x).toBeGreaterThan(1000);
+  expect(heart.x).toBeGreaterThanOrEqual(photo.x + photo.width - 1);
+  expect(heart.x + heart.width).toBeLessThanOrEqual(panel.x + 1);
 
   // Buyers don't get the agent dashboard, and the old picks page goes home.
   await buyer.goto("/dashboard");
