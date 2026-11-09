@@ -1,10 +1,11 @@
 "use client";
 
-import { ClipboardList, EyeOff, Hand, Heart, Lock, MapPin, MessageCircle, Sparkles, Tag, ThumbsDown } from "lucide-react";
+import { EyeOff, Hand, Heart, Lock, MapPin, MessageCircle, Sparkles, Tag, ThumbsDown } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { AspectSummary } from "@/components/aspect-summary";
+import { Hotspot } from "@/components/spot-highlight";
 import type { SpotRef } from "@/components/listing-thread";
 import { Avatar, Badge, HomeThumb } from "@/components/ui";
 import type { FeedPost } from "@/lib/feed";
@@ -43,6 +44,7 @@ export function ScorecardBody({
   myName,
   alone = false,
   offLink = false,
+  details = true,
   onShowSpot,
   onOpenFact,
   onAllComments,
@@ -66,6 +68,8 @@ export function ScorecardBody({
   alone?: boolean;
   // The agent's dashboard: a home they've taken off the link.
   offLink?: boolean;
+  // The facts and the description (not where they're said just beside it).
+  details?: boolean;
   // To a spot on the photo (or, for a fact, its card). `keyboard`: pressed
   // with a key, so the card that opens takes the keyboard.
   onShowSpot?: (spot: SpotRef, keyboard?: boolean) => void;
@@ -143,9 +147,11 @@ export function ScorecardBody({
           )}
 
           {(card.aspects.liked.length > 0 || card.aspects.disliked) && (
-            <Section title="By aspect">
+            <Section title="What stands out">
               <AspectSummary
                 variant="rows"
+                likeLabel="What people liked"
+                dislikeLabel="What people didn't like"
                 liked={Object.fromEntries(card.aspects.liked.map((row) => [row.aspect, row.count]))}
                 disliked={Object.fromEntries((card.aspects.disliked ?? []).map((row) => [row.aspect, row.count]))}
                 you={{
@@ -153,7 +159,7 @@ export function ScorecardBody({
                   disliked: (card.aspects.disliked ?? []).filter((row) => row.you).map((row) => row.aspect),
                 }}
                 // (Someone can like the home and still not like its light.)
-                dislikeNote="What people didn't like, whether or not they passed"
+                dislikeNote="Whether or not they passed on the home"
                 detail={(aspect, tone) => (
                   <AspectDetail
                     row={(tone === "like" ? card.aspects.liked : (card.aspects.disliked ?? [])).find((r) => r.aspect === aspect)}
@@ -200,16 +206,26 @@ export function ScorecardBody({
             </Section>
           )}
 
-          <Section title="What people said">
-            <Said
-              card={card}
-              post={post}
-              peek={mode === "agent"}
-              onShowSpot={showSpot}
-              onAllComments={onAllComments}
-              onCompose={onCompose}
-            />
-          </Section>
+          {mode === "agent" ? (
+            <Section title="What people said">
+              <Said
+                card={card}
+                post={post}
+                peek
+                onShowSpot={showSpot}
+                onAllComments={onAllComments}
+                onCompose={onCompose}
+              />
+            </Section>
+          ) : (
+            card.said.total > 0 &&
+            onAllComments && (
+              <button type="button" onClick={onAllComments} className={cn(button({ kind: "secondary" }), "w-full")}>
+                <MessageCircle aria-hidden size={17} />
+                See the {card.said.total.toLocaleString("en-US")} {card.said.total === 1 ? "comment" : "comments"}
+              </button>
+            )
+          )}
         </>
       )}
 
@@ -229,21 +245,25 @@ export function ScorecardBody({
         </Section>
       )}
 
-      <Section title="The facts">
-        <Facts rows={card.facts} onOpenFact={mode === "agent" ? undefined : onOpenFact} />
-      </Section>
+      {details && (
+        <Section title="The facts">
+          <Facts rows={card.facts} onOpenFact={mode === "agent" ? undefined : onOpenFact} />
+        </Section>
+      )}
 
-      <Section title="About this home" id="about">
-        {share && post.note && (
-          <div className="mb-3 rounded-2xl bg-stone-50 p-4">
-            <p className="text-meta font-semibold text-muted">{mode === "agent" ? "Your note to them" : `From ${agent}`}</p>
-            <p className="mt-1 whitespace-pre-line text-base leading-[26px]">{post.note}</p>
-          </div>
-        )}
-        {card.about.remarks && <p className="text-base leading-[26px] text-stone-800">{card.about.remarks}</p>}
-        {card.about.listedBy && <p className={cn("text-body text-muted", card.about.remarks && "mt-3")}>{card.about.listedBy}</p>}
-        {card.about.sample && <p className="mt-1 text-meta text-muted">Sample listing, fictional and not for sale</p>}
-      </Section>
+      {details && (
+        <Section title="About this home" id="about">
+          {share && post.note && (
+            <div className="mb-3 rounded-2xl bg-stone-50 p-4">
+              <p className="text-meta font-semibold text-muted">{mode === "agent" ? "Your note to them" : `From ${agent}`}</p>
+              <p className="mt-1 whitespace-pre-line text-base leading-[26px]">{post.note}</p>
+            </div>
+          )}
+          {card.about.remarks && <p className="text-base leading-[26px] text-stone-800">{card.about.remarks}</p>}
+          {card.about.listedBy && <p className={cn("text-body text-muted", card.about.remarks && "mt-3")}>{card.about.listedBy}</p>}
+          {card.about.sample && <p className="mt-1 text-meta text-muted">Sample listing, fictional and not for sale</p>}
+        </Section>
+      )}
 
       <div className="border-t border-stone-200 pt-4">
         {mode === "public" ? (
@@ -363,7 +383,7 @@ function Factoids({ card }: { card: Scorecard }) {
 }
 
 function Feel({ card, myName }: { card: Scorecard; myName?: string | null }) {
-  const { named, passes, likedOnly, bar, split, comments, yours } = card.feel;
+  const { named, split, comments, yours } = card.feel;
   if (named) {
     const faces = [...named.liked, ...named.passed].slice(0, 4);
     return (
@@ -406,12 +426,6 @@ function Feel({ card, myName }: { card: Scorecard; myName?: string | null }) {
   return (
     <div>
       <Factoids card={card} />
-      {bar && (
-        <div aria-hidden className="mt-3 flex h-2 gap-0.5 overflow-hidden rounded-full bg-stone-100">
-          {likedOnly > 0 && <span style={{ flex: likedOnly }} className="bg-rose-500" />}
-          {passes > 0 && <span style={{ flex: passes }} className="bg-amber-500" />}
-        </div>
-      )}
       {split && <p className="mt-1.5 text-meta text-muted">{split}</p>}
     </div>
   );
@@ -551,18 +565,16 @@ function Thumb({
       className={cn("relative block shrink-0 overflow-hidden rounded-xl bg-stone-200", big && "w-full max-w-80")}
     >
       <Image src={photo.MediaURL} alt={alt} fill sizes={big ? "320px" : `${w}px`} className="object-contain" />
+      {/* Where, as a soft hotspot: the heading above says what they thought. */}
       {(dots ?? (at ? [at] : [])).map((dot, i) => (
         <span
           key={i}
-          aria-hidden
-          data-spot-dot
+          data-spot-dot={tone}
           style={{ left: `${dot.x * 100}%`, top: `${dot.y * 100}%` }}
-          className={cn(
-            "absolute -translate-x-1/2 -translate-y-1/2 rounded-full ring-white",
-            big ? "size-4 ring-[3px] shadow-[0_0_0_4px_rgb(0_0_0/0.18)]" : "size-2.5 ring-2",
-            tone === "like" ? "bg-rose-500" : tone === "dislike" ? "bg-amber-500" : "bg-brand",
-          )}
-        />
+          className="absolute size-0"
+        >
+          <Hotspot small={!big} />
+        </span>
       ))}
     </span>
   );
@@ -988,11 +1000,15 @@ function Facts({ rows, onOpenFact }: { rows: FactRow[]; onOpenFact?: (tag: FactT
           <div key={row.label} className="flex min-h-11 items-center justify-between gap-4 border-b border-stone-100 last:border-b-0">
             <dt className="shrink-0 text-muted">{row.label}</dt>
             <dd className="min-w-0 text-right">
-              {reacted && onOpenFact ? (
+              {row.tag && onOpenFact ? (
                 <button
                   type="button"
                   onClick={(event) => onOpenFact(row.tag!, event.detail === 0)}
-                  aria-label={`${row.label}, ${row.value}: ${tally.join(", ")}. Show it`}
+                  aria-label={
+                    reacted
+                      ? `${row.label}, ${row.value}: ${tally.join(", ")}. Show it`
+                      : `${row.label}, ${row.value}. Like, dislike or comment on it`
+                  }
                   className="-mr-2 flex min-h-11 items-center gap-3 rounded-xl px-2 hover:bg-stone-50"
                 >
                   {value}
@@ -1205,40 +1221,3 @@ function CompareSection({ compare }: { compare: NonNullable<Scorecard["compare"]
     </Section>
   );
 }
-
-// Wide, in the white panel: how people feel and what they say, in brief, and
-// the way into the rest. Nothing anyone wrote (that's in the comments).
-export function WhatPeopleThink({
-  post,
-  mode,
-  viewer,
-  myName,
-  onOpen,
-}: {
-  post: FeedPost;
-  mode: "public" | "share";
-  viewer?: ScorecardViewer;
-  myName?: string | null;
-  onOpen: () => void;
-}) {
-  const card = useMemo(() => buildScorecard(post, mode, { viewer, myName }), [post, mode, viewer, myName]);
-  if (card.quiet) return null;
-  return (
-    <div className="mt-4 rounded-2xl bg-stone-50 p-4">
-      <h3 className="text-body font-semibold">What people think</h3>
-      <div className="mt-2">
-        <Feel card={card} myName={myName} />
-      </div>
-      {card.say && <p className="mt-3 text-body leading-6 text-stone-800">{card.say.sentences[0]}</p>}
-      <button
-        type="button"
-        onClick={onOpen}
-        className={cn(button({ kind: "ghost", flush: true }), "mt-2 text-brand")}
-      >
-        <ClipboardList aria-hidden size={17} />
-        Open the scorecard
-      </button>
-    </div>
-  );
-}
-

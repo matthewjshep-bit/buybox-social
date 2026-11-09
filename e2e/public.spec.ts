@@ -82,9 +82,9 @@ test("public pages show activity, never private words, and private threads share
   await page.keyboard.press("Escape");
   // ...nor in the Scorecard, which has what people like and the quiet signals.
   let card = await openScorecard(page, post);
-  await expect(card.getByText("People like", { exact: true })).toBeVisible();
-  await expect(card.getByText("Exterior 1")).toBeVisible();
-  await expect(card.getByText("People pass on")).toHaveCount(0);
+  await expect(card.getByText("What people liked", { exact: true })).toBeVisible();
+  await expect(card.getByRole("button", { name: /^Exterior 1 person/ })).toBeVisible();
+  await expect(card.getByText("What people didn't like")).toHaveCount(0);
   await expect(card.getByLabel(/passed$/)).toHaveCount(0);
   await expect(card).not.toContainText(/pass/i);
   const buzz = card.getByLabel("Activity");
@@ -138,8 +138,8 @@ test("public pages show activity, never private words, and private threads share
   await expect(otherSheet.getByText("You passed, didn't like the price")).toBeVisible();
   await other.keyboard.press("Escape");
   const otherCard = await openScorecard(other, otherPost);
-  await expect(otherCard.getByText("People pass on")).toBeVisible();
-  await expect(otherCard.getByText("Price 1")).toBeVisible();
+  await expect(otherCard.getByText("What people didn't like")).toBeVisible();
+  await expect(otherCard.getByRole("button", { name: /^Price 1 person/ })).toBeVisible();
   await expect(otherCard.getByText(/Riley|Quinn/)).toHaveCount(0);
   await other.keyboard.press("Escape");
 

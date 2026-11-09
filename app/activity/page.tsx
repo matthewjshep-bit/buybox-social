@@ -26,6 +26,7 @@ export const metadata = { title: "Activity · BuyBox Social" };
 const BADGE = {
   comment_like: <Heart size={11} strokeWidth={2.5} className="fill-rose-600 text-rose-600" />,
   reply: <Reply size={12} strokeWidth={2.5} className="text-brand" />,
+  like_reply: <Reply size={12} strokeWidth={2.5} className="text-brand" />,
   comment: <MessageCircle size={11} strokeWidth={2.5} className="text-brand" />,
 };
 

@@ -1,27 +1,22 @@
 "use client";
 
-import { Hand, Pause, Play, StepForward, User } from "lucide-react";
-import Image from "next/image";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type Ref, type RefObject } from "react";
-import { EventFace, markDot, markOf } from "@/components/spot-highlight";
+import { Hand, Pause, Play, StepForward } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { cn, timeAgo } from "@/lib/format";
 import type { Listing } from "@/lib/listings/types";
-import { likeId, mediaKeyOf, tagPosition } from "@/lib/photos";
 import { buildCycle, DOT, eventText, onPhoto, spokenAgo, type TickerEvent, type TickerTap } from "@/lib/ticker";
-import { avatarColor } from "@/lib/ui";
 
-// What people did on a home lately, in the slot above the price, one thing at
-// a time: who and what, then what they said (or where) and when, with their
-// face on the photo right where they did it. It holds still on the newest
-// first, then, on the home on screen, goes round the few that matter most,
-// each long enough to read and look; the old line lifts away as the next
-// rises into its place. After three rounds (or a minute and a half) it rests
-// on who liked the home. It stops for anything else you're doing, and it can
-// be paused for the whole visit.
+// What people did on the photo on screen, in a caption floating at its foot,
+// one thing at a time: who and what, then what they said and when, with a
+// soft hotspot on the photo right where they did it. It holds still on the
+// newest first, then goes round the few that matter most, quickly; the old
+// line lifts away as the next rises into its place. After three rounds (or a
+// minute and a half) it rests on who liked the home. It stops for anything
+// else you're doing, and it can be paused for the whole visit.
 
 // How long each one shows: longer for more words.
-const DWELL_MS = 6000;
-const LONGEST_MS = 8000;
+const DWELL_MS = 3500;
+const LONGEST_MS = 5500;
 const dwellFor = (chars: number) => Math.min(LONGEST_MS, DWELL_MS + Math.max(0, Math.ceil((chars - 60) / 60)) * 1000);
 // How long it goes round before it rests.
 const ROUNDS = 3;
@@ -100,7 +95,6 @@ export function useTicker({
   mode,
   active,
   held,
-  pinHovered = null,
   likes,
   restOnLikes = true,
   box,
@@ -115,8 +109,6 @@ export function useTicker({
   // Something's over it or under way: a card, a sheet, a finger on the photo,
   // the photo sliding.
   held: boolean;
-  // A pointer on a spot on the photo (its likeId): on this one's, it waits.
-  pinHovered?: string | null;
   // How many people liked the home: what it rests on.
   likes: number;
   // Whether it rests on who liked it (false: where that's said already, just
@@ -133,7 +125,7 @@ export function useTicker({
   const [kept, setKept] = useState({ said, events });
   if (kept.said !== said) setKept({ said, events });
   const steady = kept.said === said ? kept.events : events;
-  const cycle = useMemo(() => buildCycle(steady, photoKey, mode), [steady, photoKey, mode]);
+  const cycle = useMemo(() => buildCycle(steady, photoKey, mode, true), [steady, photoKey, mode]);
   const [id, setId] = useState<string | null>(null);
   const [resting, setResting] = useState(false);
   // Stopped on this home: by a tap on it, or the keyboard coming in. Until
@@ -186,8 +178,7 @@ export function useTicker({
   const multi = cycle.length > 1;
   // Going round, unless paused, stopped, resting or still by choice.
   const rotating = multi && !reduced && !pausedForVisit && !stopped && !resting;
-  const onPin = Boolean(pinHovered && item?.mediaKey && item.spot && likeId(item.mediaKey, item.spot) === pinHovered);
-  const running = rotating && active && !held && !hovered && !onPin;
+  const running = rotating && active && !held && !hovered;
   const text = item ? eventText(item, listing, { photoKey, ago: timeAgo(item.at) }) : null;
   const dwellMs = text ? dwellFor(text.line1.length + text.line2.length) : DWELL_MS;
 
@@ -280,10 +271,8 @@ export function useTicker({
 
 // What a home's activity reads as, for the line and for its leaving copy.
 type Shown =
-  | { kind: "item"; event: TickerEvent; words: ReturnType<typeof eventText>; ago: string; thumb: Thumb | null }
-  | { kind: "rest"; text: string; faces: (string | null)[] };
-
-type Thumb = { url: string; x: number; y: number; dot: string; ratio: number };
+  | { kind: "item"; event: TickerEvent; words: ReturnType<typeof eventText>; ago: string }
+  | { kind: "rest"; text: string };
 
 // "Maya, Sam and 4 others liked this"; "You and Maya liked this"; "6 people liked this"
 function likedBy(likes: number, names: string[], you: boolean) {
@@ -295,18 +284,20 @@ function likedBy(likes: number, names: string[], you: boolean) {
       : rest > 0
         ? `${named.join(", ")} and ${rest} ${rest === 1 ? "other" : "others"} liked this`
         : `${named.join(" and ")} liked this`;
-  return { named, rest, text: text.charAt(0).toUpperCase() + text.slice(1) };
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+// The caption's frosted ground: it reads on the brightest photo.
+const caption =
+  "pointer-events-auto flex min-h-11 max-w-full items-center rounded-2xl bg-black/60 text-white shadow-[0_4px_20px_rgb(0_0_0/0.35)] ring-1 ring-white/10 backdrop-blur-md";
 
 export function ActivityTicker({
   ticker,
   listing,
   photoKey,
-  myName,
   liked,
   hint,
   unseen,
-  underline,
   onTap,
   box,
   line,
@@ -314,16 +305,13 @@ export function ActivityTicker({
   ticker: Ticker;
   listing: Listing;
   photoKey: string | undefined;
-  myName: string | null;
   // Who liked the home, for the rest: how many, the names the page may give
   // (never yours), and whether you did.
   liked: { count: number; names: string[]; you: boolean };
-  // Said when nobody's done anything yet (null: nothing).
+  // Said when nobody's done anything on this photo yet (null: nothing).
   hint: string | null;
   // The spot is on this photo, but under the buttons, so it isn't pointed at.
   unseen: boolean;
-  // A pointer is on this one's spot on the photo.
-  underline: boolean;
   // Unset beside the map, where it's just to read: the first, still.
   // `keyboard`: pressed with a key, so what it opens takes the keyboard.
   onTap?: (event: TickerEvent, tap: TickerTap, photoIndex: number, keyboard: boolean) => void;
@@ -345,29 +333,20 @@ export function ActivityTicker({
   if (cycle.length === 0) {
     if (!hint) return null;
     return (
-      <div role="group" aria-label="Recent activity" className="flex min-w-0 items-center gap-2.5 text-white/70 split:text-muted">
-        <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white/10 split:bg-stone-100">
-          <Hand size={16} className="text-white/60 split:text-stone-500" />
-        </span>
-        <p className="line-clamp-2 text-body leading-5">{hint}</p>
+      <div role="group" aria-label="Recent activity" data-keep-clear className={cn(caption, "gap-2 py-2 pl-3 pr-3.5")}>
+        <Hand aria-hidden size={16} className="shrink-0 text-white/75" />
+        <p className="text-meta leading-[18px] text-white/90">{hint}</p>
       </div>
     );
   }
 
-  const rest = likedBy(liked.count, liked.names, liked.you);
   const describe = (key: string | null): Shown | null => {
-    if (key === "rest") {
-      const faces = [
-        ...rest.named.map((name) => (name === "you" ? (myName ?? "") : name)),
-        ...(rest.rest > 0 ? [null] : []),
-      ].slice(0, 3);
-      return { kind: "rest", text: rest.text, faces };
-    }
+    if (key === "rest") return { kind: "rest", text: likedBy(liked.count, liked.names, liked.you) };
     const event = cycle.find((e) => e.id === key) ?? (item?.id === key ? item : null);
     if (!event) return null;
     const ago = event.kind === "anon-likes" ? "this week" : timeAgo(event.at);
     const words = eventText(event, listing, { photoKey, ago, unseen: event === item && unseen });
-    return { kind: "item", event, words, ago, thumb: words.elsewhere ? thumbOf(listing, event) : null };
+    return { kind: "item", event, words, ago };
   };
   const now = summary ? describe("rest") : item ? describe(item.id) : null;
   const leaving = shown.n > gone && shown.from ? describe(shown.from) : null;
@@ -397,13 +376,15 @@ export function ActivityTicker({
   const enter = moved && (reduced ? "animate-[fade-in_150ms_linear_both]" : "animate-[ticker-in_300ms_cubic-bezier(0.05,0.7,0.1,1)_120ms_both]");
   const exit = reduced ? "animate-[fade-out_150ms_linear_both]" : "animate-[ticker-out_200ms_cubic-bezier(0.3,0,0.8,0.15)_both]";
   const crossfade = reduced ? { "data-crossfade": true } : {};
-  const row = "-mx-1 flex h-full min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1 text-left";
+  const row = "flex min-w-0 flex-1 flex-col justify-center rounded-xl py-1.5 text-left";
 
   return (
     <div
       ref={box}
       role="group"
       aria-label="Recent activity"
+      // A tap on it is on it, not on the photo under it.
+      data-keep-clear
       onPointerEnter={() => ticker.setHovered(true)}
       onPointerLeave={() => ticker.setHovered(false)}
       onFocus={(event) => {
@@ -411,69 +392,53 @@ export function ActivityTicker({
         if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
         if ((event.target as HTMLElement).matches(":focus-visible") && ticker.rotating) ticker.stop();
       }}
-      className="flex h-12 min-w-0 flex-1 items-center split:h-[76px]"
+      className={cn(caption, "pl-3.5", multi ? "pr-1" : "pr-3.5")}
     >
-      {multi && (
-        // First for the keyboard, last on screen: under it, which one this
-        // is of the few going round.
-        <div className="relative order-last -mr-2 flex h-12 w-11 shrink-0 items-center justify-center">
-          {reduced ? (
-            <button
-              type="button"
-              aria-label="Show the next activity"
-              onClick={ticker.step}
-              className="flex size-11 items-center justify-center rounded-full text-white/80 hover:bg-white/10 split:text-muted split:hover:bg-stone-100"
-            >
-              {/* A step on, not the photo's arrow. */}
-              <StepForward aria-hidden size={17} />
-            </button>
-          ) : (
-            <button
-              type="button"
-              aria-label={ticker.halted ? "Play activity" : "Pause activity"}
-              onClick={ticker.halted ? ticker.play : ticker.pause}
-              className="flex size-11 items-center justify-center rounded-full text-white/80 hover:bg-white/10 split:text-muted split:hover:bg-stone-100"
-            >
-              {ticker.halted ? <Play aria-hidden size={16} className="fill-current" /> : <Pause aria-hidden size={16} className="fill-current" />}
-            </button>
-          )}
-          {/* (Resting, none of them: it's about the line, not a video.) */}
-          <span aria-hidden className="pointer-events-none absolute bottom-0.5 left-1/2 flex -translate-x-1/2 gap-[3px]">
-            {cycle.map((event, i) => (
-              <span
-                key={event.id}
-                className={cn(
-                  "size-1 rounded-full",
-                  i === ticker.index && !summary ? "bg-white split:bg-stone-800" : "bg-white/40 split:bg-stone-300",
-                )}
-              />
-            ))}
-          </span>
-        </div>
-      )}
+      {/* First for the keyboard (so it can be stopped before it's read), last on screen. */}
+      {multi &&
+        (reduced ? (
+          <button
+            type="button"
+            aria-label="Show the next activity"
+            onClick={ticker.step}
+            className="order-last flex size-9 shrink-0 items-center justify-center rounded-full text-white/85 hit-44 hover:bg-white/15"
+          >
+            {/* A step on, not the photo's arrow. */}
+            <StepForward aria-hidden size={16} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            aria-label={ticker.halted ? "Play activity" : "Pause activity"}
+            onClick={ticker.halted ? ticker.play : ticker.pause}
+            className="order-last flex size-9 shrink-0 items-center justify-center rounded-full text-white/85 hit-44 hover:bg-white/15"
+          >
+            {ticker.halted ? <Play aria-hidden size={14} className="fill-current" /> : <Pause aria-hidden size={14} className="fill-current" />}
+          </button>
+        ))}
       <div
         // Said as it changes only when it's moved by hand or stopped, and
         // only for the home on screen.
         aria-live={ticker.active && !ticker.rotating ? "polite" : "off"}
         aria-atomic="true"
-        className="relative flex h-full min-w-0 flex-1 items-center"
+        className="relative grid min-w-0 flex-1"
       >
         {leaving && (
           <div
             key={`leaving-${shown.n}`}
             aria-hidden
             {...crossfade}
-            className={cn("pointer-events-none absolute inset-0 flex items-center", exit)}
+            className={cn("pointer-events-none col-start-1 row-start-1 flex items-center", exit)}
           >
             <span className={row}>
-              <Lines shown={leaving} myName={myName} ghost />
+              <Lines shown={leaving} ghost />
             </span>
           </div>
         )}
         {now &&
           (readOnly ? (
-            <div key={shown.key} {...crossfade} className={cn(row, enter)}>
-              <Lines shown={now} myName={myName} />
+            <div key={shown.key} {...crossfade} className={cn(row, "col-start-1 row-start-1", enter)}>
+              <Lines shown={now} />
             </div>
           ) : (
             <button
@@ -494,9 +459,9 @@ export function ActivityTicker({
               onPointerLeave={() => ticker.setLooking(false)}
               onFocus={() => ticker.setLooking(true)}
               onBlur={() => ticker.setLooking(false)}
-              className={cn(row, "split:hover:bg-stone-50", enter)}
+              className={cn(row, "col-start-1 row-start-1", enter)}
             >
-              <Lines shown={now} myName={myName} underline={underline} />
+              <Lines shown={now} />
             </button>
           ))}
       </div>
@@ -507,105 +472,39 @@ export function ActivityTicker({
 // A sentence, with a full stop unless it has its own.
 const ended = (text: string) => (/[.!?…]$/.test(text) ? text : `${text}.`);
 
-// A photo of this home in miniature, with a dot where it happened.
-function thumbOf(listing: Listing, event: TickerEvent): Thumb | null {
-  const photo = listing.Media.find((m) => mediaKeyOf(m) === event.mediaKey);
-  const at = photo && event.spot ? tagPosition(photo, event.spot) : null;
-  if (!photo || !at) return null;
-  const ratio = photo.ImageWidth && photo.ImageHeight ? photo.ImageWidth / photo.ImageHeight : 1;
-  return { url: photo.MediaURL, x: at.x, y: at.y, dot: markDot[markOf(event)], ratio };
-}
-
 // Words drawn rather than written, for the copy that's leaving: the page only
 // ever says (and finds) what's showing.
-function Drawn({ text, className, ref }: { text: string; className?: string; ref?: Ref<HTMLSpanElement> }) {
-  return <span ref={ref} data-text={text} className={cn("before:content-[attr(data-text)]", className)} />;
+function Drawn({ text, className }: { text: string; className?: string }) {
+  return <span data-text={text} className={cn("before:content-[attr(data-text)]", className)} />;
 }
 
-function Lines({ shown, myName, ghost = false, underline = false }: { shown: Shown; myName: string | null; ghost?: boolean; underline?: boolean }) {
-  const say = (text: string, className?: string, ref?: Ref<HTMLSpanElement>) =>
-    ghost ? <Drawn text={text} className={className} ref={ref} /> : <span ref={ref} className={className}>{text}</span>;
-  // Who and what come first: when they don't fit on their line over what was
-  // said, it all runs on as one, over two lines, so they're read whole.
-  // (Measured again when they change: on another photo, a spot can read
-  // differently.)
-  const first = useRef<HTMLSpanElement>(null);
-  const said = shown.kind === "item" ? shown.words.line1 : null;
-  const [flow, setFlow] = useState({ said, on: false });
-  if (flow.said !== said) setFlow({ said, on: false });
-  useLayoutEffect(() => {
-    const el = first.current;
-    if (el && !flow.on && el.scrollWidth > el.clientWidth + 1) setFlow((now) => ({ ...now, on: true }));
-  }, [flow]);
-  if (shown.kind === "rest") {
-    return (
-      <>
-        {/* Each face over the next, so every initial reads whole. */}
-        <span aria-hidden className="flex shrink-0 pl-1.5">
-          {shown.faces.map((name, i) => (
-            <span
-              key={i}
-              style={{ zIndex: shown.faces.length - i }}
-              className={cn(
-                "relative -ml-1.5 flex size-5 items-center justify-center rounded-full text-[10px] font-semibold ring-2 ring-night [text-shadow:none] split:ring-white",
-                avatarColor(name ? "person" : "anonymous", { dark: true }),
-              )}
-            >
-              {name ? (ghost ? <Drawn text={name[0]?.toUpperCase() ?? ""} /> : name[0]?.toUpperCase()) : <User size={11} />}
-            </span>
-          ))}
-        </span>
-        {say(shown.text, "line-clamp-2 min-w-0 flex-1 text-body font-semibold leading-5")}
-      </>
-    );
-  }
-  const { event, words, thumb } = shown;
-  const strong = cn("font-semibold", underline && "underline underline-offset-2");
-  // Where and when, after the words (kept whole) or the sentence.
-  const meta = (whole: boolean) =>
-    words.meta && (
-      <span
-        className={cn("text-meta font-normal text-white/75 split:text-muted", whole && "shrink-0 whitespace-pre")}
-        suppressHydrationWarning
-      >
-        {ghost ? <Drawn text={`${DOT}${words.meta}`} /> : `${DOT}${words.meta}`}
+// Who (in bold) and what, with when after it; under it, what they said.
+function Lines({ shown, ghost = false }: { shown: Shown; ghost?: boolean }) {
+  // (Times are the server's until the page wakes up.)
+  const say = (text: string, className?: string) =>
+    ghost ? (
+      <Drawn text={text} className={className} />
+    ) : (
+      <span className={className} suppressHydrationWarning>
+        {text}
       </span>
     );
+  if (shown.kind === "rest") return say(shown.text, "line-clamp-2 text-body font-semibold leading-5");
+  const { words } = shown;
+  // The name as it starts the line ("Jenny", or "Jenny, on the porch").
+  const who = [words.who, words.who.replace(/,$/, "")].find((name) => words.line1.startsWith(name)) ?? "";
+  const when = words.meta ? `${DOT}${words.meta}` : "";
   return (
     <>
-      <EventFace event={event} myName={myName} ghost={ghost} />
-      {words.words && !flow.on ? (
-        // Who, on what; under it, what they said (cut short, but never when
-        // they said it). Side by side, each gets two lines.
-        <span className="min-w-0 flex-1">
-          {say(words.line1, cn("block truncate text-body leading-5 split:line-clamp-2 split:whitespace-normal", strong), first)}
-          <span className="flex min-w-0 items-end text-meta leading-[18px] text-white/75 split:text-muted">
-            {say(words.words, "min-w-0 truncate split:line-clamp-2 split:whitespace-normal")}
-            {meta(true)}
-          </span>
-        </span>
-      ) : (
-        // Who did what, in full, over two lines when it needs them, then
-        // where and when, quieter.
-        <span className="line-clamp-2 min-w-0 flex-1 text-body leading-5 split:line-clamp-3">
-          {say(words.line1, strong)}
-          {words.words && (
-            <span className="text-meta text-white/75 split:text-muted"> {ghost ? <Drawn text={words.words} /> : words.words}</span>
-          )}
-          {meta(false)}
-        </span>
-      )}
-      {thumb && (
-        // Only with room to spare: the line already says which photo.
-        <span aria-hidden className="relative hidden size-8 shrink-0 overflow-hidden rounded-md bg-stone-800 roomy:block">
-          <Image src={thumb.url} alt="" fill sizes="32px" className="object-contain" />
-          <span
-            style={{
-              left: `${(thumb.ratio >= 1 ? thumb.x : 0.5 + (thumb.x - 0.5) * thumb.ratio) * 100}%`,
-              top: `${(thumb.ratio >= 1 ? 0.5 + (thumb.y - 0.5) / thumb.ratio : thumb.y) * 100}%`,
-            }}
-            className={cn("absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white", thumb.dot)}
-          />
+      <span className="line-clamp-2 text-body leading-5" suppressHydrationWarning>
+        {say(who, "font-semibold")}
+        {say(words.line1.slice(who.length))}
+        {!words.words && say(when, "text-meta text-white/70")}
+      </span>
+      {words.words && (
+        <span className="flex min-w-0 text-meta leading-[18px] text-white/80" suppressHydrationWarning>
+          {say(words.words, "min-w-0 truncate")}
+          {say(when, "shrink-0 whitespace-pre text-white/70")}
         </span>
       )}
     </>

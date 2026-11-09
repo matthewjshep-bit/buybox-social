@@ -174,15 +174,18 @@ export function SearchView({
   const pick = (key: string) => {
     setFocus((current) => ({ key, n: (current?.n ?? 0) + 1 }));
     setMobileMap(false);
+    keepInAddress(key, true);
   };
 
   // The address keeps the home showing (picked on the map or in the list, or
   // scrolled to), so a reload, or Back from full screen, comes back to it.
   // Not while new results load: the address is already changing for them.
-  const keepInAddress = (key: string | null) => {
+  // Scrolled to, the first home needs nothing in it; picked by hand, it's
+  // kept there all the same, so the address always says what was picked.
+  const keepInAddress = (key: string | null, picked = false) => {
     if (!key || pending || !posts.some((post) => post.listing.ListingKey === key)) return;
     const url = new URL(window.location.href);
-    if ((url.searchParams.get("home") ?? posts[0]?.listing.ListingKey) === key) return;
+    if ((url.searchParams.get("home") ?? (picked ? null : posts[0]?.listing.ListingKey)) === key) return;
     url.searchParams.set("home", key);
     window.history.replaceState(null, "", url);
   };

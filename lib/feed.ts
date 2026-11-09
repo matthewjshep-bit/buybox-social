@@ -241,7 +241,8 @@ export async function getReel(
             c.spot, c.body, c.id::text, c.visitor_id::text, null, '{}'::text[], '{}'::text[],
             c.visitor_id = ${visitorId}::uuid
           from public_comments c join visitors vi on vi.id = c.visitor_id
-          where c.listing_key in ${sql(keys)}
+          -- (Replies read as part of what they answer, in the comments, not on their own.)
+          where c.listing_key in ${sql(keys)} and c.parent_id is null and c.reply_to_visitor is null
           union all
           select pl.listing_key, 'photo-like',
             md5('pl:' || pl.listing_key || ':' || pl.visitor_id || ':' || pl.media_key || ':' || pl.tag),

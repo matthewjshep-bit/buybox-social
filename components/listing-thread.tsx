@@ -16,13 +16,15 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { Sheet } from "@/components/sheet";
+import { Hotspot } from "@/components/spot-highlight";
 import { Avatar, Badge } from "@/components/ui";
 import type { ActionResult } from "@/lib/engagement";
 import { cn, timeAgo } from "@/lib/format";
-import type { SpotReaction } from "@/lib/photos";
+import type { Listing } from "@/lib/listings/types";
+import { FACTS, mediaKeyOf, tagPosition, type SpotReaction } from "@/lib/photos";
 import { describeReaction, type ReactionState } from "@/lib/reactions";
 import type { TimelineComment, TimelineItem, TimelineReaction } from "@/lib/timeline";
-import { button, field } from "@/lib/ui";
+import { button, card, field } from "@/lib/ui";
 
 // The name prompt and comments UI shared by private share links and public
 // pages. Each passes in Server Actions bound to its own thread.
@@ -202,6 +204,9 @@ export function Timeline({
   onReply,
   spots,
   empty,
+  listing,
+  limit,
+  onSeeAll,
 }: {
   listingKey: string;
   items: TimelineItem[];
@@ -215,6 +220,11 @@ export function Timeline({
   spots?: SpotLinks;
   // What to say when there's nothing yet.
   empty?: ReactNode;
+  // The home, for the photo each card is about.
+  listing?: Listing;
+  // Only the newest few, then "See all".
+  limit?: number;
+  onSeeAll?: () => void;
 }) {
   const top = items.filter((item) => item.kind === "reaction" || !item.parentId);
   if (top.length === 0) {
@@ -227,39 +237,105 @@ export function Timeline({
       )
     );
   }
-  // What people said comes first, so it's what shows as the comments open;
-  // who liked (or passed on) what, after it, under its own heading.
-  const said = top.filter((item): item is TimelineComment => item.kind === "comment");
-  const reacted = top.filter((item): item is TimelineReaction => item.kind === "reaction");
+  // A feed, newest first, as on a profile: one card for each thing someone
+  // said, and one for what each person liked (or passed on), each with the
+  // photo it was about and where on it.
+  const feed = [...top].sort((a, b) => b.at.localeCompare(a.at));
+  const shown = limit ? feed.slice(0, limit) : feed;
   return (
-    <ul aria-label="Comments and likes" className="flex flex-col gap-5">
-      {said.map((item) => (
-        <CommentItem
-          key={item.id}
-          listingKey={listingKey}
-          comment={item}
-          replies={items.filter(
-            (reply): reply is TimelineComment => reply.kind === "comment" && reply.parentId === item.id,
-          )}
-          opened={opened}
-          canShare={canShare}
-          onReply={onReply}
-          spots={spots}
-        />
-      ))}
-      {reacted.length > 0 && (
-        <li className={cn(said.length > 0 && "border-t border-stone-100 pt-4")}>
-          <h3 className="text-meta font-semibold text-stone-500">
-            {reacted.some(passedOn) ? "Likes and passes" : "Likes"}
-          </h3>
-          <ul className="mt-2 flex flex-col gap-2.5">
-            {reacted.map((item) => (
-              <ReactionItem key={item.id} item={item} />
-            ))}
-          </ul>
-        </li>
+    <>
+      <ul aria-label="Comments and likes" className="flex flex-col gap-3">
+        {shown.map((item) =>
+          item.kind === "comment" ? (
+            <CommentItem
+              key={item.id}
+              listingKey={listingKey}
+              comment={item}
+              replies={items.filter(
+                (reply): reply is TimelineComment => reply.kind === "comment" && reply.parentId === item.id,
+              )}
+              opened={opened}
+              canShare={canShare}
+              onReply={onReply}
+              spots={spots}
+              listing={listing}
+            />
+          ) : (
+            <ReactionItem
+              key={item.id}
+              listingKey={listingKey}
+              item={item}
+              replies={items.filter(
+                (reply): reply is TimelineComment => reply.kind === "comment" && reply.parentId === item.id,
+              )}
+              opened={opened}
+              onReply={onReply}
+              listing={listing}
+              spots={spots}
+            />
+          ),
+        )}
+      </ul>
+      {shown.length < feed.length && onSeeAll && (
+        <button type="button" onClick={onSeeAll} className={cn(button({ kind: "secondary" }), "mt-3 w-full")}>
+          See all {feed.length}
+        </button>
       )}
-    </ul>
+    </>
+  );
+}
+
+// The photo a card is about, whole and at its own shape (never taller than
+// 12rem), with a soft hotspot on each spot: no hearts, just where. A tap
+// takes you there on the home's photo.
+function FeedPhoto({
+  listing,
+  mediaKey,
+  tags,
+  spots,
+}: {
+  listing: Listing;
+  mediaKey: string;
+  tags: string[];
+  spots?: SpotLinks;
+}) {
+  const photo = listing.Media.find((media) => mediaKeyOf(media) === mediaKey);
+  if (!photo) return null;
+  const ratio = photo.ImageWidth && photo.ImageHeight ? photo.ImageWidth / photo.ImageHeight : 4 / 3;
+  const marks = tags.flatMap((tag) => {
+    const at = tagPosition(photo, tag);
+    return at ? [{ tag, ...at }] : [];
+  });
+  const picture = (
+    <span
+      className="relative block overflow-hidden rounded-xl bg-stone-100"
+      style={{ aspectRatio: String(ratio), width: `min(100%, ${12 * ratio}rem)` }}
+    >
+      <Image src={photo.MediaURL} alt="" fill sizes="(min-width: 64rem) 360px, 90vw" className="object-cover" />
+      {marks.map((mark) => (
+        <span
+          key={mark.tag}
+          data-spot-tag={mark.tag}
+          className="absolute size-0"
+          style={{ left: `${mark.x * 100}%`, top: `${mark.y * 100}%` }}
+        >
+          <Hotspot small />
+        </span>
+      ))}
+    </span>
+  );
+  const first = marks[0];
+  if (!spots || !first) return <span className="mt-2 block">{picture}</span>;
+  return (
+    <button
+      type="button"
+      onClick={() => spots.show({ mediaKey, tag: first.tag })}
+      aria-label={`Show ${spots.name({ mediaKey, tag: first.tag })} on the photo`}
+      // (As wide as the card, so the photo inside can size itself from it.)
+      className="mt-2 block w-full rounded-xl text-left transition-opacity hover:opacity-90"
+    >
+      {picture}
+    </button>
   );
 }
 
@@ -267,7 +343,9 @@ export function Timeline({
 const passedOn = (item: TimelineReaction) =>
   item.state.reaction === "dislike" || (!item.state.reaction && !item.photos.length && item.photoDislikes.length > 0);
 
-export type ReplyTarget = { id: string; name: string; mine: boolean };
+// What a reply answers: a comment, or someone's likes ("like:…"). `mention`:
+// it answers a reply in that thread, so it starts with "@" and their name.
+export type ReplyTarget = { id: string; name: string; mine: boolean; mention?: boolean };
 
 // A person's name, linking to their profile when they have a public one. It
 // sits in a line of words, so it keeps the line's height (WCAG's inline
@@ -290,38 +368,140 @@ function When({ at }: { at: string }) {
   );
 }
 
-// "Morgan liked the marble counters" with a thumbnail of the photo: one
-// short line each, under the comments (the Scorecard has the detail).
-function ReactionItem({ item }: { item: TimelineReaction }) {
+// "Morgan liked the marble counters and the front door", with the photo of
+// the latest of them and a hotspot on each thing they picked out in it.
+function ReactionItem({
+  listingKey,
+  item,
+  replies,
+  opened,
+  onReply,
+  listing,
+  spots,
+}: {
+  listingKey: string;
+  item: TimelineReaction;
+  // Said in answer to their likes.
+  replies: TimelineComment[];
+  opened?: string;
+  onReply?: (target: ReplyTarget) => void;
+  listing?: Listing;
+  spots?: SpotLinks;
+}) {
   const badge = passedOn(item) ? (
     <ThumbsDown size={8} className="text-amber-800" />
   ) : (
     <Heart size={8} className="fill-rose-600 text-rose-600" />
   );
-  // The photo of the latest thing they liked.
-  const thumb = item.photos.findLast((photo) => photo.mediaUrl)?.mediaUrl;
+  // The photo of the latest thing they picked out, and everything they
+  // picked out in it.
+  const things = [...item.photos, ...item.photoDislikes].filter((thing) => thing.mediaKey && thing.mediaKey !== FACTS);
+  const latest = things.reduce<(typeof things)[number] | null>(
+    (now, thing) => (!now || (thing.at ?? "") > (now.at ?? "") ? thing : now),
+    null,
+  );
+  const onLatest = latest ? things.filter((thing) => thing.mediaKey === latest.mediaKey).map((thing) => thing.spot ?? thing.tag) : [];
   return (
-    <li className="flex items-center gap-2.5">
-      <Avatar name={item.name} tone={item.fromPrivateChat ? "anonymous" : "person"} size={6} badge={badge} />
-      <p className="line-clamp-1 min-w-0 flex-1 break-words text-meta leading-5">
-        <Who name={item.mine ? "You" : item.name} profileId={item.profileId} />{" "}
-        {describeReaction(
-          item.state,
-          item.photos.map((photo) => photo.tag),
-          item.photoDislikes.map((photo) => photo.tag),
+    <li className={cn(card, "p-3.5")}>
+      <div className="flex items-start gap-3">
+        <Avatar name={item.name} tone={item.fromPrivateChat ? "anonymous" : "person"} size={9} badge={badge} />
+        <p className="min-w-0 flex-1 break-words pt-0.5 text-body leading-snug">
+          <Who name={item.mine ? "You" : item.name} profileId={item.profileId} />{" "}
+          {describeReaction(
+            item.state,
+            item.photos.map((photo) => photo.tag),
+            item.photoDislikes.map((photo) => photo.tag),
+          )}
+          <span className="text-meta text-stone-500">
+            {" "}
+            · <When at={item.at} />
+            {item.fromPrivateChat && " · private chat"}
+          </span>
+        </p>
+      </div>
+      <div className="pl-12">
+        {listing && latest?.mediaKey && (
+          <FeedPhoto listing={listing} mediaKey={latest.mediaKey} tags={onLatest} spots={spots} />
         )}
-        <span className="text-meta text-stone-500">
-          {" "}
-          · <When at={item.at} />
-          {item.fromPrivateChat && " · private chat"}
-        </span>
-      </p>
-      {thumb && (
-        <span className="relative size-8 shrink-0 overflow-hidden rounded-md bg-stone-200">
-          <Image src={thumb} alt="" fill sizes="32px" className="object-cover" />
-        </span>
-      )}
+        {/* Anyone named can be answered, as a comment can. */}
+        {item.replyRef && onReply && (
+          <div className="flex text-meta font-semibold text-stone-500">
+            <button
+              type="button"
+              onClick={() => onReply({ id: item.replyRef!, name: item.name, mine: item.mine })}
+              className="flex min-h-9 items-center hit-44 hover:text-ink"
+            >
+              Reply
+              <span className="sr-only"> to {item.mine ? "your likes" : `${item.name}'s likes`}</span>
+            </button>
+          </div>
+        )}
+        <Replies
+          listingKey={listingKey}
+          replies={replies}
+          opened={opened}
+          label={item.mine ? "your likes" : `${item.name}'s likes`}
+          thread={item.replyRef}
+          onReply={onReply}
+        />
+      </div>
     </li>
+  );
+}
+
+// The replies under a comment, or under someone's likes: folded away under
+// "View 2 replies", like on a reel; open when you came to see one of them, or
+// when you've just added one. Each can be answered too, in the same thread.
+function Replies({
+  listingKey,
+  replies,
+  opened,
+  label,
+  thread,
+  onReply,
+}: {
+  listingKey: string;
+  replies: TimelineComment[];
+  opened?: string;
+  // What they answer, for screen readers: "Maya's comment", "Sam's likes".
+  label: string;
+  // What a reply among them answers (the comment, or the likes).
+  thread?: string;
+  onReply?: (target: ReplyTarget) => void;
+}) {
+  const asked = Boolean(opened && replies.some((child) => child.id === opened));
+  const [open, setOpen] = useState(asked);
+  const [wasAsked, setWasAsked] = useState(asked);
+  if (asked !== wasAsked) {
+    setWasAsked(asked);
+    if (asked) setOpen(true);
+  }
+  const [count, setCount] = useState(replies.length);
+  if (replies.length !== count) {
+    setCount(replies.length);
+    if (replies.length > count && replies.at(-1)?.mine) setOpen(true);
+  }
+  if (replies.length === 0) return null;
+  return (
+    <>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        // (Over the edge of a Reply's touch area just above it.)
+        className="relative flex min-h-11 items-center gap-2.5 text-meta font-semibold text-stone-500 hover:text-ink"
+      >
+        <span aria-hidden className="h-px w-6 bg-stone-300" />
+        {open ? "Hide replies" : `View ${replies.length} ${replies.length === 1 ? "reply" : "replies"}`}
+      </button>
+      {open && (
+        <ul aria-label={`Replies to ${label}`} className="mt-2 flex flex-col gap-4">
+          {replies.map((child) => (
+            <CommentItem key={child.id} listingKey={listingKey} comment={child} canShare={false} thread={thread} onReply={onReply} />
+          ))}
+        </ul>
+      )}
+    </>
   );
 }
 
@@ -335,6 +515,8 @@ function CommentItem({
   canShare,
   onReply,
   spots,
+  listing,
+  thread,
 }: {
   listingKey: string;
   comment: TimelineComment;
@@ -344,6 +526,10 @@ function CommentItem({
   canShare: boolean;
   onReply?: (target: ReplyTarget) => void;
   spots?: SpotLinks;
+  // The home, for the photo a comment about a spot shows.
+  listing?: Listing;
+  // A reply: what its thread answers, so answering it stays in that thread.
+  thread?: string;
 }) {
   const { actions } = useThread();
   const [pending, startTransition] = useTransition();
@@ -352,24 +538,13 @@ function CommentItem({
   const canToggle = comment.mine && actions.setSharing && (comment.sharedPublicly || canShare);
   const likeable = Boolean(actions.likeComment) && !comment.fromPrivateChat;
   const like = useCommentLike(comment);
-
-  // Replies open when you add one, so you see it land, or when you came to
-  // see one of them.
-  const asked = Boolean(opened && replies.some((child) => child.id === opened));
-  const [open, setOpen] = useState(asked);
-  const [wasAsked, setWasAsked] = useState(asked);
-  if (asked !== wasAsked) {
-    setWasAsked(asked);
-    if (asked) setOpen(true);
-  }
-  const [count, setCount] = useState(replies.length);
-  if (replies.length !== count) {
-    setCount(replies.length);
-    if (replies.length > count && replies.at(-1)?.mine) setOpen(true);
-  }
+  // Anything named can be answered: a comment, in a thread of its own; a
+  // reply, in the thread it's in, starting with their name. (Shared from a
+  // private chat, there's no one to answer.)
+  const replyable = Boolean(onReply) && !comment.fromPrivateChat && (!reply || Boolean(thread));
 
   return (
-    <li data-comment={comment.id} className="flex gap-3">
+    <li data-comment={comment.id} className={cn("flex gap-3", !reply && cn(card, "p-3.5"))}>
       <Avatar
         name={comment.name}
         tone={comment.fromPrivateChat ? "anonymous" : comment.isAgent ? "agent" : "person"}
@@ -400,6 +575,9 @@ function CommentItem({
           </button>
         )}
         <p className="mt-0.5 whitespace-pre-line break-words text-body leading-snug">{comment.body}</p>
+        {!reply && listing && comment.spot && comment.spot.mediaKey !== FACTS && (
+          <FeedPhoto listing={listing} mediaKey={comment.spot.mediaKey} tags={[comment.spot.tag]} spots={spots} />
+        )}
         {/* The agent hearted it, as a creator does on a reel: in stone, so it
             never reads as something the agent said, and outlined, not filled,
             so it reads as a note, not a button like the spot chip. */}
@@ -412,10 +590,16 @@ function CommentItem({
           </p>
         )}
         <div className="flex flex-wrap items-center gap-x-4 text-meta font-semibold text-stone-500">
-          {likeable && !reply && onReply && (
+          {replyable && (
             <button
               type="button"
-              onClick={() => onReply({ id: comment.id, name: comment.name, mine: comment.mine })}
+              onClick={() =>
+                onReply!(
+                  reply
+                    ? { id: thread!, name: comment.name, mine: comment.mine, mention: !comment.mine }
+                    : { id: comment.id, name: comment.name, mine: comment.mine },
+                )
+              }
               className="flex min-h-9 items-center hit-44 hover:text-ink"
             >
               Reply
@@ -452,27 +636,14 @@ function CommentItem({
             </button>
           )}
         </div>
-        {replies.length > 0 && (
-          <>
-            <button
-              type="button"
-              aria-expanded={open}
-              onClick={() => setOpen(!open)}
-              // (Over the edge of a Reply's touch area just above it.)
-              className="relative flex min-h-11 items-center gap-2.5 text-meta font-semibold text-stone-500 hover:text-ink"
-            >
-              <span aria-hidden className="h-px w-6 bg-stone-300" />
-              {open ? "Hide replies" : `View ${replies.length} ${replies.length === 1 ? "reply" : "replies"}`}
-            </button>
-            {open && (
-              <ul aria-label={`Replies to ${comment.name}`} className="mt-2 flex flex-col gap-4">
-                {replies.map((child) => (
-                  <CommentItem key={child.id} listingKey={listingKey} comment={child} canShare={false} />
-                ))}
-              </ul>
-            )}
-          </>
-        )}
+        <Replies
+          listingKey={listingKey}
+          replies={replies}
+          opened={opened}
+          label={comment.name}
+          thread={comment.id}
+          onReply={onReply}
+        />
       </div>
       {likeable && <CommentHeart comment={comment} like={like} />}
     </li>
@@ -569,6 +740,15 @@ export function CommentComposer({
   // The same home can show a composer twice (a page and its pop-out), so ids are per instance.
   const inputId = useId();
   const who = replyTo ? (replyTo.mine ? "yourself" : replyTo.name) : null;
+  // Answering a reply in its thread: it starts with their name.
+  const [mentioned, setMentioned] = useState<ReplyTarget | null>(null);
+  if (replyTo !== mentioned) {
+    setMentioned(replyTo);
+    if (replyTo?.mention) {
+      const at = `@${replyTo.name} `;
+      setBody((now) => (now.startsWith(at) ? now : at + now));
+    }
+  }
   const sharing = canShare && !compact && !replyTo;
   // Ticked to share it on the public page too: said so, not "only you".
   const seen: SeenBy | undefined =

@@ -55,6 +55,9 @@ export type TimelineReaction = {
   profileId?: string;
   // On an agent's link: who, as a key that stays the same and gives nothing away.
   personKey?: string;
+  // What a reply to them answers, for the comment box ("like:" and who they
+  // are, as the page may know them): none for someone shown without a name.
+  replyRef?: string;
 };
 
 // One thing liked (or not) in a photo or the facts: what it reads as ("Front
@@ -81,6 +84,10 @@ function reactionItems(
     anonymous: (who: string) => boolean;
     profiles?: boolean;
     personKey?: (who: string) => string;
+    // What a reply to someone answers (null: they can't be answered).
+    replyRef?: (who: string) => string | null;
+    // Filled in with each person's line, by who they are.
+    ids?: Map<string, string>;
   },
 ): TimelineReaction[] {
   const url = (mediaKey: string) => listing.Media.find((m) => mediaKeyOf(m) === mediaKey)?.MediaURL ?? null;
@@ -99,6 +106,7 @@ function reactionItems(
       ...(anonymous && { fromPrivateChat: true }),
       ...(options.profiles && who.startsWith("v:") && { profileId: who.slice(2) }),
       ...(options.personKey && { personKey: options.personKey(who) }),
+      ...(!anonymous && options.replyRef?.(who) && { replyRef: options.replyRef(who)! }),
     };
     if (at.toISOString() > item.at) item.at = at.toISOString();
     people.set(who, item);
@@ -122,10 +130,19 @@ function reactionItems(
   for (const p of mine(photos)) person(p.who, p.name, p.at).photos.push(named(p));
   for (const p of mine(dislikes)) person(p.who, p.name, p.at).photoDislikes.push(named(p));
   // Keyed by position, so no one's internal id reaches the page.
-  return [...people.values()].map((item, index) => ({ ...item, id: `reaction-${index}` }));
+  return [...people.entries()].map(([who, item], index) => {
+    const id = `reaction-${index}`;
+    options.ids?.set(who, id);
+    return { ...item, id };
+  });
 }
 
 const byTime = (a: TimelineItem, b: TimelineItem) => a.at.localeCompare(b.at);
+
+// Who someone is on a link, without their id: the same on every load, and
+// different on every link. `who` is "p:" and their participant id.
+export const sharePersonKey = (shareId: string, who: string) =>
+  createHash("md5").update(`${shareId}:${who}`).digest("hex").slice(0, 16);
 
 const spotOf = (c: { media_key: string | null; spot: string | null }) =>
   c.media_key && c.spot ? { spot: { mediaKey: c.media_key, tag: c.spot } } : {};
@@ -149,6 +166,7 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
         body: string;
         created_at: Date;
         parent_id: string | null;
+        reply_to_visitor: string | null;
         likes: number;
         liked_by_me: boolean;
         media_key: string | null;
@@ -156,7 +174,7 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
       }[]
     >`
       select c.id, c.listing_key, c.visitor_id, v.first_name, c.body, c.created_at, c.parent_id,
-        c.media_key, c.spot,
+        c.reply_to_visitor, c.media_key, c.spot,
         (select count(*)::int from public_comment_likes cl where cl.comment_id = c.id) as likes,
         exists (select 1 from public_comment_likes cl
           where cl.comment_id = c.id and cl.visitor_id = ${visitorId}::uuid) as liked_by_me
@@ -196,6 +214,15 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
 
   for (const listing of listings) {
     const key = listing.ListingKey;
+    // Each person's line first, so a reply to their likes can go under it.
+    const ids = new Map<string, string>();
+    const reactions = reactionItems(listing, [...publicReactions, ...privateLikes], [...publicPhotos, ...privatePhotos], publicDislikes, {
+      me,
+      anonymous: (who) => who.startsWith("p:"),
+      profiles: true,
+      replyRef: (who) => (who.startsWith("v:") ? `like:${who.slice(2)}` : null),
+      ids,
+    });
     const items: TimelineItem[] = [
       ...comments
         .filter((c) => c.listing_key === key)
@@ -208,7 +235,8 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
             body: c.body,
             at: c.created_at.toISOString(),
             mine: c.visitor_id === visitorId,
-            parentId: c.parent_id,
+            // (A reply to someone whose likes have since gone stands on its own.)
+            parentId: c.parent_id ?? (c.reply_to_visitor ? (ids.get(`v:${c.reply_to_visitor}`) ?? null) : null),
             likes: c.likes,
             likedByMe: c.liked_by_me,
             profileId: c.visitor_id,
@@ -233,11 +261,7 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
             // Never where in the photo: a private comment's spot stays on its link.
           }),
         ),
-      ...reactionItems(listing, [...publicReactions, ...privateLikes], [...publicPhotos, ...privatePhotos], publicDislikes, {
-        me,
-        anonymous: (who) => who.startsWith("p:"),
-        profiles: true,
-      }),
+      ...reactions,
     ];
     timelines.set(key, items.sort(byTime));
   }
@@ -251,7 +275,7 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
   if (listings.length === 0) return timelines;
   const me = participantId ? `p:${participantId}` : null;
   // Who someone is on this link, without their id: the same on every load.
-  const personKey = (who: string) => createHash("md5").update(`${shareId}:${who}`).digest("hex").slice(0, 16);
+  const personKey = (who: string) => sharePersonKey(shareId, who);
 
   const [comments, reactions, photos, dislikes] = await Promise.all([
     sql<
@@ -267,10 +291,12 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
         media_key: string | null;
         spot: string | null;
         liked_by: string | null;
+        parent_id: string | null;
+        reply_to_participant: string | null;
       }[]
     >`
       select c.id, c.listing_key, c.participant_id, p.first_name, a.full_name as agent_name,
-        c.body, c.created_at, c.shared_publicly, c.media_key, c.spot,
+        c.body, c.created_at, c.shared_publicly, c.media_key, c.spot, c.parent_id, c.reply_to_participant,
         -- The link's agent, when they've hearted it.
         (select coalesce(la.full_name, '') from share_comment_likes l
           join shares s on s.id = c.share_id
@@ -299,6 +325,14 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
 
   for (const listing of listings) {
     const key = listing.ListingKey;
+    const ids = new Map<string, string>();
+    const people = reactionItems(listing, reactions, photos, dislikes, {
+      me,
+      anonymous: () => false,
+      personKey,
+      replyRef: (who) => `like:${personKey(who)}`,
+      ids,
+    });
     const items: TimelineItem[] = [
       ...comments
         .filter((c) => c.listing_key === key)
@@ -311,7 +345,7 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
             body: c.body,
             at: c.created_at.toISOString(),
             mine: c.participant_id !== null && c.participant_id === participantId,
-            parentId: null,
+            parentId: c.parent_id ?? (c.reply_to_participant ? (ids.get(`p:${c.reply_to_participant}`) ?? null) : null),
             likes: 0,
             likedByMe: false,
             sharedPublicly: c.shared_publicly,
@@ -320,7 +354,7 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
             ...spotOf(c),
           }),
         ),
-      ...reactionItems(listing, reactions, photos, dislikes, { me, anonymous: () => false, personKey }),
+      ...people,
     ];
     timelines.set(key, items.sort(byTime));
   }

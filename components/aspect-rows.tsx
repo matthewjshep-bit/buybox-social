@@ -8,8 +8,8 @@ import { button } from "@/lib/ui";
 import { aspectLabel, type Aspect } from "@/lib/reactions";
 
 // One list of the Scorecard's rows: the most-mentioned first, a few, then
-// "Show all". Each row has a bar for how many, a "You" when it's yours, and
-// opens to show who and where.
+// "Show all". Each row says what and how many people, plainly ("Exterior ·
+// 3 people"), a "You" when it's yours, and opens to show who and where.
 export function AspectRows({
   tone,
   label,
@@ -33,7 +33,6 @@ export function AspectRows({
   const [all, setAll] = useState(false);
   const [open, setOpen] = useState<Aspect | null>(null);
   const list = useRef<HTMLUListElement>(null);
-  const most = items[0]?.[1] ?? 1;
   const shown = all ? items : items.slice(0, first);
   return (
     <div>
@@ -54,14 +53,9 @@ export function AspectRows({
                 onClick={detail ? () => setOpen(expanded ? null : aspect) : undefined}
                 className="-mx-2 flex min-h-11 w-[calc(100%+1rem)] items-center gap-3 rounded-xl px-2 text-left hover:bg-stone-50"
               >
-                <span className="w-32 shrink-0 truncate text-body text-ink">
-                  {aspectLabel(aspect)} <span className="font-semibold tabular-nums">{count}</span>
-                </span>
-                <span aria-hidden className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-stone-100">
-                  <span
-                    style={{ width: `${Math.max(6, (count / most) * 100)}%` }}
-                    className={cn("block h-full rounded-full", like ? "bg-rose-500" : "bg-amber-500")}
-                  />
+                <span className="min-w-0 flex-1 truncate text-body text-ink">{aspectLabel(aspect)}</span>{" "}
+                <span className="shrink-0 text-meta tabular-nums text-muted">
+                  {count} {count === 1 ? "person" : "people"}
                 </span>
                 <span className="flex w-12 shrink-0 justify-end">
                   {mine && (

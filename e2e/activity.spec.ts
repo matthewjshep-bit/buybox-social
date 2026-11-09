@@ -97,7 +97,7 @@ test("activity shows people and homes, with repeats on one comment on one line",
   const [grace, hannah] = people;
   await grace.goto("/homes/SAMPLE-1013");
   const chat = await openComments(grace, homeIn(grace, LAKEVIEW));
-  await chat.getByRole("button", { name: "Reply to Ana" }).click();
+  await chat.getByRole("button", { name: "Reply to Ana", exact: true }).click();
   await chat.getByLabel("Reply to Ana").fill(REPLY);
   await chat.getByRole("button", { name: "Post", exact: true }).first().click();
   await expect(chat.getByRole("list", { name: "Replies to Ana" }).getByText(REPLY)).toBeVisible();

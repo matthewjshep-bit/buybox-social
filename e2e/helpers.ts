@@ -65,7 +65,8 @@ export async function signUpBuyer(browser: Browser, email: string, name: string,
 export const homeIn = (page: Page, address: string) => page.getByRole("article", { name: address });
 
 // The heart on a home's rail (photo hearts are named "Like the kitchen").
-export const heartOf = (home: Locator) => home.getByRole("button", { name: /^Like (?!the )/ });
+// The home's own heart on the rail (not a heart on a comment, in the feed beside the photo).
+export const heartOf = (home: Locator) => home.getByRole("button", { name: /^Like (?!the )(?!.*\bcomment\b)/ });
 
 // One comment in a thread: who wrote it, and what it says.
 export function commentIn(thread: Locator, name: string, body: string) {

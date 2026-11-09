@@ -5,17 +5,17 @@ import { FACTS, mediaKeyOf } from "./photos";
 import { daysBefore, dayOf, isVideo, PROFILE_TIME_ZONE } from "./profile";
 
 // What's happened around someone's public activity: replies to and likes on
-// their comments, and new comments on homes they liked. Read from the tables
+// their comments, replies to their likes, and new comments on homes they liked. Read from the tables
 // themselves, so there's nothing extra to keep in sync.
 export type ActivityItem = {
   id: string;
-  kind: "reply" | "comment_like" | "comment";
+  kind: "reply" | "comment_like" | "comment" | "like_reply";
   who: string;
   // Their visitor id: two people can share a first name.
   whoId: string;
   body: string;
   // What it's about: your comment (for a reply or a like), or the home (for a
-  // new comment on one you liked).
+  // new comment on one you liked, or a reply to your likes on it).
   about: string;
   listingKey: string;
   address: string;
@@ -53,7 +53,7 @@ type EventRow = {
 };
 
 // Everything that's happened around someone: replies to their comments, likes
-// of them, and new comments on homes they liked.
+// of them, replies to their likes, and new comments on homes they liked.
 const eventsOf = (visitorId: string) => sql`
   select 'reply:' || c.id as id, 'reply' as kind, v.first_name as who, v.id as who_id, c.body,
     mine.id::text as about, c.listing_key, mine.media_key, c.created_at as at
@@ -75,7 +75,14 @@ const eventsOf = (visitorId: string) => sql`
   join public_reactions r on r.listing_key = c.listing_key
     and r.visitor_id = ${visitorId} and r.reaction = 'like'
   join visitors v on v.id = c.visitor_id
-  where c.visitor_id <> ${visitorId} and c.parent_id is null and c.created_at > r.updated_at`;
+  where c.visitor_id <> ${visitorId} and c.parent_id is null and c.reply_to_visitor is null
+    and c.created_at > r.updated_at
+  union all
+  select 'like-reply:' || c.id, 'like_reply', v.first_name, v.id, c.body, 'likes:' || c.listing_key,
+    c.listing_key, null, c.created_at
+  from public_comments c
+  join visitors v on v.id = c.visitor_id
+  where c.reply_to_visitor = ${visitorId} and c.visitor_id <> ${visitorId}`;
 
 // The newest events for the page.
 const loadEvents = cache(
@@ -173,6 +180,7 @@ export const whoText = (people: { name: string }[]) => {
 export function describeActivity(row: Pick<ActivityRow, "kind" | "address">) {
   if (row.kind === "reply") return `replied to your comment on ${row.address}`;
   if (row.kind === "comment_like") return `liked your comment on ${row.address}`;
+  if (row.kind === "like_reply") return `replied to your likes on ${row.address}`;
   return `commented on ${row.address}, a home you liked`;
 }
 

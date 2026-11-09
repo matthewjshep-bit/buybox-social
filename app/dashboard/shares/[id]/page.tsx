@@ -827,6 +827,12 @@ function HomePanel({
                     </Badge>
                   )}
                   <span>· {timeAgo(comment.createdAt)}</span>
+                  {comment.replyTo && (
+                    <span>
+                      · replying to {comment.replyTo.name}
+                      {comment.replyTo.likes && "'s likes"}
+                    </span>
+                  )}
                   {comment.sharedPublicly && (
                     <span className="inline-flex items-center gap-1">
                       · <Globe aria-hidden size={11} /> Shared publicly

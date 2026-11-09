@@ -450,7 +450,7 @@ export async function listComments({
       select 'public' as kind, c.id, c.body, c.created_at as at, c.listing_key,
         l.data->>'UnparsedAddress' as address,
         coalesce(nullif(a.full_name, ''), v.first_name) as name, a.id as "accountId",
-        c.parent_id is not null as "isReply"
+        (c.parent_id is not null or c.reply_to_visitor is not null) as "isReply"
       from public_comments c
       join visitors v on v.id = c.visitor_id
       left join accounts a on a.id = v.account_id

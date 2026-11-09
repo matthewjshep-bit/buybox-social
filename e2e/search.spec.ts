@@ -52,7 +52,8 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await expect(page.getByRole("button", { name: "10421 Halvard Way NE, $1,349,000" })).toHaveAttribute("aria-pressed", "true");
   await expect(halvardCard).toHaveAttribute("aria-current", "true");
   await expect(page.getByRole("button", { name: /\$\d[\d,]*$/, pressed: true })).toHaveCount(1);
-  // The address keeps the home showing, so a reload comes back to it.
+  // The address keeps the home picked, so a reload comes back to it (even
+  // when it's the first).
   await expect(page).toHaveURL(/\/search\?home=SAMPLE-1005$/);
 
   // Each filter narrows the homes and the map, and lands in the URL.
@@ -184,7 +185,9 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   );
 
   // No matches says so, once, right under the count beside the map, and
-  // offers a way out.
+  // offers a way out. (Once the map page has finished loading, so going on
+  // doesn't cut it off halfway.)
+  await page.waitForLoadState("networkidle");
   await page.goto("/search?q=Spokane");
   const none = page.getByText("No homes match those filters.").filter({ visible: true });
   await expect(none).toHaveCount(1);

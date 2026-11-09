@@ -5,7 +5,7 @@ import { cn } from "@/lib/format";
 import { aspectLabel, topAspects, type Aspect, type AspectCounts } from "@/lib/reactions";
 
 // What people single out about a home, most-mentioned first: as chips, or
-// (`rows`, the Scorecard) one row each, with a bar for how many and a tap to
+// (`rows`, the Scorecard) one row each, with how many people and a tap to
 // see who and where. The chips are plain enough for a server page; the rows
 // (which open and close) live in their own client file.
 export function AspectSummary({

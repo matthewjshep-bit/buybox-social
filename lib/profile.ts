@@ -285,7 +285,8 @@ const loadRows = cache(async (visitorId: string, before: string | null, mine: bo
           where r.parent_id = c.id and r.visitor_id <> c.visitor_id) as others_replies
       from public_comments c
       left join public_comments p on p.id = c.parent_id
-      left join visitors pv on pv.id = p.visitor_id and pv.id <> c.visitor_id
+      -- (Or, for a reply to someone's likes, them.)
+      left join visitors pv on pv.id = coalesce(p.visitor_id, c.reply_to_visitor) and pv.id <> c.visitor_id
       where c.visitor_id = ${visitorId} ${until ? sql`and c.created_at < ${until}` : sql``}
       order by c.created_at desc
       limit ${PROFILE_ROW_LIMIT}`,

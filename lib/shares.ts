@@ -47,6 +47,8 @@ export type ThreadComment = {
   // The spot in a photo it's about ("@62.3,68.1" or "Covered porch"), or one of
   // the facts (media key "facts", tag "Price").
   spot?: { mediaKey: string; tag: string } | null;
+  // A reply: whose comment (or whose likes) it answers.
+  replyTo?: { name: string; likes: boolean } | null;
 };
 
 export const newShareToken = () => randomBytes(24).toString("base64url");
@@ -265,13 +267,22 @@ export async function getThread(shareId: string) {
       shared_publicly: boolean;
       media_key: string | null;
       spot: string | null;
+      reply_to_name: string | null;
+      reply_to_likes: boolean;
     }[]
   >`
     select c.id, c.listing_key, c.participant_id, p.first_name,
-           a.full_name as agent_name, c.tag, c.body, c.created_at, c.shared_publicly, c.media_key, c.spot
+           a.full_name as agent_name, c.tag, c.body, c.created_at, c.shared_publicly, c.media_key, c.spot,
+           -- Whose comment, or whose likes, a reply answers.
+           coalesce(pp.first_name, pa.full_name, rp.first_name) as reply_to_name,
+           c.reply_to_participant is not null as reply_to_likes
     from comments c
     left join participants p on p.id = c.participant_id
     left join accounts a on a.id = c.agent_id
+    left join comments pc on pc.id = c.parent_id
+    left join participants pp on pp.id = pc.participant_id
+    left join accounts pa on pa.id = pc.agent_id
+    left join participants rp on rp.id = c.reply_to_participant
     where c.share_id = ${shareId}
     order by c.created_at`;
   const photoLikes = await sql<
@@ -331,6 +342,7 @@ export async function getThread(shareId: string) {
         createdAt: c.created_at.toISOString(),
         sharedPublicly: c.shared_publicly,
         spot: c.media_key && c.spot ? { mediaKey: c.media_key, tag: c.spot } : null,
+        replyTo: c.reply_to_name ? { name: c.reply_to_name, likes: c.reply_to_likes } : null,
       }),
     ),
   };

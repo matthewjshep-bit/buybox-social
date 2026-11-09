@@ -27,6 +27,7 @@ import {
 import type { SpotReaction } from "@/lib/photos";
 import { findSpot } from "@/lib/public";
 import { describeReaction, type ReactionState } from "@/lib/reactions";
+import { sharePersonKey } from "@/lib/timeline";
 
 const MAX_PARTICIPANTS = 25;
 const MAX_OPEN_DEVICES = 200;
@@ -205,8 +206,9 @@ export async function addComment(
   listingKey: string,
   body: string,
   sharePublicly = false,
-  // Links don't have replies; the slot is kept so the page calls both alike.
-  _parentId?: unknown,
+  // What it answers, if it's a reply: a comment on this link, or someone's
+  // likes here ("like:" and who they are on the link, as the page has it).
+  parentId: unknown = null,
   // A spot in a photo it's about, if any.
   spot: unknown = null,
 ): Promise<ActionResult> {
@@ -215,11 +217,45 @@ export async function addComment(
   const actor = await resolveActor(token, listingKey);
   if (!actor) return fail("Please add your name first.");
   if ("preview" in actor) return fail(`${actor.preview} To say something, reply from your dashboard.`);
-  const anchor = await checkAnchor(listingKey, spot);
+  // Replies go one level deep, and only ever among the people on this link.
+  let parent: string | null = null;
+  let replyTo: string | null = null;
+  if (typeof parentId === "string" && parentId) {
+    if (parentId.startsWith("like:")) {
+      const key = parentId.slice(5);
+      const people = await sql<{ id: string }[]>`select id from participants where share_id = ${actor.share.id}`;
+      const person = people.find((p) => sharePersonKey(actor.share.id, `p:${p.id}`) === key);
+      const [liked] = person
+        ? await sql`
+            select 1 from reactions
+            where share_id = ${actor.share.id} and listing_key = ${listingKey} and participant_id = ${person.id}
+            union all
+            select 1 from photo_likes
+            where share_id = ${actor.share.id} and listing_key = ${listingKey} and participant_id = ${person.id}
+            union all
+            select 1 from photo_dislikes
+            where share_id = ${actor.share.id} and listing_key = ${listingKey} and participant_id = ${person.id}
+            limit 1`
+        : [];
+      if (!person || !liked) return fail("Those likes aren't there anymore.");
+      replyTo = person.id;
+    } else {
+      if (parentId.length > 64) return fail("That comment isn't there anymore.");
+      const [found] = await sql`
+        select 1 from comments
+        where id::text = ${parentId} and share_id = ${actor.share.id} and listing_key = ${listingKey}
+          and parent_id is null and reply_to_participant is null`;
+      if (!found) return fail("That comment isn't there anymore.");
+      parent = parentId;
+    }
+  }
+  const reply = parent !== null || replyTo !== null;
+  // A reply is about whatever it answers.
+  const anchor = reply ? null : await checkAnchor(listingKey, spot);
   if (anchor === false) return fail("That photo isn't there anymore.");
   // A comment goes public only when its author asks, and only once they like
-  // the home, so shared quotes never warn other buyers off it.
-  const shared = sharePublicly === true && (await likesHome(actor.participant.id, listingKey));
+  // the home, so shared quotes never warn other buyers off it. Replies never do.
+  const shared = !reply && sharePublicly === true && (await likesHome(actor.participant.id, listingKey));
 
   const [{ count }] = await sql<{ count: number }[]>`
     select count(*)::int as count from comments
@@ -228,12 +264,13 @@ export async function addComment(
   if (count >= MAX_COMMENTS_PER_MINUTE) return fail("Slow down a little, then try again.");
 
   await sql`
-    insert into comments (share_id, listing_key, participant_id, body, shared_publicly, media_key, spot)
+    insert into comments (share_id, listing_key, participant_id, body, shared_publicly, media_key, spot,
+      parent_id, reply_to_participant)
     values (${actor.share.id}, ${listingKey}, ${actor.participant.id}, ${parsed.data}, ${shared},
-      ${anchor?.mediaKey ?? null}, ${anchor?.tag ?? null})`;
+      ${anchor?.mediaKey ?? null}, ${anchor?.tag ?? null}, ${parent}::uuid, ${replyTo}::uuid)`;
   after(async () => {
     const address = await listingLabel(listingKey);
-    await notifyAgent(actor.share.id, `${actor.participant.first_name} commented on ${address}`);
+    await notifyAgent(actor.share.id, `${actor.participant.first_name} ${reply ? "replied" : "commented"} on ${address}`);
   });
   refresh();
   return { ok: true };

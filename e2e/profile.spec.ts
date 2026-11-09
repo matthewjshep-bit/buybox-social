@@ -123,7 +123,7 @@ test("a profile is one card per home per day, with the photo and the spots picke
   await expect(card.getByRole("listitem").filter({ hasText: "Liked" })).toHaveText("Liked the price");
   await expect(card).toContainText("the wraparound porch");
   await expect(card).toContainText("That porch is the whole reason I'd move.");
-  // Pins land on the spots: their initial on the newest (the shingles), a dot on the porch.
+  // A hotspot lands on each spot: the newest (the shingles), and the porch.
   const newest = card.locator("[data-newest]");
   await expect(newest).toHaveAttribute("data-pin", "dislike");
   await expect(newest).toHaveAttribute("style", /left: ?25%; ?top: ?42%/);
@@ -220,7 +220,9 @@ test("a card opens its home over the page, on the photo it's about with the spot
   const home = popout.getByRole("article", { name: CORBEL });
   await expect(home.getByText("Kitchen · 3 of 3", { exact: true })).toBeVisible();
   await expect(home.getByRole("img", { name: "White kitchen with an island and pendant lights" })).toBeInViewport();
-  await expect(home.getByRole("button", { name: /^Subway backsplash: .*\blikes?$/ })).toBeVisible();
+  // What she did there leads the line at the photo's foot, with a hotspot on it.
+  await expect(home.getByRole("group", { name: "Recent activity" })).toContainText("subway backsplash");
+  await expect(home.locator("[data-spot-highlight]")).toHaveCount(1);
 
   // Closed, the keyboard is back on the card that opened it.
   await noor.keyboard.press("Escape");
@@ -338,13 +340,19 @@ test("what someone does on an agent's link never shows on their page", async ({ 
     await expect(take.locator("p").filter({ hasText: /^What you didn't like:/ })).toContainText("Yard", { timeout: 2000 });
     await rowan.keyboard.press("Escape");
     await expect(take).toBeHidden();
-    // What's on a photo shows once its home is on screen.
+    // The like and the dislike in the photos, and the words about the door,
+    // as the link's comments have them from the server.
     await saved.scrollIntoViewIfNeeded();
     await expect(saved).toBeInViewport({ ratio: 0.9, timeout: 2000 });
-    await expect(saved.getByRole("button", { name: /^Picket fence: .*1 like/ })).toBeAttached({ timeout: 2000 });
+    const chat = await openComments(rowan, saved);
+    const cards = chat.getByRole("listitem");
+    await expect(cards.filter({ hasText: /liked the picket fence/ })).toBeAttached({ timeout: 2000 });
+    await expect(cards.filter({ hasText: /didn't like .*red front door/ })).toBeAttached({ timeout: 2000 });
     await expect(
-      saved.getByRole("button", { name: /^Red front door: .*Between us, we'd offer 40 under\..*1 dislike/ }),
+      cards.filter({ hasText: "Between us, we'd offer 40 under." }).getByRole("button", { name: /^About the red front door/ }),
     ).toBeAttached({ timeout: 2000 });
+    await rowan.keyboard.press("Escape");
+    await expect(chat).toBeHidden();
   }).toPass({ timeout: 30_000 });
 
   // Their page has the public like and nothing else, for them and for anyone.
@@ -1024,7 +1032,7 @@ test("on your own page you can take back a like or a comment, and nobody else ca
   const quinn = await signUpBuyer(browser, "quinn@example.com", "Quinn Ash");
   await quinn.goto("/homes/SAMPLE-1010");
   const chat = await openComments(quinn, homeIn(quinn, HERON));
-  await commentIn(chat, "Pia", FIRST).getByRole("button", { name: "Reply to Pia" }).click();
+  await commentIn(chat, "Pia", FIRST).getByRole("button", { name: "Reply to Pia", exact: true }).click();
   await chat.getByLabel("Reply to Pia").fill(ANSWER);
   await chat.getByRole("button", { name: "Post", exact: true }).first().click();
   await expect(chat.getByRole("list", { name: "Replies to Pia" }).getByText(ANSWER)).toBeVisible();

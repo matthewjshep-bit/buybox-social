@@ -1,7 +1,9 @@
 // Fills a local database with believable activity, so the feed, a home's page,
 // profiles and the agent dashboard have something to show: a dozen people
 // liking spots in the sample homes and talking about them, a buyer with a full
-// profile, and an agent with two links. Only ever runs against this machine.
+// profile, and an agent with two links; then a crowd on top (four dozen more
+// buyers, some signed up, and four more agents with clients of their own), so
+// every home looks lived in. Only ever runs against this machine.
 // Safe to run again: it clears its own rows (demo emails, "demo:" devices)
 // and makes them fresh, leaving everything else alone.
 import { createHash } from "node:crypto";
@@ -18,7 +20,7 @@ import {
   thingOf,
   type FactTag,
 } from "../lib/photos";
-import type { Aspect } from "../lib/reactions";
+import { ASPECTS, type Aspect } from "../lib/reactions";
 
 function localHost(url: string | undefined) {
   try {
@@ -694,8 +696,279 @@ const SHARES: ShareSeed[] = [
   },
 ];
 
+// A crowd on top of the people above, so every home looks lived in: more
+// buyers and agents, made up from the same few habits, the same on every run.
+const CROWD: readonly (readonly [slug: string, name: string, fullName: string])[] = [
+  ["olivia", "Olivia", "Olivia Park"], ["liam", "Liam", "Liam Walsh"], ["zoe", "Zoe", "Zoe Bennett"],
+  ["noah", "Noah", "Noah Kim"], ["ava", "Ava", "Ava Thompson"], ["ethan", "Ethan", "Ethan Morales"],
+  ["mia", "Mia", "Mia Rossi"], ["lucas", "Lucas", "Lucas Nguyen"], ["chloe", "Chloe", "Chloe Adams"],
+  ["omar", "Omar", "Omar Haddad"], ["isla", "Isla", "Isla Murphy"], ["ryan", "Ryan", "Ryan Cooper"],
+  ["nora", "Nora", "Nora Lindqvist"], ["caleb", "Caleb", "Caleb Brooks"], ["leila", "Leila", "Leila Farahani"],
+  ["owen-c", "Owen", "Owen Carter"], ["ruby", "Ruby", "Ruby Jensen"], ["kai", "Kai", "Kai Nakamura"],
+  ["harper", "Harper", "Harper Wells"], ["andre", "Andre", "Andre Dubois"], ["sienna", "Sienna", "Sienna Clarke"],
+  ["felix", "Felix", "Felix Wagner"], ["amara", "Amara", "Amara Obi"], ["jonah", "Jonah", "Jonah Reyes"],
+  ["tessa", "Tessa", "Tessa Hughes"], ["ravi", "Ravi", "Ravi Menon"], ["lena", "Lena", "Lena Novak"],
+  ["miles", "Miles", "Miles Turner"], ["yara", "Yara", "Yara Haddad"], ["ben-t", "Ben", "Ben Takahashi"],
+  ["eva", "Eva", "Eva Johansson"], ["sam", "Sam", "Sam Okoye"], ["ivy", "Ivy", "Ivy Chen"],
+  ["gabe", "Gabe", "Gabe Silva"], ["june", "June", "June Patterson"], ["arjun", "Arjun", "Arjun Rao"],
+  ["paige", "Paige", "Paige Doyle"], ["leo", "Leo", "Leo Martin"], ["nadia", "Nadia", "Nadia Petrova"],
+  ["cole", "Cole", "Cole Harrison"], ["luna", "Luna", "Luna Vargas"], ["sean", "Sean", "Sean Gallagher"],
+  ["maren", "Maren", "Maren Olsen"], ["tariq", "Tariq", "Tariq Aziz"], ["willow", "Willow", "Willow Grant"],
+  ["dev", "Dev", "Dev Kapoor"], ["clara", "Clara", "Clara Weiss"], ["max", "Max", "Max Fischer"],
+];
+// The first dozen of them have signed up with an email.
+const CROWD_ACCOUNTS = 12;
+
+const HOMES = Array.from({ length: 13 }, (_, i) => 1001 + i);
+// What a crowd buyer might single out as liked (the price is only ever a
+// sticking point here).
+const LIKEABLE = ASPECTS.map((a) => a.id).filter((a): a is Aspect => a !== "price");
+
+const SPOT_LINES = [
+  "Love the {t}.",
+  "The {t} is beautiful.",
+  "Is the {t} original?",
+  "The {t} sold me.",
+  "Could see us using the {t} every day.",
+  "How old is the {t}?",
+  "That {t} though.",
+  "The {t} is exactly what we've been looking for.",
+];
+const GENERAL_LINES = [
+  "Would love to see this one in person.",
+  "What are the property taxes like?",
+  "How's the street noise?",
+  "The light in here is lovely.",
+  "Great layout for working from home.",
+  "Feels bigger than the square footage.",
+  "Is there parking for two cars?",
+  "This one's on my shortlist.",
+  "Love this neighborhood.",
+  "Any HOA?",
+  "How old is the roof?",
+  "Perfect for a family.",
+  "So much character.",
+  "The kitchen alone is worth a visit.",
+  "Anyone know the school district?",
+  "Saw it at the open house. Even better in person.",
+];
+const PASS_LINES = [
+  "Not for us, but someone will love it.",
+  "Too much work for the price.",
+  "Pretty, but the layout doesn't work for us.",
+  "A bit far from the city for me.",
+];
+// Said under someone's likes.
+const LIKE_REPLY_LINES = [
+  "Same, that was my favorite part too.",
+  "Agreed, it's even better in person.",
+  "Totally. I keep coming back to this one.",
+  "Good eye.",
+  "That's what caught my eye too.",
+];
+const REPLY_LINES = [
+  "Agreed.",
+  "Same here.",
+  "I wondered that too.",
+  "It looked even better in person.",
+  "Exactly what I thought.",
+  "Good question.",
+  "Worth asking the listing agent.",
+  "Ha, same.",
+];
+
+// The facts a crowd buyer might like, and what they'd say about each.
+const LIKED_FACTS = [
+  "Price",
+  "Bedrooms",
+  "Bathrooms",
+  "Square footage",
+  "Price per sq ft",
+  "Year built",
+  "Days on market",
+  "Description",
+  "Listing agent",
+] as const satisfies readonly FactTag[];
+const FACT_LINES: Record<(typeof LIKED_FACTS)[number], string> = {
+  Price: "The price feels right for the area.",
+  Bedrooms: "Love that there's a spare bedroom for an office.",
+  Bathrooms: "Two full baths is a must for us.",
+  "Square footage": "So much room for the money.",
+  "Price per sq ft": "Great price per square foot for this neighborhood.",
+  "Year built": "Hard to believe it's that old. It's been kept up so well.",
+  "Days on market": "It's crazy this has only been on the market a few weeks.",
+  Description: "This description is exactly what we're looking for.",
+  "Listing agent": "Their agent was so helpful at the open house.",
+};
+
+const pickOf = <T,>(list: readonly T[]) => list[Math.floor(random() * list.length)];
+const someOf = <T,>(list: readonly T[], n: number) => {
+  const pool = [...list];
+  const out: T[] = [];
+  while (out.length < n && pool.length) out.push(pool.splice(Math.floor(random() * pool.length), 1)[0]);
+  return out;
+};
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+// One person's made-up visits to some homes, between `oldest` hours ago and
+// half an hour ago: a like or a pass (or neither), a few things tapped in the
+// photos, now and then a comment, some liked and answered by `others`.
+function madeUpVisits(homes: number[], listings: Map<string, Listing>, others: string[], oldest = d(21)): Visit[] {
+  const times = homes.map(() => m(30) + random() * Math.max(oldest - m(30), m(10))).sort((a, b) => b - a);
+  return homes.map((home, i) => {
+    const listing = listings.get(key(home));
+    if (!listing) throw new Error(`${key(home)} isn't in the database; run pnpm db:setup first`);
+    const at = times[i];
+    const roll = random();
+    const react = roll < 0.68 ? ("like" as const) : roll < 0.82 ? ("dislike" as const) : undefined;
+    const photos = listing.Media.filter((media) => (media.Spots ?? []).length > 0);
+    const used = new Set<string>();
+    const spotOn = (): Pin | null => {
+      const photo = pickOf(photos);
+      if (random() < 0.75) {
+        const thing = pickOf(photo.Spots ?? []).tag;
+        const id = `${photo.Order}|${thing}`;
+        if (used.has(id)) return null;
+        used.add(id);
+        return [photo.Order, thing] as const;
+      }
+      return [photo.Order, round2(0.15 + random() * 0.7), round2(0.2 + random() * 0.6)] as const;
+    };
+    const hearts: On[] = [];
+    for (let n = 1 + Math.floor(random() * 3); n > 0; n--) {
+      const on = spotOn();
+      if (on) hearts.push(on);
+    }
+    // Now and then one of the facts too: the price, the beds, the baths, the size.
+    const fact = random() < 0.3 ? pickOf(LIKED_FACTS) : null;
+    if (fact) hearts.push(fact);
+    const nopes: On[] = [];
+    if (random() < 0.25) {
+      const on = spotOn();
+      if (on) nopes.push(on);
+    }
+    if (react === "dislike" && random() < 0.5 && fact !== "Price") nopes.push("Price");
+    const liked = react === "like" ? someOf(LIKEABLE, 1 + Math.floor(random() * 2)) : [];
+    const disliked: Aspect[] =
+      react === "dislike" ? someOf(LIKEABLE, 1) : react === "like" && random() < 0.2 ? ["price"] : [];
+    const says: Say[] = [];
+    if (random() < 0.42) {
+      const named = hearts.find((on): on is readonly [number, string] => typeof on !== "string" && typeof on[1] === "string");
+      const onSpot = Boolean(named) && random() < 0.55;
+      // (About the fact they liked, sometimes, rather than a spot.)
+      const onFact = !onSpot && fact !== null && random() < 0.5;
+      const text = onSpot
+        ? pickOf(SPOT_LINES).replace("{t}", named![1].toLowerCase())
+        : onFact
+          ? FACT_LINES[fact!]
+          : react === "dislike"
+            ? pickOf(PASS_LINES)
+            : pickOf(GENERAL_LINES);
+      const replies: Reply[] =
+        others.length && random() < 0.3
+          ? [{ who: pickOf(others), text: pickOf(REPLY_LINES), at: Math.max(m(5), at * (0.2 + 0.5 * random())) }]
+          : [];
+      says.push({
+        text,
+        ...(onSpot && named ? { on: named } : onFact && fact ? { on: fact } : {}),
+        likedBy: someOf(others, Math.floor(random() * 5)),
+        replies,
+      });
+    }
+    return { home, at, react, liked, disliked, hearts, nopes, says };
+  });
+}
+
+// The crowd joins everyone above, each on a few homes.
+function addCrowd(listings: Map<string, Listing>) {
+  const everyone = [...PEOPLE.map((p) => p.slug), ...CROWD.map(([slug]) => slug)];
+  for (const [slug, name] of CROWD) {
+    PEOPLE.push({ slug, name });
+    const homes = someOf(HOMES, 2 + Math.floor(random() * 5));
+    VISITS[slug] = madeUpVisits(homes, listings, everyone.filter((other) => other !== slug));
+  }
+}
+
+// Four more agents, each with a few clients of their own.
+type DemoAgent = {
+  id: string;
+  email: string;
+  fullName: string;
+  brokerage: string;
+  brandColor: string;
+  phone: string;
+  created: number;
+  contactPhone?: string;
+  contactEmail?: string;
+};
+const MORE_AGENTS: (Omit<DemoAgent, "id" | "email"> & { slug: string })[] = [
+  { slug: "priyanka", fullName: "Priyanka Shah", brokerage: "Sound & Summit Homes", brandColor: "#1F5F5B", phone: "(206) 555-0142", created: d(20) },
+  { slug: "daniel", fullName: "Daniel Okafor", brokerage: "Northline Realty", brandColor: "#4B3B78", phone: "(253) 555-0119", created: d(18) },
+  { slug: "elise", fullName: "Elise Navarro", brokerage: "Cascade Key Real Estate", brandColor: "#3F4A2F", phone: "(425) 555-0177", created: d(16) },
+  { slug: "tom", fullName: "Tom Brennan", brokerage: "Lakeshore Partners", brandColor: "#8A4B14", phone: "(360) 555-0108", created: d(15) },
+];
+const CLIENTS: readonly (readonly [client: string, people: readonly string[]])[] = [
+  ["Lauren & Chris", ["Lauren", "Chris"]],
+  ["Sam", ["Sam"]],
+  ["Ravi & Meera", ["Ravi", "Meera"]],
+  ["Jess", ["Jess"]],
+  ["Mateo & Ana", ["Mateo", "Ana"]],
+  ["Rachel", ["Rachel"]],
+  ["Kevin", ["Kevin"]],
+  ["Olivia & Noah", ["Olivia", "Noah"]],
+  ["Imani", ["Imani"]],
+  ["Tyler & Kim", ["Tyler", "Kim"]],
+  ["Hugo", ["Hugo"]],
+];
+const SHARE_NOTES = [
+  "A few I think you'll like. Tap anything in the photos to tell me what works.",
+  "Fresh on the market this week. Let me know what stands out.",
+  "These fit your list: three bedrooms and a yard.",
+  "Just listed, and close to the school you mentioned.",
+];
+const AGENT_LINES = [
+  "Happy to set up a showing this weekend.",
+  "The sellers just dropped the price.",
+  "Good catch. I'll ask the listing agent about it.",
+  "There's an open house Sunday from 1 to 3.",
+  "Taxes are about $9,000 a year on this one.",
+  "The roof was replaced in 2018.",
+];
+
+function moreAgents(listings: Map<string, Listing>) {
+  let client = 0;
+  return MORE_AGENTS.map((a) => {
+    const agent: DemoAgent = {
+      ...a,
+      id: demoId(`account:agent-${a.slug}`),
+      email: `${a.slug}.agent${DEMO_DOMAIN}`,
+      contactPhone: a.phone.replace(/\D/g, ""),
+      contactEmail: `${a.slug}${DEMO_DOMAIN}`,
+    };
+    const shares: ShareSeed[] = [];
+    for (let n = 2 + Math.floor(random() * 2); n > 0; n--) {
+      const [clientName, names] = CLIENTS[client++ % CLIENTS.length];
+      const created = h(6) + random() * (a.created - h(12));
+      const homes = someOf(HOMES, 1 + Math.floor(random() * 3));
+      const slug = `${a.slug}-${clientName.toLowerCase().replace(/[^a-z]+/g, "-")}`;
+      const people = names.map((name) => ({
+        slug: `${slug}-${name.toLowerCase()}`,
+        name,
+        visits: madeUpVisits(someOf(homes, 1 + Math.floor(random() * homes.length)), listings, [], created - h(1)),
+      }));
+      const agentNotes: AgentNote[] = someOf(homes, Math.min(homes.length, 1 + Math.floor(random() * 2))).map((home) => ({
+        home,
+        text: pickOf(AGENT_LINES),
+        at: Math.max(m(10), created * (0.1 + 0.5 * random())),
+      }));
+      shares.push({ slug, clientName, note: pickOf(SHARE_NOTES), created, homes, people, agent: agentNotes });
+    }
+    return { agent, shares };
+  });
+}
+
 // People who only look: each opens a few homes, the busier ones more often.
-const LOOKERS = 48;
+const LOOKERS = 140;
 
 // What a pin or fact names, checked against the home exactly as the app does
 // when someone taps it, with the broad specific a like counts toward.
@@ -830,15 +1103,26 @@ async function seedPublic(tx: Tx, listings: Map<string, Listing>) {
   const views = new Map<string, Date>();
   const plans = PEOPLE.map((person) => ({ person, ...rowsFor(person.slug, VISITS[person.slug] ?? [], listings) }));
 
+  // Some of the crowd have signed up too.
+  const signedUp = new Map(
+    CROWD.slice(0, CROWD_ACCOUNTS).map(([slug, , fullName]) => [slug, { id: demoId(`account:${slug}`), email: `${slug}${DEMO_DOMAIN}`, fullName }]),
+  );
+  for (const [slug, account] of signedUp) {
+    await tx`
+      insert into accounts (id, auth_user_id, email, full_name, role, created_at)
+      values (${account.id}, ${`dev:${account.email}`}, ${account.email}, ${account.fullName}, 'buyer', ${ago(joined(slug) + m(5))})`;
+  }
+
   for (const { person } of plans) {
     const isMaya = person.slug === "maya";
+    const account = isMaya ? { id: MAYA.id } : signedUp.get(person.slug);
     await tx`
       insert into visitors (id, device_token, first_name, account_id, created_at, activity_seen_at)
       values (
         ${visitorOf(person.slug)},
-        ${isMaya ? `account:${MAYA.id}` : `${DEMO_DEVICE}${person.slug}`},
+        ${account ? `account:${account.id}` : `${DEMO_DEVICE}${person.slug}`},
         ${person.name},
-        ${isMaya ? MAYA.id : null},
+        ${account?.id ?? null},
         ${ago(isMaya ? MAYA.created : joined(person.slug))},
         ${isMaya ? ago(d(1.2)) : ago(h(2))})`;
   }
@@ -892,23 +1176,44 @@ async function seedPublic(tx: Tx, listings: Map<string, Listing>) {
   if (commentLikes.length) await tx`insert into public_comment_likes ${tx(commentLikes)}`;
   counts.commentLikes = commentLikes.length;
 
+  // Now and then someone answers another person's likes, under their line.
+  const liked = plans.flatMap(({ person, reactions }) =>
+    reactions.filter((r) => r.reaction === "like").map((r) => ({ who: person.slug, ...r })),
+  );
+  for (const target of someOf(liked, Math.min(30, liked.length))) {
+    const replier = pickOf(PEOPLE.filter((p) => p.slug !== target.who)).slug;
+    const at = Math.max(m(5), (NOW - target.updated_at.getTime()) / 3_600_000 - 0.5 - random() * 20);
+    await tx`
+      insert into public_comments (id, listing_key, visitor_id, body, reply_to_visitor, created_at)
+      values (${demoId(`like-reply:${target.who}:${target.listing_key}`)}, ${target.listing_key},
+        ${visitorOf(replier)}, ${pickOf(LIKE_REPLY_LINES)}, ${visitorOf(target.who)}, ${ago(at)})`;
+    counts.replies++;
+  }
+
   return { counts, views, visitorOf };
 }
 
-async function seedAgent(tx: Tx, listings: Map<string, Listing>, views: Map<string, Date>) {
+async function seedAgent(
+  tx: Tx,
+  listings: Map<string, Listing>,
+  views: Map<string, Date>,
+  agent: DemoAgent = AGENT,
+  shares: ShareSeed[] = SHARES,
+) {
   await tx`
-    insert into accounts (id, auth_user_id, email, full_name, role, brokerage, brand_color, phone, created_at)
-    values (${AGENT.id}, ${`dev:${AGENT.email}`}, ${AGENT.email}, ${AGENT.fullName}, 'agent',
-      ${AGENT.brokerage}, ${AGENT.brandColor}, ${AGENT.phone}, ${ago(AGENT.created)})`;
+    insert into accounts (id, auth_user_id, email, full_name, role, brokerage, brand_color, phone, contact_phone, contact_email, created_at)
+    values (${agent.id}, ${`dev:${agent.email}`}, ${agent.email}, ${agent.fullName}, 'agent',
+      ${agent.brokerage}, ${agent.brandColor}, ${agent.phone}, ${agent.contactPhone ?? ""}, ${agent.contactEmail ?? ""},
+      ${ago(agent.created)})`;
 
   const links: { clientName: string; homes: number; token: string; people: { name: string; token: string }[] }[] = [];
   const tally = { reactions: 0, likes: 0, dislikes: 0, comments: 0, replies: 0 };
-  for (const share of SHARES) {
+  for (const share of shares) {
     const shareId = demoId(`share:${share.slug}`);
     const token = demoToken(`share:${share.slug}`);
     await tx`
       insert into shares (id, token, agent_id, client_name, note, created_at)
-      values (${shareId}, ${token}, ${AGENT.id}, ${share.clientName}, ${share.note}, ${ago(share.created)})`;
+      values (${shareId}, ${token}, ${agent.id}, ${share.clientName}, ${share.note}, ${ago(share.created)})`;
     for (const [position, home] of share.homes.entries()) {
       await tx`insert into share_listings (share_id, listing_key, position) values (${shareId}, ${key(home)}, ${position})`;
     }
@@ -952,7 +1257,7 @@ async function seedAgent(tx: Tx, listings: Map<string, Listing>, views: Map<stri
     for (const note of share.agent) {
       await tx`
         insert into comments (share_id, listing_key, agent_id, body, created_at)
-        values (${shareId}, ${key(note.home)}, ${AGENT.id}, ${note.text}, ${ago(note.at)})`;
+        values (${shareId}, ${key(note.home)}, ${agent.id}, ${note.text}, ${ago(note.at)})`;
       tally.replies++;
     }
     links.push({ clientName: share.clientName, homes: share.homes.length, token, people });
@@ -990,10 +1295,16 @@ async function main() {
   }
   const listings = new Map(rows.map((row) => [row.data.ListingKey, row.data]));
 
+  addCrowd(listings);
+  const others = moreAgents(listings);
   const result = await sql.begin(async (tx) => {
     await clearDemo(tx);
     const { counts, views } = await seedPublic(tx, listings);
     const { links, tally } = await seedAgent(tx, listings, views);
+    for (const { agent, shares } of others) {
+      const more = await seedAgent(tx, listings, views, agent, shares);
+      for (const k of Object.keys(tally) as (keyof typeof tally)[]) tally[k] += more.tally[k];
+    }
     lookerViews(views, listings);
     const viewRows = [...views].map(([id, first_seen]) => {
       const [listing_key, device_token] = id.split("|");
@@ -1013,13 +1324,17 @@ async function main() {
       `${counts.commentLikes} comment likes, ${views} views.`,
   );
   console.log(
-    `On ${AGENT.fullName}'s ${links.length} links: ${tally.reactions} reactions, ${tally.likes} likes and ` +
+    `On ${links.length} of ${AGENT.fullName}'s links and ${others.reduce((n, o) => n + o.shares.length, 0)} more from ${others.length} other agents: ${tally.reactions} reactions, ${tally.likes} likes and ` +
       `${tally.dislikes} dislikes, ${tally.comments} comments and ${tally.replies} replies from the agent.`,
   );
   console.log(`\nSign in at ${base}/login (no password) as:`);
   console.log(`  ${MAYA.email}   ${MAYA.fullName}, a buyer with a full profile: ${base}/people/me`);
   console.log(`  (her profile, signed out: ${base}/people/${demoId("visitor:maya")})`);
   console.log(`  ${AGENT.email}  ${AGENT.fullName}, ${AGENT.brokerage}: ${base}/dashboard`);
+  for (const { agent, shares } of others) {
+    console.log(`  ${agent.email}  ${agent.fullName}, ${agent.brokerage} (${shares.length} links)`);
+  }
+  console.log(`  …and ${CROWD_ACCOUNTS} signed-up buyers, such as ${CROWD[0][0]}${DEMO_DOMAIN}`);
   console.log("\nShare links:");
   for (const link of links) {
     console.log(`  ${link.clientName}, ${link.homes === 1 ? "one home" : `${link.homes} homes`}: ${base}/s/${link.token}`);

@@ -152,11 +152,15 @@ export async function likePhotoInStream(
   return savePhotoLike(listingKey, mediaKey, tag, reaction);
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function saveComment(
   listingKey: string,
   body: string,
+  // What it answers: a comment, or someone's likes on the home ("like:" and
+  // their visitor id, as their public profile has it).
   parentId: string | null,
-  // A spot in a photo it's about, if any. Replies are about their comment's.
+  // A spot in a photo it's about, if any. Replies are about what they answer.
   spot: unknown = null,
 ): Promise<ActionResult> {
   const parsed = commentSchema.safeParse(body);
@@ -166,12 +170,31 @@ async function saveComment(
   const anchor = parentId === null ? await checkAnchor(listingKey, spot) : null;
   if (anchor === false) return fail("That photo isn't there anymore.");
 
-  // Replies go one level deep, on a comment about the same home.
+  // Replies go one level deep: on a comment about the same home, or under
+  // someone's likes (or pass) on it.
+  let parent: string | null = null;
+  let replyTo: string | null = null;
   if (parentId !== null) {
-    const [parent] = await sql`
-      select 1 from public_comments
-      where id::text = ${String(parentId)} and listing_key = ${listingKey} and parent_id is null`;
-    if (!parent) return fail("That comment isn't there anymore.");
+    const ref = String(parentId);
+    if (ref.startsWith("like:")) {
+      const who = ref.slice(5);
+      if (!UUID.test(who)) return fail("Those likes aren't there anymore.");
+      const [liked] = await sql`
+        select 1 from public_reactions where listing_key = ${listingKey} and visitor_id = ${who}::uuid
+        union all
+        select 1 from public_photo_likes where listing_key = ${listingKey} and visitor_id = ${who}::uuid
+        union all
+        select 1 from public_photo_dislikes where listing_key = ${listingKey} and visitor_id = ${who}::uuid
+        limit 1`;
+      if (!liked) return fail("Those likes aren't there anymore.");
+      replyTo = who;
+    } else {
+      const [found] = await sql`
+        select 1 from public_comments
+        where id::text = ${ref} and listing_key = ${listingKey} and parent_id is null and reply_to_visitor is null`;
+      if (!found) return fail("That comment isn't there anymore.");
+      parent = ref;
+    }
   }
 
   const [{ count }] = await sql<{ count: number }[]>`
@@ -180,8 +203,8 @@ async function saveComment(
   if (count >= MAX_COMMENTS_PER_MINUTE) return fail("Slow down a little, then try again.");
 
   await sql`
-    insert into public_comments (listing_key, visitor_id, body, parent_id, media_key, spot)
-    values (${listingKey}, ${visitor.id}, ${parsed.data}, ${parentId}::uuid,
+    insert into public_comments (listing_key, visitor_id, body, parent_id, reply_to_visitor, media_key, spot)
+    values (${listingKey}, ${visitor.id}, ${parsed.data}, ${parent}::uuid, ${replyTo}::uuid,
       ${anchor?.mediaKey ?? null}, ${anchor?.tag ?? null})`;
   return { ok: true };
 }

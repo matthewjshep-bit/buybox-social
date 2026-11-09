@@ -6,7 +6,7 @@ import { likeId, NO_PHOTO_LIKES } from "../lib/photos";
 import { NO_REACTION, type ReactionState } from "../lib/reactions";
 import { buildScorecard } from "../lib/scorecard";
 import type { PhotoThing, TimelineComment, TimelineItem, TimelineReaction } from "../lib/timeline";
-import { createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, openMore, openScorecard, pick, settle, signInAgent } from "./helpers";
+import { commentIn, createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, openMore, openScorecard, pick, settle, signInAgent } from "./helpers";
 
 // The Scorecard: everything people think of a home in one place, from the
 // button on its rail, after Comments. What it may show depends on where you
@@ -36,7 +36,7 @@ test("a quiet home: the rail's Scorecard says nobody has weighed in, then your t
   await settled(home);
 
   // Like, Comments, Scorecard, Share, More, down the rail.
-  const rail = home.locator("[data-keep-clear]").filter({ has: page.getByRole("button", { name: /^Like (?!the )/ }) });
+  const rail = home.locator("[data-rail]");
   const names = [/^Like 88 Heron Bluff Rd/, /^Comments/, "Scorecard", "Share", "More options"];
   await expect(rail.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(rail.getByRole("button").nth(i)).toHaveAccessibleName(name);
@@ -147,12 +147,11 @@ test("public and private: a link's people, passes and words stay on the link, an
   const card = await openScorecard(wes, wesHome);
   await expect(card.getByLabel("3 people liked it")).toBeVisible();
   await expect(card.getByLabel(/passed$/)).toHaveCount(0);
-  await expect(card.getByText("People pass on")).toHaveCount(0);
+  await expect(card.getByText("What people didn't like")).toHaveCount(0);
   await expect(card.getByText("Gave people pause")).toHaveCount(0);
   await expect(card.getByText("and 1 more comment in private chats")).toBeVisible();
   await expect(card).not.toContainText(/pass/i);
   await expect(card).not.toContainText(/Uma|Vic|Saturday/);
-  await expect(card.getByText(WES_SAYS)).toBeVisible();
   await expect(card.getByLabel("Activity")).not.toContainText("pass");
   for (const path of ["/", "/homes/SAMPLE-1011"]) {
     const html = await (await wes.request.get(path)).text();
@@ -160,8 +159,8 @@ test("public and private: a link's people, passes and words stay on the link, an
     expect(html).not.toMatch(/\bUma\b|\bVic\b/);
   }
 
-  // "See all" opens the comments, and they stay open.
-  await card.getByRole("button", { name: "See all 1 comment" }).click();
+  // What people said is in the comments, a tap away, and they stay open.
+  await card.getByRole("button", { name: "See the 1 comment" }).click();
   const comments = wes.getByRole("dialog", { name: "Comments" });
   await expect(comments).toBeVisible();
   await wes.waitForTimeout(600);
@@ -190,9 +189,7 @@ test("public and private: a link's people, passes and words stay on the link, an
   // one's own), then names, where they agree, the pass and the dislike, and
   // nothing from the public page.
   await uma.reload();
-  const umaRail = homeIn(uma, ALDER)
-    .locator("[data-keep-clear]")
-    .filter({ has: uma.getByRole("button", { name: /^Like (?!the )/ }) });
+  const umaRail = homeIn(uma, ALDER).locator("[data-rail]");
   const onLink = [/^Like 16420 NE Alder Crest Way/, /^Comments/, "Scorecard", "More options"];
   await expect(umaRail.getByRole("button")).toHaveCount(onLink.length);
   for (const [i, name] of onLink.entries()) await expect(umaRail.getByRole("button").nth(i)).toHaveAccessibleName(name);
@@ -201,21 +198,25 @@ test("public and private: a link's people, passes and words stay on the link, an
   await expect(umaCard).toContainText("You liked it · Vic passed");
   await expect(umaCard.getByRole("heading", { name: "Where you agree" })).toBeVisible();
   await expect(umaCard).toContainText("Both like: Exterior · Front door");
-  await expect(umaCard.getByText("People pass on")).toBeVisible();
-  await expect(umaCard.getByText("Price 1")).toBeVisible();
+  await expect(umaCard.getByText("What people didn't like")).toBeVisible();
+  await expect(umaCard.getByRole("button", { name: /^Price 1 person/ })).toBeVisible();
   await expect(umaCard.getByText("Gave people pause")).toBeVisible();
   await expect(umaCard.getByRole("button", { name: /^Lawn, photo 1, 1 person didn't like it\./ })).toBeVisible();
-  await expect(umaCard.getByText(UMA_SAYS)).toBeVisible();
   await expect(umaCard).not.toContainText(/\bWes\b|front walk is lovely/);
   await expect(umaCard.getByRole("button", { name: "Message Sage" })).toBeVisible();
   // One home on the link: nothing to compare it with.
   await expect(umaCard.getByRole("heading", { name: /^Compare/ })).toHaveCount(0);
+  // What she said is in the link's comments; Wes's public words never are.
+  await umaCard.getByRole("button", { name: "See the 1 comment" }).click();
+  const umaComments = uma.getByRole("dialog", { name: "Comments" });
+  await expect(umaComments.getByText(UMA_SAYS)).toBeVisible();
+  await expect(umaComments).not.toContainText(/\bWes\b|front walk is lovely/);
   const linkHtml = await (await uma.request.get(urls.Uma)).text();
   expect(linkHtml).not.toContain(WES_SAYS);
   expect(linkHtml).not.toMatch(/\bWes\b/);
 });
 
-test("on a desktop, the Scorecard is a tab beside the comments, and the panel says what people think", async ({
+test("on a desktop, the panel says what the home is and what people said, and the Scorecard is a tab beside the comments", async ({
   browser,
 }) => {
   const page = await page$(browser, DESKTOP);
@@ -235,13 +236,23 @@ test("on a desktop, the Scorecard is a tab beside the comments, and the panel sa
   await page.keyboard.press("Escape");
   await expect(chat).toBeHidden();
 
-  // In the white panel, in brief: how people feel and what they say, and the way in.
-  const brief = home.getByRole("heading", { name: "What people think" }).locator("..");
-  await expect(brief).toBeVisible();
-  await expect(brief.getByLabel(/^\d+ (person|people) liked it$/)).toBeVisible();
-  await brief.getByRole("button", { name: "Open the scorecard" }).click();
+  // The white panel says what the home is, then how many liked it and said
+  // something; the words themselves are in the comments, one tap away.
+  const panel = home.locator("[data-words]");
+  await expect(panel.getByText("Price per sq ft")).toBeVisible();
+  await expect(panel.getByRole("list", { name: "Comments and likes" })).toHaveCount(0);
+  await panel.getByRole("button", { name: /^\d+ comments?\. Read them$/ }).click();
+  const said = page.getByRole("dialog", { name: "Comments" });
+  await expect(commentIn(said, "Kofi", "The walk up to the door is lovely.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(said).toBeHidden();
+  // What people think is the Scorecard, from the buttons beside the photo;
+  // what the home is, it leaves to the panel.
+  await home.getByRole("button", { name: "Scorecard", exact: true }).click();
   const card = page.getByRole("dialog", { name: "Scorecard" });
   await expect(card).toBeVisible();
+  await expect(card.getByLabel(/^\d+ (person|people) liked it$/)).toBeVisible();
+  await expect(card.getByRole("heading", { name: "The facts" })).toHaveCount(0);
   // Beside the photo, not over it, and the tab that's showing has the keyboard.
   expect(await card.evaluate((el) => el.matches(":modal"))).toBe(false);
   const tabs = card.getByRole("tablist");
@@ -263,11 +274,11 @@ test("on a desktop, the Scorecard is a tab beside the comments, and the panel sa
   await page.keyboard.press("Escape");
   await expect(comments).toBeHidden();
 
-  // Who liked it, in the panel, opens it too.
-  await home.getByRole("button", { name: /^Liked by .+\. See the scorecard$/ }).click();
+  // How many liked it, in the panel, opens it too.
+  await home.getByRole("button", { name: /^\d+ likes?\. See the scorecard$/ }).click();
   await expect(card).toBeVisible();
-  // "See all" from the keyboard: the comments, with the keyboard on their tab.
-  await card.getByRole("button", { name: /^See all \d+ comments?$/ }).press("Enter");
+  // The comments from the keyboard: there, with the keyboard on their tab.
+  await card.getByRole("button", { name: /^See the \d+ comments?$/ }).press("Enter");
   await expect(comments).toBeVisible();
   await expect(comments.getByRole("tab", { name: /^Comments/ })).toBeFocused();
   await comments.getByRole("tab", { name: "Scorecard" }).click();

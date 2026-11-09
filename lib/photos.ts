@@ -19,13 +19,26 @@ export type SpotReaction = "like" | "dislike" | null;
 // its photos: "the price", "the square footage". They go by this in place of a
 // photo's media key.
 export const FACTS = "facts";
-export const FACT_TAGS = ["Price", "Bedrooms", "Bathrooms", "Square footage", "Address"] as const;
+export const FACT_TAGS = [
+  "Price",
+  "Bedrooms",
+  "Bathrooms",
+  "Square footage",
+  "Address",
+  "Price per sq ft",
+  "Year built",
+  "ZIP code",
+  "Home type",
+  "Days on market",
+  "Description",
+  "Listing agent",
+] as const;
 export type FactTag = (typeof FACT_TAGS)[number];
 export const isFactTag = (tag: string): tag is FactTag => (FACT_TAGS as readonly string[]).includes(tag);
 
 // The broad specific a liked fact counts toward, for taste and totals.
 export const aspectOfFact = (tag: string): Aspect | null =>
-  tag === "Price" ? "price" : tag === "Address" ? "location" : null;
+  tag === "Price" || tag === "Price per sq ft" ? "price" : tag === "Address" || tag === "ZIP code" ? "location" : null;
 
 // A spot tapped on a photo is named by exactly where it is: "@62.3,68.1", in
 // percent across and down, to a tenth. Its heart stays right there. Likes and
@@ -86,8 +99,16 @@ export const tagNameIn = (listing: Listing, mediaKey: string, tag: string) =>
 // Whether a tag can be liked or commented on in this photo.
 export const isTagIn = (photo: ListingMedia, tag: string) => isPointTag(tag) || photoTags(photo).includes(tag);
 
-// "the marble counters"; "a spot in the photo"
-export const tagPhrase = (tag: string) => (isPointTag(tag) ? "a spot in the photo" : `the ${tag.toLowerCase()}`);
+// Facts that don't read as "the" and their name in lower case.
+const PHRASES: Record<string, string> = {
+  "ZIP code": "the ZIP code",
+  "Price per sq ft": "the price per square foot",
+  "Days on market": "the time on the market",
+};
+
+// "the marble counters"; "a spot in the photo"; "the ZIP code"
+export const tagPhrase = (tag: string) =>
+  isPointTag(tag) ? "a spot in the photo" : (PHRASES[tag] ?? `the ${tag.toLowerCase()}`);
 
 // A heading for it, in its photo: "Front door"; "This spot"
 export const spotLabel = (photo: ListingMedia | undefined, tag: string) => thingOf(photo, tag) ?? "This spot";

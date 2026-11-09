@@ -461,25 +461,35 @@ export function buildScorecard(
     dislikes: counts.dislikes[likeId(FACTS, tag)] ?? 0,
     comments: comments.filter((c) => !c.parentId && c.spot?.mediaKey === FACTS && c.spot.tag === tag).length,
   });
-  const none = { likes: 0, dislikes: 0, comments: 0 };
   const address = factTally("Address");
   const facts: FactRow[] = [
     { label: "Price", value: formatPrice(listing.ListPrice), ...factTally("Price") },
     ...(listing.LivingArea > 0
-      ? [{ label: "Price per sq ft", value: formatPrice(Math.round(listing.ListPrice / listing.LivingArea)), ...none }]
+      ? [{ label: "Price per sq ft", value: formatPrice(Math.round(listing.ListPrice / listing.LivingArea)), ...factTally("Price per sq ft") }]
       : []),
     { label: "Bedrooms", value: String(listing.BedroomsTotal), ...factTally("Bedrooms") },
     { label: "Bathrooms", value: String(listing.BathroomsTotalInteger), ...factTally("Bathrooms") },
     { label: "Living area", value: `${listing.LivingArea.toLocaleString("en-US")} sq ft`, ...factTally("Square footage") },
-    ...(listing.YearBuilt ? [{ label: "Year built", value: String(listing.YearBuilt), ...none }] : []),
-    ...(listing.PropertySubType ? [{ label: "Home type", value: listing.PropertySubType, ...none }] : []),
-    ...(listing.OnMarketDate ? [{ label: "On the market since", value: onMarket(listing.OnMarketDate), ...none }] : []),
+    ...(listing.YearBuilt ? [{ label: "Year built", value: String(listing.YearBuilt), ...factTally("Year built") }] : []),
+    ...(listing.PropertySubType ? [{ label: "Home type", value: listing.PropertySubType, ...factTally("Home type") }] : []),
+    ...(listing.OnMarketDate
+      ? [{ label: "On the market since", value: onMarket(listing.OnMarketDate), ...factTally("Days on market") }]
+      : []),
     // What people said about the address goes on a row of its own, so it
     // never looks like the ZIP code they liked.
     ...(address.likes + address.dislikes + address.comments > 0
       ? [{ label: "Address", value: listing.UnparsedAddress, ...address }]
       : []),
-    { label: "City and ZIP", value: [listing.City, listing.PostalCode].filter(Boolean).join(" "), ...none },
+    { label: "City and ZIP", value: [listing.City, listing.PostalCode].filter(Boolean).join(" "), ...factTally("ZIP code") },
+    ...(listing.ListAgentFullName
+      ? [
+          {
+            label: "Listed by",
+            value: [listing.ListAgentFullName, listing.ListOfficeName].filter(Boolean).join(" · "),
+            ...factTally("Listing agent"),
+          },
+        ]
+      : []),
   ];
 
   // ② What people say.
@@ -587,6 +597,22 @@ const aspectOfSpot = (listing: Listing, row: SpotRow) =>
   aspectOfThing(listing, { tag: row.name, mediaUrl: null, mediaKey: row.spot.mediaKey, spot: row.spot.tag });
 
 // "Oct 12 · 25 days" (the day it was listed, and how long ago).
+// What a home is, beyond the price, beds, baths and size: for the panel
+// beside its photo. Only what the listing has.
+export function homeDetails(listing: Listing): { label: string; value: string; tag: FactTag }[] {
+  return [
+    ...(listing.LivingArea > 0
+      ? [{ label: "Price per sq ft", value: formatPrice(Math.round(listing.ListPrice / listing.LivingArea)), tag: "Price per sq ft" as const }]
+      : []),
+    ...(listing.PropertySubType ? [{ label: "Home type", value: listing.PropertySubType, tag: "Home type" as const }] : []),
+    ...(listing.YearBuilt ? [{ label: "Year built", value: String(listing.YearBuilt), tag: "Year built" as const }] : []),
+    ...(listing.OnMarketDate
+      ? [{ label: "On the market since", value: onMarket(listing.OnMarketDate), tag: "Days on market" as const }]
+      : []),
+    ...(listing.PostalCode ? [{ label: "ZIP code", value: listing.PostalCode, tag: "ZIP code" as const }] : []),
+  ];
+}
+
 function onMarket(date: string, now = new Date()) {
   const [y, m, d] = date.split("-").map(Number);
   const listed = y && m && d ? new Date(y, m - 1, d) : new Date(date);

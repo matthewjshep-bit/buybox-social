@@ -36,11 +36,19 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
   }
 
   // Not for me, on the fourth.
+  // (Each tap shows at once and saves behind it: wait for each to be saved,
+  // not just shown, before the reload below.)
+  const saved = () =>
+    pia.waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
   const pass = await openMore(pia, homes.nth(3));
+  let save = saved();
   await pass.getByRole("button", { name: "Not for me" }).click();
+  await save;
   const why = pass.getByRole("group", { name: "What made you pass?" });
+  save = saved();
   await why.getByRole("button", { name: "Exterior" }).click();
   await expect(why.getByRole("button", { name: "Exterior" })).toHaveAttribute("aria-pressed", "true");
+  await save;
   await pia.keyboard.press("Escape");
 
   // Your taste so far waits at the end of the feed, told as your own page
@@ -96,8 +104,8 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   await expect(devChat.getByText("Cleo liked the three-car garage")).toBeVisible();
   await dev.keyboard.press("Escape");
   const devCard = await openScorecard(dev, devHome);
-  await expect(devCard.getByText("People like", { exact: true })).toBeVisible();
-  await expect(devCard.getByText("Exterior 1")).toBeVisible();
+  await expect(devCard.getByText("What people liked", { exact: true })).toBeVisible();
+  await expect(devCard.getByRole("button", { name: /^Exterior 1 person/ })).toBeVisible();
   await dev.keyboard.press("Escape");
   await expect(devCard).toBeHidden();
   devChat = await openComments(dev, devHome);
@@ -108,7 +116,7 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
     "aria-pressed",
     "true",
   );
-  await devChat.getByRole("button", { name: "Reply to Cleo" }).click();
+  await devChat.getByRole("button", { name: "Reply to Cleo", exact: true }).click();
   await devChat.getByLabel("Reply to Cleo").fill("Same here, so quiet.");
   await devChat.getByRole("button", { name: "Post", exact: true }).first().click();
   const replies = devChat.getByRole("list", { name: "Replies to Cleo" });

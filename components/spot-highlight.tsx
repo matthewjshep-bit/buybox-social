@@ -127,17 +127,46 @@ export function EventFace({
   );
 }
 
-// On the photo, right where they did it: their face, popping in, and a ring
-// that spreads from it and fades (twice the first time it shows, once after),
-// to catch the eye. Only to look at: a tap goes to whatever's under it.
-// `emphasis`: the line is being looked at (hovered, or the keyboard is on
-// it), so the face shows its ring a little bolder, without the ripple.
-// `still`: reduced motion, so no pop and no ripple.
+// Where someone tapped, as a soft circle of light with a fine ring and a bright
+// centre: it says "here" without saying what they thought of it, so nobody's
+// eye is led before they've looked for themselves. `small`: on a photo in a
+// feed card. `strong`: the line about it is being looked at.
+export function Hotspot({ small = false, strong = false, className }: { small?: boolean; strong?: boolean; className?: string }) {
+  return (
+    <span aria-hidden data-hotspot className={cn("pointer-events-none absolute size-0", className)}>
+      <span
+        className={cn(
+          "absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2 rounded-full",
+          "bg-[radial-gradient(circle,rgb(255_255_255/0.5)_0%,rgb(255_255_255/0.2)_40%,rgb(255_255_255/0)_70%)]",
+          small ? "size-10" : strong ? "size-24" : "size-20",
+        )}
+      />
+      <span
+        className={cn(
+          "absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-[0_0_0_1px_rgb(0_0_0/0.18),0_0_14px_rgb(0_0_0/0.3)] transition-[box-shadow,width,height]",
+          small ? "size-4 ring-2 ring-white/90" : cn("size-8 ring-white/90", strong ? "ring-[3px]" : "ring-2"),
+        )}
+      />
+      <span
+        className={cn(
+          "absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_6px_rgb(0_0_0/0.35)]",
+          small ? "size-1.5" : "size-2.5",
+        )}
+      />
+    </span>
+  );
+}
+
+// On the photo, right where they did it, while the line at its foot says who
+// and what: the hotspot, easing in, with one ring that spreads from it and
+// fades (twice the first time it shows) to catch the eye. Only to look at: a
+// tap goes to whatever's under it. `emphasis`: the line is being looked at
+// (hovered, or the keyboard is on it), so the ring shows a little bolder,
+// without the ripple. `still`: reduced motion, so no easing in and no ripple.
 export function SpotHighlight({
   event,
   x,
   y,
-  myName,
   ripples,
   emphasis,
   still,
@@ -147,7 +176,6 @@ export function SpotHighlight({
   // Where, in fractions of the photo.
   x: number;
   y: number;
-  myName: string | null;
   ripples: number;
   emphasis: boolean;
   still: boolean;
@@ -165,20 +193,12 @@ export function SpotHighlight({
         <span
           key={`ripple-${showing}`}
           style={{ animationIterationCount: ripples }}
-          className="absolute left-0 top-0 size-7 -translate-x-1/2 -translate-y-1/2 rounded-full opacity-0 ring-2 ring-white/70 animate-[spot-ripple_900ms_cubic-bezier(0,0,0.2,1)]"
+          className="absolute left-0 top-0 size-8 -translate-x-1/2 -translate-y-1/2 rounded-full opacity-0 ring-2 ring-white/70 animate-[spot-ripple_900ms_cubic-bezier(0,0,0.2,1)]"
         />
       )}
-      <EventFace
-        key={`face-${showing}`}
-        event={event}
-        myName={myName}
-        pin
-        className={cn(
-          "absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2 transition-shadow",
-          emphasis ? "ring-3" : "ring-2",
-          !still && "animate-[pin-in_300ms_cubic-bezier(0.05,0.7,0.1,1)_both]",
-        )}
-      />
+      <span key={`spot-${showing}`} className={cn("absolute left-0 top-0", !still && "animate-[pin-in_300ms_cubic-bezier(0.05,0.7,0.1,1)_both]")}>
+        <Hotspot strong={emphasis} />
+      </span>
     </span>
   );
 }

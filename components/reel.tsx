@@ -18,7 +18,6 @@ import {
   Send,
   Share2,
   ThumbsDown,
-  User,
   UserPlus,
 } from "lucide-react";
 import Link from "next/link";
@@ -59,7 +58,7 @@ import {
   type SpotLight,
 } from "@/components/photo-spots";
 import { photoFoot, photoPlace, ReelPhotos } from "@/components/reel-photos";
-import { ScorecardBody, WhatPeopleThink } from "@/components/scorecard";
+import { ScorecardBody } from "@/components/scorecard";
 import { Sheet } from "@/components/sheet";
 import { NudgeHint, useNudges, type Nudge } from "@/components/walkthrough";
 import type { FeedPost } from "@/lib/feed";
@@ -81,8 +80,8 @@ import {
 import { eventsFromHeadline, eventsFromTimeline, onFact, onPhoto, type TickerEvent, type TickerTap } from "@/lib/ticker";
 import type { TimelineComment, TimelineItem } from "@/lib/timeline";
 import { NO_REACTION, publicSideOf, type Aspect, type ReactionState } from "@/lib/reactions";
-import type { ScorecardViewer } from "@/lib/scorecard";
-import { avatarColor, button, glass, pill } from "@/lib/ui";
+import { homeDetails, type ScorecardViewer } from "@/lib/scorecard";
+import { button, glass, pill } from "@/lib/ui";
 
 // The feed: one home per screen, scrolled up like a reel, for as long as you
 // keep going. On a phone the whole photo sits right on top of a block of words
@@ -433,15 +432,6 @@ function Feed({
     keyboard?: boolean;
     back?: HTMLElement | null;
   } | null>(null);
-  // Homes whose photos show what people said and liked where they said it.
-  const [pinned, setPinned] = useState<Set<string>>(() => new Set());
-  const pin = (key: string, on: boolean) =>
-    setPinned((current) => {
-      const next = new Set(current);
-      if (on) next.add(key);
-      else next.delete(key);
-      return next;
-    });
   const reactions = useReactions(Object.fromEntries(posts.map((post) => [post.listing.ListingKey, post.mine])));
   const offset = intro ? 1 : 0;
   const panelCount = offset + posts.length + 1;
@@ -773,7 +763,6 @@ function Feed({
               index={offset + i}
               post={post}
               mode={mode}
-              myName={myName}
               agentName={agentName}
               start={i === 0 ? initialPhoto : undefined}
               onPhotoSeen={onPhotoSeen}
@@ -805,8 +794,6 @@ function Feed({
               onHoldPhoto={(holding) => setClear(holding ? offset + i : null)}
               bare={bare === offset + i}
               onShowEverything={() => setBare(null)}
-              pinsShown={pinned.has(key) || (sheet?.kind === "comments" && sheet.key === key)}
-              onPins={(on) => pin(key, on)}
               goToSpot={goToSpot?.key === key ? goToSpot : null}
               onOpen={onOpen && (() => onOpen(key))}
               onMore={() => {
@@ -896,15 +883,11 @@ function Feed({
         onClose={() => closeSheet("comments", "scorecard")}
         onSwitch={(key, kind) => switchSheet(key, kind)}
         onCompose={(key) => openComments(key, true)}
-        // Posted about a spot: back to the photo, where it now shows.
-        onPostedSpot={(key) => {
-          setSheet(null);
-          pin(key, true);
-        }}
+        // Posted about a spot: back to the photo.
+        onPostedSpot={() => setSheet(null)}
         // From a comment about a spot: to that photo, with the spot open.
         onShowSpot={(key, spot) => {
           setSheet(null);
-          pin(key, true);
           setGoToSpot((current) => ({ key, spot, n: (current?.n ?? 0) + 1 }));
         }}
         // From the Scorecard: to the spot on its photo, with its card open
@@ -1028,7 +1011,6 @@ function Panel({
   index,
   post,
   mode,
-  myName,
   agentName,
   start,
   onPhotoSeen,
@@ -1059,8 +1041,6 @@ function Panel({
   onHoldPhoto,
   bare,
   onShowEverything,
-  pinsShown,
-  onPins,
   goToSpot,
   onOpen,
   onMore,
@@ -1072,7 +1052,6 @@ function Panel({
   index: number;
   post: FeedPost;
   mode: "public" | "share";
-  myName: string | null;
   agentName?: string;
   // The photo to open on.
   start?: number;
@@ -1124,9 +1103,6 @@ function Panel({
   // Just the photo, until "Show everything" or another home.
   bare: boolean;
   onShowEverything: () => void;
-  // What people said and liked shows on the photos, where they said it.
-  pinsShown: boolean;
-  onPins: (on: boolean) => void;
   // Go to this spot, from a comment about it (or the Scorecard).
   goToSpot: { spot: SpotRef; n: number; keyboard?: boolean; back?: HTMLElement | null } | null;
   // Just a look (beside the map): a tap anywhere opens the home full screen.
@@ -1206,6 +1182,23 @@ function Panel({
     observer.observe(el);
     return () => observer.disconnect();
   }, [more]);
+  // On a phone the buttons down the right reach up over the photo: where they
+  // start, so the photo's arrows stay above them. (Side by side, they have a
+  // column of their own.)
+  const home = useRef<HTMLElement>(null);
+  const [railTop, setRailTop] = useState<number | null>(null);
+  const sideBySide = SPLIT_WIDE && !onOpen && wide;
+  useLayoutEffect(() => {
+    const el = home.current;
+    const rail = el?.querySelector<HTMLElement>("[data-rail]");
+    if (!el || !rail || sideBySide) return setRailTop(null);
+    const measure = () => setRailTop(Math.round(rail.getBoundingClientRect().top - el.getBoundingClientRect().top));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    observer.observe(rail);
+    return () => observer.disconnect();
+  }, [sideBySide]);
   // "Show the photo only" puts away any card, and a tap on the photo then is
   // just a look: nothing waits to pop up when everything comes back.
   if (bare && picked) setPicked(null);
@@ -1247,11 +1240,6 @@ function Panel({
     // Only when they change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [yourKey, listing.ListingKey]);
-  const viewer = useMemo<ScorecardViewer>(
-    () => ({ state, liked: yourIds.liked, disliked: yourIds.disliked }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state, yourKey],
-  );
   const liked = state.reaction === "like";
   // Everyone who liked the home or anything in its photos, once each; yours
   // counts the moment you tap.
@@ -1331,9 +1319,7 @@ function Panel({
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
   };
-  // A pointer on a spot on the photo (its likeId), and whether the line's
-  // spot can be pointed at there.
-  const [pinHover, setPinHover] = useState<string | null>(null);
+  // Whether the line's spot can be pointed at on the photo.
   const [lightPlace, setLightPlace] = useState<{ tag: string; clear: boolean } | null>(null);
   const settledKey = listing.Media[settled] ? mediaKeyOf(listing.Media[settled]) : undefined;
   // The line's box, and the item in it.
@@ -1351,14 +1337,11 @@ function Panel({
     // line waits for it; the one for the next home, at the photo's foot,
     // shows beside it.)
     held: Boolean(picked) || sheetOver || docked || nudge === "photos" || hidden || settled !== photo || touching,
-    pinHovered: pinHover,
     likes,
-    // Side by side, who liked it is said just below, under "Listed by".
-    restOnLikes: !(split && wide),
   });
   const shownEvent = ticker.item;
-  // Its face on the photo, where they did it: only on the photo at rest, with
-  // nothing over it.
+  // A hotspot on the photo, where they did it: only on the photo at rest,
+  // with nothing over it.
   const light: SpotLight | null =
     shownEvent &&
     onPhoto(shownEvent) &&
@@ -1376,9 +1359,36 @@ function Panel({
           showing: ticker.shown.n,
           emphasis: ticker.looking,
           still: ticker.reduced,
-          dim: ticker.running,
         }
       : null;
+  // The facts beyond the price row (the details, the description, who
+  // listed it): each one liked, disliked or talked about as the price is,
+  // with the same card.
+  const factHint = useId();
+  const factButton = (tag: FactTag, name: string, children: ReactNode, className?: string) =>
+    onOpen || !photos.enabled ? (
+      <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)}>{children}</span>
+    ) : (
+      <FactButton
+        tag={tag}
+        name={name}
+        hint={factHint}
+        photos={photos}
+        comments={
+          post.timeline.filter(
+            (item) => item.kind === "comment" && !item.parentId && item.spot?.mediaKey === FACTS && item.spot.tag === tag,
+          ).length
+        }
+        open={picked?.mediaKey === FACTS && picked.tag === tag}
+        lit={litFact === tag}
+        onOpen={(keyboard) =>
+          setPicked((now) => (now?.mediaKey === FACTS && now.tag === tag ? null : { mediaKey: FACTS, tag, x: 0, y: 0, keyboard }))
+        }
+        className={className}
+      >
+        {children}
+      </FactButton>
+    );
   // A fact it's about lights up, the same way.
   const litFact = shownEvent && onFact(shownEvent) && active && !onOpen && !hidden && shownEvent.spot && isFactTag(shownEvent.spot) ? shownEvent.spot : null;
   const unseen = Boolean(light && lightPlace && lightPlace.tag === light.event.spot && !lightPlace.clear);
@@ -1476,6 +1486,7 @@ function Panel({
 
   return (
     <article
+      ref={home}
       data-panel={index}
       data-home={listing.ListingKey}
       aria-label={listing.UnparsedAddress}
@@ -1498,7 +1509,7 @@ function Panel({
         "[--photo-fit:1] [--backdrop-shade:0.4]",
         bare
           ? "[--backdrop-bottom:0px] [--backdrop-top:0px] [--photo-align:0.5] [--photo-bottom:env(safe-area-inset-bottom)] [--photo-top:env(safe-area-inset-top)]"
-          : "[--backdrop-bottom:var(--photo-bottom)] [--backdrop-top:var(--photo-top)] [--photo-align:1] [--photo-bottom:calc(var(--words-height,calc(308px+env(safe-area-inset-bottom)))+var(--words-gap,0px))]",
+          : "[--backdrop-bottom:var(--photo-bottom)] [--backdrop-top:var(--photo-top)] [--photo-align:1] [--photo-bottom:calc(var(--words-height,calc(260px+env(safe-area-inset-bottom)))+var(--words-gap,0px))]",
         "short:[--backdrop-bottom:0px] short:[--backdrop-shade:0] short:[--backdrop-top:0px] short:[--photo-fit:0] short:[--words-gap:8px]",
         legacy(
           "@5xl:[--backdrop-bottom:0px] @5xl:[--backdrop-shade:0] @5xl:[--backdrop-top:0px] @5xl:[--photo-align:0.5] @5xl:[--photo-fit:0] @5xl:[--photo-top:calc(var(--chrome-top,4rem)+0.5rem)] @5xl:[--words-gap:8px]",
@@ -1511,7 +1522,12 @@ function Panel({
               listing.Media.length > 1 ? "split:[--photo-bottom:120px]" : "split:[--photo-bottom:24px]",
             ),
       )}
-      style={wordsHeight ? ({ "--words-height": `${wordsHeight}px` } as CSSProperties) : undefined}
+      style={
+        {
+          ...(wordsHeight && { "--words-height": `${wordsHeight}px` }),
+          ...(railTop !== null && { "--rail-top": `${railTop}px` }),
+        } as CSSProperties
+      }
     >
       {loaded && (
         <ReelPhotos
@@ -1538,6 +1554,49 @@ function Panel({
           overlay={
             <>
               {nudge && <NudgeHint nudge={nudge} />}
+              {!hidden && !nudge && !(sheetOver && !wide) && (
+                // Who did what on this photo, one at a time, in a caption
+                // floating just above its foot: left, clear of the buttons
+                // over a phone's photo; centred under a photo side by side.
+                // On a phone on its side, just above the words over it.
+                <div
+                  data-photo-caption
+                  style={
+                    {
+                      "--cap-left": `calc(${photoPlace(current).left} + 0.75rem)`,
+                      "--cap-width": `calc(${photoPlace(current).width} - 1.5rem)`,
+                      "--cap-top": `calc(${photoFoot(current)} - 0.75rem)`,
+                    } as CSSProperties
+                  }
+                  className={cn(
+                    "pointer-events-none absolute left-(--cap-left) top-(--cap-top) z-10 flex -translate-y-full justify-start",
+                    // (It steps aside for a card that's open, as the line waits for it.)
+                    picked && "invisible",
+                    onOpen ? "w-(--cap-width)" : "w-[min(var(--cap-width),100cqw-var(--cap-left)-5.25rem)]",
+                    "short:top-[calc(100cqh-var(--words-height,0px)-0.5rem)]",
+                    "split:w-(--cap-width) split:justify-center",
+                  )}
+                >
+                  <ActivityTicker
+                    ticker={ticker}
+                    box={tickerBox}
+                    line={tickerLine}
+                    listing={listing}
+                    photoKey={settledKey}
+                    liked={{ count: likes, names: post.likers, you: liked || photos.hasAny }}
+                    unseen={unseen}
+                    // Beside the map, just to read; a tap there opens the home.
+                    onTap={onOpen ? undefined : tapActivity}
+                    hint={
+                      onOpen
+                        ? null
+                        : mode === "share"
+                          ? `Tap anything in the photo to tell ${agentFirst} what you think`
+                          : "Tap anything in the photo to like it or say something"
+                    }
+                  />
+                </div>
+              )}
               {bare && (
                 // Never stuck with nothing to tap: one way back, at the foot
                 // of the photo (with the words gone, its own bottom edge).
@@ -1663,7 +1722,7 @@ function Panel({
           inert={docked || undefined}
           className={cn(
             "absolute inset-x-0 bottom-0 flex flex-col bg-night pb-(--words-pad) transition-[opacity,visibility] duration-300 [--words-pad:calc(12px+env(safe-area-inset-bottom))]",
-            more ? "h-auto" : "h-[calc(296px+var(--words-pad))]",
+            more ? "h-auto" : "h-[calc(248px+var(--words-pad))]",
             // On its side: over the photo, on a shade of their own that
             // starts a little above the first line, so every line of it reads
             // on the brightest photo.
@@ -1691,33 +1750,6 @@ function Panel({
               "split:min-h-0 split:flex-1 split:overflow-y-auto split:overscroll-contain split:pb-5 split:pl-5 split:pr-5 split:pt-3 split:[text-shadow:none]",
             )}
           >
-            <div className="flex h-12 items-center split:h-[76px]">
-              <ActivityTicker
-                ticker={ticker}
-                box={tickerBox}
-                line={tickerLine}
-                listing={listing}
-                photoKey={settledKey}
-                myName={myName}
-                liked={{ count: likes, names: post.likers, you: liked || photos.hasAny }}
-                unseen={unseen}
-                underline={Boolean(
-                  shownEvent?.mediaKey &&
-                    shownEvent.spot &&
-                    shownEvent.mediaKey === settledKey &&
-                    pinHover === likeId(shownEvent.mediaKey, shownEvent.spot),
-                )}
-                // Beside the map, just to read; a tap there opens the home.
-                onTap={onOpen ? undefined : tapActivity}
-                hint={
-                  onOpen
-                    ? null
-                    : mode === "share"
-                      ? `Tap anything in the photo to tell ${agentFirst} what you think`
-                      : "Tap anything in the photo to like it or say something"
-                }
-              />
-            </div>
             <Facts
               listing={listing}
               items={post.timeline}
@@ -1744,6 +1776,21 @@ function Panel({
                 listing={listing}
                 greeting={post.greeting}
                 note={post.note}
+                fact={
+                  onOpen || !photos.enabled
+                    ? undefined
+                    : {
+                        hint: factHint,
+                        open: picked?.mediaKey === FACTS && picked.tag === "Description",
+                        lit: litFact === "Description",
+                        onOpen: (keyboard) =>
+                          setPicked((now) =>
+                            now?.mediaKey === FACTS && now.tag === "Description"
+                              ? null
+                              : { mediaKey: FACTS, tag: "Description", x: 0, y: 0, keyboard },
+                          ),
+                      }
+                }
                 open={more}
                 // On a phone, the rest of it is in the Scorecard, under
                 // "About this home"; side by side, it opens in the panel.
@@ -1752,27 +1799,35 @@ function Panel({
               />
               {/* Who's selling it runs short before "Sample listing" does: it's
                   the only sign on the home that it isn't real. */}
-              <p className="flex h-5 whitespace-nowrap text-meta leading-5 text-white/80 split:text-muted">
-                <span className="min-w-0 truncate">
-                  {listing.ListAgentFullName && `Listed by ${listing.ListAgentFullName}`}
-                  {listing.ListOfficeName && ` · ${listing.ListOfficeName}`}
+              {photos.enabled && !onOpen && (
+                <span id={factHint} hidden>
+                  Like, dislike or comment on it
                 </span>
+              )}
+              <p className="flex h-5 items-center whitespace-nowrap text-meta leading-5 text-white/80 split:text-muted">
+                {listing.ListAgentFullName ? (
+                  factButton(
+                    "Listing agent",
+                    `Listed by ${listing.ListAgentFullName}${listing.ListOfficeName ? `, ${listing.ListOfficeName}` : ""}`,
+                    <span className="min-w-0 truncate">
+                      Listed by {listing.ListAgentFullName}
+                      {listing.ListOfficeName && ` · ${listing.ListOfficeName}`}
+                    </span>,
+                    "min-w-0",
+                  )
+                ) : (
+                  <span className="min-w-0 truncate">{listing.ListOfficeName}</span>
+                )}
                 {isSampleListing(listing) && <span className="shrink-0">&nbsp;· Sample listing</span>}
               </p>
-              {split && likes > 0 && (
-                <LikedBy
-                  likes={likes}
-                  you={liked || photos.hasAny}
-                  myName={myName}
-                  // Never you: you're said from what you've just done.
-                  names={post.likers}
-                  onOpen={() => onScorecard()}
-                  className="hidden split:block"
-                />
-              )}
-              {/* Side by side, in brief: how people feel and what they say. */}
+              {/* Side by side, the panel is the home's own page: what it is,
+                  then, in a word, how people took it, a tap from the rest
+                  (what was said is in one place only: the comments). */}
               {split && wide && (
-                <WhatPeopleThink post={post} mode={mode} viewer={viewer} myName={myName} onOpen={() => onScorecard()} />
+                <>
+                  <HomeDetails listing={listing} value={(row) => factButton(row.tag, `${row.label}, ${row.value}`, row.value)} />
+                  <Summary likes={likes} comments={comments} onLikes={() => onScorecard()} onComments={onComments} />
+                </>
               )}
             </div>
             {error && (
@@ -1831,21 +1886,14 @@ function Panel({
           photos={photos}
           picked={picked}
           onPick={setPicked}
-          pinsShown={pinsShown}
-          onTogglePins={() => onPins(!pinsShown)}
           onComment={onCommentSpot}
           covered={sheetOver}
-          onPosted={() => {
-            setPicked(null);
-            onPins(true);
-          }}
+          onPosted={() => setPicked(null)}
           highlight={light}
-          myName={myName}
           nudge={nudge}
           onHighlightClear={(tag, clear) =>
             setLightPlace((now) => (now?.tag === tag && now.clear === clear ? now : { tag, clear }))
           }
-          onPinHover={setPinHover}
         />
       )}
     </article>
@@ -1937,6 +1985,7 @@ function Rail({
   return (
     <div
       data-keep-clear
+      data-rail
       // Clear of a notch or rounded corner, on a phone on its side. There, in
       // two columns: one would run up under the header.
       // Side by side: a column of its own between the photo and the panel.
@@ -2269,9 +2318,10 @@ function FactButton({
       data-fact={tag}
       onClick={(event) => onOpen(event.detail === 0)}
       className={cn(
-        "-mx-1 inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded-md px-1 text-left transition-colors hit-44 hover:bg-white/10 active:bg-white/15 split:hover:bg-stone-100 split:active:bg-stone-200",
+        "-mx-1 inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded-md px-1 text-left transition-[background-color,box-shadow] duration-300 hit-44 hover:bg-white/10 active:bg-white/15 split:hover:bg-stone-100 split:active:bg-stone-200",
         open && "bg-white/15 split:bg-stone-100",
-        lit && "bg-white/15 ring-2 ring-white/70 split:bg-stone-100 split:ring-brand",
+        lit &&
+          "bg-white/15 shadow-[0_0_0_2px_rgb(255_255_255/0.85),0_0_18px_4px_rgb(255_255_255/0.3)] split:bg-brand/10 split:shadow-[0_0_0_2px_var(--brand),0_0_16px_2px_color-mix(in_srgb,var(--brand)_35%,transparent)]",
         className,
       )}
     >
@@ -2280,62 +2330,75 @@ function FactButton({
   );
 }
 
-// Side by side, under who listed it: who liked the home, a face or three and
-// their names, "Liked by Maya, Sam and 6 others", and a tap to what everyone
-// thinks, in the Scorecard. You first (as you are right now), then the people the page names
-// (on an agent's link, those on it; elsewhere, the latest few, never you),
-// then how many more.
-function LikedBy({
+// Under what the home is, side by side: how many liked it and how many said
+// something, each a way in: the likes to the Scorecard (what people think),
+// the comments to the comments.
+function Summary({
   likes,
-  you,
-  myName,
-  names,
-  onOpen,
-  className,
+  comments,
+  onLikes,
+  onComments,
 }: {
   likes: number;
-  // You like it (or something in its photos).
-  you: boolean;
-  myName: string | null;
-  names: string[];
-  onOpen: () => void;
-  className?: string;
+  comments: number;
+  onLikes: () => void;
+  onComments: () => void;
 }) {
-  const named = [...(you ? ["you"] : []), ...names].slice(0, Math.min(2, likes));
-  const rest = likes - named.length;
-  const text =
-    named.length === 0
-      ? `Liked by ${likes} ${likes === 1 ? "person" : "people"}`
-      : rest > 0
-        ? `Liked by ${named.join(", ")} and ${rest} ${rest === 1 ? "other" : "others"}`
-        : `Liked by ${named.join(" and ")}`;
-  const faces = [...named.map((name) => (name === "you" ? (myName ?? "") : name)), ...(rest > 0 ? [null] : [])].slice(0, 3);
+  const tile =
+    "flex min-h-14 min-w-0 items-center gap-2.5 rounded-2xl bg-stone-50 px-4 text-left transition-colors hover:bg-stone-100";
+  const count = (n: number, one: string, many: string) => (
+    <span className="min-w-0 flex-1">
+      <span className="block font-display text-lg font-semibold leading-6 tabular-nums text-ink">{n.toLocaleString("en-US")}</span>
+      <span className="block text-meta leading-4 text-muted">{n === 1 ? one : many}</span>
+    </span>
+  );
   return (
-    <div className={cn("mt-4 border-t border-stone-200 pt-2", className)}>
+    <div className="mt-3 grid grid-cols-2 gap-2">
       <button
         type="button"
-        onClick={onOpen}
-        aria-label={`${text}. See the scorecard`}
-        className="-mx-1 flex min-h-11 items-center gap-2.5 rounded-xl px-1 text-left text-sm text-stone-700 hover:bg-stone-50"
+        onClick={onLikes}
+        aria-label={`${likes.toLocaleString("en-US")} ${likes === 1 ? "like" : "likes"}. See the scorecard`}
+        className={tile}
       >
-        {/* Each face over the next, so every initial reads whole. */}
-        <span aria-hidden className="flex shrink-0 pl-1.5">
-          {faces.map((name, i) => (
-            <span
-              key={i}
-              style={{ zIndex: faces.length - i }}
-              className={cn(
-                "relative -ml-1.5 flex size-6 items-center justify-center rounded-full text-tiny font-semibold ring-2 ring-white",
-                avatarColor(name ? "person" : "anonymous"),
-              )}
-            >
-              {name ? name[0]?.toUpperCase() : <User size={12} />}
-            </span>
-          ))}
-        </span>
-        <span className="min-w-0">{text}</span>
+        <Heart aria-hidden size={18} className="shrink-0 fill-rose-500 text-rose-500" />
+        {count(likes, "like", "likes")}
+        <ChevronRight aria-hidden size={18} className="shrink-0 text-stone-400" />
+      </button>
+      <button
+        type="button"
+        onClick={onComments}
+        aria-label={`${comments.toLocaleString("en-US")} ${comments === 1 ? "comment" : "comments"}. Read them`}
+        className={tile}
+      >
+        <MessageCircle aria-hidden size={18} className="shrink-0 text-stone-600" />
+        {count(comments, "comment", "comments")}
+        <ChevronRight aria-hidden size={18} className="shrink-0 text-stone-400" />
       </button>
     </div>
+  );
+}
+
+// What the home is, beyond the price, beds, baths and size, side by side in
+// the panel: the details that used to be down in the Scorecard.
+function HomeDetails({
+  listing,
+  value,
+}: {
+  listing: Listing;
+  // Each one, as something to react to (just its words beside the map).
+  value: (row: ReturnType<typeof homeDetails>[number]) => ReactNode;
+}) {
+  const rows = homeDetails(listing);
+  if (rows.length === 0) return null;
+  return (
+    <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl bg-stone-50 p-4">
+      {rows.map((row) => (
+        <div key={row.label} className="min-w-0">
+          <dt className="text-meta text-muted">{row.label}</dt>
+          <dd className="break-words text-body font-medium text-ink">{value(row)}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -2349,6 +2412,7 @@ function Caption({
   listing,
   greeting,
   note,
+  fact,
   open,
   inPlace = true,
   onToggle,
@@ -2356,6 +2420,9 @@ function Caption({
   listing: Listing;
   greeting?: string;
   note?: string;
+  // The description as something to react to: tap it for the card, as for
+  // the price. Unset where it's just to read (beside the map).
+  fact?: { hint: string; open: boolean; lit: boolean; onOpen: (keyboard: boolean) => void };
   open: boolean;
   // "more" opens it right here (false: it opens the rest elsewhere, a sheet).
   inPlace?: boolean;
@@ -2415,7 +2482,35 @@ function Caption({
         {greeting && <h1 className="inline font-semibold text-white split:text-ink">{greeting}</h1>}
         {greeting && <span aria-hidden>.</span>}
         {greeting && text && " "}
-        {text && <span>{cut ? clipped(text, n ?? 0) : text}</span>}
+        {text &&
+          (fact && listing.PublicRemarks ? (
+            // Inline, so it wraps as words do; read out whole, then what a
+            // tap does. (The agent's note above it is theirs, not the home's.)
+            <span
+              role="button"
+              tabIndex={0}
+              data-fact="Description"
+              aria-expanded={fact.open}
+              aria-describedby={fact.hint}
+              onClick={(event) => fact.onOpen(event.detail === 0)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                fact.onOpen(true);
+              }}
+              className={cn(
+                // (The words let a touch through to the photo, all but what can be tapped.)
+                "pointer-events-auto cursor-pointer rounded-sm box-decoration-clone transition-[background-color,box-shadow] duration-300 hover:bg-white/10 split:hover:bg-stone-100",
+                fact.open && "bg-white/15 split:bg-stone-100",
+                fact.lit &&
+                  "bg-white/15 shadow-[0_0_0_2px_rgb(255_255_255/0.85),0_0_18px_4px_rgb(255_255_255/0.3)] split:bg-brand/10 split:shadow-[0_0_0_2px_var(--brand)]",
+              )}
+            >
+              {cut ? clipped(text, n ?? 0) : text}
+            </span>
+          ) : (
+            <span>{cut ? clipped(text, n ?? 0) : text}</span>
+          ))}
         {cut && <span aria-hidden>…</span>}{" "}
         {onToggle && (open || cut) && (
           <button
@@ -2695,6 +2790,8 @@ function HomeSheet({
               siblings={siblings}
               myName={myName}
               alone={alone}
+              // Beside the photo, the panel under it says what the home is.
+              details={!docked}
               onShowSpot={(at, keyboard) => onScorecardSpot(post.listing.ListingKey, at, keyboard)}
               onOpenFact={(tag, keyboard) => onScorecardSpot(post.listing.ListingKey, { mediaKey: FACTS, tag }, keyboard)}
               onAllComments={() => onSwitch(post.listing.ListingKey, "comments")}
@@ -2727,6 +2824,7 @@ function HomeSheet({
               <Timeline
                 listingKey={post.listing.ListingKey}
                 items={items}
+                listing={post.listing}
                 opened={opened}
                 canShare={canShare}
                 onReply={(target) => {

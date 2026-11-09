@@ -82,6 +82,8 @@ export function eventsFromTimeline(items: TimelineItem[], { agentViewing = false
   const events: TickerEvent[] = [];
   for (const item of items) {
     if (item.kind === "comment") {
+      // (Replies read as part of what they answer, in the comments, not on their own.)
+      if (item.parentId) continue;
       events.push({
         id: `comment:${item.id}`,
         kind: "comment",
@@ -176,10 +178,19 @@ export function eventsFromHeadline(headline: Headline | null): TickerEvent[] {
 // One item for each person and spot, and no more than two for anyone; of
 // unnamed people's, only one of any that would read the same ("A buyer
 // commented privately").
-export function buildCycle(events: TickerEvent[], photoKey: string | undefined, mode: "public" | "share") {
+export function buildCycle(
+  events: TickerEvent[],
+  photoKey: string | undefined,
+  mode: "public" | "share",
+  // Only what happened on the photo on screen (and about the home as a
+  // whole): what's shown can always be pointed at, right there.
+  photoOnly = false,
+) {
+  if (photoOnly) events = events.filter((event) => !onPhoto(event) || event.mediaKey === photoKey);
   if (events.length === 0) return [];
-  const first = events.find((event) => !isDislike(event)) ?? events[0];
   const here = (event: TickerEvent) => Boolean(photoKey) && event.mediaKey === photoKey && onPhoto(event);
+  // It leads with the newest (what you've just done, when you have).
+  const first = events.find((event) => !isDislike(event)) ?? events[0];
   const close = (event: TickerEvent) =>
     mode === "share" ? event.who.tone !== "anonymous" : event.who.tone === "client";
   const kindTier = (event: TickerEvent) =>
@@ -361,5 +372,5 @@ export function eventText(
           : event.kind === "comment" && event.commentId
             ? "comment"
             : "home";
-  return { sentence, line1, line2, meta, where, words, tap, index, elsewhere };
+  return { who, sentence, line1, line2, meta, where, words, tap, index, elsewhere };
 }

@@ -1,19 +1,17 @@
-import { Heart, Lock, MapPin, MessageCircle, Tag, ThumbsDown } from "lucide-react";
+import { Heart, Lock, MapPin, Tag, ThumbsDown } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CardMenu, MoreText } from "@/app/people/[id]/client";
-import { MarkFace } from "@/components/spot-highlight";
+import { Hotspot } from "@/components/spot-highlight";
 import { Avatar, Badge } from "@/components/ui";
 import { cn, formatPrice } from "@/lib/format";
-import { cardTime, dayHeading, dayName, type PinKind, type ProfileCard } from "@/lib/profile";
+import { cardTime, dayHeading, dayName, type ProfileCard } from "@/lib/profile";
 import { button, card as cardClass, glass } from "@/lib/ui";
 
 // Everything someone has done, Facebook-style: one card per home per day,
 // under "Today", "Yesterday" and so on. Each card shows the photo with the
 // spots they picked out, the home, and what they said, and opens the home.
-
-const PIN: Record<PinKind, string> = { like: "bg-rose-500", dislike: "bg-amber-500", comment: "bg-brand" };
 
 // Where a pin sits, in percent of the photo, to a tenth.
 const at = ({ x, y }: { x: number; y: number }) => ({
@@ -122,7 +120,7 @@ function Card({
         )}
       </div>
 
-      {photo && !quiet && <CardPhoto card={card} name={face} agent={agent} />}
+      {photo && !quiet && <CardPhoto card={card} />}
 
       <div className={cn("px-4", quiet ? "pt-0" : "pt-3")}>
         <p className="flex flex-wrap items-baseline gap-x-1.5">
@@ -228,13 +226,12 @@ function commentMeta(comment: ProfileCard["comments"][number]) {
   ));
 }
 
-// The photo at its own shape, so each spot lands where it was picked: dots for
-// what they liked (rose), didn't (amber) and talked about, and their initial
-// on the newest, as on the photo in the feed.
-function CardPhoto({ card, name, agent }: { card: ProfileCard; name: string; agent: boolean }) {
+// The photo at its own shape, with a soft hotspot on each spot they picked
+// out, as on a home's own photos: where, not what they thought of it (the
+// sentence above says that).
+function CardPhoto({ card }: { card: ProfileCard }) {
   const photo = card.photo!;
   const ratio = photo.width && photo.height ? photo.width / photo.height : null;
-  const [newest, ...rest] = card.pins;
   return (
     <div className="bg-stone-100">
       <div
@@ -249,22 +246,18 @@ function CardPhoto({ card, name, agent }: { card: ProfileCard; name: string; age
           sizes="(min-width: 1024px) 600px, (min-width: 640px) 576px, 100vw"
           className={ratio ? "object-contain" : "object-cover"}
         />
-        {rest.reverse().map((pin, i) => (
+        {card.pins.map((pin, i) => (
           <span
             key={i}
             aria-hidden
             data-pin={pin.kind}
-            className={cn(
-              "pointer-events-none absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full shadow-[0_1px_3px_rgb(0_0_0/0.45)] ring-2 ring-white",
-              pin.kind === "comment" ? "size-4 text-white" : "size-3",
-              PIN[pin.kind],
-            )}
+            data-newest={i === 0 || undefined}
+            className="pointer-events-none absolute size-0"
             style={at(pin)}
           >
-            {pin.kind === "comment" && <MessageCircle size={9} strokeWidth={3} />}
+            <Hotspot small />
           </span>
         ))}
-        {newest && <AvatarPin name={name} agent={agent} kind={newest.kind} x={newest.x} y={newest.y} />}
         {card.otherPhotos > 0 && (
           <span className={cn(glass, "absolute bottom-3 right-3 rounded-full px-2.5 py-1 text-meta font-semibold")}>
             +{card.otherPhotos} {card.otherPhotos === 1 ? "photo" : "photos"}
@@ -272,20 +265,5 @@ function CardPhoto({ card, name, agent }: { card: ProfileCard; name: string; age
         )}
       </div>
     </div>
-  );
-}
-
-// The same face the feed draws on the photo where someone liked or said something.
-function AvatarPin({ name, agent, kind, x, y }: { name: string; agent: boolean; kind: PinKind; x: number; y: number }) {
-  return (
-    <span
-      aria-hidden
-      data-pin={kind}
-      data-newest
-      className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
-      style={at({ x, y })}
-    >
-      <MarkFace initial={name.trim()[0]?.toUpperCase()} agent={agent} mark={kind} pin className="ring-2" />
-    </span>
   );
 }
