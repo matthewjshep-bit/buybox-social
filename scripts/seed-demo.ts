@@ -3,9 +3,11 @@
 // liking spots in the sample homes and talking about them, a buyer with a full
 // profile, and an agent with two links; then a crowd on top (four dozen more
 // buyers, some signed up, and four more agents with clients of their own), so
-// every home looks lived in. Only ever runs against this machine.
+// every home looks lived in. Runs against this machine, or another database
+// only when DEMO_SEED_HOST names that database's host, on purpose.
 // Safe to run again: it clears its own rows (demo emails, "demo:" devices)
-// and makes them fresh, leaving everything else alone.
+// and makes them fresh, leaving everything else alone. With --clear, it only
+// clears them.
 import { createHash } from "node:crypto";
 import postgres from "postgres";
 import type { Listing } from "../lib/listings/types";
@@ -22,21 +24,26 @@ import {
 } from "../lib/photos";
 import { ASPECTS, type Aspect } from "../lib/reactions";
 
-function localHost(url: string | undefined) {
+function hostOf(url: string | undefined) {
   try {
-    return url ? ["127.0.0.1", "localhost"].includes(new URL(url).hostname) : false;
+    return url ? new URL(url).hostname : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-if (!localHost(process.env.DATABASE_URL)) {
+const host = hostOf(process.env.DATABASE_URL);
+const local = host === "127.0.0.1" || host === "localhost";
+// A database elsewhere (the live one) only when it's named outright.
+if (!host || (!local && process.env.DEMO_SEED_HOST !== host)) {
   console.error(
-    "Not seeding: db:demo only writes to a database on this machine, and DATABASE_URL is missing or isn't " +
-      "127.0.0.1 or localhost. Point .env.local at your local database (pnpm db:local) and try again.",
+    "Not seeding: db:demo writes to a database on this machine, and DATABASE_URL is missing or isn't " +
+      "127.0.0.1 or localhost. Point .env.local at your local database (pnpm db:local) and try again. " +
+      "(To seed another database on purpose, set DEMO_SEED_HOST to its host.)",
   );
   process.exit(1);
 }
+const CLEAR_ONLY = process.argv.includes("--clear");
 
 const sql = postgres(process.env.DATABASE_URL!, { prepare: false, max: 1, onnotice: () => {} });
 type Tx = postgres.TransactionSql;
@@ -1288,6 +1295,12 @@ function lookerViews(views: Map<string, Date>, listings: Map<string, Listing>) {
 }
 
 async function main() {
+  if (CLEAR_ONLY) {
+    await sql.begin((tx) => clearDemo(tx));
+    console.log("Cleared the demo rows (demo emails and \"demo:\" devices); nothing else was touched.");
+    await sql.end();
+    return;
+  }
   const rows = await sql<{ data: Listing }[]>`select data from listings`;
   if (rows.length === 0) {
     console.error("There are no listings yet. Run pnpm db:setup first, then pnpm db:demo.");
@@ -1314,7 +1327,7 @@ async function main() {
     return { counts, links, tally, views: viewRows.length };
   });
 
-  const base = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/.test(process.env.APP_URL ?? "")
+  const base = (local ? /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/ : /^https:\/\/[^/]+\/?$/).test(process.env.APP_URL ?? "")
     ? process.env.APP_URL!.replace(/\/$/, "")
     : "http://localhost:3000";
   const { counts, links, tally, views } = result;
@@ -1327,14 +1340,19 @@ async function main() {
     `On ${links.length} of ${AGENT.fullName}'s links and ${others.reduce((n, o) => n + o.shares.length, 0)} more from ${others.length} other agents: ${tally.reactions} reactions, ${tally.likes} likes and ` +
       `${tally.dislikes} dislikes, ${tally.comments} comments and ${tally.replies} replies from the agent.`,
   );
-  console.log(`\nSign in at ${base}/login (no password) as:`);
-  console.log(`  ${MAYA.email}   ${MAYA.fullName}, a buyer with a full profile: ${base}/people/me`);
-  console.log(`  (her profile, signed out: ${base}/people/${demoId("visitor:maya")})`);
-  console.log(`  ${AGENT.email}  ${AGENT.fullName}, ${AGENT.brokerage}: ${base}/dashboard`);
-  for (const { agent, shares } of others) {
-    console.log(`  ${agent.email}  ${agent.fullName}, ${agent.brokerage} (${shares.length} links)`);
+  if (local) {
+    console.log(`\nSign in at ${base}/login (no password) as:`);
+    console.log(`  ${MAYA.email}   ${MAYA.fullName}, a buyer with a full profile: ${base}/people/me`);
+    console.log(`  (her profile, signed out: ${base}/people/${demoId("visitor:maya")})`);
+    console.log(`  ${AGENT.email}  ${AGENT.fullName}, ${AGENT.brokerage}: ${base}/dashboard`);
+    for (const { agent, shares } of others) {
+      console.log(`  ${agent.email}  ${agent.fullName}, ${agent.brokerage} (${shares.length} links)`);
+    }
+    console.log(`  …and ${CROWD_ACCOUNTS} signed-up buyers, such as ${CROWD[0][0]}${DEMO_DOMAIN}`);
+  } else {
+    // (No password-free sign-in there: the demo people are only to look at.)
+    console.log(`\n${MAYA.fullName}'s profile: ${base}/people/${demoId("visitor:maya")}`);
   }
-  console.log(`  …and ${CROWD_ACCOUNTS} signed-up buyers, such as ${CROWD[0][0]}${DEMO_DOMAIN}`);
   console.log("\nShare links:");
   for (const link of links) {
     console.log(`  ${link.clientName}, ${link.homes === 1 ? "one home" : `${link.homes} homes`}: ${base}/s/${link.token}`);
