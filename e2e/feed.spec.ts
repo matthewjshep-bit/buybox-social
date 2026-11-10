@@ -143,8 +143,10 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   const photo = (await again.locator("[data-photo-frame] img").first().boundingBox())!;
   const panel = (await again.locator("[data-words]").boundingBox())!;
   expect(price.x).toBeGreaterThan(1000);
-  expect(heart.x).toBeGreaterThanOrEqual(photo.x + photo.width - 1);
-  expect(heart.x + heart.width).toBeLessThanOrEqual(panel.x + 1);
+  // The heart floats on the photo, just inside its right edge, short of the panel.
+  expect(heart.x + heart.width).toBeLessThanOrEqual(photo.x + photo.width - 8);
+  expect(heart.x).toBeGreaterThanOrEqual(photo.x + photo.width - 80);
+  expect(heart.x + heart.width).toBeLessThan(panel.x);
 
   // Buyers don't get the agent dashboard, and the old picks page goes home.
   await buyer.goto("/dashboard");

@@ -9,6 +9,7 @@ import {
   Ellipsis,
   Eye,
   Flame,
+  Hand,
   Heart,
   ImageIcon,
   LoaderCircle,
@@ -764,6 +765,7 @@ function Feed({
               post={post}
               mode={mode}
               agentName={agentName}
+              myName={myName}
               start={i === 0 ? initialPhoto : undefined}
               onPhotoSeen={onPhotoSeen}
               counter={mode === "share" && posts.length > 1 ? `Home ${i + 1} of ${posts.length}` : undefined}
@@ -1012,6 +1014,7 @@ function Panel({
   post,
   mode,
   agentName,
+  myName,
   start,
   onPhotoSeen,
   counter,
@@ -1052,6 +1055,8 @@ function Panel({
   index: number;
   post: FeedPost;
   mode: "public" | "share";
+  // Yours, for your own face on the line at the photo's foot.
+  myName: string | null;
   agentName?: string;
   // The photo to open on.
   start?: number;
@@ -1365,9 +1370,11 @@ function Panel({
   // listed it): each one liked, disliked or talked about as the price is,
   // with the same card.
   const factHint = useId();
-  const factButton = (tag: FactTag, name: string, children: ReactNode, className?: string) =>
+  const factButton = (tag: FactTag, name: string, children: ReactNode, className?: string, look: FactLook = "chip") =>
     onOpen || !photos.enabled ? (
-      <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)}>{children}</span>
+      <FactStill look={look} className={className}>
+        {children}
+      </FactStill>
     ) : (
       <FactButton
         tag={tag}
@@ -1381,6 +1388,7 @@ function Panel({
         }
         open={picked?.mediaKey === FACTS && picked.tag === tag}
         lit={litFact === tag}
+        look={look}
         onOpen={(keyboard) =>
           setPicked((now) => (now?.mediaKey === FACTS && now.tag === tag ? null : { mediaKey: FACTS, tag, x: 0, y: 0, keyboard }))
         }
@@ -1518,7 +1526,7 @@ function Panel({
         bare
           ? "split:[--photo-align:0.5] split:[--photo-bottom:24px] split:[--photo-right:24px] split:[--photo-top:24px]"
           : cn(
-              "split:[--photo-align:0] split:[--photo-right:468px] split:[--photo-top:var(--stage-top)] split-xl:[--photo-right:508px]",
+              "split:[--photo-align:0] split:[--photo-right:400px] split:[--photo-top:var(--stage-top)] split-xl:[--photo-right:440px]",
               listing.Media.length > 1 ? "split:[--photo-bottom:120px]" : "split:[--photo-bottom:24px]",
             ),
       )}
@@ -1556,25 +1564,29 @@ function Panel({
               {nudge && <NudgeHint nudge={nudge} />}
               {!hidden && !nudge && !(sheetOver && !wide) && (
                 // Who did what on this photo, one at a time, in a caption
-                // floating just above its foot: left, clear of the buttons
-                // over a phone's photo; centred under a photo side by side.
-                // On a phone on its side, just above the words over it.
+                // floating a little above its foot: left, clear of the buttons
+                // over a phone's photo; centred under a photo side by side,
+                // clear of the buttons down its right edge there too. On a
+                // phone on its side, just above the words over it.
                 <div
                   data-photo-caption
                   style={
                     {
                       "--cap-left": `calc(${photoPlace(current).left} + 0.75rem)`,
                       "--cap-width": `calc(${photoPlace(current).width} - 1.5rem)`,
-                      "--cap-top": `calc(${photoFoot(current)} - 0.75rem)`,
+                      "--cap-foot": `calc(${photoFoot(current)})`,
                     } as CSSProperties
                   }
                   className={cn(
-                    "pointer-events-none absolute left-(--cap-left) top-(--cap-top) z-10 flex -translate-y-full justify-start",
+                    "pointer-events-none absolute left-(--cap-left) top-[calc(var(--cap-foot)-1rem)] z-10 flex -translate-y-full justify-start",
                     // (It steps aside for a card that's open, as the line waits for it.)
                     picked && "invisible",
                     onOpen ? "w-(--cap-width)" : "w-[min(var(--cap-width),100cqw-var(--cap-left)-5.25rem)]",
                     "short:top-[calc(100cqh-var(--words-height,0px)-0.5rem)]",
-                    "split:w-(--cap-width) split:justify-center",
+                    "split:top-[calc(var(--cap-foot)-1.5rem)] split:justify-center",
+                    onOpen
+                      ? "split:w-(--cap-width)"
+                      : "split:left-[calc(var(--cap-left)+4.5rem)] split:w-[calc(var(--cap-width)-9rem)]",
                   )}
                 >
                   <ActivityTicker
@@ -1585,6 +1597,9 @@ function Panel({
                     photoKey={settledKey}
                     liked={{ count: likes, names: post.likers, you: liked || photos.hasAny }}
                     unseen={unseen}
+                    myName={myName}
+                    // (On an agent's link, nobody's profile, yours included.)
+                    yours={mode === "public" ? "/people/me" : null}
                     // Beside the map, just to read; a tap there opens the home.
                     onTap={onOpen ? undefined : tapActivity}
                     hint={
@@ -1664,46 +1679,68 @@ function Panel({
             covered && "invisible opacity-0",
           )}
         >
-          {!onOpen && onNext && (
-            // Side by side: to the home before or after, at the top of the
-            // buttons' column, for anyone who doesn't think to scroll.
-            <div className="pointer-events-auto absolute right-[396px] top-(--stage-top) hidden w-[72px] flex-col items-center gap-2 split:flex split-xl:right-[436px]">
-              <button
-                type="button"
-                aria-label="Go to the previous home"
-                data-follow="previous"
-                disabled={!onPrevious}
-                onClick={onPrevious}
-                className="flex size-11 items-center justify-center rounded-full bg-white/10 text-white ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-white/20 disabled:cursor-default disabled:opacity-35 disabled:hover:bg-white/10"
-              >
-                <ChevronUp aria-hidden size={24} />
-              </button>
-              <button
-                type="button"
-                aria-label="Go to the next home"
-                data-follow="next"
-                onClick={onNext}
-                className="flex size-11 items-center justify-center rounded-full bg-white/10 text-white ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-white/20"
-              >
-                <ChevronDown aria-hidden size={24} />
-              </button>
-            </div>
-          )}
           {!onOpen && (
-            <Rail
-              address={listing.UnparsedAddress}
-              things={things}
-              liked={liked}
-              likes={likes}
-              comments={comments}
-              shareAs={shareAs}
-              onLike={onLike}
-              onComments={onComments}
-              onScorecard={() => onScorecard()}
-              onShare={onShare}
-              onMore={onMore}
-              moreRef={moreButton}
-            />
+            // Side by side, the buttons float on the photo, down its right
+            // edge, as on a phone: the homes before and after at its top, the
+            // rest at its foot. They're placed in a layer the size of the
+            // photos' own, in a box the size and place of the photo on screen.
+            // (On a phone, these two layers aren't there: the buttons sit
+            // where they always have.)
+            <div className="contents split:pointer-events-none split:absolute split:inset-0 split:block split:[container-type:size]">
+              <div
+                // (Only side by side does this box show; on a phone it's no box at all.)
+                style={{
+                  left: `calc(${photoPlace(current).left})`,
+                  top: photoPlace(current).top,
+                  width: photoPlace(current).width,
+                  height: photoPlace(current).height,
+                }}
+                className="contents split:absolute split:block split:[container-type:size]"
+              >
+                {onNext && (
+                  // To the home before or after, for anyone who doesn't
+                  // think to scroll; not on a photo too short for them and
+                  // the buttons both (scrolling and the arrow keys still do).
+                  <div className="hidden split:block">
+                    <div className="pointer-events-auto absolute right-3 top-3 flex w-14 flex-col items-center gap-2 [@container(max-height:31rem)]:hidden">
+                      <button
+                        type="button"
+                        aria-label="Go to the previous home"
+                        data-follow="previous"
+                        disabled={!onPrevious}
+                        onClick={onPrevious}
+                        className="flex size-11 items-center justify-center rounded-full bg-black/35 text-white ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-black/55 disabled:invisible"
+                      >
+                        <ChevronUp aria-hidden size={24} className="drop-shadow" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Go to the next home"
+                        data-follow="next"
+                        onClick={onNext}
+                        className="flex size-11 items-center justify-center rounded-full bg-black/35 text-white ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-black/55"
+                      >
+                        <ChevronDown aria-hidden size={24} className="drop-shadow" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <Rail
+                  address={listing.UnparsedAddress}
+                  things={things}
+                  liked={liked}
+                  likes={likes}
+                  comments={comments}
+                  shareAs={shareAs}
+                  onLike={onLike}
+                  onComments={onComments}
+                  onScorecard={() => onScorecard()}
+                  onShare={onShare}
+                  onMore={onMore}
+                  moreRef={moreButton}
+                />
+              </div>
+            </div>
           )}
         </div>
 
@@ -1731,7 +1768,10 @@ function Panel({
             legacy(
               "@5xl:h-auto @5xl:items-center @5xl:bg-transparent @5xl:px-6 @5xl:[--words-pad:max(1.5rem,calc(env(safe-area-inset-bottom)+0.75rem))]",
             ),
-            "split:pointer-events-auto split:bottom-6 split:left-auto split:right-6 split:top-(--stage-top) split:h-auto split:w-[360px] split:overflow-hidden split:rounded-2xl split:bg-white split:bg-none split:pb-0 split:text-ink split:shadow-xl split:before:hidden split-xl:w-[400px]",
+            // Side by side: on the same dark as the photo's stage (a shade
+            // lighter, to hold together), so the photo and what it is read as
+            // one, and the facts are glass to tap, as the buttons on the photo are.
+            "split:pointer-events-auto split:bottom-6 split:left-auto split:right-6 split:top-(--stage-top) split:h-auto split:w-[360px] split:overflow-hidden split:rounded-2xl split:bg-white/[0.04] split:bg-none split:pb-0 split:ring-1 split:ring-inset split:ring-white/[0.08] split:before:hidden split-xl:w-[400px]",
             // Beside the map on a phone, its Map button floats at the bottom.
             onOpen && "max-lg:[--words-pad:6rem]",
             covered && "invisible opacity-0",
@@ -1804,7 +1844,7 @@ function Panel({
                   Like, dislike or comment on it
                 </span>
               )}
-              <p className="flex h-5 items-center whitespace-nowrap text-meta leading-5 text-white/80 split:text-muted">
+              <p className="flex h-6 items-center whitespace-nowrap text-meta leading-5 text-white/75">
                 {listing.ListAgentFullName ? (
                   factButton(
                     "Listing agent",
@@ -1814,6 +1854,7 @@ function Panel({
                       {listing.ListOfficeName && ` · ${listing.ListOfficeName}`}
                     </span>,
                     "min-w-0",
+                    "small",
                   )
                 ) : (
                   <span className="min-w-0 truncate">{listing.ListOfficeName}</span>
@@ -1825,7 +1866,22 @@ function Panel({
                   (what was said is in one place only: the comments). */}
               {split && wide && (
                 <>
-                  <HomeDetails listing={listing} value={(row) => factButton(row.tag, `${row.label}, ${row.value}`, row.value)} />
+                  <HomeDetails
+                    listing={listing}
+                    hint={!onOpen && photos.enabled}
+                    tile={(row) =>
+                      factButton(
+                        row.tag,
+                        `${row.label}, ${row.value}`,
+                        <>
+                          <span className="text-meta leading-4 text-white/55">{row.label}</span>
+                          <span className="break-words text-body font-medium leading-5 text-white">{row.value}</span>
+                        </>,
+                        undefined,
+                        "tile",
+                      )
+                    }
+                  />
                   <Summary likes={likes} comments={comments} onLikes={() => onScorecard()} onComments={onComments} />
                 </>
               )}
@@ -1845,7 +1901,7 @@ function Panel({
             className={cn(
               "mt-2 w-full pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]",
               legacy("@5xl:max-w-xl @5xl:px-0"),
-              "split:mt-0 split:border-t split:border-stone-200 split:p-3",
+              "split:mt-0 split:border-t split:border-white/[0.08] split:p-3",
             )}
           >
             {onOpen ? (
@@ -1864,7 +1920,7 @@ function Panel({
                 type="button"
                 data-keep-clear
                 onClick={onCompose}
-                className="flex h-12 w-full items-center gap-3 rounded-full bg-white/12 pl-5 pr-3 text-left text-base text-white/75 ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18 split:bg-stone-100 split:text-muted split:ring-0 split:backdrop-blur-none split:hover:bg-stone-200"
+                className="flex h-12 w-full items-center gap-3 rounded-full bg-white/12 pl-5 pr-3 text-left text-base text-white/75 ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18"
               >
                 <span className="min-w-0 flex-1 truncate">
                   {mode === "share" ? `Tell ${agentFirst} what you think…` : "Add a comment…"}
@@ -1937,7 +1993,7 @@ function RailButton({
         busy && "cursor-progress opacity-60",
       )}
     >
-      <span className="flex size-12 items-center justify-center rounded-full bg-black/35 backdrop-blur-md transition-transform group-active:scale-90 compact:size-11 motion-reduce:transition-none motion-reduce:group-active:scale-100 split:bg-white/10 split:ring-1 split:ring-white/15 split:group-hover:bg-white/20">
+      <span className="flex size-12 items-center justify-center rounded-full bg-black/35 backdrop-blur-md transition-[transform,background-color] group-active:scale-90 compact:size-11 motion-reduce:transition-none motion-reduce:group-active:scale-100 split:ring-1 split:ring-white/15 split:group-hover:bg-black/55">
         {children}
       </span>
       {/* On a backing of the dark ground's own colour: it reads over a
@@ -1988,11 +2044,11 @@ function Rail({
       data-rail
       // Clear of a notch or rounded corner, on a phone on its side. There, in
       // two columns: one would run up under the header.
-      // Side by side: a column of its own between the photo and the panel.
+      // Side by side: on the photo, just inside its bottom right corner.
       className={cn(
         "pointer-events-auto absolute bottom-[calc(68px+env(safe-area-inset-bottom))] right-[calc(0.5rem+env(safe-area-inset-right))] z-10 flex flex-col items-center gap-1 short:grid short:grid-cols-2 short:gap-x-2",
         legacy("@5xl:bottom-[max(5rem,calc(env(safe-area-inset-bottom)+4.25rem))] @5xl:right-[calc(1rem+env(safe-area-inset-right))]"),
-        "split:bottom-6 split:right-[396px] split:flex split:w-[72px] split-xl:right-[436px]",
+        "split:bottom-3 split:right-3 split:flex split:w-14",
       )}
     >
       <LikeWithList things={things}>
@@ -2100,7 +2156,7 @@ function Facts({
         item.kind === "comment" && !item.parentId && item.spot?.mediaKey === FACTS && item.spot.tag === tag,
     );
   // `name`: what it says, in words.
-  const fact = (tag: FactTag, name: string, children: ReactNode = name, className?: string) =>
+  const fact = (tag: FactTag, name: string, children: ReactNode = name, className?: string, look: FactLook = "chip") =>
     photos ? (
       <FactButton
         tag={tag}
@@ -2110,13 +2166,16 @@ function Facts({
         comments={said(tag).length}
         open={open === tag}
         lit={lit === tag}
+        look={look}
         onOpen={(keyboard) => onOpen(tag, keyboard)}
         className={className}
       >
         {children}
       </FactButton>
     ) : (
-      <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)}>{children}</span>
+      <FactStill look={look} className={className}>
+        {children}
+      </FactStill>
     );
   const beds = listing.BedroomsTotal;
   const baths = listing.BathroomsTotalInteger;
@@ -2204,48 +2263,41 @@ function Facts({
           className="bottom-full left-0 z-40 mb-2 max-w-full"
         />
       )}
-      <div className="flex h-11 items-center gap-2.5">
+      {/* (On a phone, a fixed 40px, as each row under it: the words never change height.) */}
+      <div className="flex h-10 items-center gap-2.5 split:h-12">
         <p className={cn("font-display text-[30px] font-semibold leading-none tabular-nums split:text-[32px]", legacy("@5xl:text-4xl"))}>
-          {fact("Price", formatPrice(listing.ListPrice))}
+          {fact("Price", formatPrice(listing.ListPrice), undefined, undefined, "price")}
         </p>
         {trending && (
           // Earned, not decoration: real activity from several people this
           // week, among the busiest homes for sale.
           <span
             className={cn(
-              "flex h-6 shrink-0 items-center gap-1 rounded-full bg-white/15 px-2.5 text-meta font-semibold [text-shadow:none] short:bg-black/45 short:backdrop-blur-md",
+              "flex h-6 shrink-0 items-center gap-1 rounded-full bg-rose-500/15 px-2.5 text-meta font-semibold text-rose-100 [text-shadow:none] short:bg-black/45 short:backdrop-blur-md",
               legacy("@5xl:bg-black/45 @5xl:backdrop-blur-md"),
-              // On the white panel beside the photo.
-              "split:bg-rose-50 split:text-rose-700 split:backdrop-blur-none",
             )}
           >
-            <Flame aria-hidden size={12} className="text-rose-300 split:text-rose-600" />
+            <Flame aria-hidden size={12} className="text-rose-300" />
             Trending
           </span>
         )}
       </div>
       {/* One line however long: the size runs short first. */}
-      <p className="flex h-10 items-center gap-x-1.5 whitespace-nowrap text-base text-white/90 split:text-stone-700">
+      <p className="flex h-10 items-center gap-1.5 whitespace-nowrap text-white">
         {fact("Bedrooms", `${beds} ${beds === 1 ? "bed" : "beds"}`, undefined, "shrink-0")}
-        <span aria-hidden className="text-white/60 split:text-stone-400">
-          ·
-        </span>
         {fact("Bathrooms", `${baths} ${baths === 1 ? "bath" : "baths"}`, undefined, "shrink-0")}
-        <span aria-hidden className="text-white/60 split:text-stone-400">
-          ·
-        </span>
         {fact(
           "Square footage",
           `${listing.LivingArea.toLocaleString("en-US")} sq ft`,
           <span className="min-w-0 truncate">{listing.LivingArea.toLocaleString("en-US")} sq ft</span>,
         )}
       </p>
-      <h2 className="flex h-10 min-w-0 items-center text-base font-medium">
+      <h2 className="flex h-10 min-w-0 items-center text-white">
         {fact(
           "Address",
           `${listing.UnparsedAddress}, ${listing.City}`,
           <>
-            <MapPin aria-hidden size={16} className="shrink-0" />
+            <MapPin aria-hidden size={15} className="-ml-0.5 shrink-0 text-white/70" />
             <span className="min-w-0 truncate">
               {listing.UnparsedAddress}, {listing.City}
             </span>
@@ -2274,6 +2326,26 @@ function headerFoot(panel: HTMLElement) {
   return at;
 }
 
+// How a fact looks: in the same frosted glass as the buttons and the caption
+// on the photo, so it reads as something to tap, as they do. A chip for most;
+// the price, a bigger one of its own; each detail, a tile with its label; who
+// listed it, a small one. (Never with how many liked it: that's on its card,
+// so nobody's eye is led before they've looked for themselves.)
+type FactLook = "chip" | "price" | "tile" | "small";
+const FACT_BASE = "inline-flex min-w-0 text-left transition-[background-color,box-shadow] duration-300";
+const FACT_SHAPE: Record<FactLook, string> = {
+  chip: "h-8 items-center gap-1.5 rounded-full px-3 text-[15px] font-medium",
+  price: "h-9 items-center gap-2 rounded-2xl px-2.5 split:h-11 split:px-3",
+  tile: "w-full flex-col items-start justify-center gap-0.5 rounded-xl px-3 py-2.5",
+  small: "h-6 items-center gap-1 rounded-full px-2.5",
+};
+const FACT_GLASS = "bg-white/[0.07] ring-1 ring-inset ring-white/[0.12]";
+
+// Just to read (beside the map): the same, with nothing to tap.
+function FactStill({ look = "chip", className, children }: { look?: FactLook; className?: string; children: ReactNode }) {
+  return <span className={cn(FACT_BASE, FACT_SHAPE[look], FACT_GLASS, className)}>{children}</span>;
+}
+
 // One fact, to tap. Its name says what people thought of it ("$985,000, 1
 // like, 1 comment"); the card it opens shows it.
 function FactButton({
@@ -2284,6 +2356,7 @@ function FactButton({
   comments,
   open,
   lit = false,
+  look = "chip",
   onOpen,
   className,
   children,
@@ -2297,6 +2370,7 @@ function FactButton({
   open: boolean;
   // What the line above is about just now.
   lit?: boolean;
+  look?: FactLook;
   // `keyboard`: pressed with a key, rather than tapped.
   onOpen: (keyboard: boolean) => void;
   className?: string;
@@ -2318,10 +2392,15 @@ function FactButton({
       data-fact={tag}
       onClick={(event) => onOpen(event.detail === 0)}
       className={cn(
-        "-mx-1 inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded-md px-1 text-left transition-[background-color,box-shadow] duration-300 hit-44 hover:bg-white/10 active:bg-white/15 split:hover:bg-stone-100 split:active:bg-stone-200",
-        open && "bg-white/15 split:bg-stone-100",
-        lit &&
-          "bg-white/15 shadow-[0_0_0_2px_rgb(255_255_255/0.85),0_0_18px_4px_rgb(255_255_255/0.3)] split:bg-brand/10 split:shadow-[0_0_0_2px_var(--brand),0_0_16px_2px_color-mix(in_srgb,var(--brand)_35%,transparent)]",
+        FACT_BASE,
+        FACT_SHAPE[look],
+        "hit-44",
+        // Lit (what the line on the photo is about): ringed in light.
+        lit
+          ? "bg-white/15 ring-1 ring-inset ring-white/40 shadow-[0_0_0_2px_rgb(255_255_255/0.85),0_0_18px_4px_rgb(255_255_255/0.3)]"
+          : open
+            ? "bg-white/20 ring-1 ring-inset ring-white/35"
+            : cn(FACT_GLASS, "hover:bg-white/[0.13] active:bg-white/[0.18]"),
         className,
       )}
     >
@@ -2344,12 +2423,14 @@ function Summary({
   onLikes: () => void;
   onComments: () => void;
 }) {
-  const tile =
-    "flex min-h-14 min-w-0 items-center gap-2.5 rounded-2xl bg-stone-50 px-4 text-left transition-colors hover:bg-stone-100";
+  const tile = cn(
+    "flex min-h-14 min-w-0 items-center gap-2.5 rounded-2xl px-4 text-left transition-colors hover:bg-white/[0.13] active:bg-white/[0.18]",
+    FACT_GLASS,
+  );
   const count = (n: number, one: string, many: string) => (
     <span className="min-w-0 flex-1">
-      <span className="block font-display text-lg font-semibold leading-6 tabular-nums text-ink">{n.toLocaleString("en-US")}</span>
-      <span className="block text-meta leading-4 text-muted">{n === 1 ? one : many}</span>
+      <span className="block font-display text-lg font-semibold leading-6 tabular-nums text-white">{n.toLocaleString("en-US")}</span>
+      <span className="block text-meta leading-4 text-white/55">{n === 1 ? one : many}</span>
     </span>
   );
   return (
@@ -2362,7 +2443,7 @@ function Summary({
       >
         <Heart aria-hidden size={18} className="shrink-0 fill-rose-500 text-rose-500" />
         {count(likes, "like", "likes")}
-        <ChevronRight aria-hidden size={18} className="shrink-0 text-stone-400" />
+        <ChevronRight aria-hidden size={18} className="shrink-0 text-white/40" />
       </button>
       <button
         type="button"
@@ -2370,9 +2451,9 @@ function Summary({
         aria-label={`${comments.toLocaleString("en-US")} ${comments === 1 ? "comment" : "comments"}. Read them`}
         className={tile}
       >
-        <MessageCircle aria-hidden size={18} className="shrink-0 text-stone-600" />
+        <MessageCircle aria-hidden size={18} className="shrink-0 text-white/75" />
         {count(comments, "comment", "comments")}
-        <ChevronRight aria-hidden size={18} className="shrink-0 text-stone-400" />
+        <ChevronRight aria-hidden size={18} className="shrink-0 text-white/40" />
       </button>
     </div>
   );
@@ -2382,23 +2463,34 @@ function Summary({
 // the panel: the details that used to be down in the Scorecard.
 function HomeDetails({
   listing,
-  value,
+  hint,
+  tile,
 }: {
   listing: Listing;
-  // Each one, as something to react to (just its words beside the map).
-  value: (row: ReturnType<typeof homeDetails>[number]) => ReactNode;
+  // Say, once, that a tap on any of these (and the price, and the rest) is
+  // how to like it or say something.
+  hint: boolean;
+  // Each one, as a tile to react to (just to read beside the map).
+  tile: (row: ReturnType<typeof homeDetails>[number]) => ReactNode;
 }) {
   const rows = homeDetails(listing);
   if (rows.length === 0) return null;
   return (
-    <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl bg-stone-50 p-4">
-      {rows.map((row) => (
-        <div key={row.label} className="min-w-0">
-          <dt className="text-meta text-muted">{row.label}</dt>
-          <dd className="break-words text-body font-medium text-ink">{value(row)}</dd>
-        </div>
-      ))}
-    </dl>
+    <>
+      {hint && (
+        <p aria-hidden className="mt-4 flex items-center gap-1.5 text-meta text-white/55">
+          <Hand size={14} className="shrink-0" />
+          Tap any detail to like it or comment
+        </p>
+      )}
+      <ul aria-label="The details" className={cn("grid grid-cols-2 gap-2", hint ? "mt-2" : "mt-4")}>
+        {rows.map((row) => (
+          <li key={row.label} className="flex min-w-0">
+            {tile(row)}
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 
@@ -2467,7 +2559,7 @@ function Caption({
         // Side by side: up to ten lines in the panel (a listing's usual
         // description whole), and all of it right there when opened (the
         // panel scrolls).
-        "mb-1 text-body leading-[22px] text-white/85 split:mb-2 split:mt-1 split:leading-6 split:text-stone-700",
+        "mb-1 text-body leading-[22px] text-white/85 split:mb-2 split:mt-1 split:leading-6 split:text-white/80",
         open
           ? "pointer-events-auto max-h-[45dvh] overflow-y-auto overscroll-contain split:max-h-none split:overflow-visible"
           : "h-11 short:mb-0 short:h-[22px] split:h-auto split:max-h-60",
@@ -2479,7 +2571,7 @@ function Caption({
         className={cn(note && "whitespace-pre-line", !open && n === null && "line-clamp-2 short:line-clamp-1 split:line-clamp-10")}
       >
         {/* The greeting ends with a stop, seen, so it doesn't run into the note. */}
-        {greeting && <h1 className="inline font-semibold text-white split:text-ink">{greeting}</h1>}
+        {greeting && <h1 className="inline font-semibold text-white">{greeting}</h1>}
         {greeting && <span aria-hidden>.</span>}
         {greeting && text && " "}
         {text &&
@@ -2500,10 +2592,9 @@ function Caption({
               }}
               className={cn(
                 // (The words let a touch through to the photo, all but what can be tapped.)
-                "pointer-events-auto cursor-pointer rounded-sm box-decoration-clone transition-[background-color,box-shadow] duration-300 hover:bg-white/10 split:hover:bg-stone-100",
-                fact.open && "bg-white/15 split:bg-stone-100",
-                fact.lit &&
-                  "bg-white/15 shadow-[0_0_0_2px_rgb(255_255_255/0.85),0_0_18px_4px_rgb(255_255_255/0.3)] split:bg-brand/10 split:shadow-[0_0_0_2px_var(--brand)]",
+                "pointer-events-auto cursor-pointer rounded-sm box-decoration-clone transition-[background-color,box-shadow] duration-300 hover:bg-white/10",
+                fact.open && "bg-white/15",
+                fact.lit && "bg-white/15 shadow-[0_0_0_2px_rgb(255_255_255/0.85),0_0_18px_4px_rgb(255_255_255/0.3)]",
               )}
             >
               {cut ? clipped(text, n ?? 0) : text}
@@ -2518,7 +2609,7 @@ function Caption({
             aria-expanded={inPlace ? open : undefined}
             aria-haspopup={inPlace ? undefined : "dialog"}
             onClick={onToggle}
-            className="font-semibold text-white hit-44 split:text-ink"
+            className="font-semibold text-white hit-44"
           >
             {open ? "less" : "more"}
           </button>

@@ -72,6 +72,12 @@ test("on a phone, the whole photo sits right on top of the words, in the same pl
       for (const text of [home.getByText(/^Listed by/), home.getByRole("button", { name: /^\$[\d,]+/ })]) {
         expect((await box(text)).y).toBeGreaterThanOrEqual(photo.y + photo.height - 1);
       }
+      // Each fact sits on a frosted chip of its own, as the buttons on the
+      // photo do: plainly something to tap.
+      for (const fact of [/^\$[\d,]+/, /^\d+ beds?/, /^\d+ baths?/, /^Listed by /]) {
+        const chip = home.getByRole("button", { name: fact });
+        expect(await chip.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
+      }
       // The comment bar is the last thing, at the bottom.
       const bar = await box(home.getByRole("button", { name: "Add a comment…" }));
       expect(bar.y + bar.height).toBeGreaterThan(page.viewportSize()!.height - 20);
@@ -372,7 +378,7 @@ test("nothing anyone liked is drawn on the photo: the line at its foot says who 
   expect(photo.width).toBeGreaterThan(0);
 });
 
-test("on a desktop, the photo has a stage of its own, the buttons a column beside it, and the words a panel", async ({
+test("on a desktop, the photo has a stage of its own with the buttons floating on it, and the words a panel", async ({
   browser,
 }) => {
   const page = await phone(browser, DESKTOP);
@@ -382,11 +388,11 @@ test("on a desktop, the photo has a stage of its own, the buttons a column besid
   const home = homeIn(page, "1880 Tamsen Ridge Pl SE");
   await settled(home);
 
-  // The photo, whole, on the stage on the left; the panel down the right;
-  // the buttons between them.
+  // The photo, whole, on the stage on the left, up to the panel down the
+  // right; the buttons float on the photo, down its right edge.
   const photo = await box(photoOf(home));
   expect(photo.x).toBeGreaterThanOrEqual(23);
-  expect(photo.x + photo.width).toBeLessThanOrEqual(933);
+  expect(photo.x + photo.width).toBeLessThanOrEqual(1440 - 24 - 360 - 16 + 1);
   expect(photo.y).toBeGreaterThanOrEqual(72 - 1);
   // It's fetched about as wide as it shows, not as wide as the window.
   await expect
@@ -398,17 +404,26 @@ test("on a desktop, the photo has a stage of its own, the buttons a column besid
     .toBeLessThan(1440);
   const panel = await box(home.locator("[data-words]"));
   expect(Math.abs(panel.x + panel.width - 1416)).toBeLessThanOrEqual(1);
+  expect(panel.x - (photo.x + photo.width)).toBeGreaterThanOrEqual(15);
+  const rail = await box(home.locator("[data-rail]"));
   for (const button of [heartOf(home), home.getByRole("button", { name: "More options" })]) {
     const at = await box(button);
-    expect(at.x).toBeGreaterThanOrEqual(photo.x + photo.width - 1);
-    expect(at.x + at.width).toBeLessThanOrEqual(panel.x + 1);
+    expect(at.x).toBeGreaterThanOrEqual(photo.x + photo.width - 80);
+    expect(at.x + at.width).toBeLessThanOrEqual(photo.x + photo.width - 8);
+    expect(at.y).toBeGreaterThanOrEqual(photo.y);
   }
+  // (Just inside the photo's bottom corner, with the photo's own arrow just inside them.)
+  expect(Math.abs(rail.y + rail.height - (photo.y + photo.height - 12))).toBeLessThanOrEqual(2);
+  const arrow = await box(home.getByRole("button", { name: "Next photo" }));
+  expect(arrow.x + arrow.width).toBeLessThan(rail.x);
   // What people did on the photo (or, before anyone has, what you can do)
-  // floats in a caption at its foot, centred under it.
+  // floats in a caption a little above its foot, centred under it and clear
+  // of the buttons.
   const caption = await box(home.getByRole("group", { name: "Recent activity" }));
-  expect(caption.y + caption.height).toBeLessThanOrEqual(photo.y + photo.height - 8);
-  expect(caption.y + caption.height).toBeGreaterThanOrEqual(photo.y + photo.height - 20);
+  expect(caption.y + caption.height).toBeLessThanOrEqual(photo.y + photo.height - 20);
+  expect(caption.y + caption.height).toBeGreaterThanOrEqual(photo.y + photo.height - 30);
   expect(Math.abs(caption.x + caption.width / 2 - (photo.x + photo.width / 2))).toBeLessThanOrEqual(2);
+  expect(caption.x + caption.width).toBeLessThan(rail.x);
   // The rest of the words, not one of them on the photo: the panel says what
   // the home is, then, in a word, how people took it, each a way in (what
   // was said is in one place only: the comments).
@@ -417,6 +432,16 @@ test("on a desktop, the photo has a stage of its own, the buttons a column besid
   await expect(panelWords.getByRole("button", { name: /^\d+ likes?\. See the scorecard$/ })).toBeVisible();
   await expect(panelWords.getByRole("button", { name: /^\d+ comments?\. Read them$/ })).toBeVisible();
   await expect(panelWords.getByRole("list", { name: "Comments and likes" })).toHaveCount(0);
+  // On the stage's own dark, every fact you can react to looks like it: a
+  // chip (each detail, a tile) of the same frosted glass as the buttons on
+  // the photo, with a word on what a tap does.
+  await expect(panelWords.getByText("Tap any detail to like it or comment")).toBeVisible();
+  const details = panelWords.getByRole("list", { name: "The details" }).getByRole("button");
+  expect(await details.count()).toBeGreaterThanOrEqual(3);
+  for (const fact of [home.getByRole("button", { name: /^\$[\d,]+/ }), home.getByRole("button", { name: /^\d+ beds?/ }), details.first()]) {
+    expect(await fact.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
+  }
+  expect(await panelWords.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe("rgb(255, 255, 255)");
   for (const words of [
     home.getByRole("button", { name: /^\$[\d,]+/ }),
     home.getByRole("button", { name: /^\d+ beds?/ }),
@@ -443,8 +468,16 @@ test("on a desktop, the photo has a stage of its own, the buttons a column besid
   await expect(home.getByText("Photo 3 of 4")).toBeAttached();
   await expect(third).toHaveAttribute("aria-current", "true");
 
-  // Up and down the homes from the top of the buttons' column.
-  await expect(home.getByRole("button", { name: "Go to the previous home" })).toBeDisabled();
+  // Up and down the homes from the photo's top right corner (on the first
+  // home, nothing before it: just the way down, in the same place as ever).
+  await expect(home.getByRole("button", { name: "Go to the previous home" })).toHaveCount(0);
+  await expect(home.locator('[data-follow="previous"]')).toBeDisabled();
+  await expect(home.locator('[data-follow="previous"]')).toBeHidden();
+  const down = await box(home.getByRole("button", { name: "Go to the next home" }));
+  expect(down.x + down.width).toBeLessThanOrEqual(photo.x + photo.width - 8);
+  expect(down.x + down.width).toBeGreaterThanOrEqual(photo.x + photo.width - 30);
+  expect(down.y).toBeGreaterThanOrEqual(photo.y);
+  expect(down.y).toBeLessThanOrEqual(photo.y + 80);
   await home.getByRole("button", { name: "Go to the next home" }).click();
   const second = page.getByRole("article").nth(1);
   await settled(second);

@@ -128,13 +128,24 @@ test("it holds on the newest, then goes round what's on the photo, a hotspot rig
   await expect(activityOf(home).getByRole("button", { name: /liked|commented|sent/ })).toHaveCount(1);
 });
 
-test("Pause stops it for the rest of the visit, on every home, until the tab closes", async ({ browser }) => {
+test("Pause, from the keyboard, stops it for the rest of the visit, on every home, until the tab closes", async ({ browser }) => {
   const page = await stillPage(browser);
   await page.goto("/homes/SAMPLE-1007");
   const home = homeIn(page, WEXFORD);
   await settled(home);
   const before = await lineOf(home).getAttribute("aria-label");
-  await activityOf(home).getByRole("button", { name: "Pause activity" }).click();
+  // Pause and Play are only for the keyboard: nothing to see until it's on
+  // them. Coming in stops the line on this home (so Play shows); Play, then
+  // Pause, pauses it for the visit.
+  const control = activityOf(home).getByRole("button", { name: /^(Pause|Play) activity$/ });
+  expect((await control.boundingBox())!.width).toBeLessThanOrEqual(1);
+  await control.focus();
+  await expect(control).toHaveAccessibleName("Play activity");
+  expect((await control.boundingBox())!.width).toBeGreaterThan(30);
+  await page.keyboard.press("Enter");
+  await expect(control).toHaveAccessibleName("Pause activity");
+  await page.keyboard.press("Enter");
+  await expect(control).toHaveAccessibleName("Play activity");
   await expect(activityOf(home).getByRole("button", { name: "Play activity" })).toBeVisible();
   for (let i = 0; i < 5; i++) await tick(page, 2000);
   await expect(lineOf(home)).toHaveAttribute("aria-label", before!);
@@ -155,7 +166,8 @@ test("Pause stops it for the rest of the visit, on every home, until the tab clo
   await expect(activityOf(homeIn(tab, WEXFORD)).getByRole("button", { name: "Pause activity" })).toBeVisible();
 
   // Play goes on again.
-  await activityOf(other).getByRole("button", { name: "Play activity" }).click();
+  await activityOf(other).getByRole("button", { name: "Play activity" }).focus();
+  await page.keyboard.press("Enter");
   await expect(activityOf(other).getByRole("button", { name: "Pause activity" })).toBeVisible();
 });
 
@@ -340,8 +352,10 @@ test("on a link, what you said is \"You\", and the agent's own words are theirs"
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByText("Is the roof new?")).toBeVisible();
   await kit.keyboard.press("Escape");
-  // Hers, as her likes are: "You".
+  // Hers, as her likes are: "You". (Her face starts it, but on a link it's
+  // nobody's way to a profile, hers included.)
   await expect(lineOf(home)).toHaveAccessibleName(/^You commented: Is the roof new\? /);
+  await expect(activityOf(home).getByRole("link")).toHaveCount(0);
 
   // The agent answers from their dashboard, and on their own link it's
   // theirs: "You".
@@ -360,6 +374,26 @@ test("on a link, what you said is \"You\", and the agent's own words are theirs"
   await kit.reload();
   await settled(home);
   await expect(lineOf(home)).toHaveAccessibleName(/^Vera \(your agent\) commented: New in 2021\. /);
+  await expect(activityOf(home).getByRole("link")).toHaveCount(0);
+});
+
+test("the line starts with the face of whoever did it, and that face opens their profile", async ({ browser }) => {
+  const page = await stillPage(browser);
+  await page.goto("/homes/SAMPLE-1007");
+  const home = homeIn(page, WEXFORD);
+  await settled(home);
+  await expect(lineOf(home)).toHaveAccessibleName(/^Bo liked the front entry/);
+  // Like a profile picture: Bo's, just before the words, on the caption.
+  const face = activityOf(home).getByRole("link", { name: "Bo's profile" });
+  await expect(face).toHaveText("B");
+  const [faceBox, lineBox] = await Promise.all([face.boundingBox(), lineOf(home).boundingBox()]);
+  expect(faceBox!.x + faceBox!.width).toBeLessThanOrEqual(lineBox!.x);
+  expect(faceBox!.width).toBeGreaterThanOrEqual(32);
+  // No Pause or Play to see (they're for the keyboard).
+  expect((await activityOf(home).getByRole("button", { name: /activity$/ }).boundingBox())!.width).toBeLessThanOrEqual(1);
+  await face.click();
+  await page.waitForURL(/\/people\/[0-9a-f-]{36}$/);
+  await expect(page.locator("h1").first()).toContainText("Bo");
 });
 
 test("isolation: what's private on an agent's link never reaches the public line, by words, name, pass or spot", async ({

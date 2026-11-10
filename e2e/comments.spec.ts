@@ -95,16 +95,18 @@ test("on a desktop, the whole photo sits beside the words; press and hold to see
   const home = homeIn(page, BRACKENFIELD);
   await expect(home).toBeInViewport({ ratio: 0.9 });
 
-  // The whole photo, on a stage of its own on the left.
+  // The whole photo, on a stage of its own on the left, up to just short of
+  // the panel (the buttons float on it).
   const photo = home.getByRole("img", { name: "Brick-front home with a wide lawn" });
   await expect.poll(async () => (await photo.boundingBox())!.width).toBeGreaterThan(800);
   const box = (await photo.boundingBox())!;
-  expect(box.width).toBeLessThanOrEqual(910);
+  expect(box.width).toBeLessThanOrEqual(1440 - 24 - 400);
   expect(box.x).toBeGreaterThanOrEqual(23);
-  expect(box.x + box.width).toBeLessThanOrEqual(933);
+  expect(box.x + box.width).toBeLessThanOrEqual(1440 - 400 + 1);
 
   // The words are in a white panel down the right, read from the left, inside its padding.
   const panel = (await home.locator("[data-words]").boundingBox())!;
+  expect(panel.x - (box.x + box.width)).toBeGreaterThanOrEqual(15);
   expect(panel.x).toBeGreaterThanOrEqual(1000);
   const description = home.getByText(/^Traditional brick-front home/);
   await expect(description).toHaveCSS("text-align", "start");

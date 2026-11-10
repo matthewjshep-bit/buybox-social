@@ -1,7 +1,9 @@
 "use client";
 
-import { Hand, Pause, Play, StepForward } from "lucide-react";
+import { Hand, Heart, Pause, Play, StepForward } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { EventFace } from "@/components/spot-highlight";
 import { cn, timeAgo } from "@/lib/format";
 import type { Listing } from "@/lib/listings/types";
 import { buildCycle, DOT, eventText, onPhoto, spokenAgo, type TickerEvent, type TickerTap } from "@/lib/ticker";
@@ -289,7 +291,51 @@ function likedBy(likes: number, names: string[], you: boolean) {
 
 // The caption's frosted ground: it reads on the brightest photo.
 const caption =
-  "pointer-events-auto flex min-h-11 max-w-full items-center rounded-2xl bg-black/60 text-white shadow-[0_4px_20px_rgb(0_0_0/0.35)] ring-1 ring-white/10 backdrop-blur-md";
+  "pointer-events-auto flex min-h-12 max-w-full items-center rounded-[1.25rem] bg-black/60 text-white shadow-[0_4px_20px_rgb(0_0_0/0.35)] ring-1 ring-white/10 backdrop-blur-md split:min-h-14 split:rounded-[1.375rem]";
+
+// Where someone's face goes: their profile, if they have one the page may
+// show (never on an agent's link), or yours.
+function profileOf(event: TickerEvent, yours: string | null) {
+  if (event.who.profileId) return { href: `/people/${event.who.profileId}`, label: `${event.who.name ?? "Their"}'s profile` };
+  if (event.who.tone === "you" && yours) return { href: yours, label: "Your profile" };
+  return null;
+}
+
+// The face at the start of the line, like a profile picture: whoever did it,
+// or a heart for who liked the home. A tap on it goes to their profile.
+function Face({
+  shown,
+  myName,
+  yours,
+  ghost = false,
+  link = false,
+}: {
+  shown: Shown;
+  myName: string | null;
+  yours: string | null;
+  ghost?: boolean;
+  link?: boolean;
+}) {
+  if (shown.kind === "rest") {
+    return (
+      <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/25 split:size-9">
+        <Heart size={16} className="fill-rose-500 text-rose-500" />
+      </span>
+    );
+  }
+  const face = <EventFace event={shown.event} myName={myName} caption ghost={ghost} />;
+  const profile = link ? profileOf(shown.event, yours) : null;
+  if (!profile) return <span aria-hidden>{face}</span>;
+  return (
+    <Link
+      href={profile.href}
+      aria-label={profile.label}
+      className="shrink-0 rounded-full outline-offset-2 transition-transform hit-44 hover:scale-105 active:scale-95 motion-reduce:transition-none motion-reduce:hover:scale-100"
+    >
+      {face}
+    </Link>
+  );
+}
 
 export function ActivityTicker({
   ticker,
@@ -301,10 +347,16 @@ export function ActivityTicker({
   onTap,
   box,
   line,
+  myName = null,
+  yours = null,
 }: {
   ticker: Ticker;
   listing: Listing;
   photoKey: string | undefined;
+  // Your name, for your own face; and where your profile is (null: none here,
+  // as on an agent's link).
+  myName?: string | null;
+  yours?: string | null;
   // Who liked the home, for the rest: how many, the names the page may give
   // (never yours), and whether you did.
   liked: { count: number; names: string[]; you: boolean };
@@ -333,9 +385,11 @@ export function ActivityTicker({
   if (cycle.length === 0) {
     if (!hint) return null;
     return (
-      <div role="group" aria-label="Recent activity" data-keep-clear className={cn(caption, "gap-2 py-2 pl-3 pr-3.5")}>
-        <Hand aria-hidden size={16} className="shrink-0 text-white/75" />
-        <p className="text-meta leading-[18px] text-white/90">{hint}</p>
+      <div role="group" aria-label="Recent activity" data-keep-clear className={cn(caption, "gap-2.5 py-2 pl-2 pr-3.5 split:gap-3 split:py-2.5 split:pl-2.5 split:pr-4")}>
+        <span aria-hidden className="flex size-8 split:size-9 shrink-0 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/25">
+          <Hand size={16} className="text-white/85" />
+        </span>
+        <p className="text-meta leading-[18px] text-white/90 split:text-sm split:leading-5">{hint}</p>
       </div>
     );
   }
@@ -376,7 +430,11 @@ export function ActivityTicker({
   const enter = moved && (reduced ? "animate-[fade-in_150ms_linear_both]" : "animate-[ticker-in_300ms_cubic-bezier(0.05,0.7,0.1,1)_120ms_both]");
   const exit = reduced ? "animate-[fade-out_150ms_linear_both]" : "animate-[ticker-out_200ms_cubic-bezier(0.3,0,0.8,0.15)_both]";
   const crossfade = reduced ? { "data-crossfade": true } : {};
-  const row = "flex min-w-0 flex-1 flex-col justify-center rounded-xl py-1.5 text-left";
+  // Each showing: the face, then the words, coming and going together.
+  const showing = "col-start-1 row-start-1 flex min-w-0 items-center gap-2.5 split:gap-3";
+  const row = "flex min-w-0 flex-1 flex-col justify-center rounded-xl py-1.5 text-left split:py-2";
+  // With reduced motion it only moves by hand, so its step-on button shows.
+  const stepper = multi && reduced;
 
   return (
     <div
@@ -392,16 +450,19 @@ export function ActivityTicker({
         if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
         if ((event.target as HTMLElement).matches(":focus-visible") && ticker.rotating) ticker.stop();
       }}
-      className={cn(caption, "pl-3.5", multi ? "pr-1" : "pr-3.5")}
+      className={cn(caption, "pl-2 split:pl-2.5", stepper ? "pr-1.5" : "pr-3.5 split:pr-4")}
     >
-      {/* First for the keyboard (so it can be stopped before it's read), last on screen. */}
+      {/* First for the keyboard (so it can be stopped before it's read),
+          last on screen. Pause and Play are only for the keyboard, showing
+          while it's on them: a pointer resting on the line holds it, a tap
+          on it stops it, and it rests by itself after a few rounds. */}
       {multi &&
         (reduced ? (
           <button
             type="button"
             aria-label="Show the next activity"
             onClick={ticker.step}
-            className="order-last flex size-9 shrink-0 items-center justify-center rounded-full text-white/85 hit-44 hover:bg-white/15"
+            className="order-last ml-1 flex size-9 shrink-0 items-center justify-center rounded-full text-white/85 hit-44 hover:bg-white/15"
           >
             {/* A step on, not the photo's arrow. */}
             <StepForward aria-hidden size={16} />
@@ -411,7 +472,7 @@ export function ActivityTicker({
             type="button"
             aria-label={ticker.halted ? "Play activity" : "Pause activity"}
             onClick={ticker.halted ? ticker.play : ticker.pause}
-            className="order-last flex size-9 shrink-0 items-center justify-center rounded-full text-white/85 hit-44 hover:bg-white/15"
+            className="order-last -mr-2.5 ml-1 flex size-9 shrink-0 items-center justify-center rounded-full text-white/85 hover:bg-white/15 [&:not(:focus-visible)]:sr-only"
           >
             {ticker.halted ? <Play aria-hidden size={14} className="fill-current" /> : <Pause aria-hidden size={14} className="fill-current" />}
           </button>
@@ -424,46 +485,44 @@ export function ActivityTicker({
         className="relative grid min-w-0 flex-1"
       >
         {leaving && (
-          <div
-            key={`leaving-${shown.n}`}
-            aria-hidden
-            {...crossfade}
-            className={cn("pointer-events-none col-start-1 row-start-1 flex items-center", exit)}
-          >
+          <div key={`leaving-${shown.n}`} aria-hidden {...crossfade} className={cn(showing, "pointer-events-none", exit)}>
+            <Face shown={leaving} myName={myName} yours={yours} ghost />
             <span className={row}>
               <Lines shown={leaving} ghost />
             </span>
           </div>
         )}
-        {now &&
-          (readOnly ? (
-            <div key={shown.key} {...crossfade} className={cn(row, "col-start-1 row-start-1", enter)}>
-              <Lines shown={now} />
-            </div>
-          ) : (
-            <button
-              key={shown.key}
-              ref={line}
-              type="button"
-              aria-label={name}
-              {...crossfade}
-              // The time is the server's until the page wakes up, as on the line itself.
-              suppressHydrationWarning
-              onClick={(click) => {
-                ticker.stop();
-                const keyboard = click.detail === 0;
-                if (now.kind === "item") onTap?.(now.event, now.words.tap, now.words.index, keyboard);
-                else onTap?.(cycle[0], "home", -1, keyboard);
-              }}
-              onPointerEnter={(event) => event.pointerType === "mouse" && ticker.setLooking(true)}
-              onPointerLeave={() => ticker.setLooking(false)}
-              onFocus={() => ticker.setLooking(true)}
-              onBlur={() => ticker.setLooking(false)}
-              className={cn(row, "col-start-1 row-start-1", enter)}
-            >
-              <Lines shown={now} />
-            </button>
-          ))}
+        {now && (
+          <div key={shown.key} {...crossfade} className={cn(showing, enter)}>
+            <Face shown={now} myName={myName} yours={yours} link={!readOnly} />
+            {readOnly ? (
+              <div className={row}>
+                <Lines shown={now} />
+              </div>
+            ) : (
+              <button
+                ref={line}
+                type="button"
+                aria-label={name}
+                // The time is the server's until the page wakes up, as on the line itself.
+                suppressHydrationWarning
+                onClick={(click) => {
+                  ticker.stop();
+                  const keyboard = click.detail === 0;
+                  if (now.kind === "item") onTap?.(now.event, now.words.tap, now.words.index, keyboard);
+                  else onTap?.(cycle[0], "home", -1, keyboard);
+                }}
+                onPointerEnter={(event) => event.pointerType === "mouse" && ticker.setLooking(true)}
+                onPointerLeave={() => ticker.setLooking(false)}
+                onFocus={() => ticker.setLooking(true)}
+                onBlur={() => ticker.setLooking(false)}
+                className={row}
+              >
+                <Lines shown={now} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -489,20 +548,20 @@ function Lines({ shown, ghost = false }: { shown: Shown; ghost?: boolean }) {
         {text}
       </span>
     );
-  if (shown.kind === "rest") return say(shown.text, "line-clamp-2 text-body font-semibold leading-5");
+  if (shown.kind === "rest") return say(shown.text, "line-clamp-2 text-body font-semibold leading-5 split:text-base split:leading-[22px]");
   const { words } = shown;
   // The name as it starts the line ("Jenny", or "Jenny, on the porch").
   const who = [words.who, words.who.replace(/,$/, "")].find((name) => words.line1.startsWith(name)) ?? "";
   const when = words.meta ? `${DOT}${words.meta}` : "";
   return (
     <>
-      <span className="line-clamp-2 text-body leading-5" suppressHydrationWarning>
+      <span className="line-clamp-2 text-body leading-5 split:text-base split:leading-[22px]" suppressHydrationWarning>
         {say(who, "font-semibold")}
         {say(words.line1.slice(who.length))}
-        {!words.words && say(when, "text-meta text-white/70")}
+        {!words.words && say(when, "text-meta text-white/70 split:text-sm")}
       </span>
       {words.words && (
-        <span className="flex min-w-0 text-meta leading-[18px] text-white/80" suppressHydrationWarning>
+        <span className="flex min-w-0 text-meta leading-[18px] text-white/80 split:text-sm split:leading-5" suppressHydrationWarning>
           {say(words.words, "min-w-0 truncate")}
           {say(when, "shrink-0 whitespace-pre text-white/70")}
         </span>

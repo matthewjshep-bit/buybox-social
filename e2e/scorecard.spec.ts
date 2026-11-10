@@ -305,11 +305,19 @@ test("on a link with more than one home, the Scorecard sets this one beside the 
   const LAKEVIEW = "5902 Lakeview Terrace SE";
   const agent = await signInAgent(browser, "cleo-compare@example.com", "Cleo Compare");
   const { urls } = await createShare(agent, ["1204 Quillan", "5902 Lakeview"], ["Ana", "Bo"]);
+  // (Each tap shows at once and saves behind it: wait for each to be saved,
+  // not just shown, since another page reads them straight after.)
   const pass = async (more: Locator, aspect: string) => {
+    const saved = () =>
+      more.page().waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
+    let save = saved();
     await more.getByRole("button", { name: "Not for me" }).click();
+    await save;
     const why = more.getByRole("group", { name: "What made you pass?" });
+    save = saved();
     await why.getByRole("button", { name: aspect }).click();
     await expect(why.getByRole("button", { name: aspect })).toHaveAttribute("aria-pressed", "true");
+    await save;
   };
 
   // In public, Zed likes the first and its red front door, and passes on the

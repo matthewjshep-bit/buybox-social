@@ -43,8 +43,9 @@ test("tap anywhere on a photo to like that spot or comment on it, and it shows w
   // going) is waited out, not measured halfway.
   await expect(home.locator("[data-pin], [data-pins-toggle]")).toHaveCount(0);
   const line = home.getByRole("group", { name: "Recent activity" });
-  const pause = line.getByRole("button", { name: "Pause activity" });
-  if (await pause.isVisible()) await pause.click();
+  // (The keyboard coming in stops it there, so it holds.)
+  const control = line.getByRole("button", { name: /^(Pause|Play) activity$/ });
+  if (await control.count()) await control.focus();
   await expect(line).toContainText("Love this door color");
   const pin = home.locator("[data-spot-highlight]");
   const photo = home.getByRole("img", { name: PHOTO });
@@ -121,8 +122,9 @@ test("on a desktop, the comment box opens right where you click, and what's said
   // on a card with the spot it's about.
   await expect(home.locator("[data-pin], [data-pins-toggle]")).toHaveCount(0);
   const line = home.getByRole("group", { name: "Recent activity" });
-  const pause = line.getByRole("button", { name: "Pause activity" });
-  if (await pause.isVisible()) await pause.click();
+  // (The keyboard coming in stops it there, so it holds.)
+  const control = line.getByRole("button", { name: /^(Pause|Play) activity$/ });
+  if (await control.count()) await control.focus();
   await expect(line).toContainText("These trees make the whole street");
   await expect(home.locator("[data-spot-highlight]")).toHaveCount(1);
   // The panel says how many; the words are in the comments, on a card with

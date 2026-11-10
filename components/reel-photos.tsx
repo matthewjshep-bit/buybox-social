@@ -286,7 +286,9 @@ export function ReelPhotos({
   // The arrows and labels sit just inside the photo's edges, and clear of a
   // notch or a rounded corner (a phone on its side).
   const edge = `max(${place.left} + 0.5rem, env(safe-area-inset-left) + 0.5rem)`;
-  const farEdge = `max(100cqw - (${place.left}) - ${place.width} + 0.5rem, env(safe-area-inset-right) + 0.5rem)`;
+  // (Side by side, the buttons run down the photo's right edge: these sit
+  // just inside them, by `--rail-room`, set only when it's laid out that way.)
+  const farEdge = `max(100cqw - (${place.left}) - ${place.width} + 0.5rem + var(--rail-room, 0px), env(safe-area-inset-right) + 0.5rem)`;
   // "Kitchen · 3 of 12": what the photo shows, and where it is among them.
   const room = [shown?.ImageOf, media.length > 1 ? `${index + 1} of ${media.length}` : null].filter(Boolean).join(" · ");
   // On a phone on its side the middle of the photo is under the words, so
@@ -305,7 +307,7 @@ export function ReelPhotos({
       onPointerDownCapture={() => setTouched(true)}
       // A press and hold shows the photo alone, not the browser's menu for it.
       onContextMenu={(event) => onHold && event.preventDefault()}
-      className="group/carousel absolute inset-0 [container-type:size]"
+      className={cn("group/carousel absolute inset-0 [container-type:size]", beside && controls && "split:[--rail-room:4.25rem]")}
     >
       {/* What the photos slide across: the whole home on a phone (a swipe
           over the words turns them too); side by side, just the stage, so
