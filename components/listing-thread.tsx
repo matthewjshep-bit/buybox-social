@@ -3,6 +3,7 @@
 import { ArrowUp, Globe, Heart, Lock, MapPin, ThumbsDown } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   createContext,
   useContext,
@@ -16,6 +17,8 @@ import {
   type RefObject,
 } from "react";
 import { flushSync } from "react-dom";
+import { CodeSignIn } from "@/components/code-sign-in";
+import { useSignedIn } from "@/components/session";
 import { Sheet } from "@/components/sheet";
 import { Hotspot } from "@/components/spot-highlight";
 import { Avatar, Badge } from "@/components/ui";
@@ -67,8 +70,11 @@ export const useThread = () => {
   return value;
 };
 
-// Asks for a first name the first time someone reacts or comments, in a sheet
-// that rises like everything else. No account.
+// The first time someone likes or says something: signed out, a sheet that
+// rises like everything else to sign up (or in) right here, a first name, an
+// email and the code we email them, and then what they did goes through;
+// signed in, they're simply in, by their account's name (asked for only if
+// it has none).
 export function NameGate({
   actions,
   myName,
@@ -92,6 +98,10 @@ export function NameGate({
   children: ReactNode;
 }) {
   const [asking, setAsking] = useState(false);
+  // Signing up, or (signed in, with no name yet) just the name.
+  const [mode, setMode] = useState<"join" | "name">("join");
+  const signedIn = useSignedIn();
+  const router = useRouter();
   const nameBox = useRef<HTMLInputElement>(null);
   const resolver = useRef<((joined: boolean) => void) | null>(null);
   const joined = useRef(false);
@@ -100,19 +110,33 @@ export function NameGate({
   // A page and the pop-out over it can each have one of these.
   const id = useId();
 
-  const ensureName = () => {
-    if (myName || joined.current) return Promise.resolve(true);
-    // Open, and the cursor in the name, in the same tap: a phone only shows
-    // its keyboard for that.
+  const ask = (as: "join" | "name") => {
+    // Open, and the cursor in the first box, in the same tap: a phone only
+    // shows its keyboard for that.
     flushSync(() => {
       setError(null);
+      setMode(as);
       setAsking(true);
     });
-    nameBox.current?.focus();
-    nameBox.current?.select();
+    const first = as === "name" ? nameBox.current : document.querySelector<HTMLInputElement>(`[data-join="${id}"] input`);
+    first?.focus();
+    first?.select();
     return new Promise<boolean>((resolve) => {
       resolver.current = resolve;
     });
+  };
+
+  const ensureName = async () => {
+    if (joined.current || (signedIn && myName)) return true;
+    if (!signedIn) return ask("join");
+    // Signed in, and new to this conversation: in by their account's name.
+    const result = await actions.join("").catch(() => ({ ok: false as const, error: "" }));
+    if (result.ok) {
+      joined.current = true;
+      router.refresh();
+      return true;
+    }
+    return ask("name");
   };
 
   const finish = (result: boolean) => {
@@ -127,10 +151,51 @@ export function NameGate({
       <Sheet
         open={asking}
         onClose={() => finish(false)}
-        label="What's your first name?"
-        title="What's your first name?"
+        label={mode === "join" ? "Sign up to like and comment" : "What's your first name?"}
+        title={mode === "join" ? "Sign up to like and comment" : "What's your first name?"}
         anchor={anchor}
       >
+        {mode === "join" ? (
+          <div data-join={id} className="mx-auto max-w-sm px-1 pb-1">
+            <p className="text-center text-sm text-muted">{prompt}</p>
+            {nameHint && (
+              <p id={`${id}-hint`} className="mt-2 text-balance text-center text-meta text-muted">
+                {nameHint}
+              </p>
+            )}
+            <div className="mt-4">
+              <CodeSignIn
+                withName
+                suggestedName={suggestedName}
+                nameHint={nameHint ? `${id}-hint` : undefined}
+                note="Free, and no password. Signed up before? Use the same email."
+                onDone={async ({ firstName }) => {
+                  // Now on this page's conversation too, as themselves.
+                  const result = await actions.join(firstName ?? "").catch(() => ({ ok: false as const, error: "" }));
+                  router.refresh();
+                  if (result.ok) {
+                    joined.current = true;
+                    finish(true);
+                  } else {
+                    setError(result.error || "That didn't save. Try again.");
+                  }
+                }}
+              />
+            </div>
+            {error && (
+              <p role="alert" className="mt-2 text-sm text-red-700">
+                {error}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => finish(false)}
+              className={cn(button({ kind: "ghost", block: true }), "mt-2 text-stone-700")}
+            >
+              Not now
+            </button>
+          </div>
+        ) : (
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -190,6 +255,7 @@ export function NameGate({
             </button>
           </div>
         </form>
+        )}
       </Sheet>
     </ThreadContext.Provider>
   );

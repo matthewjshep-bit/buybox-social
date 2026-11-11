@@ -174,6 +174,37 @@ export async function getShareByToken(token: string) {
   };
 }
 
+// Someone signed in, on a link: their place on it. On someone's own link,
+// that person, theirs from the first time they're signed in there (unless
+// they're on the package already another way, which stays theirs). Otherwise
+// their own place on the package (a browser's from before they signed in
+// became theirs then). Null when they have none yet, or when the link is
+// someone else's own. `claim: false` only looks.
+export async function accountParticipant(
+  found: { share: Pick<Share, "id">; person: { id: string; first_name: string } | null },
+  accountId: string,
+  { claim = true } = {},
+) {
+  const [mine] = await sql<{ id: string; first_name: string }[]>`
+    select id, first_name from participants where share_id = ${found.share.id} and account_id = ${accountId}`;
+  if (!found.person) return mine ?? null;
+  const [person] = await sql<{ id: string; first_name: string; account_id: string | null }[]>`
+    select id, first_name, account_id from participants where id = ${found.person.id}`;
+  if (!person) return mine ?? null;
+  if (person.account_id === accountId) return { id: person.id, first_name: person.first_name };
+  if (person.account_id) return null;
+  if (mine) return mine;
+  if (claim) {
+    // (Someone else signed in there a moment ago: then it's theirs.)
+    const [claimed] = await sql`
+      update participants set account_id = ${accountId}
+      where id = ${person.id} and account_id is null
+      returning id`;
+    if (!claimed) return null;
+  }
+  return { id: person.id, first_name: person.first_name };
+}
+
 // The people an agent added to a package, each with their own link.
 export async function getInvitees(shareId: string) {
   return sql<{ id: string; first_name: string; token: string }[]>`

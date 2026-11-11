@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { scrollToEnd } from "./helpers";
+import { enterCode, scrollToEnd } from "./helpers";
 
 const SMALL = { viewport: { width: 360, height: 640 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
 const ON_ITS_SIDE = { viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
@@ -45,21 +45,24 @@ test("signed out, the home page says what this is, shows three homes, then asks 
   await page.waitForTimeout(1000);
   await expect(page.getByRole("article")).toHaveCount(3);
 
-  // A mistake says which field, and keeps what was typed.
+  // A mistake says which field, and keeps what was typed. (The phone is
+  // optional, but has to be a whole number when it's there.)
   const gate = page.getByRole("form", { name: "Sign up" }).last();
-  await gate.getByLabel("Name").fill("Robin Buyer");
-  await gate.getByLabel("Phone").fill("555-0100");
+  await gate.getByLabel("First name").fill("Robin");
+  await gate.getByLabel(/^Phone/).fill("555-0100");
   await gate.getByLabel("Email").fill("robin@example.com");
   await gate.getByRole("button", { name: "Sign up free" }).click();
-  await expect(gate.getByRole("alert")).toHaveText("Please add your phone number, with the area code.");
-  await expect(gate.getByLabel("Phone")).toHaveAttribute("aria-invalid", "true");
-  await expect(gate.getByLabel("Name")).toHaveValue("Robin Buyer");
+  await expect(gate.getByRole("alert")).toHaveText("Please add the phone number with its area code, or leave it empty.");
+  await expect(gate.getByLabel(/^Phone/)).toHaveAttribute("aria-invalid", "true");
+  await expect(gate.getByLabel("First name")).toHaveValue("Robin");
   await expect(gate.getByLabel("Email")).toHaveValue("robin@example.com");
 
-  // Locally no email goes out, so they're signed straight in: no more
-  // questions, they're a buyer, by the name they gave.
-  await gate.getByLabel("Phone").fill("(206) 555-0100");
+  // Then the code from the email, right here (locally it's shown, since no
+  // email goes out), and they're signed in where they are: a buyer, by the
+  // name they gave, no password.
+  await gate.getByLabel(/^Phone/).fill("(206) 555-0100");
   await gate.getByRole("button", { name: "Sign up free" }).click();
+  await enterCode(page.getByRole("form", { name: "Sign up" }).last());
   await expect(page.getByRole("button", { name: "Your profile" })).toHaveText("R");
   await expect(page).toHaveURL(/localhost:\d+\/$/);
 

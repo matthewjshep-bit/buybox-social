@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { createShare, signInAgent, signUpBuyer } from "./helpers";
+import { enterCode, createShare, signInAgent, signUpBuyer } from "./helpers";
 
 // The light pages are made of one kit (lib/ui.ts, components/ui.tsx): one
 // button, one text box, one face for each kind of person, prices in the
@@ -79,6 +79,7 @@ async function signIn(browser: Browser, email: string) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Continue" }).click();
+  await enterCode(page);
   await page.waitForURL((url) => !url.pathname.startsWith("/login"));
   return page;
 }

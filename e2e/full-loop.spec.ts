@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import { createShare, heartOf, homeIn, likeInPhoto, openComments, openMore, photoList, pick, signInAgent } from "./helpers";
+import { joinAs, enterCode, signedIn, createShare, heartOf, homeIn, likeInPhoto, openComments, openMore, photoList, pick, signInAgent } from "./helpers";
 
 test("one package, a link for each person: they react, the agent compares and replies", async ({ browser }) => {
   test.setTimeout(60_000);
@@ -30,9 +30,20 @@ test("one package, a link for each person: they react, the agent compares and re
   await house.getByRole("button", { name: "Next photo" }).click();
   await expect(house.getByText("Photo 2 of 4")).toBeAttached();
 
-  // Her link already knows who she is: no name to type.
+  // Her first like asks her to sign up, right here: her name's already in
+  // (her link knows who she is), so an email and the code, and the like goes
+  // through. She never leaves the link.
   await heartOf(house).click();
+  const join = jamie.getByRole("dialog", { name: "Sign up to like and comment" });
+  await expect(join).toBeVisible();
+  await expect(join.getByLabel("First name")).toHaveValue("Jamie");
+  await join.getByLabel("Email").fill("jamie.loop@example.com");
+  await join.getByRole("button", { name: "Continue" }).click();
+  await enterCode(join);
+  await expect(join).toBeHidden();
   await expect(heartOf(house)).toHaveAttribute("aria-pressed", "true");
+  expect(new URL(jamie.url()).pathname).toBe(new URL(url).pathname);
+  // From now on she's simply in: nothing more to type.
   await expect(jamie.getByRole("textbox", { name: "First name" })).toBeHidden();
   // On the kitchen photo, heart the kitchen and its marble counters.
   await house.getByRole("button", { name: "Next photo" }).click();
@@ -57,14 +68,26 @@ test("one package, a link for each person: they react, the agent compares and re
   await expect(samChat.getByText("That porch is perfect.")).toBeVisible();
   await samChat.getByLabel("Add a comment").fill("The kitchen feels small.");
   await samChat.getByRole("button", { name: "Post", exact: true }).click();
+  // His first word asks him to sign up too, and then it posts.
+  await joinAs(sam, "Sam");
   await expect(samChat.getByText("The kitchen feels small.")).toBeVisible();
   await sam.keyboard.press("Escape");
 
-  // Not for me, and why.
+  // Not for me, and why. (Each tap saves as it happens; the others only see
+  // it once it has, so each one waits for its save before they look.)
+  const saving = (says: string) =>
+    sam.waitForResponse(
+      (res) =>
+        res.request().method() === "POST" &&
+        Boolean(res.request().headers()["next-action"]) &&
+        (res.request().postData() ?? "").includes(says),
+    );
   const samMore = await openMore(sam, samHouse);
   const notForMe = samMore.getByRole("button", { name: "Not for me" });
   await notForMe.click();
+  let save = saving('"yard"');
   await samMore.getByRole("group", { name: "What made you pass?" }).getByRole("button", { name: "Yard" }).click();
+  await save;
   await expect(notForMe).toHaveAttribute("aria-pressed", "true");
 
   // Reactions persist across a reload; tapping again switches one off.
@@ -73,12 +96,16 @@ test("one package, a link for each person: they react, the agent compares and re
   let thread = await openComments(jamie, house);
   await expect(thread.getByText("You liked the kitchen and marble counters")).toBeVisible();
   await expect(thread.getByText("Sam passed, didn't like the yard")).toBeVisible();
+  save = saving('"reaction":null');
   await notForMe.click();
+  await save;
   await expect(notForMe).toHaveAttribute("aria-pressed", "false");
   await jamie.reload();
   thread = await openComments(jamie, house);
   await expect(thread.getByText(/Sam passed/)).toHaveCount(0);
+  save = saving('"reaction":"dislike"');
   await notForMe.click();
+  await save;
   await expect(notForMe).toHaveAttribute("aria-pressed", "true");
 
   // The agent sees all of it in plain words, and replies.
@@ -230,8 +257,7 @@ test("isolation: tokens, agents and signed-out visitors stay in their lane", asy
   await expect(anonPage).toHaveURL(/\/login$/);
 
   // Each link acts as its own person, on its own package only.
-  const context = await browser.newContext();
-  const client = await context.newPage();
+  const client = await signedIn(browser);
   await client.goto(shareA.url);
   await heartOf(client.getByRole("article").first()).click();
   await expect(heartOf(client.getByRole("article").first())).toHaveAttribute("aria-pressed", "true");

@@ -3,50 +3,124 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { claimAgentIntent, DEV_COOKIE, devLoginEnabled, requireUser } from "@/lib/auth";
+import { accountFor, claimAgentIntent, DEV_COOKIE, devLoginEnabled, requireUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { appUrl } from "@/lib/format";
+import { readDevice } from "@/lib/engagement";
 import { createSupabase, supabaseConfigured } from "@/lib/supabase/server";
 
-export type LoginState = { error?: string; sent?: boolean };
+// Signing up and signing in are one thing, done on the page you're on: an
+// email (and, new here, a first name), then the code emailed to it. No
+// password, and no link to follow to another tab (the same email has one, for
+// anyone who'd rather tap it). Locally, with no email to send, the code is
+// DEV_CODE, shown on the page.
+
+export type CodeState = {
+  error?: string;
+  // Which field to fix.
+  field?: "firstName" | "phone" | "email" | "code";
+  // Sent: to this email.
+  sent?: string;
+  // Locally: the code, since no email goes out.
+  devCode?: string;
+  // Signed in. `agent`: their account is an agent's (to their dashboard).
+  done?: { agent: boolean };
+};
+
+const DEV_CODE = "123456";
 
 const emailSchema = z.email().max(254);
 
-// Emails a sign-in link, or signs straight in locally. Agents land on their
-// dashboard (which first asks for their name and brand); everyone else, the feed.
-async function sendSignInLink(email: string): Promise<LoginState> {
-  if (supabaseConfigured) {
-    const supabase = await createSupabase();
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${appUrl()}/auth/callback` },
-    });
-    if (error) {
-      console.error("[auth] sign-in email failed", error.message);
-      return { error: "We couldn't send your sign-in link. Please try again." };
-    }
-    return { sent: true };
+// Only a path on this site, so the email's link can never send anyone elsewhere.
+export const safeNext = async (next: unknown) =>
+  typeof next === "string" && next.startsWith("/") && !next.startsWith("//") && next.length <= 300 ? next : null;
+
+// Step one: a code to their email, and a link in it back to `next`. A first
+// name, when they give one, names their account if it's new. From "For
+// agents" (`asAgent`), they're signing up as an agent.
+export async function sendCode(input: {
+  email: string;
+  firstName?: string;
+  // Optional, from the home page's form: for a call back.
+  phone?: string;
+  next?: string;
+  asAgent?: boolean;
+}): Promise<CodeState> {
+  const email = emailSchema.safeParse(String(input.email ?? "").trim().toLowerCase());
+  if (!email.success) return { error: "Please enter a valid email address.", field: "email" };
+  const phone = String(input.phone ?? "").trim();
+  const digits = phone.replace(/\D/g, "");
+  if (phone && (phone.length > 30 || digits.length < 10 || digits.length > 15)) {
+    return { error: "Please add the phone number with its area code, or leave it empty.", field: "phone" };
   }
-
-  if (devLoginEnabled) {
-    (await cookies()).set(DEV_COOKIE, email, { httpOnly: true, sameSite: "lax", path: "/" });
-    redirect((await claimAgentIntent(email)) ? "/dashboard" : "/");
+  if (input.firstName !== undefined) {
+    const name = String(input.firstName).replace(/\s+/g, " ").trim();
+    if (!name || name.length > 40) return { error: "Please add your first name.", field: "firstName" };
+    await sql`
+      insert into signups (email, full_name, phone) values (${email.data}, ${name}, ${phone})
+      on conflict (email) do update set
+        full_name = excluded.full_name,
+        phone = coalesce(nullif(excluded.phone, ''), signups.phone),
+        updated_at = now()`;
   }
-
-  return { error: "Sign-in isn't set up yet." };
-}
-
-export async function requestSignIn(_: LoginState, form: FormData): Promise<LoginState> {
-  const email = emailSchema.safeParse(String(form.get("email") ?? "").trim().toLowerCase());
-  if (!email.success) return { error: "Please enter a valid email address." };
-  // From "For agents": they're signing up as an agent, which applies once
-  // they've signed in.
-  if (form.get("as") === "agent") {
+  if (input.asAgent === true) {
     await sql`
       insert into account_intents (email, role) values (${email.data}, 'agent')
       on conflict (email) do update set role = excluded.role, created_at = now()`;
   }
-  return sendSignInLink(email.data);
+  if (supabaseConfigured) {
+    const next = await safeNext(input.next);
+    const supabase = await createSupabase();
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.data,
+      options: {
+        shouldCreateUser: true,
+        // (Always with a query, so the email's link can add the token to it.)
+        emailRedirectTo: `${appUrl()}/auth/callback?next=${encodeURIComponent(next ?? "/")}`,
+      },
+    });
+    if (error) {
+      console.error("[auth] sign-in email failed", error.message);
+      return { error: "We couldn't send your code just now. Please try again in a minute." };
+    }
+    return { sent: email.data };
+  }
+  if (devLoginEnabled) return { sent: email.data, devCode: DEV_CODE };
+  return { error: "Sign-in isn't set up yet." };
+}
+
+// Step two: the code from the email. They're signed in right here, and what
+// this browser did before (a first name on an agent's link, likes on public
+// homes) becomes their account's.
+export async function verifyCode(input: { email: string; code: string }): Promise<CodeState> {
+  const email = emailSchema.safeParse(String(input.email ?? "").trim().toLowerCase());
+  if (!email.success) return { error: "Please enter a valid email address.", field: "email" };
+  const code = String(input.code ?? "").replace(/\s+/g, "");
+  if (!/^\d{6,10}$/.test(code)) return { error: "Enter the code from the email.", field: "code" };
+  const wrong: CodeState = { error: "That code didn't work. Check the email, or send a new code.", field: "code" };
+
+  let user: { id: string; email: string };
+  if (supabaseConfigured) {
+    const supabase = await createSupabase();
+    const { data, error } = await supabase.auth.verifyOtp({ email: email.data, token: code, type: "email" });
+    if (error || !data.user?.email) return wrong;
+    user = { id: data.user.id, email: data.user.email.toLowerCase() };
+  } else if (devLoginEnabled) {
+    if (code !== DEV_CODE) return wrong;
+    (await cookies()).set(DEV_COOKIE, email.data, { httpOnly: true, sameSite: "lax", path: "/" });
+    user = { id: `dev:${email.data}`, email: email.data };
+  } else {
+    return { error: "Sign-in isn't set up yet." };
+  }
+
+  await claimAgentIntent(user.email);
+  const account = await accountFor(user);
+  // A name from the form, for an account that has none yet.
+  await sql`
+    update accounts a set full_name = s.full_name from signups s
+    where a.id = ${account.id} and a.full_name = '' and s.email = ${user.email} and s.full_name <> ''`;
+  await claimDevice(account.id);
+  return { done: { agent: account.role === "agent" } };
 }
 
 // A buyer who sends homes to clients after all: an agent's account, then
@@ -57,43 +131,6 @@ export async function becomeAgent() {
   redirect("/dashboard");
 }
 
-export type SignUpField = "fullName" | "phone" | "email";
-export type SignUpState = LoginState & {
-  // Which field to fix, and what was typed, so nothing has to be typed again.
-  field?: SignUpField;
-  values?: Record<SignUpField, string>;
-  email?: string;
-};
-
-// The home page's form: a name, a phone number and an email. They're saved
-// straight away, then the sign-in link goes out like any other.
-export async function signUp(_: SignUpState, form: FormData): Promise<SignUpState> {
-  const values = {
-    fullName: String(form.get("fullName") ?? "").replace(/\s+/g, " ").trim(),
-    phone: String(form.get("phone") ?? "").trim(),
-    email: String(form.get("email") ?? "").trim().toLowerCase(),
-  };
-  const digits = values.phone.replace(/\D/g, "");
-  if (!values.fullName || values.fullName.length > 80) {
-    return { error: "Please add your name.", field: "fullName", values };
-  }
-  if (values.phone.length > 30 || digits.length < 10 || digits.length > 15) {
-    return { error: "Please add your phone number, with the area code.", field: "phone", values };
-  }
-  if (!emailSchema.safeParse(values.email).success) {
-    return { error: "Please enter a valid email address.", field: "email", values };
-  }
-
-  await sql`
-    insert into signups (email, full_name, phone)
-    values (${values.email}, ${values.fullName}, ${values.phone})
-    on conflict (email) do update
-      set full_name = excluded.full_name, phone = excluded.phone, updated_at = now()`;
-
-  const result = await sendSignInLink(values.email);
-  return result.error ? { ...result, values } : { ...result, email: values.email };
-}
-
 export async function signOut() {
   if (supabaseConfigured) {
     const supabase = await createSupabase();
@@ -101,4 +138,20 @@ export async function signOut() {
   }
   (await cookies()).delete(DEV_COOKIE);
   redirect("/login");
+}
+
+// On signing in: what this browser did before becomes the account's. Its
+// public self (when the account has none yet), and its place on any agent's
+// link where the account has none yet.
+async function claimDevice(accountId: string) {
+  const device = await readDevice();
+  if (!device) return;
+  await sql`
+    update visitors set account_id = ${accountId}
+    where device_token = ${device} and account_id is null
+      and not exists (select 1 from visitors where account_id = ${accountId})`;
+  await sql`
+    update participants p set account_id = ${accountId}
+    where p.device_token = ${device} and p.account_id is null
+      and not exists (select 1 from participants q where q.share_id = p.share_id and q.account_id = ${accountId})`;
 }

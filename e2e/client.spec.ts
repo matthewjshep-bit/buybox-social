@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, openMore, signInAgent } from "./helpers";
+import { signedIn, createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, openMore, signInAgent } from "./helpers";
 
 test("an agent's client page: rename, what they want, remove and restore, add homes, private only", async ({
   browser,
@@ -14,7 +14,7 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
   await expect(agent.getByRole("heading", { level: 1, name: "Joe & Ana" })).toBeVisible();
 
   // Joe likes one home's kitchen and passes on the other's exterior.
-  const joe = await (await browser.newContext()).newPage();
+  const joe = await signedIn(browser);
   await joe.goto(url);
   await expect(joe.getByRole("heading", { level: 1 })).toHaveText("Joe, I picked these 2 homes for you");
   const kirkland = homeIn(joe, "10421 Halvard Way NE");

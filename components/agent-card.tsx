@@ -93,9 +93,9 @@ export function ShareHeader({
             the photo's left edge, Contact over the white panel's right edge. */}
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-3 sm:px-6 split:max-w-none split:px-6">
           {/* Every agent colour is dark: over the photo, focus is white with a dark edge. */}
-          <Link href="/" className={cn("flex size-11 shrink-0 items-center justify-center rounded-xl", focusOnDark)}>
-            {/* Porchcard's house, in white over the photo; the agent is beside it. */}
-            <PorchcardMark className="h-8 w-auto text-white drop-shadow-[0_1px_2px_rgb(0_0_0/0.45)]" />
+          <Link href="/" className={cn("flex h-11 min-w-11 shrink-0 items-center justify-center rounded-xl", focusOnDark)}>
+            {/* Porchcard's card, in white over the photo; the agent is beside it. */}
+            <PorchcardMark className="h-7 w-auto text-white drop-shadow-[0_1px_2px_rgb(0_0_0/0.45)]" />
             <span className="sr-only">Porchcard</span>
           </Link>
           <AgentAvatar agent={agent} size={36} decorative className="text-sm ring-1 ring-white/60" />

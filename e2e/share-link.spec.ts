@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { toFirstHome,
+import { signedIn, toFirstHome,
   commentIn,
   createShare,
   heartOf,
@@ -356,7 +356,7 @@ test("the Porchcard says who on the link hasn't weighed in yet, never you", asyn
   const agent = await signInAgent(browser, "notyet-agent@example.com", "Jordan Rivera");
   const { urls } = await createShare(agent, ["812 N Corbel"], ["Owen", "Pat"]);
 
-  const owen = await (await browser.newContext()).newPage();
+  const owen = await signedIn(browser);
   await owen.goto(urls.Owen);
   const home = homeIn(owen, "812 N Corbel St");
   await heartOf(home).click();

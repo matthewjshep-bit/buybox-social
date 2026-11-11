@@ -213,9 +213,10 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   await expect(dev.getByRole("heading", { level: 1 })).toHaveText("Dev (you)");
   await expect(dev.getByRole("link", { name: `${FOXGLOVE}: liked this` })).toBeVisible();
 
-  // Signed-out visitors get a name prompt on their first like.
+  // Signed-out visitors are asked to sign up, right there, on their first like.
   const anon = await (await browser.newContext()).newPage();
   await anon.goto("/");
   await heartOf(anon.getByRole("article").first()).click();
-  await expect(anon.getByRole("textbox", { name: "First name" })).toBeVisible();
+  const join = anon.getByRole("dialog", { name: "Sign up to like and comment" });
+  await expect(join.getByRole("textbox", { name: "First name" })).toBeVisible();
 });

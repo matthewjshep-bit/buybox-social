@@ -34,33 +34,32 @@ export async function recordView(listingKey: string): Promise<void> {
     on conflict do nothing`;
 }
 
+// Liking or saying anything here takes an account (made right on the page,
+// NameGate): signed in, they're in by their account's name, or the one they
+// give if it has none yet.
 export async function joinPublic(firstName: string): Promise<ActionResult> {
-  const name = nameSchema.safeParse(firstName);
-  if (!name.success) return fail("Please enter your first name.");
-  // Signed in without a name yet: it's their account's name from now on.
   const account = await getCurrentUser();
-  if (account?.role) {
+  if (!account?.role) return fail("Please sign up or sign in first.");
+  if (!account.full_name.trim()) {
+    const name = nameSchema.safeParse(firstName);
+    if (!name.success) return fail("Please enter your first name.");
     await sql`update accounts set full_name = ${name.data} where id = ${account.id} and full_name = ''`;
-    await ensureAccountVisitor({ ...account, full_name: account.full_name || name.data });
-    refresh();
-    return { ok: true };
+    await ensureAccountVisitor({ ...account, full_name: name.data });
+  } else {
+    await ensureAccountVisitor(account);
   }
-  const device = await ensureDevice();
-  await sql`
-    insert into visitors (device_token, first_name) values (${device}, ${name.data})
-    on conflict (device_token) do update set first_name = excluded.first_name`;
   refresh();
   return { ok: true };
 }
 
-// Public engagement only applies to listings that are still active.
+// Public engagement only applies to listings that are still active, and only
+// to someone signed in.
 async function resolveVisitor(listingKey: string) {
   const [listing] = await sql`
     select 1 from listings where listing_key = ${listingKey} and standard_status = 'Active'`;
   if (!listing) return null;
   const account = await getCurrentUser();
-  if (account?.role) return ensureAccountVisitor(account);
-  return getVisitor(await readDevice());
+  return account?.role ? ensureAccountVisitor(account) : null;
 }
 
 async function saveReaction(listingKey: string, input: ReactionState): Promise<ActionResult> {
@@ -68,7 +67,7 @@ async function saveReaction(listingKey: string, input: ReactionState): Promise<A
   if (!parsed.success) return fail("We couldn't save that reaction.");
   const state = parsed.data;
   const visitor = await resolveVisitor(listingKey);
-  if (!visitor) return fail("Please add your name first.");
+  if (!visitor) return fail("Please sign up or sign in first.");
 
   if (state.reaction === null) {
     await sql`
@@ -106,7 +105,7 @@ async function savePhotoLike(
   const input = photoLikeSchema.safeParse({ listingKey, mediaKey, tag, reaction });
   if (!input.success) return fail("We couldn't save that.");
   const visitor = await resolveVisitor(listingKey);
-  if (!visitor) return fail("Please add your name first.");
+  if (!visitor) return fail("Please sign up or sign in first.");
   const spot = await findSpot(listingKey, mediaKey, tag);
   if (!spot) return fail("That photo isn't there anymore.");
   const where = sql`listing_key = ${listingKey} and visitor_id = ${visitor.id} and media_key = ${mediaKey} and tag = ${tag}`;
@@ -166,7 +165,7 @@ async function saveComment(
   const parsed = commentSchema.safeParse(body);
   if (!parsed.success) return fail("Comments can be up to 1,000 characters.");
   const visitor = await resolveVisitor(listingKey);
-  if (!visitor) return fail("Please add your name first.");
+  if (!visitor) return fail("Please sign up or sign in first.");
   const anchor = parentId === null ? await checkAnchor(listingKey, spot) : null;
   if (anchor === false) return fail("That photo isn't there anymore.");
 
@@ -228,7 +227,7 @@ async function saveCommentLike(commentId: string, liked: boolean): Promise<Actio
     select listing_key, visitor_id from public_comments where id::text = ${commentId}`;
   if (!comment) return fail("That comment isn't there anymore.");
   const visitor = await resolveVisitor(comment.listing_key);
-  if (!visitor) return fail("Please add your name first.");
+  if (!visitor) return fail("Please sign up or sign in first.");
   if (liked) {
     await sql`
       insert into public_comment_likes (comment_id, visitor_id)

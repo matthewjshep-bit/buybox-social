@@ -8,7 +8,14 @@ import { readDevice } from "@/lib/engagement";
 import { isSampleListing } from "@/lib/listings/types";
 import { NO_PHOTO_LIKES } from "@/lib/photos";
 import { NO_REACTION } from "@/lib/reactions";
-import { getParticipant, getShareByToken, getShareListings, getShareMembers, isPrivateTo } from "@/lib/shares";
+import {
+  accountParticipant,
+  getParticipant,
+  getShareByToken,
+  getShareListings,
+  getShareMembers,
+  isPrivateTo,
+} from "@/lib/shares";
 import { headlineFromTimeline, type FeedPost } from "@/lib/feed";
 import { eventsFromTimeline } from "@/lib/ticker";
 import { getSharePhotoLikes, getShareTimelines, type TimelineReaction } from "@/lib/timeline";
@@ -58,9 +65,14 @@ export default async function SharePage({ params }: Props) {
   const agentViewing = viewer?.id === share.agent_id;
   const client = person?.first_name || share.client_name || "your client";
   const preview = agentViewing ? `Viewing as ${client}` : undefined;
-  // Someone's own link is them; otherwise it's whoever this device joined as.
-  // (The agent is never anyone on it, even on someone's own link.)
-  const me = agentViewing ? null : (person ?? (await getParticipant(share.id, device)));
+  // Someone's own link is them; otherwise whoever's signed in, by their place
+  // on it, or whoever this browser joined as before signing in. (The agent is
+  // never anyone on it, even on someone's own link.)
+  const me = agentViewing
+    ? null
+    : (person ??
+      (viewer?.role ? await accountParticipant(found, viewer.id, { claim: false }) : null) ??
+      (await getParticipant(share.id, device)));
   const keys = listings.map((listing) => listing.ListingKey);
   const [timelines, photoLikes] = await Promise.all([
     getShareTimelines(share.id, listings, me?.id ?? null),
@@ -150,8 +162,9 @@ export default async function SharePage({ params }: Props) {
         }}
         // (The agent's own look is never asked a name: nothing there is saved.)
         myName={agentViewing ? agentFirstName(agent.full_name, "You") : (me?.first_name ?? null)}
-        prompt={`So ${agentName} and anyone else on this link know who's talking. No account or password needed.`}
-        suggestedName={expected}
+        prompt={`So ${agentName} and anyone else on this link know who's talking.`}
+        // Their name already, on their own link (or on one sent to just them).
+        suggestedName={person?.first_name ?? expected}
         nameHint={expected && `${agentFirst} sent this to ${expected}. Not ${expected}? Type your name.`}
         // Every link starts with a word from the agent over the first home's
         // photo, then the homes below it.

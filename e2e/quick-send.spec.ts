@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { toFirstHome, createShare, heartOf, homeIn, joinAs, signInAgent, signUpBuyer } from "./helpers";
+import { enterCode, toFirstHome, createShare, heartOf, homeIn, joinAs, signInAgent, signUpBuyer } from "./helpers";
 
 type Shared = { title?: string; text?: string; url?: string; inTap: boolean };
 type Stubbed = { shared: Shared[]; shareAnswer: "send" | "cancel"; inTap: boolean };
@@ -124,10 +124,10 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
   await expect(client.getByRole("heading", { level: 1 })).toHaveText("Toby, I picked this home for you", {
     timeout: 25_000,
   });
-  // Whoever opens it first is most likely Toby: the name prompt starts with
-  // it, ready to type over. Not now leaves nothing behind.
+  // Whoever opens it first is most likely Toby: signing up to like it starts
+  // with his name, ready to type over. Not now leaves nothing behind.
   await heartOf(homeIn(client, "96 Fernhollow Ln")).click();
-  const prompt = client.getByRole("dialog", { name: "What's your first name?" });
+  const prompt = client.getByRole("dialog", { name: "Sign up to like and comment" });
   const name = prompt.getByRole("textbox", { name: "First name" });
   await expect(name).toHaveValue("Toby");
   await expect(name).toBeFocused();
@@ -329,6 +329,7 @@ test("buyers and visitors still share the public page; an agent without a name i
   await fresh.getByRole("link", { name: "Start free" }).click();
   await fresh.getByLabel("Email").fill("nell-noname@example.com");
   await fresh.getByRole("button", { name: "Continue" }).click();
+  await enterCode(fresh);
   await fresh.waitForURL("**/dashboard/profile");
   await fresh.context().addInitScript(stubShareSheet);
   await fresh.goto("/homes/SAMPLE-1004");

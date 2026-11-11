@@ -18,7 +18,7 @@ import { getPublicIdentity } from "@/lib/public";
 import { getTaste } from "@/lib/taste";
 
 export const PUBLIC_PROMPT =
-  "Your first name shows next to what you like and say, and anyone visiting can see it. No account or password needed.";
+  "Your first name shows next to what you like and say, and anyone visiting can see it.";
 
 // The actions behind the public feed. It reloads only the home you're talking
 // about, so these save without reloading the page.

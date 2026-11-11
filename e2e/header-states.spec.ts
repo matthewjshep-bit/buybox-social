@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { signInAgent, signUpBuyer } from "./helpers";
+import { enterCode, signInAgent, signUpBuyer } from "./helpers";
 
 // The colour things in the header take (Porchcard blue, or an agent's own
 // on their dashboard): what a swatch of the brand colour comes out as there.
@@ -34,7 +34,11 @@ test("signed out, the header is just For agents and Sign in, even on a small pho
       expect(box.height, name).toBeGreaterThanOrEqual(44);
     }
     await expect(header.getByRole("link", { name: "For agents", exact: true })).toHaveAttribute("href", "/for-agents");
-    await expect(header.getByRole("link", { name: "Sign in", exact: true })).toHaveAttribute("href", "/login");
+    // (Back to this page once they're in.)
+    await expect(header.getByRole("link", { name: "Sign in", exact: true })).toHaveAttribute(
+      "href",
+      path === "/" ? "/login" : `/login?next=${encodeURIComponent(path)}`,
+    );
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
   }
 });
@@ -184,6 +188,7 @@ test("an agent with no name yet goes straight to add it: a real redirect, not th
   await page.getByRole("link", { name: "Start free" }).click();
   await page.getByLabel("Email").fill("nameless-header@example.com");
   await page.getByRole("button", { name: "Continue" }).click();
+  await enterCode(page);
   await page.waitForURL("**/dashboard/profile");
   const response = await page.request.get("/dashboard", { maxRedirects: 0 });
   expect(response.status()).toBe(307);

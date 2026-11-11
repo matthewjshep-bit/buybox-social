@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
-import {
+import { signedIn,
   commentIn,
   createShare,
   heartOf,
@@ -583,7 +583,7 @@ test("on a desktop, comments sit beside the photo, which can still be tapped; Es
   expect(await page.evaluate(() => document.querySelector("[data-dark-ground]")!.scrollLeft)).toBe(0);
   await field.fill("The porch swing stays, I hope.");
   await field.press("Enter");
-  const prompt = page.getByRole("dialog", { name: "What's your first name?" });
+  const prompt = page.getByRole("dialog", { name: "Sign up to like and comment" });
   await expect(prompt).toBeVisible();
   await expect.poll(async () => Math.round((await box(prompt)).y + (await box(prompt)).height)).toBe(Math.round(panel.y + panel.height));
   expect(Math.abs((await box(prompt)).x - panel.x)).toBeLessThanOrEqual(1);
@@ -700,7 +700,7 @@ test("on a phone, comments rise to the photo's foot, and pull up to just under t
   }
 });
 
-test("every comment box says who sees it, and the name prompt rises like a sheet", async ({ page, browser }) => {
+test("every comment box says who sees it, and signing up rises like a sheet, right where you are", async ({ page, browser }) => {
   test.setTimeout(90_000);
   await page.goto("/homes/SAMPLE-1008");
   const home = homeIn(page, "719 Saltmarsh Ln");
@@ -711,8 +711,9 @@ test("every comment box says who sees it, and the name prompt rises like a sheet
   const field = sheet.getByLabel("Add a comment");
   await field.fill("That fence");
   await field.press("Enter");
-  // Your name, the first time, from the bottom like everything else.
-  const prompt = page.getByRole("dialog", { name: "What's your first name?" });
+  // Signing up, the first time, from the bottom like everything else, the
+  // cursor in the first name.
+  const prompt = page.getByRole("dialog", { name: "Sign up to like and comment" });
   await expect(prompt).toBeVisible();
   await expect(prompt.getByRole("textbox", { name: "First name" })).toBeFocused();
   await expect.poll(async () => Math.round((await box(prompt)).y + (await box(prompt)).height)).toBe(page.viewportSize()!.height);
@@ -727,7 +728,7 @@ test("every comment box says who sees it, and the name prompt rises like a sheet
   const agent = await signInAgent(browser, "lane@example.com", "Lane Agent");
   const { urls } = await createShare(agent, ["1204 Quillan"], ["Ottilie", "Pim"]);
   for (const name of ["Ottilie", "Pim"]) {
-    const client = await (await browser.newContext()).newPage();
+    const client = await signedIn(browser);
     await client.goto(urls[name]);
     const clientHome = homeIn(client, "1204 Quillan St SE");
     // The box asks you to tell the agent (and is still named "Add a comment").

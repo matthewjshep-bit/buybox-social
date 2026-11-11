@@ -1,6 +1,7 @@
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { claimAgentIntent } from "@/lib/auth";
+import { safeNext } from "@/app/login/actions";
 import { appUrl } from "@/lib/format";
 import { createSupabase, supabaseConfigured } from "@/lib/supabase/server";
 
@@ -24,7 +25,9 @@ export async function GET(request: NextRequest) {
       // Signed up through "For agents": straight to their dashboard.
       const email = data?.user?.email?.toLowerCase();
       const agent = email ? await claimAgentIntent(email) : false;
-      return NextResponse.redirect(new URL(agent ? "/dashboard" : "/", appUrl()));
+      // Back to the page they started on (an agent's link, say), if it's on this site.
+      const next = await safeNext(searchParams.get("next"));
+      return NextResponse.redirect(new URL(next ?? (agent ? "/dashboard" : "/"), appUrl()));
     }
     console.error("[auth] callback failed", error.message);
   }

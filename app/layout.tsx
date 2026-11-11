@@ -1,3 +1,4 @@
+import { SessionProvider } from "@/components/session";
 import type { Metadata, Viewport } from "next";
 import { BrandScope, HeaderGate } from "@/components/header-gate";
 import { SiteHeader } from "@/components/site-header";
@@ -26,6 +27,7 @@ export default async function RootLayout({ children, modal }: LayoutProps<"/">) 
     <html lang="en" className={`${fontVariables} antialiased`}>
       <body className="min-h-dvh font-sans">
         <SkipLink />
+        <SessionProvider signedIn={Boolean(user?.role)}>
         <BrandScope brand={user?.role === "agent" ? user.brand_color : null}>
           <HeaderGate>
             <SiteHeader />
@@ -41,6 +43,7 @@ export default async function RootLayout({ children, modal }: LayoutProps<"/">) 
           </div>
           {modal}
         </BrandScope>
+        </SessionProvider>
       </body>
     </html>
   );

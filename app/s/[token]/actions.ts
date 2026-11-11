@@ -2,7 +2,7 @@
 
 import { refresh } from "next/cache";
 import { after } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { firstName as accountFirstName, getCurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import {
   checkAnchor,
@@ -20,6 +20,7 @@ import { notifyAgent } from "@/lib/notify";
 import {
   deviceHashFor,
   getParticipant,
+  accountParticipant,
   getShareByToken,
   getShareListings,
   shareHasListing,
@@ -33,29 +34,44 @@ import { sharePersonKey } from "@/lib/timeline";
 const MAX_PARTICIPANTS = 25;
 const MAX_OPEN_DEVICES = 200;
 
+// Joining the conversation on a link takes an account (made right on the
+// link, NameGate): signed in, they're on it by their account's name (or the
+// one they give, if it has none yet). Someone's own link is theirs from the
+// first time they're signed in there; anyone else's own link isn't.
 export async function joinThread(token: string, firstName: string): Promise<ActionResult> {
-  const name = nameSchema.safeParse(firstName);
-  if (!name.success) return fail("Please enter your first name.");
   const found = await getShareByToken(token);
   if (!found) return fail("This link is no longer available.");
   // The agent never joins their own link as someone on it.
   const preview = await previewing(found);
   if (preview) return fail(`${preview} Nothing here is saved.`);
-  // Someone's own link already knows who they are.
-  if (found.person) return { ok: true };
+  const account = await getCurrentUser();
+  if (!account?.role) return fail("Please sign up or sign in first.");
+  let name = accountFirstName(account);
+  if (!name) {
+    const given = nameSchema.safeParse(firstName);
+    if (!given.success) return fail("Please enter your first name.");
+    name = given.data;
+    await sql`update accounts set full_name = ${name} where id = ${account.id} and full_name = ''`;
+  }
 
-  const device = await ensureDevice();
-  if (!(await getParticipant(found.share.id, device))) {
+  if (found.person) {
+    const me = await accountParticipant(found, account.id);
+    if (!me) return fail(`This link is just for ${found.person.first_name}. Ask for a link of your own.`);
+    refresh();
+    return { ok: true };
+  }
+  if (!(await accountParticipant(found, account.id))) {
     const [{ count }] = await sql<{ count: number }[]>`
       select count(*)::int as count from participants where share_id = ${found.share.id}`;
     if (count >= MAX_PARTICIPANTS) return fail("This conversation is full.");
     const [joined] = await sql<{ id: string }[]>`
-      insert into participants (share_id, device_token, first_name)
-      values (${found.share.id}, ${device}, ${name.data})
-      on conflict (share_id, device_token) do nothing
+      insert into participants (share_id, device_token, first_name, account_id)
+      values (${found.share.id}, ${`account:${account.id}`}, ${name}, ${account.id})
+      on conflict do nothing
       returning id`;
     // The agent's "opened it" line can now say who.
-    if (joined) {
+    const device = await readDevice();
+    if (joined && device) {
       await sql`
         update share_opens set participant_id = ${joined.id}
         where share_id = ${found.share.id} and device_hash = ${deviceHashFor(device, found.share.id)}
@@ -78,7 +94,13 @@ export async function recordOpen(token: string, photosSeen?: unknown): Promise<v
   const photos = Number.isInteger(photosSeen) ? Math.min(Math.max(photosSeen as number, 0), 10_000) : 0;
 
   const device = await ensureDevice();
-  const participant = found.person ?? (await getParticipant(found.share.id, device));
+  // Who opened it: someone's own link is them; otherwise whoever's signed in,
+  // or this browser's place on it from before.
+  const account = viewer?.role ? viewer : null;
+  const participant =
+    found.person ??
+    (account ? await accountParticipant(found, account.id, { claim: false }) : null) ??
+    (await getParticipant(found.share.id, device));
   const hash = deviceHashFor(device, found.share.id);
   // Past MAX_OPEN_DEVICES, only devices already counted are updated, so a link
   // that gets passed around (or a script without cookies) can't grow forever.
@@ -134,11 +156,13 @@ async function previewing(found: Found) {
   return `You're previewing what ${who} ${!found.person && /[&,]| and /i.test(who) ? "see" : "sees"}.`;
 }
 
-// Who's acting on a link. Someone's own link is them; on the package's own
-// link the device cookie picks the person. Either way a link can only ever
-// act on its own package.
+// Who's acting on a link: always someone signed in (NameGate saw to that),
+// as their place on it. Someone's own link is them once it's theirs. Either
+// way a link can only ever act on its own package.
 async function personOn(found: Found) {
-  return found.person ?? (await getParticipant(found.share.id, await readDevice()));
+  const account = await getCurrentUser();
+  if (!account?.role) return null;
+  return accountParticipant(found, account.id);
 }
 
 // (The agent on their own link: `preview` says so, and `found` is the link,
@@ -242,7 +266,7 @@ export async function setReaction(
   if (!parsed.success) return fail("We couldn't save that reaction.");
   const state = parsed.data;
   const actor = await resolveActor(token, listingKey);
-  if (!actor) return fail("Please add your name first.");
+  if (!actor) return fail("Please sign up or sign in first.");
   // The heart on a home is the client's say; the agent's is in their notes.
   if ("preview" in actor) return fail("The heart is for your client. Tap the price, or anything in a photo, to leave a note.");
 
@@ -285,7 +309,7 @@ export async function addComment(
   const parsed = commentSchema.safeParse(body);
   if (!parsed.success) return fail("Comments can be up to 1,000 characters.");
   const actor = await resolveActor(token, listingKey);
-  if (!actor) return fail("Please add your name first.");
+  if (!actor) return fail("Please sign up or sign in first.");
   if ("preview" in actor) return addAgentNote(actor.found, listingKey, parsed.data, parentId, spot);
   const target = await replyTarget(actor.share.id, listingKey, parentId);
   if ("error" in target) return fail(target.error);
@@ -335,7 +359,7 @@ export async function askToSee(token: string, listingKey: string): Promise<AskRe
   const preview = await previewing(found);
   if (preview) return { ok: false, error: `${preview} Nothing was sent.` };
   const participant = await personOn(found);
-  if (!participant) return { ok: false, error: "Please add your name first." };
+  if (!participant) return { ok: false, error: "Please sign up or sign in first." };
   // The ask's own record says whether they've asked today, not the words of a
   // comment. Claiming it is a single step, so two taps at once ask only once.
   const asked = await sql.begin(async (tx) => {
@@ -401,7 +425,7 @@ export async function likePhotoInShare(
   const input = photoLikeSchema.safeParse({ listingKey, mediaKey, tag, reaction });
   if (!input.success) return fail("We couldn't save that.");
   const actor = await resolveActor(token, listingKey);
-  if (!actor) return fail("Please add your name first.");
+  if (!actor) return fail("Please sign up or sign in first.");
   const spot = await findSpot(listingKey, mediaKey, tag);
   if (!spot) return fail("That photo isn't there anymore.");
   // The agent's first pass: what they like, for everyone on the link to see.

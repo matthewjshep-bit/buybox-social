@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { homeIn, missedTaps, openComments, signInAgent, signUpBuyer } from "./helpers";
+import { enterCode, homeIn, missedTaps, openComments, signInAgent, signUpBuyer } from "./helpers";
 
 // The phone settings carry over to new contexts, touch included; a desktop has none.
 const DESKTOP = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, isMobile: false, hasTouch: false };
@@ -12,6 +12,7 @@ async function signIn(browser: Browser, email: string, device: Parameters<Browse
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Continue" }).click();
+  await enterCode(page);
   await page.waitForURL((url) => url.pathname === "/");
   return page;
 }

@@ -36,11 +36,14 @@ You need free accounts at Supabase, Vercel and Resend.
    ```bash
    DATABASE_URL="<pooler string>" pnpm db:setup
    ```
-3. **Sign-in link templates:** in Supabase under Authentication > Email Templates, set the link in both **Magic Link** and **Confirm signup** to:
+3. **Sign-in email templates:** people sign up and in with a code they type on the page they're on (no password, no new tab). In Supabase under Authentication > Email Templates, make both **Magic Link** and **Confirm signup** carry the code, with a link as a fallback that brings them back to the same page:
+   ```html
+   <h2>Your Porchcard code</h2>
+   <p>Type this code on the page you're on:</p>
+   <p style="font-size:28px;font-weight:bold;letter-spacing:6px">{{ .Token }}</p>
+   <p>Or <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email">sign in with this link</a>.</p>
    ```
-   {{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=email
-   ```
-   This lets links work when opened in an email app's built-in browser. Free projects can only edit templates after adding their own email sender (SMTP). Under URL Configuration, set the Site URL to your deployed address and add `<that address>/auth/callback` to Redirect URLs.
+   The link works when opened in an email app's built-in browser. Free projects can only edit templates after adding their own email sender (SMTP). Under URL Configuration, set the Site URL to your deployed address and add `<that address>/auth/callback**` to Redirect URLs (the `**` lets it carry the page to come back to). The code can be 6 to 10 digits (Supabase's Email OTP Length).
 4. **Resend:** verify your sending domain and create an API key.
 5. **Vercel:** import the project and set these variables. Do **not** set `ALLOW_DEV_LOGIN`.
 

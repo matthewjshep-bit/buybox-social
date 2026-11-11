@@ -1,13 +1,12 @@
 "use client";
 
-import { ArrowDown, MailCheck } from "lucide-react";
+import { ArrowDown } from "lucide-react";
 import Image from "next/image";
-import Link from "next/link";
-import { useActionState, useId, type ComponentProps } from "react";
-import { signUp, type SignUpField, type SignUpState } from "@/app/login/actions";
+import { useRouter } from "next/navigation";
+import { CodeSignIn } from "@/components/code-sign-in";
 import { cn } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
-import { button, card, field } from "@/lib/ui";
+import { button, card } from "@/lib/ui";
 
 // For visitors who haven't signed up, the home page opens on what Porchcard
 // is and a short form, shows a few homes, then asks them to sign up to
@@ -136,90 +135,20 @@ function SeeHomes() {
 }
 
 function SignUpForm({ devMode, className }: { devMode: boolean; className?: string }) {
-  const id = useId();
-  const [state, action, pending] = useActionState<SignUpState, FormData>(signUp, {});
-
-  if (state.sent) {
-    return (
-      <div role="status" data-light className={cn(card, "p-6 text-ink shadow-xl", className)}>
-        <MailCheck aria-hidden size={28} className="text-brand" />
-        <p className="mt-3 text-lg font-semibold">Check your email</p>
-        <p className="mt-1 text-stone-700">
-          We sent a sign-in link to <span className="font-semibold">{state.email}</span>. Open it on this device to
-          finish signing up.
-        </p>
-      </div>
-    );
-  }
-
-  const fieldProps = (name: SignUpField) => ({
-    id: `${id}-${name}`,
-    name,
-    required: true,
-    defaultValue: state.values?.[name],
-    "aria-invalid": state.field === name || undefined,
-    "aria-describedby": state.field === name ? `${id}-error` : undefined,
-  });
-
+  const router = useRouter();
   return (
-    // After a mistake, what was typed comes back (each field's default).
-    <form
-      action={action}
-      aria-label="Sign up"
-      // Light, over the dark reel: the brand focus ring inside it.
-      data-light
-      // Shorter screens, tighter; a phone on its side, name and phone side by side.
-      className={cn(card, "p-5 text-ink shadow-xl sm:p-6 compact:p-4", className)}
-    >
-      <div className="flex flex-col gap-2.5 compact:gap-2 short:grid short:grid-cols-2">
-        <Field label="Name" {...fieldProps("fullName")} maxLength={80} autoComplete="name" />
-        <Field label="Phone" {...fieldProps("phone")} type="tel" inputMode="tel" maxLength={30} autoComplete="tel" />
-        <Field
-          label="Email"
-          {...fieldProps("email")}
-          type="email"
-          autoComplete="email"
-          className="short:col-span-2"
-        />
-      </div>
-      {state.error && (
-        <p id={`${id}-error`} role="alert" className="mt-3 text-sm text-red-700">
-          {state.error}
-        </p>
-      )}
-      <button
-        type="submit"
-        disabled={pending}
-        className={cn(button({ kind: "primary", size: "lg", block: true }), "mt-4 compact:mt-3")}
-      >
-        {pending ? "One moment…" : "Sign up free"}
-      </button>
-      <p className="mt-3 text-center text-sm text-muted compact:mt-2">
-        {devMode ? "Local demo, no email sent." : "No password needed."}{" "}
-        <Link href="/login" className="font-semibold text-brand underline-offset-2 hover:underline">
-          Have an account? Sign in
-        </Link>
-      </p>
-    </form>
-  );
-}
-
-function Field({
-  label,
-  id,
-  className,
-  ...input
-}: { label: string; id: string; className?: string } & ComponentProps<"input">) {
-  return (
-    <div className={className}>
-      <label htmlFor={id} className="text-sm font-medium">
-        {label}
-      </label>
-      <input
-        id={id}
-        {...input}
-        className={cn(field(), "mt-1")}
+    // Light, over the dark reel: the brand focus ring inside it.
+    <div data-light className={cn(card, "p-5 text-ink shadow-xl sm:p-6 compact:p-4", className)}>
+      <CodeSignIn
+        withName
+        withPhone
+        label="Sign up"
+        submitLabel="Sign up free"
+        note={devMode ? "Local demo, no email sent." : "Free, and no password. Signed up before? Use the same email."}
+        // Signed in where they are: the page becomes their feed.
+        onDone={() => router.refresh()}
       />
     </div>
   );
 }
+

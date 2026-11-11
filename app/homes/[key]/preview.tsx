@@ -2,7 +2,7 @@ import { ImageResponse } from "next/og";
 import type { ReactElement, ReactNode } from "react";
 import { appUrl, BRAND_COLORS, formatPrice } from "@/lib/format";
 import type { Listing } from "@/lib/listings/types";
-import { porchcardLogoSvg } from "@/components/porchcard-logo";
+import { PORCHCARD_LOGO_RATIO, porchcardLogoSvg } from "@/components/porchcard-logo";
 
 const LOGO = `data:image/svg+xml;base64,${Buffer.from(porchcardLogoSvg("#ffffff")).toString("base64")}`;
 
@@ -105,8 +105,8 @@ export function PreviewFrame({
       <img
         src={LOGO}
         alt=""
-        width={196}
-        height={45}
+        width={Math.round(40 * PORCHCARD_LOGO_RATIO)}
+        height={40}
         style={{ position: "absolute", right: 48, bottom: 44 }}
       />
     </div>

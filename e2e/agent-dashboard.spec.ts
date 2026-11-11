@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import type { Listing } from "../lib/listings/types";
 import { mediaKeyOf } from "../lib/photos";
 import { describeReaction, spotPlace } from "../lib/reactions";
-import { toFirstHome,
+import { signedIn, toFirstHome,
   commentIn,
   createShare,
   heartOf,
@@ -145,7 +145,7 @@ test("the dashboard leads with what's new, and says when each link was opened, n
   await expect(row).toContainText("Not opened yet");
 
   // Owen opens it: the agent sees when, and hears about it.
-  const owen = await (await browser.newContext()).newPage();
+  const owen = await signedIn(browser);
   await Promise.all([actionAnswered(owen), owen.goto(url)]);
   await agent.reload();
   await expect(row).toContainText(/Opened (yesterday, )?\d{1,2}:\d{2} [ap]m/);
@@ -214,7 +214,7 @@ test("the agent sees how much of a link was looked at, and the link never says s
   const { url, dashboardUrl } = await createShare(agent, ["10421 Halvard"], ["Owen"]);
 
   // Owen looks at three of the home's four photos.
-  const owen = await (await browser.newContext()).newPage();
+  const owen = await signedIn(browser);
   await owen.addInitScript(() => localStorage.setItem("buybox:nudges", JSON.stringify({ photos: true, next: true })));
   await owen.goto(url);
   await toFirstHome(owen);
@@ -258,7 +258,7 @@ test("the agent's page about a client reads like the product: a card per home, s
 
   // Nina hearts nothing: she only likes a spot that isn't on anything named
   // in the second home's second photo, and says something about its sofa.
-  const nina = await (await browser.newContext()).newPage();
+  const nina = await signedIn(browser);
   // A phone that has had a link before: no swipe nudges moving the homes about.
   await nina.addInitScript(() => localStorage.setItem("buybox:nudges", JSON.stringify({ photos: true, next: true })));
   await nina.goto(urls.Nina);
@@ -297,7 +297,7 @@ test("the agent's page about a client reads like the product: a card per home, s
   await expect(sheet).toBeHidden();
 
   // Christopher passes on the first, for its price.
-  const chris = await (await browser.newContext()).newPage();
+  const chris = await signedIn(browser);
   await chris.goto(urls.Christopher);
   const more = await openMore(chris, homeIn(chris, "5902 Lakeview Terrace SE"));
   await more.getByRole("button", { name: "Not for me" }).click();
@@ -443,7 +443,7 @@ test("the agent's Porchcard on a home: what each person thinks, the exact spot t
   const elsewhere = await createShare(agent, ["719 Saltmarsh"], ["Dot"]);
   const { urls, dashboardUrl } = await createShare(agent, ["719 Saltmarsh", "1204 Quillan"], ["Bea", "Cal", "Pat"]);
 
-  const dot = await (await browser.newContext()).newPage();
+  const dot = await signedIn(browser);
   await dot.goto(elsewhere.url);
   const dotHome = homeIn(dot, SALTMARSH);
   await heartOf(dotHome).click();
@@ -454,7 +454,7 @@ test("the agent's Porchcard on a home: what each person thinks, the exact spot t
   await expect(dotChat.getByText(DOT_SAYS)).toBeVisible();
 
   // In public, Quill likes the home and says something about it.
-  const quill = await (await browser.newContext()).newPage();
+  const quill = await signedIn(browser);
   await quill.goto("/homes/SAMPLE-1008");
   const quillHome = homeIn(quill, SALTMARSH);
   await heartOf(quillHome).click();
@@ -466,7 +466,7 @@ test("the agent's Porchcard on a home: what each person thinks, the exact spot t
   await expect(quillChat.getByText(QUILL_SAYS)).toBeVisible();
 
   // Bea likes the home and its blue shutters, and asks about them.
-  const bea = await (await browser.newContext()).newPage();
+  const bea = await signedIn(browser);
   await bea.addInitScript(() => localStorage.setItem("buybox:nudges", JSON.stringify({ photos: true, next: true })));
   await bea.goto(urls.Bea);
   const beaHome = homeIn(bea, SALTMARSH);
@@ -480,7 +480,7 @@ test("the agent's Porchcard on a home: what each person thinks, the exact spot t
   await expect(sheet).toBeHidden();
 
   // Cal passes on it, for its price. Pat hasn't looked yet.
-  const cal = await (await browser.newContext()).newPage();
+  const cal = await signedIn(browser);
   await cal.goto(urls.Cal);
   const more = await openMore(cal, homeIn(cal, SALTMARSH));
   await more.getByRole("button", { name: "Not for me" }).click();
@@ -646,10 +646,10 @@ test("something liked in one home and passed on in another depends on the home, 
 
   // Ann likes the first home's layout. Bob likes the second's, and passes on
   // the first for its layout.
-  const ann = await (await browser.newContext()).newPage();
+  const ann = await signedIn(browser);
   await ann.goto(urls.Ann);
   await likeLayout(ann, HALVARD);
-  const bob = await (await browser.newContext()).newPage();
+  const bob = await signedIn(browser);
   await bob.goto(urls.Bob);
   await likeLayout(bob, CORBEL);
   const more = await openMore(bob, homeIn(bob, HALVARD));
@@ -692,7 +692,7 @@ test("an agent hearts what a client said: their thread says Liked by, in stone, 
   const { urls, dashboardUrl } = await createShare(agent, ["719 Saltmarsh"], ["Ivy"]);
 
   // Ivy likes the home, and says something, shared on the public page too.
-  const ivy = await (await browser.newContext()).newPage();
+  const ivy = await signedIn(browser);
   await ivy.goto(urls.Ivy);
   const home = homeIn(ivy, SALTMARSH);
   await heartOf(home).click();
@@ -785,7 +785,7 @@ test("adding someone to a link whose one person was told it's private asks first
   const { url } = await createShare(agent, ["88 Heron Bluff"], ["Solo"]);
 
   // Solo's link tells her what she says is between her and Alex.
-  const solo = await (await browser.newContext()).newPage();
+  const solo = await signedIn(browser);
   await solo.goto(url);
   let chat = await openComments(solo, homeIn(solo, "88 Heron Bluff Rd"));
   await expect(chat.getByText("Only you and Alex Alpha see this.")).toBeVisible();

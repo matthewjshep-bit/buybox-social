@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createShare, homeIn, joinAs, pick, settle, signInAgent, tapPhoto } from "./helpers";
+import { signedIn, createShare, homeIn, joinAs, pick, settle, signInAgent, tapPhoto } from "./helpers";
 
 // The phone settings carry over to new contexts, touch included; a desktop has none.
 const DESKTOP = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, isMobile: false, hasTouch: false };
@@ -302,7 +302,7 @@ test("dislike a spot or a fact as easily as liking it, and say something about t
 test("a spot comment on an agent's link stays on the link", async ({ browser }) => {
   const agent = await signInAgent(browser, "spots-agent@example.com", "Sloane Agent");
   const { url } = await createShare(agent, ["96 Fernhollow"], ["Toby"]);
-  const client = await (await browser.newContext()).newPage();
+  const client = await signedIn(browser);
   await client.goto(url);
   const home = homeIn(client, "96 Fernhollow Ln");
   const card = await pick(home, "the evergreens");

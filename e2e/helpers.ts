@@ -13,6 +13,7 @@ export async function signInAgent(browser: Browser, email: string, name: string)
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Start free as an agent");
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Continue" }).click();
+  await enterCode(page);
   await page.waitForURL("**/dashboard/profile");
   await page.getByLabel("Full name").fill(name);
   await page.getByLabel("Company (optional)").fill("Harbor & Pine Realty");
@@ -46,19 +47,43 @@ export async function createShare(page: Page, addresses: string[], people: strin
   return { url: urls[people[0]], urls, dashboardUrl: page.url() };
 }
 
-// A buyer signs up the way buyers do: the form on the home page. Locally
-// there's no email to open, so they're signed straight in, to the feed.
-export async function signUpBuyer(browser: Browser, email: string, name: string, phone = "206-555-0100") {
+// A buyer signs up the way buyers do: the form on the home page, a first name
+// and an email, then the code (locally, always DEV_CODE, shown on the page).
+// They're signed in right there, on the feed. The phone is optional.
+export async function signUpBuyer(browser: Browser, email: string, name: string, phone?: string) {
   const page = await (await browser.newContext()).newPage();
   await page.goto("/");
   const form = page.getByRole("form", { name: "Sign up" }).first();
-  await form.getByLabel("Name").fill(name);
-  await form.getByLabel("Phone").fill(phone);
+  await form.getByLabel("First name").fill(name);
+  if (phone) await form.getByLabel(/^Phone/).fill(phone);
   await form.getByLabel("Email").fill(email);
   await form.getByRole("button", { name: "Sign up free" }).click();
+  await enterCode(page.getByRole("form", { name: "Sign up" }).first());
   await expect(page.getByRole("button", { name: "Your profile" })).toBeVisible();
   await expect(page.getByRole("form", { name: "Sign up" })).toHaveCount(0);
   return page;
+}
+
+// Someone already signed in (just an email, no name yet), in a browser of
+// their own: the way a client comes back to a link after signing up. On their
+// own link, a tap does what it does at once; on a package's link they're asked
+// only their first name (joinAs).
+export async function signedIn(browser: Browser, email = `client.${Date.now()}${Math.floor(Math.random() * 1e4)}@example.com`) {
+  const page = await (await browser.newContext()).newPage();
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(email);
+  await page.getByRole("button", { name: "Continue" }).click();
+  await enterCode(page);
+  await page.waitForURL((url) => url.pathname === "/");
+  return page;
+}
+
+// The code from the email, typed where it was asked for: locally there's no
+// email, and it's always this.
+export const DEV_CODE = "123456";
+export async function enterCode(where: Page | Locator) {
+  await where.getByLabel("Code from the email").fill(DEV_CODE);
+  await where.getByRole("button", { name: "Continue" }).click();
 }
 
 // The feed: one home per screen.
@@ -119,12 +144,30 @@ export async function scrollToEnd(page: Page) {
   }).toPass({ timeout: 20_000 });
 }
 
-// Answers the first-name prompt and waits for it to close.
-export async function joinAs(page: Page, firstName: string) {
-  const field = page.getByRole("textbox", { name: "First name" });
-  await field.fill(firstName);
-  await page.getByRole("button", { name: "Continue" }).click();
-  await expect(field).toBeHidden();
+// Signs up (or in) where it's asked, the first time someone likes or says
+// something: a first name and an email, then the code. Or, already signed in
+// with no name yet, just the name. Waits for it to close. Each person a new
+// email unless one is given (the same person, on another device).
+export async function joinAs(
+  page: Page,
+  firstName: string,
+  email = `${firstName.toLowerCase().replace(/[^a-z]/g, "") || "someone"}.${Date.now()}${Math.floor(Math.random() * 1e4)}@example.com`,
+) {
+  const join = page.getByRole("dialog", { name: "Sign up to like and comment" });
+  const nameOnly = page.getByRole("dialog", { name: "What's your first name?" });
+  await expect(join.or(nameOnly)).toBeVisible();
+  if (await nameOnly.isVisible()) {
+    const field = nameOnly.getByRole("textbox", { name: "First name" });
+    await field.fill(firstName);
+    await nameOnly.getByRole("button", { name: "Continue" }).click();
+    await expect(nameOnly).toBeHidden();
+    return;
+  }
+  await join.getByLabel("First name").fill(firstName);
+  await join.getByLabel("Email").fill(email);
+  await join.getByRole("button", { name: "Continue" }).click();
+  await enterCode(join);
+  await expect(join).toBeHidden();
 }
 
 // Waits for a card that just popped in to come to rest. Clicking one of its

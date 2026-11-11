@@ -1,7 +1,6 @@
 import { Bell, Search as SearchIcon } from "lucide-react";
-import Link from "next/link";
 import { signOut } from "@/app/login/actions";
-import { AccountMenu, NavLink, SiteLogo } from "@/components/header-nav";
+import { AccountMenu, NavLink, SignInLink, SiteLogo } from "@/components/header-nav";
 import { countUnreadActivity } from "@/lib/activity";
 import { getCurrentUser, isAdmin } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
@@ -106,9 +105,7 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
             </form>
           ) : (
             // The one thing to do, so it's the button.
-            <Link href="/login" className={cn(button({ kind: "primary" }), "ml-1 shrink-0")}>
-              Sign in
-            </Link>
+            <SignInLink className={cn(button({ kind: "primary" }), "ml-1 shrink-0")} />
           )}
         </div>
       </nav>

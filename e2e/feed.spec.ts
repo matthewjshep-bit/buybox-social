@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import {
+import { signedIn, enterCode,
   commentIn,
   createShare,
   heartOf,
@@ -27,7 +27,7 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   // An agent's client likes a home, and the evergreens in its photo, on a private link.
   const agent = await signInAgent(browser, "fran@example.com", "Fran Agent");
   const { url } = await createShare(agent, ["96 Fernhollow"], ["Toby"]);
-  const client = await (await browser.newContext()).newPage();
+  const client = await signedIn(browser);
   await client.goto(url);
   await expect(client.getByRole("heading", { level: 1 })).toHaveText("Toby, I picked this home for you");
   const clientHome = homeIn(client, "96 Fernhollow Ln");
@@ -131,6 +131,7 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await elsewhere.goto("/login");
   await elsewhere.getByLabel("Email").fill("bea@example.com");
   await elsewhere.getByRole("button", { name: "Continue" }).click();
+  await enterCode(elsewhere);
   await elsewhere.waitForURL((u) => u.pathname === "/");
   // Homes you've reacted to come after new ones, so open this one's own link.
   await elsewhere.goto("/homes/SAMPLE-1004");

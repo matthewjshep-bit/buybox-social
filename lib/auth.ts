@@ -43,10 +43,16 @@ export const firstName = (account: Pick<Account, "full_name">) => account.full_n
 
 // The signed-in person, if any. Their account is made on their first sign-in,
 // as whatever they signed up as: an agent if they came in through "For
-// agents", otherwise a buyer, named from the home page's form if they used it.
+// agents", otherwise a buyer, named from the sign-up form if they used it.
 export const getCurrentUser = cache(async (): Promise<Account | null> => {
   const user = await getAuthUser();
   if (!user) return null;
+  return accountFor(user);
+});
+
+// The account for someone just proved to be signed in (by a code, a link, or
+// locally), made the first time.
+export async function accountFor(user: { id: string; email: string }): Promise<Account> {
   const [existing] = await sql<Account[]>`
     select id, email, full_name, role, brokerage, photo_data_url, brand_color
     from accounts where auth_user_id = ${user.id}`;
@@ -65,7 +71,7 @@ export const getCurrentUser = cache(async (): Promise<Account | null> => {
       phone = coalesce(nullif(accounts.phone, ''), excluded.phone)
     returning id, email, full_name, role, brokerage, photo_data_url, brand_color`;
   return created;
-});
+}
 
 // Called once someone has signed in (opening the link proves the email is
 // theirs): whether they came in through "For agents". An account that's

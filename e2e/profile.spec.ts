@@ -32,7 +32,7 @@ import {
   type StoredStory,
   type TasteStory,
 } from "../lib/taste-story";
-import {
+import { enterCode,
   commentIn,
   createShare,
   heartOf,
@@ -256,6 +256,7 @@ test("a page with no name yet asks for one", async ({ browser }) => {
   await cy.goto("/login");
   await cy.getByLabel("Email").fill("cy@example.com");
   await cy.getByRole("button", { name: "Continue" }).click();
+  await enterCode(cy);
   await cy.waitForURL((url) => !url.pathname.startsWith("/login"));
   await cy.goto("/people/me");
   await cy.waitForURL(/\/people\/[0-9a-f-]{36}$/);

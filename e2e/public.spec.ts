@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import {
+import { signedIn,
   commentIn,
   createShare,
   heartOf,
@@ -25,7 +25,7 @@ test("public pages show activity, never private words, and private threads share
   // a comment the client chooses to share anonymously.
   const agent = await signInAgent(browser, "pat@example.com", "Pat Agent");
   const { urls } = await createShare(agent, ["2205 Brackenfield"], ["Riley", "Quinn"]);
-  const client = await (await browser.newContext()).newPage();
+  const client = await signedIn(browser);
   await client.goto(urls.Riley);
   const clientHome = homeIn(client, BRACKENFIELD);
   let chat = await openComments(client, clientHome);
@@ -47,7 +47,7 @@ test("public pages show activity, never private words, and private threads share
   await client.keyboard.press("Escape");
 
   // A second person on the package passes on the yard, from their own link. That stays private.
-  const quinn = await (await browser.newContext()).newPage();
+  const quinn = await signedIn(browser);
   await quinn.goto(urls.Quinn);
   const quinnMore = await openMore(quinn, homeIn(quinn, BRACKENFIELD));
   await quinnMore.getByRole("button", { name: "Not for me" }).click();

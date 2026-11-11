@@ -6,7 +6,7 @@ import { likeId, NO_PHOTO_LIKES } from "../lib/photos";
 import { NO_REACTION, type ReactionState } from "../lib/reactions";
 import { buildScorecard } from "../lib/scorecard";
 import type { PhotoThing, TimelineComment, TimelineItem, TimelineReaction } from "../lib/timeline";
-import { commentIn, createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, openMore, openScorecard, pick, settle, signInAgent } from "./helpers";
+import { signedIn, commentIn, createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, openMore, openScorecard, pick, settle, signInAgent } from "./helpers";
 
 // The Porchcard: everything people think of a home in one place, from the
 // button on its rail, after Comments. What it may show depends on where you
@@ -97,7 +97,7 @@ test("public and private: a link's people, passes and words stay on the link, an
   const { urls } = await createShare(agent, ["16420 NE Alder Crest"], ["Uma", "Vic"]);
 
   // Uma likes it, the front door with it, and says something to the agent.
-  const uma = await page$(browser);
+  const uma = await signedIn(browser);
   await uma.goto(urls.Uma);
   const umaHome = homeIn(uma, ALDER);
   await heartOf(umaHome).click();
@@ -110,7 +110,7 @@ test("public and private: a link's people, passes and words stay on the link, an
   await uma.keyboard.press("Escape");
 
   // Vic likes the front door too, doesn't like the lawn, and passes on the price.
-  const vic = await page$(browser);
+  const vic = await signedIn(browser);
   await vic.goto(urls.Vic);
   const vicHome = homeIn(vic, ALDER);
   const door = await likeInPhoto(vicHome, "the front door");
@@ -336,7 +336,7 @@ test("on a link with more than one home, the Porchcard sets this one beside the 
   await zed.keyboard.press("Escape");
 
   // Ana likes the first for where it is, and passes on the second's price.
-  const ana = await page$(browser);
+  const ana = await signedIn(browser);
   await ana.goto(urls.Ana);
   const quillan = homeIn(ana, QUILLAN);
   await heartOf(quillan).click();
@@ -353,7 +353,7 @@ test("on a link with more than one home, the Porchcard sets this one beside the 
   await expect(more).toBeHidden();
 
   // Bo passes on the first, for its price too.
-  const bo = await page$(browser);
+  const bo = await signedIn(browser);
   await bo.goto(urls.Bo);
   more = await openMore(bo, homeIn(bo, QUILLAN));
   await pass(more, "Price");

@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import type { Listing } from "../lib/listings/types";
-import { toFirstHome, createShare, heartOf, homeIn, joinAs, openComments, openMore, pick, settle, signInAgent, tapPhoto } from "./helpers";
+import { signedIn, toFirstHome, createShare, heartOf, homeIn, joinAs, openComments, openMore, pick, settle, signInAgent, tapPhoto } from "./helpers";
 
 // The line at the photo's foot: what people did on the photo on screen, one
 // at a time, each with a hotspot on the spot where they did it. Timers run on
@@ -342,7 +342,7 @@ test("on a link, what you said is \"You\", and the agent's own words are theirs"
   test.setTimeout(120_000);
   const agent = await signInAgent(browser, "vera@example.com", "Vera Agent");
   const { url, dashboardUrl } = await createShare(agent, ["719 Saltmarsh"], ["Kit"]);
-  const kit = await (await browser.newContext()).newPage();
+  const kit = await signedIn(browser);
   await kit.goto(url);
   await toFirstHome(kit);
   const home = homeIn(kit, SALTMARSH);
@@ -405,7 +405,7 @@ test("isolation: what's private on an agent's link never reaches the public line
   const SPOT_SECRET = "That corner needs a total redo.";
   const agent = await signInAgent(browser, "tilly@example.com", "Tilly Agent");
   const { url } = await createShare(agent, ["719 Saltmarsh"], ["Yara"]);
-  const yara = await (await browser.newContext()).newPage();
+  const yara = await signedIn(browser);
   await yara.goto(url);
   const yaraHome = homeIn(yara, SALTMARSH);
   await yaraHome.scrollIntoViewIfNeeded();
@@ -480,7 +480,7 @@ test("isolation: a comment on a spot shared from a link shows its words in publi
   const WORDS = "Love how the light falls on this side.";
   const agent = await signInAgent(browser, "tess@example.com", "Tess Agent");
   const { url } = await createShare(agent, ["719 Saltmarsh"], ["Zoe"]);
-  const zoe = await (await browser.newContext()).newPage();
+  const zoe = await signedIn(browser);
   await zoe.goto(url);
   const zoeHome = homeIn(zoe, SALTMARSH);
   await zoeHome.scrollIntoViewIfNeeded();

@@ -20,19 +20,30 @@ function useCurrent(href: string, section: boolean) {
 
 // Porchcard's logo, which always goes home: navy on the white header, white
 // over the feed (with a soft shadow, for a bright photo). On a narrow phone,
-// just the house with its heart.
+// just the card.
 export function SiteLogo({ overlay = false }: { overlay?: boolean }) {
   return (
     <Link
       href="/"
       className={cn(
         "flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl px-1",
-        overlay ? "text-white drop-shadow-[0_1px_2px_rgb(0_0_0/0.45)]" : "text-[#052747]",
+        overlay ? "text-white drop-shadow-[0_1px_2px_rgb(0_0_0/0.45)]" : "text-[#062B4C]",
       )}
     >
-      <PorchcardLogo className="h-7 w-auto max-[420px]:hidden" />
-      <PorchcardMark className="hidden h-8 w-auto max-[420px]:block" />
+      <PorchcardLogo className="h-6 w-auto max-[420px]:hidden" />
+      <PorchcardMark className="hidden h-7 w-auto max-[420px]:block" />
       <span className="sr-only">Porchcard</span>
+    </Link>
+  );
+}
+
+// Sign in, from the header: back to this page once they're in.
+export function SignInLink({ className }: { className?: string }) {
+  const pathname = usePathname();
+  const back = pathname && pathname !== "/" && !pathname.startsWith("/login") ? `?next=${encodeURIComponent(pathname)}` : "";
+  return (
+    <Link href={`/login${back}`} className={className}>
+      Sign in
     </Link>
   );
 }

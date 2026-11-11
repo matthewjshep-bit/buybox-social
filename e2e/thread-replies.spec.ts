@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, openComments, openScorecard, settle, signInAgent, signUpBuyer } from "./helpers";
+import { signedIn, createShare, heartOf, homeIn, joinAs, openComments, openScorecard, settle, signInAgent, signUpBuyer } from "./helpers";
 
 // No other test after this one counts anything on this home. (Named to run
 // after taste-and-picks: all this makes Halvard one of the week's busiest
@@ -72,7 +72,7 @@ test("on a link, a reply to someone's likes or their comment stays on the link",
   const agent = await signInAgent(browser, "replies-agent@example.com", "Jordan Rivera");
   const { urls, dashboardUrl } = await createShare(agent, ["10421 Halvard"], ["Owen", "Pat"]);
 
-  const owen = await (await browser.newContext()).newPage();
+  const owen = await signedIn(browser);
   await owen.goto(urls.Owen);
   const owenHome = homeIn(owen, HALVARD);
   await heartOf(owenHome).click();
@@ -89,6 +89,8 @@ test("on a link, a reply to someone's likes or their comment stays on the link",
   await sheet.getByRole("button", { name: "Reply to Owen's likes", exact: true }).click();
   await sheet.getByLabel("Reply to Owen").fill("Me too, that porch!");
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
+  // His first word asks him to sign up, and then it posts.
+  await joinAs(pat, "Pat");
   await expect(sheet.getByRole("list", { name: "Replies to Owen's likes" }).getByText("Me too, that porch!")).toBeVisible();
   await sheet.getByRole("button", { name: "Reply to Owen", exact: true }).click();
   await sheet.getByLabel("Reply to Owen").fill("Saturday works for me too");
