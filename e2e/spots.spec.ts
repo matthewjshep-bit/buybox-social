@@ -231,9 +231,9 @@ test("a tap on the words or the buttons isn't a tap on the photo, but just besid
   await expect(home.locator("[data-spot-card]")).toHaveCount(0);
   await page.keyboard.press("Escape");
 
-  // The whole description is in the Scorecard, at "About this home".
+  // The whole description is in the Porchcard, at "About this home".
   await home.getByRole("button", { name: "more", exact: true }).click();
-  const scorecard = page.getByRole("dialog", { name: "Scorecard" });
+  const scorecard = page.getByRole("dialog", { name: "Porchcard" });
   await expect(scorecard).toBeVisible();
   await expect(scorecard.getByRole("heading", { name: "About this home" })).toBeInViewport();
   await page.keyboard.press("Escape");

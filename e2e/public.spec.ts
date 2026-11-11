@@ -80,7 +80,7 @@ test("public pages show activity, never private words, and private threads share
   await expect(page.getByText(SECRET)).toHaveCount(0);
   await expect(page.getByText(/Riley|Quinn/)).toHaveCount(0);
   await page.keyboard.press("Escape");
-  // ...nor in the Scorecard, which has what people like and the quiet signals.
+  // ...nor in the Porchcard, which has what people like and the quiet signals.
   let card = await openScorecard(page, post);
   await expect(card.getByText("What people liked", { exact: true })).toBeVisible();
   await expect(card.getByRole("button", { name: /^Exterior 1 person/ })).toBeVisible();

@@ -168,7 +168,7 @@ test("the year built, the description and who listed it are each something to li
   expect(pageErrors).toEqual([]);
 
   // On a phone: the description over the photo takes a tap, and the
-  // Scorecard's facts open their cards too.
+  // Porchcard's facts open their cards too.
   const phone = await (await browser.newContext()).newPage();
   phone.on("pageerror", (error) => pageErrors.push(error.message));
   await phone.goto("/homes/SAMPLE-1005");

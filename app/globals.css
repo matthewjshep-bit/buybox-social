@@ -138,7 +138,7 @@ a {
 }
 
 /* Sheets rise from the bottom. One docked beside the photo on a wide screen
-   (the comments, the Scorecard) slides in from the right instead. */
+   (the comments, the Porchcard) slides in from the right instead. */
 @keyframes sheet-up {
   from {
     transform: translateY(100%);

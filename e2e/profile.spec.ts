@@ -1,6 +1,6 @@
 // Someone's page: one card per home per day, filters and paging that work
 // without scripts, and nothing from an agent's link, ever. The homes here are
-// ones no later spec counts likes on (the Scorecard's quiet Heron and counted
+// ones no later spec counts likes on (the Porchcard's quiet Heron and counted
 // Alder are left alone, or left as they were found).
 import { readFileSync } from "node:fs";
 import { expect, test, type Page, type Route } from "@playwright/test";
@@ -334,7 +334,7 @@ test("what someone does on an agent's link never shows on their page", async ({ 
   await expect(async () => {
     await rowan.goto(url);
     const saved = homeIn(rowan, QUILLAN);
-    // The pass and why, as the Scorecard has them from the server.
+    // The pass and why, as the Porchcard has them from the server.
     const take = await openScorecard(rowan, saved);
     await expect(take.getByText("You passed on this.")).toBeVisible({ timeout: 2000 });
     await expect(take.locator("p").filter({ hasText: /^What you didn't like:/ })).toContainText("Yard", { timeout: 2000 });

@@ -658,7 +658,7 @@ export function CommentMenu({ commentId, name }: { commentId: string; name: stri
   );
 }
 
-// Wide enough for the Scorecard to sit beside the page rather than over it.
+// Wide enough for the Porchcard to sit beside the page rather than over it.
 const WIDE = "(min-width: 1024px)";
 const subscribeWide = (onChange: () => void) => {
   const query = matchMedia(WIDE);
@@ -670,10 +670,10 @@ const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").match
 const OpenScorecard = createContext<(listingKey: string) => void>(() => {});
 
 // Where a home sits on the screen, to keep it there as the page makes room
-// for the Scorecard's panel (or takes the room back).
+// for the Porchcard's panel (or takes the room back).
 const topOf = (listingKey: string) => document.getElementById(`home-${listingKey}`)?.getBoundingClientRect().top ?? null;
 
-// Each home's Scorecard, as the people on the link see it, with what each of
+// Each home's Porchcard, as the people on the link see it, with what each of
 // them thinks: a sheet from the bottom on a phone; on a wide screen, a panel
 // down the right, under the site's header, with the page making room beside
 // it, so nothing is hidden and every home's buttons stay in reach. One at a
@@ -691,7 +691,7 @@ export function HomeScorecards({
   agentName: string;
   children: ReactNode;
 }) {
-  // The home whose Scorecard was opened last, and whether it still is.
+  // The home whose Porchcard was opened last, and whether it still is.
   const [shown, setShown] = useState<{ key: string; open: boolean } | null>(null);
   const open = shown?.open ? shown.key : null;
   const wide = useSyncExternalStore(subscribeWide, () => matchMedia(WIDE).matches, () => false);
@@ -736,7 +736,7 @@ export function HomeScorecards({
     };
   }, [docked]);
 
-  // Each home's Scorecard opens where the agent left it, while the page is open.
+  // Each home's Porchcard opens where the agent left it, while the page is open.
   const kept = useRef(new Map<string, number>());
   useLayoutEffect(() => {
     const el = body.current;
@@ -756,7 +756,7 @@ export function HomeScorecards({
     setShown((was) => was && { ...was, open: false });
   };
 
-  // From the Scorecard to a place on the page. On a phone the sheet is over
+  // From the Porchcard to a place on the page. On a phone the sheet is over
   // everything, so it shuts first and the page can take the keyboard; beside
   // the page it stays open. The place comes into view.
   const goTo = (target: HTMLElement | null, block: ScrollLogicalPosition = "center") => {
@@ -777,15 +777,15 @@ export function HomeScorecards({
         data-scorecard-docked={docked ? "" : undefined}
         className="pointer-events-none fixed inset-y-3 right-3 z-40 w-[min(28rem,calc(100vw-1.5rem))]"
       >
-        {/* A home of its own each time: opening another home's Scorecard
+        {/* A home of its own each time: opening another home's Porchcard
             while one is open moves the keyboard to it, and closing it goes
             back to the button that opened it. */}
         <Sheet
           key={shown?.key}
           open={Boolean(open && post)}
           onClose={close}
-          label={post ? `Scorecard for ${post.listing.UnparsedAddress}` : "Scorecard"}
-          title="Scorecard"
+          label={post ? `Porchcard for ${post.listing.UnparsedAddress}` : "Porchcard"}
+          title="Porchcard"
           anchor={wide ? dock : undefined}
           docked={wide}
           bodyRef={body}
@@ -815,7 +815,7 @@ export function HomeScorecards({
   );
 }
 
-// "Scorecard" on a home: everything the people on the link think of it.
+// "Porchcard" on a home: everything the people on the link think of it.
 export function ScorecardButton({ listingKey, address }: { listingKey: string; address: string }) {
   const open = useContext(OpenScorecard);
   return (
@@ -825,7 +825,7 @@ export function ScorecardButton({ listingKey, address }: { listingKey: string; a
       className={button({ kind: "secondary" })}
     >
       <ClipboardList aria-hidden size={16} />
-      Scorecard
+      Porchcard
       <span className="sr-only"> for {address}</span>
     </button>
   );

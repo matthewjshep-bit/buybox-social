@@ -59,7 +59,7 @@ test("one home: the link opens on it, in the agent's space, with a way to text, 
   await expect(home.getByText(/^This one has the yard/)).toBeVisible();
   // The note whole, then the home's own description, one tap on "more" away.
   await home.getByRole("button", { name: "more", exact: true }).click();
-  const about = page.getByRole("dialog", { name: "Scorecard" });
+  const about = page.getByRole("dialog", { name: "Porchcard" });
   await expect(about.getByText("This one has the yard you mentioned.")).toBeVisible();
   await expect(about).toContainText("A warm Ravenna-area Craftsman");
   await page.keyboard.press("Escape");
@@ -349,7 +349,7 @@ test("a link whose homes were all taken off says so, with a way to reach the age
   );
 });
 
-test("the Scorecard says who on the link hasn't weighed in yet, never you", async ({ browser }) => {
+test("the Porchcard says who on the link hasn't weighed in yet, never you", async ({ browser }) => {
   test.setTimeout(60_000);
   const agent = await signInAgent(browser, "notyet-agent@example.com", "Jordan Rivera");
   const { urls } = await createShare(agent, ["812 N Corbel"], ["Owen", "Pat"]);

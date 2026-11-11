@@ -97,7 +97,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
   const comparison = comparePeople(everyone, thread, listings);
   const [{ suggestions, together }, timelines, photoLikes] = await Promise.all([
     suggestHomes(everyone, thread, listings),
-    // Each home's Scorecard: the link's own conversation, as its people see it.
+    // Each home's Porchcard: the link's own conversation, as its people see it.
     getShareTimelines(share.id, listings, null),
     getSharePhotoLikes(share.id, listings.map((listing) => listing.ListingKey), null),
   ]);
@@ -108,7 +108,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
   const oneHome = active.length === 1 ? { address: active[0].UnparsedAddress, price: active[0].ListPrice } : undefined;
   // Every photo on their link, for "saw 3 of 4 photos".
   const photos = active.reduce((sum, listing) => sum + listing.Media.length, 0);
-  // Each home as its Scorecard needs it, from this link alone: never anything
+  // Each home as its Porchcard needs it, from this link alone: never anything
   // public, and nobody from any other link.
   const posts = listings.map(({ removedAt, ...listing }): FeedPost => {
     const timeline = timelines.get(listing.ListingKey) ?? [];
@@ -834,7 +834,7 @@ function HomePanel({
         "@container scroll-mt-4 p-4 transition-[box-shadow] duration-1000 data-target:ring-2 data-target:ring-amber-300",
       )}
     >
-      {/* Narrow (a phone, or a column beside the Scorecard), the buttons sit
+      {/* Narrow (a phone, or a column beside the Porchcard), the buttons sit
           in a row of their own underneath, so the words keep the width: the
           address on one line, the price and city on the next. */}
       <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 @md:grid-cols-[auto_minmax(0,1fr)_auto]">
@@ -885,7 +885,7 @@ function HomePanel({
       )}
 
       {comments.length > 0 && (
-        // (The Scorecard's "See all" brings the keyboard here.)
+        // (The Porchcard's "See all" brings the keyboard here.)
         <ul aria-label="Comments" tabIndex={-1} className="mt-4 flex scroll-mt-4 flex-col gap-4 border-t border-stone-100 pt-4">
           {comments.map((comment) => (
             <li

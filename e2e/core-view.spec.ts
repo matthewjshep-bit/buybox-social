@@ -89,17 +89,17 @@ test("on a phone, the whole photo sits right on top of the words, in the same pl
   }
 });
 
-test("the buttons down the right: like, comments, scorecard, share, more, each with its label, just over the comment bar", async ({
+test("the buttons down the right: like, comments, Porchcard, share, more, each with its label, just over the comment bar", async ({
   page,
 }) => {
   await page.goto("/homes/SAMPLE-1013");
   const home = homeIn(page, "5902 Lakeview Terrace SE");
   await settled(home);
   const rail = home.locator("[data-rail]");
-  const names = [/^Like 5902 Lakeview Terrace SE/, /^Comments/, "Scorecard", "Share", "More options"];
+  const names = [/^Like 5902 Lakeview Terrace SE/, /^Comments/, "Porchcard", "Share", "More options"];
   await expect(rail.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(rail.getByRole("button").nth(i)).toHaveAccessibleName(name);
-  await expect(rail).toContainText("Scorecard");
+  await expect(rail).toContainText("Porchcard");
   await expect(rail).toContainText("Share");
   await expect(rail).toContainText("More");
   const bar = await box(home.getByRole("button", { name: "Add a comment…" }));
@@ -213,7 +213,7 @@ test("a phone on its side keeps the words over the photo, the description to one
   );
 });
 
-test("the description: two lines, then more right after the last word, which opens the rest in the Scorecard", async ({
+test("the description: two lines, then more right after the last word, which opens the rest in the Porchcard", async ({
   browser,
 }) => {
   const page = await phone(browser, IPHONE);
@@ -240,11 +240,11 @@ test("the description: two lines, then more right after the last word, which ope
     { x: at.x + at.width / 2, y: at.y + at.height + 9 },
   );
   expect(hit).toBe("more");
-  // It opens the Scorecard at "About this home", with all of it there; put
+  // It opens the Porchcard at "About this home", with all of it there; put
   // away, the keyboard is back on "more".
   await more.focus();
   await page.keyboard.press("Enter");
-  const card = page.getByRole("dialog", { name: "Scorecard" });
+  const card = page.getByRole("dialog", { name: "Porchcard" });
   await expect(card).toBeVisible();
   await expect(card.getByRole("heading", { name: "About this home" })).toBeInViewport();
   await expect(card.getByText(/^A warm Ravenna-area Craftsman.+a short walk away\.$/)).toBeInViewport({ ratio: 0.5 });
@@ -406,11 +406,11 @@ test("on a desktop, the photo has a stage of its own with nothing on it but the 
   expect(Math.abs(panel.x + panel.width - 1416)).toBeLessThanOrEqual(1);
   expect(panel.x - (photo.x + photo.width)).toBeGreaterThanOrEqual(15);
   // No rail on the photo: each thing to do is in the panel, once, in a row
-  // just over the comment box (like, comments, Scorecard, share, more).
+  // just over the comment box (like, comments, Porchcard, share, more).
   await expect(home.locator("[data-rail]")).toBeHidden();
   const panelWords = home.locator("[data-words]");
   const actions = panelWords.locator("[data-actions]");
-  const names = [/^Like 1880 Tamsen Ridge Pl SE/, /^Comments/, "Scorecard", "Share", "More options"];
+  const names = [/^Like 1880 Tamsen Ridge Pl SE/, /^Comments/, "Porchcard", "Share", "More options"];
   await expect(actions.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(actions.getByRole("button").nth(i)).toHaveAccessibleName(name);
   for (const name of names) await expect(home.getByRole("button", { name })).toHaveCount(1);

@@ -428,7 +428,7 @@ test("the agent's page about a client reads like the product: a card per home, s
   expect(handed.text).toMatch(/^Hi \w+, I picked a home for you: 5902 Lakeview Terrace SE, \$2,450,000\. Tell me what you think\.$/);
 });
 
-test("the agent's Scorecard on a home: what each person thinks, the exact spot they meant, and nothing from anywhere else", async ({
+test("the agent's Porchcard on a home: what each person thinks, the exact spot they meant, and nothing from anywhere else", async ({
   browser,
 }) => {
   test.setTimeout(120_000);
@@ -486,14 +486,14 @@ test("the agent's Scorecard on a home: what each person thinks, the exact spot t
   await why.getByRole("button", { name: "Price" }).click();
   await expect(why.getByRole("button", { name: "Price" })).toHaveAttribute("aria-pressed", "true");
 
-  // On a phone: a Scorecard button on the home, and the Scorecard rises over the page.
+  // On a phone: a Porchcard button on the home, and the Porchcard rises over the page.
   await agent.setViewportSize({ width: 393, height: 852 });
   await agent.goto(dashboardUrl);
   const home = agent.getByRole("region", { name: SALTMARSH });
-  const open = home.getByRole("button", { name: `Scorecard for ${SALTMARSH}` });
+  const open = home.getByRole("button", { name: `Porchcard for ${SALTMARSH}` });
   expect((await open.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await open.click();
-  const card = agent.getByRole("dialog", { name: "Scorecard" });
+  const card = agent.getByRole("dialog", { name: "Porchcard" });
   await expect(card).toBeVisible();
   expect(await card.evaluate((el) => el.matches(":modal"))).toBe(true);
   await expect(card).toContainText("From the people on this link · only they and you see this");
@@ -548,7 +548,7 @@ test("the agent's Scorecard on a home: what each person thinks, the exact spot t
   await expect(cells("Overall")).toHaveText([/^1 like 1 pass$/, /None$/]);
   await expect(cells("Price")).toHaveText([/^\s*1 pass$/, /None$/]);
 
-  // Reply: the Scorecard goes, and the keyboard is in the home's reply box.
+  // Reply: the Porchcard goes, and the keyboard is in the home's reply box.
   await card.getByRole("button", { name: "Reply to your client" }).click();
   await expect(card).toBeHidden();
   await expect(home.getByRole("textbox", { name: "Reply to your client" })).toBeFocused();
@@ -563,7 +563,7 @@ test("the agent's Scorecard on a home: what each person thinks, the exact spot t
     await open.click();
     await expect(card).toBeVisible();
     expect(await card.evaluate((el) => el.matches(":modal"))).toBe(false);
-    await expect(card.getByRole("heading", { name: "Scorecard", exact: true })).toBeFocused();
+    await expect(card.getByRole("heading", { name: "Porchcard", exact: true })).toBeFocused();
     await settle(card);
     const panel = (await card.boundingBox())!;
     expect(panel.x + panel.width).toBeGreaterThan(width - 40);
@@ -587,21 +587,21 @@ test("the agent's Scorecard on a home: what each person thinks, the exact spot t
     await expect(open).toBeFocused();
   }
 
-  // Another home's Scorecard while one is open: the keyboard goes to it, and
+  // Another home's Porchcard while one is open: the keyboard goes to it, and
   // back to that home's button when it closes.
   await open.click();
-  await expect(card.getByRole("heading", { name: "Scorecard", exact: true })).toBeFocused();
+  await expect(card.getByRole("heading", { name: "Porchcard", exact: true })).toBeFocused();
   const quillan = agent.getByRole("region", { name: "1204 Quillan St SE" });
-  const other = quillan.getByRole("button", { name: "Scorecard for 1204 Quillan St SE" });
+  const other = quillan.getByRole("button", { name: "Porchcard for 1204 Quillan St SE" });
   await other.focus();
   await agent.keyboard.press("Enter");
-  await expect(agent.getByRole("dialog", { name: "Scorecard for 1204 Quillan St SE" })).toBeVisible();
-  await expect(card.getByRole("heading", { name: "Scorecard", exact: true })).toBeFocused();
+  await expect(agent.getByRole("dialog", { name: "Porchcard for 1204 Quillan St SE" })).toBeVisible();
+  await expect(card.getByRole("heading", { name: "Porchcard", exact: true })).toBeFocused();
   await agent.keyboard.press("Escape");
   await expect(card).toBeHidden();
   await expect(other).toBeFocused();
 
-  // Reply, beside the page: the Scorecard stays, and the keyboard is in the
+  // Reply, beside the page: the Porchcard stays, and the keyboard is in the
   // home's reply box, clear of it.
   await open.click();
   await card.getByRole("button", { name: "Reply to your client" }).click();
@@ -617,7 +617,7 @@ test("the agent's Scorecard on a home: what each person thinks, the exact spot t
   const response = await stranger.goto(dashboardUrl);
   expect(response?.status()).toBe(404);
   await expect(stranger.getByText(BEA_SAYS)).toHaveCount(0);
-  await expect(stranger.getByRole("button", { name: /^Scorecard/ })).toHaveCount(0);
+  await expect(stranger.getByRole("button", { name: /^Porchcard/ })).toHaveCount(0);
 });
 
 test("something liked in one home and passed on in another depends on the home, and is agreed only where they both liked it", async ({

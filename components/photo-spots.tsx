@@ -42,7 +42,7 @@ import { pill } from "@/lib/ui";
 // The spot whose card is open. `keyboard`: it was picked by keyboard, so the
 // card takes focus. `fromLine`: opened from the activity line, which takes
 // the keyboard back when it closes. `back`: opened from somewhere else (the
-// Scorecard), which takes the keyboard back instead.
+// Porchcard), which takes the keyboard back instead.
 export type PickedSpot = PhotoSpot & { keyboard?: boolean; fromLine?: boolean; back?: HTMLElement | null };
 
 export type Photos = ReturnType<typeof usePhotoLikes>;
@@ -264,7 +264,7 @@ export function SpotLayer({
     reportClear.current?.(litTag, clear);
   }, [litTag, photo, shape, items, nudge]);
   // The keyboard goes back to the thing whose card was opened from it and is
-  // now closed. (One opened from the activity line, or the Scorecard, gives
+  // now closed. (One opened from the activity line, or the Porchcard, gives
   // it back there instead.)
   const [focusTo, setFocusTo] = useState<{ tag: string; n: number } | null>(null);
   const openTag = picked?.mediaKey === photoKey ? picked?.tag : undefined;

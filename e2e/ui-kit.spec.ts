@@ -113,12 +113,12 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   const wide = agent.viewportSize();
   await agent.setViewportSize({ width: 360, height: 640 });
   await expectKitButtons(agent, "client page at 360px");
-  // ...and in the home's Scorecard, open beside it.
-  await home.getByRole("button", { name: "Scorecard for 812 N Corbel St" }).click();
-  await expect(agent.getByRole("dialog", { name: "Scorecard" })).toBeVisible();
-  await expectKitButtons(agent, "Scorecard");
+  // ...and in the home's Porchcard, open beside it.
+  await home.getByRole("button", { name: "Porchcard for 812 N Corbel St" }).click();
+  await expect(agent.getByRole("dialog", { name: "Porchcard" })).toBeVisible();
+  await expectKitButtons(agent, "Porchcard");
   await agent.keyboard.press("Escape");
-  await expect(agent.getByRole("dialog", { name: "Scorecard" })).toBeHidden();
+  await expect(agent.getByRole("dialog", { name: "Porchcard" })).toBeHidden();
   if (wide) await agent.setViewportSize(wide);
 
   // The agent's own words in the thread, under their face in ink, as everywhere.

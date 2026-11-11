@@ -26,7 +26,7 @@ import {
 import type { TimelineComment } from "@/lib/timeline";
 import { button, pill } from "@/lib/ui";
 
-// The Scorecard: what everyone thinks of a home, then the home itself, in one
+// The Porchcard: what everyone thinks of a home, then the home itself, in one
 // place, for the sheet (phones), the panel beside the photo (wide) and the
 // agent's dashboard. Light, quiet, every row a fingertip to tap.
 

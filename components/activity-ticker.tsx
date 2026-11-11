@@ -417,12 +417,12 @@ export function ActivityTicker({
       "spot-comments": "See the comments about it",
       comment: "See it in the comments",
       fact: `Show ${event.spot ? `the ${event.spot.toLowerCase()}` : "it"}`,
-      home: "See the scorecard",
+      home: "See the Porchcard",
     };
     const where = words.elsewhere ? `, in photo ${words.index + 1}` : words.where ? `, in ${words.where}` : "";
     name = `${ended(`${words.sentence}${where}${event.body ? `: ${event.body}` : ""}`)} ${spokenAgo(ago)}. ${what[words.tap]}.`;
   } else if (now?.kind === "rest") {
-    name = `${now.text}. See the scorecard.`;
+    name = `${now.text}. See the Porchcard.`;
   }
 
   const multi = cycle.length > 1 && !readOnly;

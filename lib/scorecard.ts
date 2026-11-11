@@ -1,4 +1,4 @@
-// The Scorecard: everything people think of one home, in one place, built
+// The Porchcard: everything people think of one home, in one place, built
 // from what the page already has for this viewer (so never more than they may
 // see). Free of server code, so the browser can build it as people tap.
 
@@ -159,7 +159,7 @@ export type PersonTake = {
 const topComments = (items: TimelineItem[]) =>
   items.filter((item): item is TimelineComment => item.kind === "comment" && !item.parentId);
 const allComments = (items: TimelineItem[]) => items.filter((item): item is TimelineComment => item.kind === "comment");
-// (Not the agent's own likes: the Scorecard is the clients' take.)
+// (Not the agent's own likes: the Porchcard is the clients' take.)
 const reactionLines = (items: TimelineItem[]) =>
   items.filter((item): item is TimelineReaction => item.kind === "reaction" && !item.isAgent);
 

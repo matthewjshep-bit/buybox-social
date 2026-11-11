@@ -70,7 +70,7 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
   await expect(ownTaste.getByRole("group", { name: "Loves" }).getByRole("link", { name: "Loves Vibe, 2 homes" })).toBeVisible();
   expect(await story(ownTaste)).toEqual(told);
   await own.close();
-  // Homes that match it say why, in the Scorecard, under your take.
+  // Homes that match it say why, in the Porchcard, under your take.
   let fits = false;
   for (let i = 0; i < (await homes.count()) && !fits; i++) {
     const card = await openScorecard(pia, homes.nth(i));

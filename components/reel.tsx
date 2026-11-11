@@ -410,7 +410,7 @@ function Feed({
   const scroller = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
   // A sheet over the home: its comments (all of them, or those about one spot
-  // in a photo), its Scorecard, or More. `photoFoot`: where the photo ended
+  // in a photo), its Porchcard, or More. `photoFoot`: where the photo ended
   // when it opened, so the sheet rises to just there.
   const [sheet, setSheet] = useState<{
     kind: SheetKind;
@@ -419,14 +419,14 @@ function Feed({
     photoFoot?: number;
     // Opened on one comment (from the line above the price).
     commentId?: string;
-    // The Scorecard, opened at a part of it (the description's "more").
+    // The Porchcard, opened at a part of it (the description's "more").
     section?: "about";
   } | null>(null);
   // Each sheet closes only itself: one can open another without the first's
-  // closing shutting the second. (The comments and the Scorecard are one
+  // closing shutting the second. (The comments and the Porchcard are one
   // sheet, which changes in place from one to the other.)
   const closeSheet = (...kinds: SheetKind[]) => setSheet((now) => (now && kinds.includes(now.kind) ? null : now));
-  // The comments or the Scorecard, about this home.
+  // The comments or the Porchcard, about this home.
   const about = (key: string) => (sheet?.kind === "comments" || sheet?.kind === "scorecard") && sheet.key === key;
   // Side by side (wide): comments open beside the photo, in the white panel's
   // place, and other sheets rise from the panel's foot. `narrow`: a phone's
@@ -447,7 +447,7 @@ function Feed({
   const [bare, setBare] = useState<number | null>(null);
   if (bare !== null && bare !== active) setBare(null);
   // A spot to go to, from a comment about it. `n` counts requests. From the
-  // Scorecard by keyboard, the card takes it, and gives it `back` on closing.
+  // Porchcard by keyboard, the card takes it, and gives it `back` on closing.
   const [goToSpot, setGoToSpot] = useState<{
     key: string;
     spot: SpotRef;
@@ -459,13 +459,13 @@ function Feed({
   const offset = intro ? 1 : 0;
   const panelCount = offset + posts.length + 1;
   const activePost = posts[active - offset];
-  // Comments (or the Scorecard) beside the photo belong to the home on
+  // Comments (or the Porchcard) beside the photo belong to the home on
   // screen: moving on to another closes them.
   if (wide && (sheet?.kind === "comments" || sheet?.kind === "scorecard") && sheet.key !== (activePost?.listing.ListingKey ?? null)) {
     setSheet(null);
   }
   // What you've liked and not in each home's photos just now, as its photos
-  // have it, for the Scorecard.
+  // have it, for the Porchcard.
   const [yours, setYours] = useState<Record<string, { liked: string[]; disliked: string[] }>>({});
   const tellYours = useCallback((key: string, liked: string[], disliked: string[]) => {
     setYours((now) =>
@@ -651,7 +651,7 @@ function Feed({
     }
   };
 
-  // The Scorecard: up from the bottom like the comments (wide, beside the
+  // The Porchcard: up from the bottom like the comments (wide, beside the
   // photo, in the white panel's place), or turned to from them in place.
   const openScorecard = (key: string, section?: "about") => {
     const home = frame.current?.querySelector(`[data-home="${CSS.escape(key)}"]`);
@@ -660,7 +660,7 @@ function Feed({
       setSheet({ kind: "scorecard", key, section, photoFoot: home ? photoFootIn(home, frame.current!) : undefined }),
     );
   };
-  // From the comments to the Scorecard, or back: the same sheet, in place.
+  // From the comments to the Porchcard, or back: the same sheet, in place.
   const switchSheet = (key: string, kind: "comments" | "scorecard") =>
     setSheet((now) => (now && now.key === key ? { kind, key, photoFoot: now.photoFoot } : now));
 
@@ -700,8 +700,8 @@ function Feed({
   };
 
   const sheetPost = sheet && posts.find((post) => post.listing.ListingKey === sheet.key);
-  // You, as you are now on the home the sheet is about, for its Scorecard:
-  // the same object until something of yours changes, so the Scorecard isn't
+  // You, as you are now on the home the sheet is about, for its Porchcard:
+  // the same object until something of yours changes, so the Porchcard isn't
   // worked out again each time anything else on the page does.
   const sheetKey = sheetPost?.listing.ListingKey;
   const sheetState = sheetKey ? reactions.states[sheetKey] : undefined;
@@ -717,17 +717,17 @@ function Feed({
         : undefined,
     [sheetPost, sheetState, sheetYours],
   );
-  // On an agent's link with a few homes, the others, for the Scorecard to set
+  // On an agent's link with a few homes, the others, for the Porchcard to set
   // this one beside.
   const sheetSiblings = useMemo(
     () => (mode === "share" && sheetPost && posts.length > 1 ? posts.filter((post) => post !== sheetPost) : undefined),
     [mode, posts, sheetPost],
   );
-  // A home's own button on the rail (the Scorecard's, More's), for the
+  // A home's own button on the rail (the Porchcard's, More's), for the
   // keyboard to go back to.
   const railButton = (key: string, which: "scorecard" | "more") =>
     visibleIn(frame.current, `[data-home="${CSS.escape(key)}"] [data-follow="${which}"]`);
-  // The homes you've had your say on, as the Scorecard counts it: liked or
+  // The homes you've had your say on, as the Porchcard counts it: liked or
   // passed on, something in it liked or not, or a word about it.
   const reviewed = posts.filter((post) => {
     const key = post.listing.ListingKey;
@@ -931,8 +931,8 @@ function Feed({
           setSheet(null);
           setGoToSpot((current) => ({ key, spot, n: (current?.n ?? 0) + 1 }));
         }}
-        // From the Scorecard: to the spot on its photo, with its card open
-        // (beside the photo, the Scorecard stays, and the keyboard comes back
+        // From the Porchcard: to the spot on its photo, with its card open
+        // (beside the photo, the Porchcard stays, and the keyboard comes back
         // to the row after). A fact's card opens in the words the sheet is
         // over (or beside the photo, in the white panel it stands in for),
         // so for a fact it goes first, at any width. Gone first, too, so the
@@ -961,8 +961,8 @@ function Feed({
         agentName={agentName}
         // Side by side, up from the foot of the white panel, like the comments.
         anchor={wide ? dock : frame}
-        // Turned to from the Scorecard ("Change your take"), the keyboard
-        // goes back to the Scorecard's button on the rail.
+        // Turned to from the Porchcard ("Change your take"), the keyboard
+        // goes back to the Porchcard's button on the rail.
         returnTo={() => (sheetPost ? railButton(sheetPost.listing.ListingKey, "scorecard") : null)}
         onPass={() => sheetPost && reactions.choose(sheetPost.listing.ListingKey, "dislike")}
         onToggle={(aspect) => sheetPost && reactions.toggle(sheetPost.listing.ListingKey, aspect)}
@@ -1129,16 +1129,16 @@ function Panel({
   onCommentsAbout: (spot: SpotRef) => void;
   // The comments, on one of them.
   onCommentAt: (commentId: string) => void;
-  // Its Scorecard (at "About this home", from the description's "more").
+  // Its Porchcard (at "About this home", from the description's "more").
   onScorecard: (section?: "about") => void;
   // What you've liked and not in its photos and facts just now (likeIds).
   onYours?: (listingKey: string, liked: string[], disliked: string[]) => void;
   // When you last changed your reaction to it here.
   reactedAt?: string;
-  // Its comments (or Scorecard) are open, over the photo: the words and
+  // Its comments (or Porchcard) are open, over the photo: the words and
   // buttons under them step aside.
   covered: boolean;
-  // Its comments (or Scorecard) are open in the white panel's place (wide):
+  // Its comments (or Porchcard) are open in the white panel's place (wide):
   // what's under them is out of reach.
   docked: boolean;
   // The comments about one spot are open (over or beside the photo): its card
@@ -1150,7 +1150,7 @@ function Panel({
   // Just the photo, until "Show everything" or another home.
   bare: boolean;
   onShowEverything: () => void;
-  // Go to this spot, from a comment about it (or the Scorecard).
+  // Go to this spot, from a comment about it (or the Porchcard).
   goToSpot: { spot: SpotRef; n: number; keyboard?: boolean; back?: HTMLElement | null } | null;
   // Just a look (beside the map): a tap anywhere opens the home full screen.
   onOpen?: () => void;
@@ -1276,7 +1276,7 @@ function Panel({
   const block = useMemo(() => stageBlock(listing.Media), [listing.Media]);
   if (near && !loaded) setLoaded(true);
   const photos = usePhotoLikes(listing.ListingKey, post.photoLikes);
-  // The Scorecard (outside the home) counts what you've just done here.
+  // The Porchcard (outside the home) counts what you've just done here.
   const { ids: yourIds } = photos;
   const tell = useRef(onYours);
   useLayoutEffect(() => {
@@ -1311,7 +1311,7 @@ function Panel({
   // Side by side on a wide screen (never beside the map, just a look there).
   const split = SPLIT_WIDE && !onOpen;
   // The whole description opens where it is (side by side, in the panel;
-  // before that, wide, over the photo); on a phone, in the Scorecard.
+  // before that, wide, over the photo); on a phone, in the Porchcard.
   const inPlace = (split && wide) || (!SPLIT_WIDE && !narrow);
   // Likes on things in a photo, for the strip of photos.
   const likesIn = (shown: ListingMedia) =>
@@ -1488,7 +1488,7 @@ function Panel({
   }, [picked]);
   // A card opened from the line, closed: the keyboard goes back to the line
   // (unless it's gone somewhere else meanwhile). One opened from the
-  // Scorecard goes back there: its row, or (the sheet gone) its button on
+  // Porchcard goes back there: its row, or (the sheet gone) its button on
   // the rail, as soon as that's back in view. One opened with a key on a
   // fact, back to the fact.
   const lastPicked = useRef(picked);
@@ -1850,7 +1850,7 @@ function Panel({
                       }
                 }
                 open={more}
-                // On a phone, the rest of it is in the Scorecard, under
+                // On a phone, the rest of it is in the Porchcard, under
                 // "About this home"; side by side, it opens in the panel.
                 inPlace={inPlace}
                 onToggle={onOpen ? undefined : inPlace ? () => setMore(!more) : () => onScorecard("about")}
@@ -2072,7 +2072,7 @@ function RailButton({
 type Thing = { tag: string; liked: boolean; count: number; toggle: () => void };
 
 // Down the right, in reach of a thumb, bottom up from just over the comment
-// bar: like, comments, the Scorecard, share (or invite, or send), more. Each
+// bar: like, comments, the Porchcard, share (or invite, or send), more. Each
 // keeps its label.
 function Rail({
   address,
@@ -2140,7 +2140,7 @@ function Rail({
       >
         <MessageCircle size={28} {...icon} />
       </RailButton>
-      <RailButton name="Scorecard" label="Scorecard" onClick={onScorecard} follow="scorecard">
+      <RailButton name="Porchcard" label="Porchcard" onClick={onScorecard} follow="scorecard">
         <ClipboardList size={26} {...icon} />
       </RailButton>
       {/* For a moment after each send, while the link for the next is made,
@@ -2198,7 +2198,7 @@ function Facts({
   items: TimelineItem[];
   trending: boolean;
   // The open one was asked for with a key (on the fact, or from the
-  // Scorecard): its card takes the keyboard.
+  // Porchcard): its card takes the keyboard.
   keyboard?: boolean;
   // Null where they're just to read (beside the map).
   photos: Photos | null;
@@ -2490,7 +2490,7 @@ function FactButton({
 
 // Side by side, everything there is to do with the home, in one row at the
 // panel's foot, just over the comment box: like it, the comments, the
-// Scorecard, then share (or invite, or send) and more. (On a phone these run
+// Porchcard, then share (or invite, or send) and more. (On a phone these run
 // down the rail instead, and this row isn't there.) The same names, so the
 // keyboard and screen readers meet the same buttons either way.
 function PanelActions({
@@ -2541,9 +2541,9 @@ function PanelActions({
         <MessageCircle aria-hidden size={21} />
         {comments > 0 && <span className="tabular-nums">{countLabel(comments)}</span>}
       </button>
-      <button type="button" aria-label="Scorecard" data-follow="scorecard" onClick={onScorecard} className={action}>
+      <button type="button" aria-label="Porchcard" data-follow="scorecard" onClick={onScorecard} className={action}>
         <ClipboardList aria-hidden size={20} />
-        Scorecard
+        Porchcard
       </button>
       <span className="ml-auto" />
       {onShare && (shareAs === "send" || sending) && (
@@ -2587,7 +2587,7 @@ function PanelActions({
 }
 
 // What the home is, beyond the price, beds, baths and size, side by side in
-// the panel: the details that used to be down in the Scorecard.
+// the panel: the details that used to be down in the Porchcard.
 function HomeDetails({
   listing,
   hint,
@@ -2624,7 +2624,7 @@ function HomeDetails({
 // Two lines of the description (or, on an agent's link, their greeting and
 // note, then the description on a line of its own), then "… more" right after
 // the last word that fits, a fingertip to tap. On a phone it opens the
-// Scorecard at "About this home", where all of it is; side by side, it reads
+// Porchcard at "About this home", where all of it is; side by side, it reads
 // it all in place, and "less" puts it away (one button, which stays where the
 // keyboard is).
 function Caption({
@@ -2786,7 +2786,7 @@ function captionFit(row: HTMLElement, box: HTMLElement, text: string) {
 
 const NO_ITEMS: FeedPost["timeline"] = [];
 
-// The comments and the Scorecard: one sheet, which turns from one to the
+// The comments and the Porchcard: one sheet, which turns from one to the
 // other in place (on a phone, from a link in each; beside the photo, tabs).
 function HomeSheet({
   post,
@@ -2820,7 +2820,7 @@ function HomeSheet({
   spot?: SpotRef;
   // Opened on this comment: if it's a reply, its replies show.
   opened?: string;
-  // The Scorecard, opened at this part of it.
+  // The Porchcard, opened at this part of it.
   section?: "about";
   mode: "public" | "share";
   agentName?: string;
@@ -2878,7 +2878,7 @@ function HomeSheet({
     seen.current = { thread, n: items.length };
   }, [items, thread]);
 
-  // The Scorecard opens where you left it on this home (while the page is
+  // The Porchcard opens where you left it on this home (while the page is
   // open), or at the part asked for; the comments, at the top.
   const kept = useRef(new Map<string, number>());
   useLayoutEffect(() => {
@@ -2902,10 +2902,10 @@ function HomeSheet({
     onClose();
   };
 
-  // Beside the photo: "Comments 9 | Scorecard", arrows move between them.
+  // Beside the photo: "Comments 9 | Porchcard", arrows move between them.
   const tab = (which: "comments" | "scorecard") => `${tabsId}-${which}`;
   const tabs = tabbed && key && (
-    <div role="tablist" aria-label="Comments and scorecard" className="flex gap-1">
+    <div role="tablist" aria-label="Comments and Porchcard" className="flex gap-1">
       {(["comments", "scorecard"] as const).map((which) => {
         const selected = kind === which;
         return (
@@ -2931,7 +2931,7 @@ function HomeSheet({
               selected ? "bg-ink text-white" : "text-muted hover:bg-stone-100 hover:text-ink",
             )}
           >
-            {which === "comments" ? "Comments" : "Scorecard"}
+            {which === "comments" ? "Comments" : "Porchcard"}
             {which === "comments" && comments > 0 && (
               <span className={cn("tabular-nums", selected ? "text-white/80" : "text-muted")}>{comments.toLocaleString("en-US")}</span>
             )}
@@ -2945,10 +2945,10 @@ function HomeSheet({
     <Sheet
       open={Boolean(post)}
       onClose={close}
-      label={scorecard ? "Scorecard" : "Comments"}
+      label={scorecard ? "Porchcard" : "Comments"}
       title={
         scorecard
-          ? "Scorecard"
+          ? "Porchcard"
           : name
             ? `On ${name}`
             : comments
@@ -2959,12 +2959,12 @@ function HomeSheet({
       anchor={anchor}
       docked={docked}
       bodyRef={body}
-      // All of them, or the Scorecard: up to the photo's foot, and taller by
+      // All of them, or the Porchcard: up to the photo's foot, and taller by
       // dragging. About one spot: just tall enough, so the photo stays in
       // view above it.
       tall={scorecard || !spot}
       detents={(scorecard || !spot) && photoFoot !== undefined ? { minTop: photoFoot } : undefined}
-      // (What's typed in the box stays, over at the Scorecard and back.)
+      // (What's typed in the box stays, over at the Porchcard and back.)
       footerHidden={scorecard}
       footer={
         post && (
@@ -3032,12 +3032,12 @@ function HomeSheet({
                   <button
                     type="button"
                     onClick={() => onSwitch(post.listing.ListingKey, "scorecard")}
-                    aria-label="See the scorecard: what people think of this home"
+                    aria-label="See the Porchcard: what people think of this home"
                     className="-mx-2 flex min-h-11 w-[calc(100%+1rem)] items-center gap-2.5 rounded-xl px-2 py-1 text-left hover:bg-stone-50"
                   >
                     <ClipboardList aria-hidden size={18} className="shrink-0 text-brand" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-body font-semibold leading-5 text-ink">See the scorecard</span>
+                      <span className="block truncate text-body font-semibold leading-5 text-ink">See the Porchcard</span>
                       <span className="block truncate text-meta leading-[18px] text-muted">What people think of this home</span>
                     </span>
                     <ChevronRight aria-hidden size={18} className="shrink-0 text-stone-400" />

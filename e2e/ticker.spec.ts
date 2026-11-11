@@ -225,7 +225,7 @@ test("after three rounds it rests on who liked the home; a photo with more on it
       { timeout: 60_000, intervals: [0] },
     )
     .toMatch(/liked this$/);
-  await expect(lineOf(home)).toHaveAccessibleName(/liked this\. See the scorecard\.$/);
+  await expect(lineOf(home)).toHaveAccessibleName(/liked this\. See the Porchcard\.$/);
   await expect(activityOf(home).getByRole("button", { name: "Play activity" })).toBeVisible();
   await expect(home.locator("[data-spot-highlight]")).toHaveCount(0);
 
@@ -263,7 +263,7 @@ test("side by side too, after its rounds it rests on who liked the home", async 
     )
     .toBe(1);
   await expect(activityOf(home)).toContainText("liked this");
-  await expect(lineOf(home)).toHaveAccessibleName(/liked this\. See the scorecard\.$/);
+  await expect(lineOf(home)).toHaveAccessibleName(/liked this\. See the Porchcard\.$/);
 });
 
 test("a pointer on the line holds it; a card open on the photo holds it, and once it's gone, it goes on", async ({ browser }) => {
