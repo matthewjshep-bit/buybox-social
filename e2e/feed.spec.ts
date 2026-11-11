@@ -157,7 +157,7 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   // and there's a page for agents.
   const anon = await (await browser.newContext()).newPage();
   await anon.goto("/");
-  await expect(anon.getByRole("heading", { level: 1 })).toHaveText("Every home has a conversation.");
+  await expect(anon.getByRole("heading", { level: 1 })).toHaveText("The social way to shop for homes.");
   await expect(anon.getByRole("article").first()).toBeAttached();
   await expect(anon.getByRole("link", { name: "Sign up", exact: true })).toBeVisible();
   await anon.goto("/for-agents");

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { signInAgent, signUpBuyer } from "./helpers";
 
-// The colour things in the header take (Porchcard's coral, or an agent's own
+// The colour things in the header take (Porchcard blue, or an agent's own
 // on their dashboard): what a swatch of the brand colour comes out as there.
 const background = (page: Page) =>
   page.getByRole("banner").evaluate((el) => {
@@ -160,7 +160,7 @@ test("an agent's dashboard is in their colour, header and all, and named in word
 
   // Anywhere else, the site's own colour.
   await agent.goto("/search");
-  expect(await background(agent)).toBe("rgb(219, 53, 64)");
+  expect(await background(agent)).toBe("rgb(36, 115, 188)");
   await expect(dashboard).not.toHaveAttribute("aria-current");
 
   // A new colour, saved: the logo has it at once, with no reload.

@@ -76,9 +76,12 @@
 
 :root {
   color-scheme: light;
-  /* Porchcard's coral: the logo's heart (#ff4b52), a shade deeper so white
-     words on it read. An agent's own color replaces this on their branded pages. */
-  --brand: #db3540;
+  /* Porchcard blue: the logo's navy (#052747, hue 209°) lifted to a shade that
+     shows on the dark feed as well as on white (4:1 against the dark, 4.9:1
+     for white words on it), and kept clear of the rose of a like, the amber
+     of a pass and the red of an error. An agent's own color replaces this on
+     their branded pages. */
+  --brand: #2473bc;
   --surface: #f6f4ef;
   --ink: #1c1917;
 }

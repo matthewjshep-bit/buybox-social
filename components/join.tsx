@@ -26,14 +26,14 @@ export function JoinIntro({ photo, devMode }: { photo?: ListingMedia; devMode: b
         <div className="mx-auto my-auto flex w-full max-w-5xl flex-col gap-5 px-5 py-3 sm:px-10 md:flex-row md:items-center md:justify-between md:gap-16 short:flex-row short:items-center short:justify-between short:gap-8 short:py-0">
           <div className="md:max-w-md short:min-w-0 short:flex-1">
             <h1 className="text-balance font-display text-4xl leading-[1.05] sm:text-5xl md:text-6xl max-md:compact:text-3xl short:text-3xl">
-              Every home has a conversation.
+              The social way to shop for homes.
             </h1>
             <p className="mt-3 text-balance text-lg leading-snug text-white sm:text-xl md:mt-4 max-md:compact:mt-2 max-md:compact:text-base short:mt-2 short:text-base">
               Share listings with your clients and see exactly what they love.
             </p>
             {/* (The first to go where there's no room for it.) */}
             <p className="mt-3 leading-relaxed text-white/75 sm:text-base md:mt-4 max-md:compact:hidden short:hidden">
-              The social way to shop for homes: react to every room, comment on every detail, and decide together.
+              React to every room, comment on every detail, and decide together.
             </p>
           </div>
           <SignUpForm devMode={devMode} className="w-full md:max-w-sm short:max-w-sm" />

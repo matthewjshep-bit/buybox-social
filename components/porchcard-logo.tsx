@@ -2,12 +2,11 @@ import { cn } from "@/lib/format";
 
 // Porchcard's logo: a house with a heart in it, and the name. Each colour is
 // one shape, drawn even-odd, so the holes in the house, the heart and the
-// letters come out clear. The house and the name take the colour around them
-// (navy on white, white on the dark of the feed); the heart is always coral.
-// Decorative: what it says is said beside it, for screen readers.
+// letters come out clear. All of it, heart included, takes the colour around
+// it: navy on white, white on the dark of the feed. Decorative: what it says
+// is said beside it, for screen readers.
 
 export const PORCHCARD_NAVY = "#052747";
-export const PORCHCARD_CORAL = "#ff4b52";
 
 const HOUSE = "M168,350 L165,358 L166,367 L174,377 L180,380 L189,380 L194,378 L221,355 L224,355 L224,539 L226,548 L232,559 L246,571 L260,576 L553,576 L568,570 L582,556 L588,542 L590,531 L590,360 L591,359 L611,377 L617,380 L626,380 L631,378 L637,373 L641,364 L641,358 L638,350 L570,291 L570,195 L565,188 L558,185 L517,185 L512,187 L506,195 L506,237 L504,238 L422,165 L407,160 L396,161 L387,165 L291,248Z M404,200 L432,223 L552,327 L552,530 L550,535 L544,540 L541,540 L540,541 L355,541 L354,540 L310,541 L309,540 L268,540 L262,535 L262,532 L261,531 L261,324 L277,309Z";
 const HEART = "M338,324 L332,327 L330,329 L329,329 L327,331 L323,333 L310,346 L310,347 L305,353 L299,365 L299,367 L297,371 L297,374 L296,375 L296,379 L295,380 L295,390 L294,391 L295,393 L295,402 L296,403 L296,406 L297,407 L297,409 L298,410 L299,415 L304,425 L306,427 L306,428 L308,430 L310,434 L313,437 L313,438 L318,443 L318,444 L353,479 L354,479 L378,502 L379,502 L391,513 L397,516 L400,516 L401,517 L408,517 L409,516 L413,516 L419,513 L423,509 L424,509 L446,488 L447,488 L458,477 L459,477 L490,446 L490,445 L497,438 L497,437 L500,434 L500,433 L505,427 L512,413 L512,411 L514,407 L514,404 L515,403 L515,399 L516,398 L516,382 L515,381 L515,376 L514,375 L514,372 L513,371 L513,368 L512,367 L512,365 L506,353 L504,351 L504,350 L502,348 L500,344 L489,333 L488,333 L480,327 L474,324 L472,324 L471,323 L469,323 L465,321 L462,321 L461,320 L455,320 L454,319 L444,319 L443,320 L438,320 L437,321 L433,321 L432,322 L427,323 L424,325 L422,325 L418,327 L416,329 L413,330 L407,335 L405,335 L398,329 L386,323 L384,323 L380,321 L377,321 L376,320 L369,320 L368,319 L359,319 L358,320 L351,320 L350,321 L347,321 L346,322 L344,322 L343,323Z M458,359 L459,360 L460,360 L461,361 L462,361 L464,363 L465,363 L474,372 L474,373 L475,374 L475,375 L477,378 L477,380 L478,381 L478,386 L479,387 L479,391 L478,392 L478,396 L477,397 L477,400 L476,401 L476,402 L475,403 L475,404 L474,405 L474,406 L473,407 L473,408 L471,410 L471,411 L468,414 L468,415 L464,419 L464,420 L459,425 L459,426 L436,449 L435,449 L424,460 L423,460 L415,468 L414,468 L409,473 L408,473 L405,476 L404,476 L399,471 L398,471 L389,462 L388,462 L378,452 L377,452 L352,427 L352,426 L346,420 L346,419 L342,415 L342,414 L340,412 L340,411 L338,409 L338,408 L337,407 L337,406 L335,403 L335,401 L334,400 L334,398 L333,397 L333,393 L332,392 L332,387 L333,386 L333,382 L334,381 L334,379 L335,378 L335,376 L336,375 L336,374 L337,373 L337,372 L340,369 L340,368 L342,366 L343,366 L347,362 L348,362 L349,361 L350,361 L351,360 L352,360 L355,358 L358,358 L359,357 L370,357 L371,358 L374,358 L375,359 L376,359 L377,360 L378,360 L379,361 L380,361 L381,362 L382,362 L385,365 L386,365 L399,378 L401,378 L402,379 L409,379 L410,378 L412,378 L414,376 L415,376 L418,373 L418,372 L425,365 L426,365 L429,362 L430,362 L431,361 L432,361 L435,359 L437,359 L438,358 L442,358 L443,357 L450,357 L451,358 L455,358 L456,359Z";
@@ -18,7 +17,7 @@ export function PorchcardMark({ className }: { className?: string }) {
   return (
     <svg aria-hidden viewBox="161 156 484 424" className={cn("shrink-0", className)}>
       <path fill="currentColor" fillRule="evenodd" d={HOUSE} />
-      <path fill={PORCHCARD_CORAL} fillRule="evenodd" d={HEART} />
+      <path fill="currentColor" fillRule="evenodd" d={HEART} />
     </svg>
   );
 }
@@ -28,7 +27,7 @@ export function PorchcardLogo({ className }: { className?: string }) {
   return (
     <svg aria-hidden viewBox="161 156 1857 424" className={cn("shrink-0", className)}>
       <path fill="currentColor" fillRule="evenodd" d={HOUSE} />
-      <path fill={PORCHCARD_CORAL} fillRule="evenodd" d={HEART} />
+      <path fill="currentColor" fillRule="evenodd" d={HEART} />
       <path fill="currentColor" fillRule="evenodd" d={NAME} />
     </svg>
   );
@@ -37,4 +36,4 @@ export function PorchcardLogo({ className }: { className?: string }) {
 // The whole logo as an SVG file's text, in a colour of its own (for pictures
 // made on the server: a home's preview when it's sent).
 export const porchcardLogoSvg = (color: string) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="161 156 1857 424"><path fill="${color}" fill-rule="evenodd" d="${HOUSE}"/><path fill="${PORCHCARD_CORAL}" fill-rule="evenodd" d="${HEART}"/><path fill="${color}" fill-rule="evenodd" d="${NAME}"/></svg>`;
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="161 156 1857 424"><path fill="${color}" fill-rule="evenodd" d="${HOUSE}"/><path fill="${color}" fill-rule="evenodd" d="${HEART}"/><path fill="${color}" fill-rule="evenodd" d="${NAME}"/></svg>`;
