@@ -38,3 +38,33 @@ export const porchcardLogoSvg = (color: string) =>
 
 // The logo's width for each unit of height.
 export const PORCHCARD_LOGO_RATIO = 1896 / 313;
+
+// The card as a line icon, to sit among the others (a heart, a speech bubble):
+// the Porchcard's own button. Drawn like those (24 square, round 2-wide
+// strokes), so it takes their sizes, colour and props.
+export function PorchcardIcon({
+  size = 24,
+  strokeWidth = 2,
+  ...props
+}: Omit<React.SVGProps<SVGSVGElement>, "ref"> & { size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <path d="M6 4.5H18.5L21.4 18.5" />
+      <path d="M6 4.5L8.6 18.5" />
+      <path d="M6 4.5L2.4 16H8.1" />
+      <path d="M2 19.5H22" />
+      <path d="M11 9H16.6M11 12.5H14.6" />
+    </svg>
+  );
+}

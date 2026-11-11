@@ -428,16 +428,16 @@ export async function likePhotoInShare(
   if (!actor) return fail("Please sign up or sign in first.");
   const spot = await findSpot(listingKey, mediaKey, tag);
   if (!spot) return fail("That photo isn't there anymore.");
-  // The agent's first pass: what they like, for everyone on the link to see.
-  // Anything that isn't right is said in a note.
+  // The agent's first pass: what they like or don't, for everyone on the link
+  // to see. A like replaces a dislike, and the other way around.
   if ("preview" in actor) {
-    if (reaction === "dislike") return fail("Leave a note to say what's not right with it.");
     const shareId = actor.found.share.id;
-    if (reaction === "like") {
+    if (reaction) {
       await sql`
-        insert into share_agent_likes (share_id, listing_key, media_key, tag)
-        values (${shareId}, ${listingKey}, ${mediaKey}, ${tag})
-        on conflict do nothing`;
+        insert into share_agent_likes (share_id, listing_key, media_key, tag, reaction)
+        values (${shareId}, ${listingKey}, ${mediaKey}, ${tag}, ${reaction})
+        on conflict (share_id, listing_key, media_key, tag)
+        do update set reaction = excluded.reaction, created_at = now()`;
     } else {
       await sql`
         delete from share_agent_likes

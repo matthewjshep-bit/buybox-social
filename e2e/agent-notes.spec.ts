@@ -6,7 +6,7 @@ const withTour = async (page: Page) => {
   await page.context().addInitScript(() => localStorage.setItem("buybox:tour:test", "1"));
 };
 
-test("an agent's take before they send: a note and a like on the price, which their client reads as theirs, first", async ({
+test("an agent's take before they send: a note and a like on the price, a dislike on the bedrooms, which their client reads as theirs, first", async ({
   browser,
 }) => {
   test.setTimeout(90_000);
@@ -25,13 +25,13 @@ test("an agent's take before they send: a note and a like on the price, which th
   await expect(home).toBeInViewport({ ratio: 0.9 });
   await expect(agent.getByRole("banner")).toContainText("Your notes for Wren");
 
-  // The price: a note, then a like. No dislike: what isn't right goes in a note.
+  // The price: a note, then a like. (A dislike is there too, as for anyone.)
   const price = home.locator('[data-fact="Price"]');
   await price.click();
   const card = home.getByRole("group", { name: "Price" });
   await expect(card).toBeVisible();
   await settle(card);
-  await expect(card.getByRole("button", { name: /^Dislike/ })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: /^Dislike the price/ })).toBeVisible();
   await card.getByRole("button", { name: /^Add a note on the price/ }).click();
   const sheet = agent.getByRole("dialog", { name: "Comments" });
   await expect(sheet.getByText("Wren sees your notes, and anyone on this link.")).toBeVisible();
@@ -49,12 +49,23 @@ test("an agent's take before they send: a note and a like on the price, which th
   await expect(like).toHaveAttribute("aria-pressed", "true");
   // Their face is on it now, for them too.
   await expect(price).toHaveAccessibleName(/, your note, 1 like$/);
+  await agent.keyboard.press("Escape");
+
+  // And what isn't right, with a dislike: the bedrooms.
+  const beds = home.locator('[data-fact="Bedrooms"]');
+  await beds.click();
+  const bedsCard = home.getByRole("group", { name: "Bedrooms" });
+  await settle(bedsCard);
+  const dislike = bedsCard.getByRole("button", { name: /^Dislike the bedrooms/ });
+  await dislike.click();
+  await expect(dislike).toHaveAttribute("aria-pressed", "true");
+  await expect(dislike).toHaveAccessibleName("Dislike the bedrooms, 1 dislike");
 
   // Done: back to the link's page, which says the take is on it.
   await agent.keyboard.press("Escape");
   await agent.getByRole("banner").getByRole("link", { name: "Done" }).click();
   await agent.waitForURL(dashboardUrl);
-  await expect(agent.getByText("1 note and 1 like, for Wren to see.")).toBeVisible();
+  await expect(agent.getByText("1 note, 1 like and 1 dislike, for Wren to see.")).toBeVisible();
   await expect(agent.locator("[data-your-take]")).toHaveCount(0);
 
   // Wren opens it: the agent's words lead the line on the photo, with their
@@ -80,6 +91,14 @@ test("an agent's take before they send: a note and a like on the price, which th
   // the price, none on the home, and Wren's own heart is still hers to give.
   await expect(herCard.getByRole("button", { name: /^Like the price/ })).toHaveAccessibleName("Like the price");
   await expect(herCard.getByRole("button", { name: /^Like the price/ })).toHaveAttribute("aria-pressed", "false");
+  await wren.keyboard.press("Escape");
+  // The bedrooms: the agent doesn't like them, said as theirs, and Wren's
+  // own dislike is still hers to give.
+  await hers.locator('[data-fact="Bedrooms"]').click();
+  const herBeds = hers.getByRole("group", { name: "Bedrooms" });
+  await expect(herBeds.locator("[data-agent-take]")).toContainText("Doesn't like this");
+  await expect(herBeds.getByRole("button", { name: /^Dislike the bedrooms/ })).toHaveAccessibleName("Dislike the bedrooms");
+  await expect(herBeds.getByRole("button", { name: /^Dislike the bedrooms/ })).toHaveAttribute("aria-pressed", "false");
   await wren.keyboard.press("Escape");
   await expect(heartOf(hers)).toHaveAttribute("aria-pressed", "false");
   await expect(heartOf(hers)).toHaveAccessibleName(/^Like 1204 Quillan St SE$/);

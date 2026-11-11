@@ -1,10 +1,11 @@
 "use client";
 
-import { Heart } from "lucide-react";
+import { Heart, ThumbsDown } from "lucide-react";
 import { createContext, useContext } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { cn } from "@/lib/format";
 import type { ShareAgent } from "@/lib/shares";
+import type { SpotReaction } from "@/lib/photos";
 import type { TimelineComment, TimelineItem } from "@/lib/timeline";
 
 // An agent's first pass on the homes they send: before (or after) the link
@@ -29,12 +30,17 @@ export const useNotesMode = () => useContext(LinkAgentContext)?.notes ?? null;
 
 const agentFirst = (agent: LinkAgent["agent"]) => agent.full_name.split(" ")[0] || "Your agent";
 
-// Whether the agent liked one thing: a fact ("Price") or a spot in a photo.
-export const agentLiked = (items: TimelineItem[], mediaKey: string, tag: string) =>
-  items.some(
-    (item) =>
-      item.kind === "reaction" && item.isAgent && item.photos.some((p) => p.mediaKey === mediaKey && p.spot === tag),
-  );
+// Whether the agent liked one thing, or didn't: a fact ("Price") or a spot
+// in a photo.
+export function agentReactionOn(items: TimelineItem[], mediaKey: string, tag: string): SpotReaction {
+  const on = (p: { mediaKey?: string; spot?: string }) => p.mediaKey === mediaKey && p.spot === tag;
+  for (const item of items) {
+    if (item.kind !== "reaction" || !item.isAgent) continue;
+    if (item.photos.some(on)) return "like";
+    if (item.photoDislikes.some(on)) return "dislike";
+  }
+  return null;
+}
 
 // The agent's notes on one thing.
 export const agentNotesOn = (items: TimelineItem[], mediaKey: string, tag: string) =>
@@ -43,9 +49,9 @@ export const agentNotesOn = (items: TimelineItem[], mediaKey: string, tag: strin
       item.kind === "comment" && item.isAgent && !item.parentId && item.spot?.mediaKey === mediaKey && item.spot.tag === tag,
   );
 
-// Whether the agent liked or said anything about one thing.
+// Whether the agent liked, disliked or said anything about one thing.
 export const agentMarked = (items: TimelineItem[], mediaKey: string, tag: string) =>
-  agentLiked(items, mediaKey, tag) || agentNotesOn(items, mediaKey, tag).length > 0;
+  agentReactionOn(items, mediaKey, tag) !== null || agentNotesOn(items, mediaKey, tag).length > 0;
 
 // The agent's face on a fact they liked or wrote about: small, at the chip's
 // end, so what they picked out can be seen before anything is tapped.
@@ -73,20 +79,26 @@ export function useAgentMarkWords() {
 // At the top of a fact's or a spot's card: what the agent thought of it, in
 // their own words, with their face. To the agent on their own link, their own
 // notes, the way their client will read them.
-export function AgentTake({ notes, liked }: { notes: TimelineComment[]; liked: boolean }) {
+export function AgentTake({ notes, reaction }: { notes: TimelineComment[]; reaction: SpotReaction }) {
   const link = useLinkAgent();
   const mine = Boolean(link?.notes);
-  // (The agent's own like shows on the Like button below.)
-  if (!link || (notes.length === 0 && (mine || !liked))) return null;
+  // (The agent's own like or dislike shows on the buttons below.)
+  if (!link || (notes.length === 0 && (mine || !reaction))) return null;
   return (
     <div data-agent-take className="mt-1 rounded-xl bg-stone-50 px-3 py-2.5 ring-1 ring-inset ring-stone-200/80">
       <p className="flex items-center gap-2 text-meta font-semibold text-stone-700">
         <AgentAvatar agent={link.agent} size={22} decorative light className="text-[9px]" />
         <span className="min-w-0 truncate">{mine ? "Your note" : `${agentFirst(link.agent)}, your agent`}</span>
-        {liked && !mine && (
+        {reaction === "like" && !mine && (
           <span className="ml-auto flex shrink-0 items-center gap-1 text-rose-700">
             <Heart aria-hidden size={12} className="fill-rose-500 text-rose-500" />
             Likes this
+          </span>
+        )}
+        {reaction === "dislike" && !mine && (
+          <span className="ml-auto flex shrink-0 items-center gap-1 text-amber-800">
+            <ThumbsDown aria-hidden size={12} className="fill-amber-200" />
+            Doesn&apos;t like this
           </span>
         )}
       </p>

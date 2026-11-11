@@ -285,7 +285,7 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
   // Who someone is on this link, without their id: the same on every load.
   const personKey = (who: string) => sharePersonKey(shareId, who);
 
-  const [comments, reactions, photos, dislikes, agentLikes] = await Promise.all([
+  const [comments, reactions, photos, dislikes, agentMarks] = await Promise.all([
     sql<
       {
         id: string;
@@ -329,16 +329,20 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
         pd.media_key, pd.tag, pd.created_at as at
       from photo_dislikes pd join participants p on p.id = pd.participant_id
       where pd.share_id = ${shareId}`,
-    sql<PhotoRow[]>`
-      select al.listing_key, ${AGENT}::text as who, a.full_name as name, al.media_key, al.tag, al.created_at as at
+    sql<(PhotoRow & { reaction: "like" | "dislike" })[]>`
+      select al.listing_key, ${AGENT}::text as who, a.full_name as name, al.media_key, al.tag,
+        al.created_at as at, al.reaction
       from share_agent_likes al join shares s on s.id = al.share_id join accounts a on a.id = s.agent_id
       where al.share_id = ${shareId}`,
   ]);
+  // The agent's likes and dislikes, among everyone's.
+  const allLikes = [...photos, ...agentMarks.filter((m) => m.reaction === "like")];
+  const allDislikes = [...dislikes, ...agentMarks.filter((m) => m.reaction === "dislike")];
 
   for (const listing of listings) {
     const key = listing.ListingKey;
     const ids = new Map<string, string>();
-    const people = reactionItems(listing, reactions, [...photos, ...agentLikes], dislikes, {
+    const people = reactionItems(listing, reactions, allLikes, allDislikes, {
       me,
       anonymous: () => false,
       personKey,
@@ -395,7 +399,7 @@ export async function getPublicPhotoLikes(keys: string[], visitorId: string | nu
 }
 
 // On an agent's link: only the likes and dislikes of people on that link. The
-// agent's own likes count only for the agent (`agent`), as theirs.
+// agent's own likes and dislikes count only for the agent (`agent`), as theirs.
 export async function getSharePhotoLikes(
   shareId: string,
   keys: string[],
@@ -412,7 +416,7 @@ export async function getSharePhotoLikes(
       select listing_key, media_key, tag, true, participant_id = ${participantId}::uuid
       from photo_dislikes where share_id = ${shareId}
       union all
-      select listing_key, media_key, tag, false, true
+      select listing_key, media_key, tag, reaction = 'dislike', true
       from share_agent_likes where share_id = ${shareId} and ${agent}) x
     group by listing_key, media_key, tag, disliked`;
   return collect(keys, rows);

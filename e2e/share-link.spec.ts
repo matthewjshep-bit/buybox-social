@@ -234,9 +234,9 @@ test("the agent's own Preview is their first pass: what they like and say there 
   await expect(home.getByRole("alert")).toHaveText(
     "The heart is for your client. Tap the price, or anything in a photo, to leave a note.",
   );
-  // A like in a photo, and a note: the agent's own. (What isn't right goes in a note.)
+  // A like in a photo, and a note: the agent's own. (A dislike is there too.)
   const card = await pick(home, "the red front door");
-  await expect(card.getByRole("button", { name: /^Dislike/ })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: /^Dislike the red front door/ })).toBeVisible();
   const door = card.getByRole("button", { name: /^Like the red front door(,|$)/ });
   await door.click();
   await expect(door).toHaveAttribute("aria-pressed", "true");

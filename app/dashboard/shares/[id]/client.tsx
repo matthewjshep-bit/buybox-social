@@ -2,7 +2,6 @@
 
 import {
   Check,
-  ClipboardList,
   Copy,
   ExternalLink,
   Heart,
@@ -33,6 +32,7 @@ import {
 import { flushSync } from "react-dom";
 import { ScorecardBody } from "@/components/scorecard";
 import { Sheet } from "@/components/sheet";
+import { PorchcardIcon } from "@/components/porchcard-logo";
 import type { FeedPost } from "@/lib/feed";
 import { cn } from "@/lib/format";
 import { button, card, field } from "@/lib/ui";
@@ -929,7 +929,7 @@ export function ScorecardButton({ listingKey, address }: { listingKey: string; a
       onClick={() => open(listingKey)}
       className={button({ kind: "secondary" })}
     >
-      <ClipboardList aria-hidden size={16} />
+      <PorchcardIcon aria-hidden size={16} />
       Porchcard
       <span className="sr-only"> for {address}</span>
     </button>

@@ -5,7 +5,6 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
-  ClipboardList,
   Ellipsis,
   Eye,
   Flame,
@@ -39,7 +38,7 @@ import { flushSync } from "react-dom";
 import { loadReel, recordView, reloadReelHome } from "@/app/homes/actions";
 import { ActivityTicker, useTicker } from "@/components/activity-ticker";
 import { AspectChips, useReactions } from "@/components/like-pass";
-import { AgentMark, agentLiked, agentMarked, useAgentMarkWords, useNotesMode } from "@/components/agent-notes";
+import { AgentMark, agentMarked, agentReactionOn, useAgentMarkWords, useNotesMode } from "@/components/agent-notes";
 import {
   CommentComposer,
   NameGate,
@@ -64,6 +63,7 @@ import { ScorecardBody } from "@/components/scorecard";
 import { Sheet } from "@/components/sheet";
 import { NudgeHint, useNudges, type Nudge } from "@/components/walkthrough";
 import { Tour, tourSteps, useTour, type TourKind } from "@/components/tour";
+import { PorchcardIcon } from "@/components/porchcard-logo";
 import type { FeedPost } from "@/lib/feed";
 import { cn, formatPrice } from "@/lib/format";
 import { isSampleListing, type Listing, type ListingMedia } from "@/lib/listings/types";
@@ -2141,7 +2141,7 @@ function Rail({
         <MessageCircle size={28} {...icon} />
       </RailButton>
       <RailButton name="Porchcard" label="Porchcard" onClick={onScorecard} follow="scorecard">
-        <ClipboardList size={26} {...icon} />
+        <PorchcardIcon size={26} {...icon} />
       </RailButton>
       {/* For a moment after each send, while the link for the next is made,
           it waits, turning, and says so (the same button, so the keyboard
@@ -2302,7 +2302,7 @@ function Facts({
           label={open}
           phrase={tagPhrase(open)}
           comments={said(open)}
-          agentLiked={agentLiked(items, FACTS, open)}
+          agentReaction={agentReactionOn(items, FACTS, open)}
           photos={photos}
           inline={fine}
           keyboard={keyboard}
@@ -2542,7 +2542,7 @@ function PanelActions({
         {comments > 0 && <span className="tabular-nums">{countLabel(comments)}</span>}
       </button>
       <button type="button" aria-label="Porchcard" data-follow="scorecard" onClick={onScorecard} className={action}>
-        <ClipboardList aria-hidden size={20} />
+        <PorchcardIcon aria-hidden size={20} />
         Porchcard
       </button>
       <span className="ml-auto" />
@@ -3035,7 +3035,7 @@ function HomeSheet({
                     aria-label="See the Porchcard: what people think of this home"
                     className="-mx-2 flex min-h-11 w-[calc(100%+1rem)] items-center gap-2.5 rounded-xl px-2 py-1 text-left hover:bg-stone-50"
                   >
-                    <ClipboardList aria-hidden size={18} className="shrink-0 text-brand" />
+                    <PorchcardIcon aria-hidden size={18} className="shrink-0 text-brand" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-body font-semibold leading-5 text-ink">See the Porchcard</span>
                       <span className="block truncate text-meta leading-[18px] text-muted">What people think of this home</span>

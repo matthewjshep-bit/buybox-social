@@ -82,12 +82,13 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
       from (${clientActivity()}) a where a.share_id = ${id}`,
     // Whoever was told only they and the agent see what they say on it.
     confidantOf(share.id),
-    // The agent's own first pass on it: their notes and likes.
-    sql<{ notes: number; likes: number }[]>`
+    // The agent's own first pass on it: their notes, likes and dislikes.
+    sql<{ notes: number; likes: number; dislikes: number }[]>`
       select
         (select count(*)::int from comments
           where share_id = ${id} and agent_id is not null and parent_id is null and reply_to_participant is null) as notes,
-        (select count(*)::int from share_agent_likes where share_id = ${id}) as likes`,
+        (select count(*)::int from share_agent_likes where share_id = ${id} and reaction = 'like') as likes,
+        (select count(*)::int from share_agent_likes where share_id = ${id} and reaction = 'dislike') as dislikes`,
   ]);
   const active = listings.filter((l) => !l.removedAt);
   const removed = listings.filter((l) => l.removedAt);
@@ -179,6 +180,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
                   who={invitees.length === 1 ? invitees[0].first_name : share.client_name || "your client"}
                   notes={take.notes}
                   likes={take.likes}
+                  dislikes={take.dislikes}
                   homes={active.length}
                 />
               )}
@@ -286,8 +288,8 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
   );
 }
 
-// The agent's first pass, before the link goes out (or after): their notes
-// and likes on the price, a room, anything, which everyone on the link sees
+// The agent's first pass, before the link goes out (or after): their notes,
+// likes and dislikes on the price, a room, anything, which everyone on the link sees
 // as theirs. Optional, so asked for, not required; once there, a line to add
 // more. It opens the link as their client sees it, to tap things there.
 function YourTake({
@@ -295,18 +297,24 @@ function YourTake({
   who,
   notes,
   likes,
+  dislikes,
   homes,
 }: {
   href: string;
   who: string;
   notes: number;
   likes: number;
+  dislikes: number;
   homes: number;
 }) {
-  if (notes + likes > 0) {
-    const said = [notes > 0 && `${notes} ${notes === 1 ? "note" : "notes"}`, likes > 0 && `${likes} ${likes === 1 ? "like" : "likes"}`]
-      .filter(Boolean)
-      .join(" and ");
+  if (notes + likes + dislikes > 0) {
+    // "1 note", "2 notes and 1 like", "1 note, 2 likes and 1 dislike"
+    const parts = [
+      notes > 0 && `${notes} ${notes === 1 ? "note" : "notes"}`,
+      likes > 0 && `${likes} ${likes === 1 ? "like" : "likes"}`,
+      dislikes > 0 && `${dislikes} ${dislikes === 1 ? "dislike" : "dislikes"}`,
+    ].filter((part): part is string => Boolean(part));
+    const said = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0];
     return (
       <div className={cn(card, "mb-3 flex items-center gap-3 p-3 pl-4")}>
         <Check aria-hidden size={18} className="shrink-0 text-emerald-700" />
