@@ -41,6 +41,8 @@ export default async function Home() {
         prompt={PUBLIC_PROMPT}
         header={<SiteHeader overlay />}
         intro={<JoinIntro photo={free[0]?.listing.Media[0]} devMode={devLoginEnabled} />}
+        // How it works, the first time, once they're on the first home.
+        tour="home"
         end={<JoinGate photo={next} devMode={devLoginEnabled} />}
       />
     );

@@ -15,7 +15,7 @@ export default async function AdminOverview() {
 
   return (
     <>
-      <PageTitle title="Overview">This week on BuyBox Social, and who to get back to.</PageTitle>
+      <PageTitle title="Overview">This week on Porchcard, and who to get back to.</PageTitle>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat

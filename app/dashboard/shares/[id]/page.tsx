@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronRight, Globe, Heart, Plus, Tag, ThumbsDown } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, Globe, Heart, PenLine, Plus, Tag, ThumbsDown } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
@@ -64,7 +64,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
     where id = ${id} and agent_id = ${agent.id}`;
   if (!share) notFound();
 
-  const [listings, thread, people, opens, [{ latest }], confidant] = await Promise.all([
+  const [listings, thread, people, opens, [{ latest }], confidant, [take]] = await Promise.all([
     getShareListings(share.id, { includeRemoved: true }),
     getThread(share.id),
     // Everyone on the package: people the agent added, and anyone who joined
@@ -81,6 +81,12 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
       from (${clientActivity()}) a where a.share_id = ${id}`,
     // Whoever was told only they and the agent see what they say on it.
     confidantOf(share.id),
+    // The agent's own first pass on it: their notes and likes.
+    sql<{ notes: number; likes: number }[]>`
+      select
+        (select count(*)::int from comments
+          where share_id = ${id} and agent_id is not null and parent_id is null and reply_to_participant is null) as notes,
+        (select count(*)::int from share_agent_likes where share_id = ${id}) as likes`,
   ]);
   const active = listings.filter((l) => !l.removedAt);
   const removed = listings.filter((l) => l.removedAt);
@@ -108,7 +114,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
     const timeline = timelines.get(listing.ListingKey) ?? [];
     const likes = timeline.filter(
       (item): item is TimelineReaction =>
-        item.kind === "reaction" && (item.state.reaction === "like" || item.photos.length > 0),
+        item.kind === "reaction" && !item.isAgent && (item.state.reaction === "like" || item.photos.length > 0),
     );
     return {
       listing,
@@ -154,6 +160,16 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
               <h2 id="links-title" className="sr-only">
                 Their links
               </h2>
+              {active.length > 0 && (
+                <YourTake
+                  // Their link, as the first of them will see it.
+                  href={`/s/${invitees[0]?.token ?? share.token}`}
+                  who={invitees.length === 1 ? invitees[0].first_name : share.client_name || "your client"}
+                  notes={take.notes}
+                  likes={take.likes}
+                  homes={active.length}
+                />
+              )}
               <div className="flex flex-col gap-3">
                 {invitees.length > 0 ? (
                   <>
@@ -255,6 +271,66 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
         </div>
       </div>
     </HomeScorecards>
+  );
+}
+
+// The agent's first pass, before the link goes out (or after): their notes
+// and likes on the price, a room, anything, which everyone on the link sees
+// as theirs. Optional, so asked for, not required; once there, a line to add
+// more. It opens the link as their client sees it, to tap things there.
+function YourTake({
+  href,
+  who,
+  notes,
+  likes,
+  homes,
+}: {
+  href: string;
+  who: string;
+  notes: number;
+  likes: number;
+  homes: number;
+}) {
+  if (notes + likes > 0) {
+    const said = [notes > 0 && `${notes} ${notes === 1 ? "note" : "notes"}`, likes > 0 && `${likes} ${likes === 1 ? "like" : "likes"}`]
+      .filter(Boolean)
+      .join(" and ");
+    return (
+      <div className={cn(card, "mb-3 flex items-center gap-3 p-3 pl-4")}>
+        <Check aria-hidden size={18} className="shrink-0 text-emerald-700" />
+        <p className="min-w-0 flex-1 text-sm">
+          <span className="font-semibold">Your take is on it.</span>{" "}
+          <span className="text-muted">
+            {said}, for {who} to see.
+          </span>
+        </p>
+        <Link href={href} className={cn(button({ kind: "secondary" }), "shrink-0")}>
+          <PenLine aria-hidden size={16} /> Add more
+        </Link>
+      </div>
+    );
+  }
+  return (
+    <div data-your-take className={cn(card, "mb-3 p-4")}>
+      <div className="flex items-start gap-3">
+        <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
+          <PenLine size={18} />
+        </span>
+        <div className="min-w-0">
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-semibold">
+            Add your take before you send
+            <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-600">Recommended</span>
+          </p>
+          <p className="mt-1 text-sm text-muted">
+            Tap the price, a room, anything on {homes === 1 ? "the home" : `the ${homes} homes`}, and like it or leave a
+            quick note. {who.charAt(0).toUpperCase() + who.slice(1)} sees them on the link, with your face on each.
+          </p>
+        </div>
+      </div>
+      <Link href={href} className={cn(button({ kind: "primary", block: true }), "mt-3")}>
+        <PenLine aria-hidden size={16} /> Add your notes
+      </Link>
+    </div>
   );
 }
 

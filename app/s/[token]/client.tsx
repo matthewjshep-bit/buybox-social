@@ -2,8 +2,9 @@
 
 import { ArrowDown, Check, Phone, UserPlus } from "lucide-react";
 import Image from "next/image";
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
+import { LinkAgentProvider, type LinkAgent } from "@/components/agent-notes";
 import { ShareHeader } from "@/components/agent-card";
 import { Backdrop } from "@/components/join";
 import { ReelFeed } from "@/components/reel";
@@ -62,6 +63,7 @@ export function ShareReel({
   whoCanSee,
   askToSee,
   preview,
+  notes,
   ...reel
 }: Omit<ReelProps, "mode" | "header" | "onActiveChange" | "onPhotoSeen"> & {
   token: string;
@@ -71,6 +73,9 @@ export function ShareReel({
   askToSee: (listingKey: string) => Promise<AskResult>;
   // The agent's own look at their link, said in the header ("Viewing as Dana").
   preview?: string;
+  // The agent on their own link: their first pass, who it's for, and the way
+  // back to the dashboard.
+  notes?: LinkAgent["notes"];
 }) {
   const homes = reel.initial.map((post) => post.listing);
   // The home on screen, or the last one seen (from the end screen). Before any,
@@ -163,11 +168,18 @@ export function ShareReel({
     seenTimer.current = setTimeout(() => tellSeen.current(), SEEN_AFTER_MS);
   };
 
+  const linkAgent = useMemo(
+    (): LinkAgent => ({ agent: { full_name: agent.full_name, photo_data_url: agent.photo_data_url }, notes: notes ?? null }),
+    [agent.full_name, agent.photo_data_url, notes],
+  );
+
   return (
     <ContactAgent.Provider value={{ open: () => setContact(true), first: agentFirstName(agent.full_name) }}>
+      <LinkAgentProvider value={linkAgent}>
       <ReelFeed
         {...reel}
         mode="share"
+        tour={notes ? "notes" : "link"}
         onActiveChange={(key) => {
           if (key) setSeen(key);
         }}
@@ -188,9 +200,11 @@ export function ShareReel({
             open={contact}
             onOpenChange={setContact}
             preview={preview}
+            notes={notes ?? null}
           />
         }
       />
+      </LinkAgentProvider>
     </ContactAgent.Provider>
   );
 }

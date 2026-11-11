@@ -121,14 +121,14 @@ test("on a desktop, the whole photo sits beside the words; press and hold to see
   await page.mouse.down();
   await expect(price).toBeHidden();
   await expect(home.getByRole("button", { name: /^Comments/ })).toBeHidden();
-  await expect(page.getByRole("link", { name: "BuyBox Social" })).toBeHidden();
+  await expect(page.getByRole("link", { name: "Porchcard" })).toBeHidden();
   // The photo stays just where it was while it's held.
   const held = (await photo.boundingBox())!;
   expect(Math.abs(held.x - box.x)).toBeLessThan(2);
   expect(Math.abs(held.y - box.y)).toBeLessThan(2);
   await page.mouse.up();
   await expect(price).toBeVisible();
-  await expect(page.getByRole("link", { name: "BuyBox Social" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Porchcard" })).toBeVisible();
   await page.waitForTimeout(500);
   await expect(home.getByRole("button", { name: "Close" })).toHaveCount(0);
   // The photo never moved.
@@ -145,16 +145,17 @@ test("on a desktop, comments dock beside the photo", async ({ browser }) => {
   const photo = home.getByRole("img", { name: "Brick-front home with a wide lawn" });
   await expect.poll(async () => (await photo.boundingBox())!.width).toBeGreaterThan(800);
   const before = (await photo.boundingBox())!;
+  const panel = (await home.locator("[data-words]").boundingBox())!;
   await home.getByRole("button", { name: /^Comments/ }).click();
   const sheet = page.getByRole("dialog", { name: "Comments" });
   await expect(sheet).toBeVisible();
-  // In the white panel's place, the photo just as it was.
+  // In the panel's place (level with the photos beside it), the photo just as it was.
   await expect.poll(async () => Math.round((await sheet.boundingBox())!.x)).toBe(1016);
   const box = (await sheet.boundingBox())!;
   expect(Math.abs(box.x + box.width - 1416)).toBeLessThanOrEqual(2);
   expect(Math.abs(box.width - 400)).toBeLessThanOrEqual(2);
-  expect(Math.abs(box.y - 72)).toBeLessThanOrEqual(2);
-  expect(Math.abs(box.y + box.height - 876)).toBeLessThanOrEqual(2);
+  expect(Math.abs(box.y - panel.y)).toBeLessThanOrEqual(2);
+  expect(Math.abs(box.y + box.height - (panel.y + panel.height))).toBeLessThanOrEqual(2);
   const after = (await photo.boundingBox())!;
   for (const key of ["x", "y", "width", "height"] as const) expect(Math.abs(after[key] - before[key])).toBeLessThanOrEqual(2);
   await page.keyboard.press("Escape");

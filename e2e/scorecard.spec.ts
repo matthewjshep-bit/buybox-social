@@ -236,12 +236,12 @@ test("on a desktop, the panel says what the home is and what people said, and th
   await page.keyboard.press("Escape");
   await expect(chat).toBeHidden();
 
-  // The white panel says what the home is, then how many liked it and said
-  // something; the words themselves are in the comments, one tap away.
+  // The panel says what the home is; the words themselves are in the
+  // comments, a tap away on its row of things to do.
   const panel = home.locator("[data-words]");
   await expect(panel.getByText("Price per sq ft")).toBeVisible();
   await expect(panel.getByRole("list", { name: "Comments and likes" })).toHaveCount(0);
-  await panel.getByRole("button", { name: /^\d+ comments?\. Read them$/ }).click();
+  await panel.getByRole("button", { name: /^Comments, \d+$/ }).click();
   const said = page.getByRole("dialog", { name: "Comments" });
   await expect(commentIn(said, "Kofi", "The walk up to the door is lovely.")).toBeVisible();
   await page.keyboard.press("Escape");
@@ -274,8 +274,8 @@ test("on a desktop, the panel says what the home is and what people said, and th
   await page.keyboard.press("Escape");
   await expect(comments).toBeHidden();
 
-  // How many liked it, in the panel, opens it too.
-  await home.getByRole("button", { name: /^\d+ likes?\. See the scorecard$/ }).click();
+  // The panel's own Scorecard button opens it too.
+  await home.locator("[data-words]").getByRole("button", { name: "Scorecard", exact: true }).click();
   await expect(card).toBeVisible();
   // The comments from the keyboard: there, with the keyboard on their tab.
   await card.getByRole("button", { name: /^See the \d+ comments?$/ }).press("Enter");

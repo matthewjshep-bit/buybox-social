@@ -260,14 +260,14 @@ test("a page with no name yet asks for one", async ({ browser }) => {
   await cy.goto("/people/me");
   await cy.waitForURL(/\/people\/[0-9a-f-]{36}$/);
   await expect(cy.getByRole("heading", { level: 1 })).toHaveText("Your page");
-  await expect(cy).toHaveTitle("Your page · BuyBox Social");
+  await expect(cy).toHaveTitle("Your page · Porchcard");
   await expect(cy.locator("main")).not.toContainText("Someone");
 
   // Anyone else sees a buyer.
   const anon = await (await browser.newContext()).newPage();
   await anon.goto(cy.url());
   await expect(anon.getByRole("heading", { level: 1 })).toHaveText("A buyer");
-  await expect(anon).toHaveTitle("A buyer · BuyBox Social");
+  await expect(anon).toHaveTitle("A buyer · Porchcard");
   await expect(anon.locator("main")).not.toContainText("Someone");
   await expect(anon.getByRole("button", { name: "Add your first name" })).toHaveCount(0);
 
@@ -282,7 +282,7 @@ test("a page with no name yet asks for one", async ({ browser }) => {
   await expect(heading).toBeFocused();
   await expect(cy.getByRole("status").filter({ hasText: "Name saved" })).toBeVisible();
   await expect(cy.getByRole("button", { name: "Add your first name" })).toHaveCount(0);
-  await expect(cy).toHaveTitle("Cy · BuyBox Social");
+  await expect(cy).toHaveTitle("Cy · Porchcard");
   await anon.reload();
   await expect(anon.getByRole("heading", { level: 1 })).toHaveText("Cy");
 });
@@ -889,7 +889,7 @@ test("the taste story is written from the data, and what someone switches off st
   await expect(visitor.getByRole("link", { name: "Passed", exact: true })).toHaveCount(0);
   await expect(visitor.locator('meta[name="description"]')).toHaveAttribute(
     "content",
-    "What Nadia likes in homes, on BuyBox Social.",
+    "What Nadia likes in homes, on Porchcard.",
   );
   const counts = visitor.locator("main section").first();
   await expect(counts).toContainText("2 liked · 0 comments");
@@ -992,7 +992,7 @@ test("on your own page you can take back a like or a comment, and nobody else ca
   await pia.getByRole("button", { name: "Share my page" }).click();
   await expect
     .poll(() => pia.evaluate(() => (window as unknown as { shared: unknown[] }).shared))
-    .toEqual([{ title: "Pia on BuyBox Social", url: profileUrl }]);
+    .toEqual([{ title: "Pia on Porchcard", url: profileUrl }]);
 
   // Everything on the card she can take back, by name.
   const options = pia.getByRole("button", { name: `Options for ${HERON}` });

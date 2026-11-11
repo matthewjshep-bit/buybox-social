@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { devLoginEnabled, getCurrentUser } from "@/lib/auth";
 import { LoginForm } from "./form";
 
-export const metadata = { title: "Sign in or sign up · BuyBox Social" };
+export const metadata = { title: "Sign in or sign up · Porchcard" };
 
 export default async function LoginPage({
   searchParams,

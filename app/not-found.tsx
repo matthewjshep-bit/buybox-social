@@ -4,7 +4,7 @@ import { FullScreenOnly } from "@/components/header-gate";
 import { RouteState, routeAction } from "@/components/route-state";
 import { SiteHeader } from "@/components/site-header";
 
-export const metadata = { title: "Page not found · BuyBox Social" };
+export const metadata = { title: "Page not found · Porchcard" };
 
 // Any address that isn't a page here, and anything that's gone (someone who
 // isn't here): back home, or to the map to look around. (Where the feed

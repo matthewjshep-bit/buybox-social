@@ -26,6 +26,9 @@ const ALIGN = "var(--photo-align, 0.5)";
 const FIT = "var(--photo-fit, 0)";
 const MAX_HEIGHT = `(${CLEAR} + (100cqh - ${CLEAR}) * (1 - ${FIT}))`;
 
+// The strip of photos under the photo, side by side.
+const STRIP_HEIGHT = "88px";
+
 const ratioOf = (photo: ListingMedia | undefined) =>
   photo?.ImageWidth && photo?.ImageHeight ? photo.ImageWidth / photo.ImageHeight : null;
 
@@ -51,6 +54,44 @@ export const photoFoot = (photo: ListingMedia | undefined) => {
   const place = photoPlace(photo);
   return `min(${place.top} + ${place.height}, 100cqh - ${BOTTOM})`;
 };
+
+// Side by side, the band above and below the photos (and the panel beside
+// them), for the arrows to the homes before and after.
+export const STAGE_BAND = "2.25rem";
+
+// Side by side: the photos, the strip under them and the panel beside them,
+// as one block, centred up and down between the header and the window's foot,
+// a band above and below it. Where it starts and how far from the foot it
+// ends, as `--photo-top` and `--photo-bottom`, sized by the tallest photo so
+// it stays put from photo to photo. (Worked out from fixed sizes, never from
+// those two, so it can set them.) Twice over: measured from the whole home
+// (`top`, `bottom`), and from inside a photo's own slide, which is just the
+// stage, the width beside the panel (`stageTop`, `stageBottom`). A variable
+// takes its values where it's set, so each place needs its own.
+export function stageBlock(media: ListingMedia[]) {
+  const top = `(var(--stage-top) - 1rem + ${STAGE_BAND})`;
+  // (The strip: its photos' foot is 0.25rem + 80px under the photo's.)
+  const bottom = media.length > 1 ? `(0.25rem + 80px + ${STAGE_BAND})` : `(${STAGE_BAND})`;
+  const ratio = ratioOf(most(media, (a, b) => a < b));
+  const clear = `(100cqh - ${top} - ${bottom})`;
+  const place = (room: string) => {
+    const height = ratio ? `min(${clear}, ${room} / ${ratio})` : clear;
+    const spare = `max(0px, (${clear} - ${height}) / 2)`;
+    return { top: `calc(${top} + ${spare})`, bottom: `calc(${bottom} + ${spare})` };
+  };
+  const whole = place(`(100cqw - ${LEFT} - ${RIGHT})`);
+  const stage = place("100cqw");
+  return { top: whole.top, bottom: whole.bottom, stageTop: stage.top, stageBottom: stage.bottom };
+}
+
+// Side by side: where the photos end on the stage, with the strip under them
+// when there are several (under the tallest, as the strip is placed), so
+// the panel beside them can end level with them, whichever photo shows.
+export function stageFoot(media: ListingMedia[]) {
+  if (media.length <= 1) return `calc(${photoFoot(media[0])})`;
+  // (The strip's own photos, not the room round them: 8px under them.)
+  return `calc(${photoFoot(most(media, (a, b) => a < b))} + 0.25rem + ${STRIP_HEIGHT} - 8px)`;
+}
 
 // How wide a photo shows, for the browser to fetch no bigger a copy than
 // that. At most the window's width; less where the window is wider than the
@@ -286,9 +327,7 @@ export function ReelPhotos({
   // The arrows and labels sit just inside the photo's edges, and clear of a
   // notch or a rounded corner (a phone on its side).
   const edge = `max(${place.left} + 0.5rem, env(safe-area-inset-left) + 0.5rem)`;
-  // (Side by side, the buttons run down the photo's right edge: these sit
-  // just inside them, by `--rail-room`, set only when it's laid out that way.)
-  const farEdge = `max(100cqw - (${place.left}) - ${place.width} + 0.5rem + var(--rail-room, 0px), env(safe-area-inset-right) + 0.5rem)`;
+  const farEdge = `max(100cqw - (${place.left}) - ${place.width} + 0.5rem, env(safe-area-inset-right) + 0.5rem)`;
   // "Kitchen · 3 of 12": what the photo shows, and where it is among them.
   const room = [shown?.ImageOf, media.length > 1 ? `${index + 1} of ${media.length}` : null].filter(Boolean).join(" · ");
   // On a phone on its side the middle of the photo is under the words, so
@@ -307,7 +346,7 @@ export function ReelPhotos({
       onPointerDownCapture={() => setTouched(true)}
       // A press and hold shows the photo alone, not the browser's menu for it.
       onContextMenu={(event) => onHold && event.preventDefault()}
-      className={cn("group/carousel absolute inset-0 [container-type:size]", beside && controls && "split:[--rail-room:4.25rem]")}
+      className="group/carousel absolute inset-0 [container-type:size]"
     >
       {/* What the photos slide across: the whole home on a phone (a swipe
           over the words turns them too); side by side, just the stage, so
@@ -332,7 +371,7 @@ export function ReelPhotos({
               onPointerCancel={release}
               onPointerLeave={release}
               // (Side by side, the slide is the stage: the photo centres in it.)
-              className="group/photo relative h-full w-full shrink-0 cursor-pointer select-none overflow-hidden [container-type:size] [-webkit-touch-callout:none] split:[--photo-left:0px] split:[--photo-right:0px]"
+              className="group/photo relative h-full w-full shrink-0 cursor-pointer select-none overflow-hidden [container-type:size] [-webkit-touch-callout:none] split:[--photo-bottom:var(--stage-photo-bottom)] split:[--photo-left:0px] split:[--photo-right:0px] split:[--photo-top:var(--stage-photo-top)]"
             >
               {/* The same photo, blurred and dimmed, fills the space around it:
                   on a phone, only between the header and the words. Not on
@@ -497,8 +536,8 @@ function Filmstrip({
   }, [index]);
   return (
     <div
-      style={{ top, left }}
-      className={cn("absolute right-(--photo-right,0px) hidden h-[88px] split:block", className)}
+      style={{ top, left, height: STRIP_HEIGHT }}
+      className={cn("absolute right-(--photo-right,0px) hidden split:block", className)}
     >
       <ul
         ref={strip}

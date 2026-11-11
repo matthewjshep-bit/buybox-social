@@ -129,7 +129,7 @@ test("on a desktop, the comment box opens right where you click, and what's said
   await expect(home.locator("[data-spot-highlight]")).toHaveCount(1);
   // The panel says how many; the words are in the comments, on a card with
   // the spot it's about.
-  await home.locator("[data-words]").getByRole("button", { name: /^\d+ comments?\. Read them$/ }).click();
+  await home.locator("[data-words]").getByRole("button", { name: /^Comments, \d+$/ }).click();
   const comments = page.getByRole("dialog", { name: "Comments" });
   const card = comments.getByRole("listitem").filter({ hasText: "These trees make the whole street" });
   await expect(card).toBeVisible();
@@ -144,7 +144,7 @@ test("on a desktop, the comment box opens right where you click, and what's said
   await expect(porch).toBeHidden();
 
   // From the comments, the card's photo goes back to the spot, its card open.
-  await home.locator("[data-words]").getByRole("button", { name: /^\d+ comments?\. Read them$/ }).click();
+  await home.locator("[data-words]").getByRole("button", { name: /^Comments, \d+$/ }).click();
   await card.getByRole("button", { name: /on the photo$/ }).click();
   await expect(comments).toBeHidden();
   await expect(trees).toBeVisible();

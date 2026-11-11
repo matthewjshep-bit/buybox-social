@@ -16,7 +16,7 @@ export default function GlobalError({ error, retry }: { error: unknown; retry: (
   return (
     <html lang="en" className={`${fontVariables} antialiased`}>
       <body className="min-h-dvh font-sans">
-        <title>Something went wrong · BuyBox Social</title>
+        <title>Something went wrong · Porchcard</title>
         <RouteState
           icon={CloudOff}
           title="Something went wrong"

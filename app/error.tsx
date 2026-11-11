@@ -16,7 +16,7 @@ export default function ErrorPage({ error, retry }: { error: unknown; retry: () 
 
   return (
     <>
-      <title>Something went wrong · BuyBox Social</title>
+      <title>Something went wrong · Porchcard</title>
       {/* On a feed page, the feed drew the header; with it gone, the logo at least. */}
       <FullScreenOnly>
         <LogoHeader />

@@ -312,6 +312,11 @@ export function ShareBuilder({
                   ? `Add ${picked.length} ${picked.length === 1 ? "home" : "homes"} to ${addTo.clientName ? `${addTo.clientName}'s` : "their"} link`
                   : `Create link for ${picked.length} ${picked.length === 1 ? "home" : "homes"}`}
           </button>
+          {!addTo && (
+            <p className="-mt-1 text-center text-sm text-muted">
+              Next, add your take: tap anything on {picked.length > 1 ? "each home" : "the home"} to like it or leave a note.
+            </p>
+          )}
         </div>
       </div>
     </>

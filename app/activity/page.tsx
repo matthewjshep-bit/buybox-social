@@ -19,7 +19,7 @@ import { getPublicIdentity } from "@/lib/public";
 import { button, card } from "@/lib/ui";
 import { MarkSeen } from "./mark-seen";
 
-export const metadata = { title: "Activity · BuyBox Social" };
+export const metadata = { title: "Activity · Porchcard" };
 
 // What happened, as a small badge on the person: a rose heart for a like, as
 // everywhere else.

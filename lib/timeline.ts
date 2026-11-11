@@ -58,6 +58,9 @@ export type TimelineReaction = {
   // What a reply to them answers, for the comment box ("like:" and who they
   // are, as the page may know them): none for someone shown without a name.
   replyRef?: string;
+  // On an agent's link: the agent's own likes, from their first pass. Never
+  // one of the clients, so never counted among them.
+  isAgent?: boolean;
 };
 
 // One thing liked (or not) in a photo or the facts: what it reads as ("Front
@@ -107,6 +110,7 @@ function reactionItems(
       ...(options.profiles && who.startsWith("v:") && { profileId: who.slice(2) }),
       ...(options.personKey && { personKey: options.personKey(who) }),
       ...(!anonymous && options.replyRef?.(who) && { replyRef: options.replyRef(who)! }),
+      ...(who === AGENT && { isAgent: true }),
     };
     if (at.toISOString() > item.at) item.at = at.toISOString();
     people.set(who, item);
@@ -138,6 +142,9 @@ function reactionItems(
 }
 
 const byTime = (a: TimelineItem, b: TimelineItem) => a.at.localeCompare(b.at);
+
+// Who the agent is among the people on their link.
+const AGENT = "agent";
 
 // Who someone is on a link, without their id: the same on every load, and
 // different on every link. `who` is "p:" and their participant id.
@@ -271,13 +278,14 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
 // An agent's link: everyone on it by name, the agent included, and nothing
 // from outside it.
 export async function getShareTimelines(shareId: string, listings: Listing[], participantId: string | null) {
+  // (The agent's own likes, from their first pass, are a line of their own.)
   const timelines = new Map<string, TimelineItem[]>();
   if (listings.length === 0) return timelines;
   const me = participantId ? `p:${participantId}` : null;
   // Who someone is on this link, without their id: the same on every load.
   const personKey = (who: string) => sharePersonKey(shareId, who);
 
-  const [comments, reactions, photos, dislikes] = await Promise.all([
+  const [comments, reactions, photos, dislikes, agentLikes] = await Promise.all([
     sql<
       {
         id: string;
@@ -321,16 +329,21 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
         pd.media_key, pd.tag, pd.created_at as at
       from photo_dislikes pd join participants p on p.id = pd.participant_id
       where pd.share_id = ${shareId}`,
+    sql<PhotoRow[]>`
+      select al.listing_key, ${AGENT}::text as who, a.full_name as name, al.media_key, al.tag, al.created_at as at
+      from share_agent_likes al join shares s on s.id = al.share_id join accounts a on a.id = s.agent_id
+      where al.share_id = ${shareId}`,
   ]);
 
   for (const listing of listings) {
     const key = listing.ListingKey;
     const ids = new Map<string, string>();
-    const people = reactionItems(listing, reactions, photos, dislikes, {
+    const people = reactionItems(listing, reactions, [...photos, ...agentLikes], dislikes, {
       me,
       anonymous: () => false,
       personKey,
-      replyRef: (who) => `like:${personKey(who)}`,
+      // (The agent's likes are answered in a comment of one's own.)
+      replyRef: (who) => (who === AGENT ? null : `like:${personKey(who)}`),
       ids,
     });
     const items: TimelineItem[] = [
@@ -349,7 +362,7 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
             likes: 0,
             likedByMe: false,
             sharedPublicly: c.shared_publicly,
-            personKey: personKey(c.participant_id ? `p:${c.participant_id}` : "agent"),
+            personKey: personKey(c.participant_id ? `p:${c.participant_id}` : AGENT),
             ...(c.liked_by !== null && { likedBy: agentFirstName(c.liked_by) }),
             ...spotOf(c),
           }),
@@ -381,17 +394,26 @@ export async function getPublicPhotoLikes(keys: string[], visitorId: string | nu
   return collect(keys, rows);
 }
 
-// On an agent's link: only the likes and dislikes of people on that link.
-export async function getSharePhotoLikes(shareId: string, keys: string[], participantId: string | null) {
+// On an agent's link: only the likes and dislikes of people on that link. The
+// agent's own likes count only for the agent (`agent`), as theirs.
+export async function getSharePhotoLikes(
+  shareId: string,
+  keys: string[],
+  participantId: string | null,
+  { agent = false } = {},
+) {
   if (keys.length === 0) return new Map<string, PhotoLikes>();
   const rows = await sql<CountRow[]>`
     select listing_key, media_key, tag, disliked, count(*)::int as n,
-      bool_or(participant_id = ${participantId}::uuid) as mine from (
-      select listing_key, media_key, tag, false as disliked, participant_id
+      bool_or(mine) as mine from (
+      select listing_key, media_key, tag, false as disliked, participant_id = ${participantId}::uuid as mine
       from photo_likes where share_id = ${shareId}
       union all
-      select listing_key, media_key, tag, true, participant_id
-      from photo_dislikes where share_id = ${shareId}) x
+      select listing_key, media_key, tag, true, participant_id = ${participantId}::uuid
+      from photo_dislikes where share_id = ${shareId}
+      union all
+      select listing_key, media_key, tag, false, true
+      from share_agent_likes where share_id = ${shareId} and ${agent}) x
     group by listing_key, media_key, tag, disliked`;
   return collect(keys, rows);
 }

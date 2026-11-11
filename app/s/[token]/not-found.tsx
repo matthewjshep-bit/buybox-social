@@ -12,7 +12,7 @@ export default function ShareNotFound() {
       actions={
         <Link href="/" className={routeAction.primary}>
           <Home aria-hidden size={18} />
-          Go to BuyBox Social
+          Go to Porchcard
         </Link>
       }
     >

@@ -6,6 +6,7 @@ import Link from "next/link";
 import {
   createContext,
   useContext,
+  useEffect,
   useId,
   useOptimistic,
   useRef,
@@ -749,6 +750,14 @@ export function CommentComposer({
       setBody((now) => (now.startsWith(at) ? now : at + now));
     }
   }
+  // Ready to type, as it opens, without moving the page: a card's box can
+  // mount for a moment before its card is placed, and focusing it then would
+  // scroll the feed to wherever it first was.
+  useEffect(() => {
+    if (autoFocus) textBox.current?.focus({ preventScroll: true });
+    // (Only as it opens.)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const sharing = canShare && !compact && !replyTo;
   // Ticked to share it on the public page too: said so, not "only you".
   const seen: SeenBy | undefined =
@@ -841,7 +850,6 @@ export function CommentComposer({
           maxLength={1000}
           rows={1}
           enterKeyHint="send"
-          autoFocus={autoFocus}
           placeholder={who ? `Reply to ${who}…` : (placeholder ?? "Add a comment…")}
           className="max-h-29 min-h-11 min-w-0 flex-1 resize-none bg-transparent py-2.5 text-base leading-6 outline-none [field-sizing:content] placeholder:text-stone-500"
         />

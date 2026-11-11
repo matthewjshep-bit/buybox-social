@@ -1,11 +1,17 @@
 import { expect, test, type Page } from "@playwright/test";
 import { signInAgent, signUpBuyer } from "./helpers";
 
-// The logo's coloured tile, whatever page it's on.
-const logoTile = (page: Page) =>
-  page.getByRole("banner").getByRole("link", { name: "BuyBox Social" }).locator("span").first();
-
-const background = (page: Page) => logoTile(page).evaluate((el) => getComputedStyle(el).backgroundColor);
+// The colour things in the header take (Porchcard's coral, or an agent's own
+// on their dashboard): what a swatch of the brand colour comes out as there.
+const background = (page: Page) =>
+  page.getByRole("banner").evaluate((el) => {
+    const swatch = document.createElement("span");
+    swatch.style.backgroundColor = "var(--brand)";
+    el.append(swatch);
+    const color = getComputedStyle(swatch).backgroundColor;
+    swatch.remove();
+    return color;
+  });
 
 async function size(page: Page, name: string, role: "link" | "button") {
   const box = await page.getByRole("banner").getByRole(role, { name, exact: true }).boundingBox();
@@ -20,7 +26,7 @@ test("signed out on a small phone: Sign in beside Sign up, and nothing runs off 
   await expect(header.getByRole("link", { name: "Sign up", exact: true })).toBeVisible();
   // The map is where you are.
   await expect(header.getByRole("link", { name: "Map" })).toHaveAttribute("aria-current", "page");
-  for (const name of ["BuyBox Social", "Map", "Sign in", "Sign up"]) {
+  for (const name of ["Porchcard", "Map", "Sign in", "Sign up"]) {
     const box = await size(page, name, "link");
     expect(box.width, name).toBeGreaterThanOrEqual(44);
     expect(box.height, name).toBeGreaterThanOrEqual(44);
@@ -154,7 +160,7 @@ test("an agent's dashboard is in their colour, header and all, and named in word
 
   // Anywhere else, the site's own colour.
   await agent.goto("/search");
-  expect(await background(agent)).toBe("rgb(31, 95, 91)");
+  expect(await background(agent)).toBe("rgb(219, 53, 64)");
   await expect(dashboard).not.toHaveAttribute("aria-current");
 
   // A new colour, saved: the logo has it at once, with no reload.
@@ -183,13 +189,13 @@ test("an address that isn't here: a 404 with a way home and to the map", async (
   await expect(page.getByRole("link", { name: "Go home" })).toHaveAttribute("href", "/");
   await expect(page.getByRole("link", { name: "Open the map" })).toHaveAttribute("href", "/search");
   // The header is there, as on any page.
-  await expect(page.getByRole("banner").getByRole("link", { name: "BuyBox Social" })).toBeVisible();
+  await expect(page.getByRole("banner").getByRole("link", { name: "Porchcard" })).toBeVisible();
 
   // A home that's gone (a link to one that sold): the header too, though the
   // feed would have drawn it, and what most likely happened.
   expect((await page.goto("/homes/NOPE-123"))!.status()).toBe(404);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("We couldn't find that home");
-  await expect(page.getByRole("banner").getByRole("link", { name: "BuyBox Social" })).toBeVisible();
+  await expect(page.getByRole("banner").getByRole("link", { name: "Porchcard" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open the map" })).toHaveAttribute("href", "/search");
 
   // Someone who isn't here says the same.
@@ -203,7 +209,7 @@ test("a page that breaks says so, with Try again and a way home", async ({ page 
   await page.goto("/e2e/broken");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Something went wrong");
   // The tab says so too.
-  await expect(page).toHaveTitle("Something went wrong · BuyBox Social");
+  await expect(page).toHaveTitle("Something went wrong · Porchcard");
   await expect(page.getByRole("link", { name: "Go home" })).toHaveAttribute("href", "/");
   // Trying again asks again; it's still broken, and still says so.
   await page.getByRole("button", { name: "Try again" }).click();

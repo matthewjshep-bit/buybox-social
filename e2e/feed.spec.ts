@@ -16,7 +16,7 @@ import {
 } from "./helpers";
 
 async function expectLogoGoesHome(page: Page) {
-  const logo = page.getByRole("link", { name: "BuyBox Social" });
+  const logo = page.getByRole("link", { name: "Porchcard" });
   await expect(logo).toHaveAttribute("href", "/");
 }
 
@@ -140,13 +140,12 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   expect((await again.boundingBox())!.width).toBeGreaterThan(1400);
   const price = (await again.getByText("$839,000").boundingBox())!;
   const heart = (await heartOf(again).boundingBox())!;
-  const photo = (await again.locator("[data-photo-frame] img").first().boundingBox())!;
   const panel = (await again.locator("[data-words]").boundingBox())!;
   expect(price.x).toBeGreaterThan(1000);
-  // The heart floats on the photo, just inside its right edge, short of the panel.
-  expect(heart.x + heart.width).toBeLessThanOrEqual(photo.x + photo.width - 8);
-  expect(heart.x).toBeGreaterThanOrEqual(photo.x + photo.width - 80);
-  expect(heart.x + heart.width).toBeLessThan(panel.x);
+  // The heart is in the panel, in its row of things to do at the foot, under the price.
+  expect(heart.x).toBeGreaterThanOrEqual(panel.x);
+  expect(heart.x + heart.width).toBeLessThanOrEqual(panel.x + panel.width);
+  expect(heart.y).toBeGreaterThan(price.y);
 
   // Buyers don't get the agent dashboard, and the old picks page goes home.
   await buyer.goto("/dashboard");
@@ -158,7 +157,7 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   // and there's a page for agents.
   const anon = await (await browser.newContext()).newPage();
   await anon.goto("/");
-  await expect(anon.getByRole("heading", { level: 1 })).toHaveText("Every home for sale, one swipe at a time.");
+  await expect(anon.getByRole("heading", { level: 1 })).toHaveText("Every home has a conversation.");
   await expect(anon.getByRole("article").first()).toBeAttached();
   await expect(anon.getByRole("link", { name: "Sign up", exact: true })).toBeVisible();
   await anon.goto("/for-agents");
@@ -173,7 +172,7 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await expectLogoGoesHome(client);
   await agent.goto("/dashboard");
   await expectLogoGoesHome(agent);
-  await client.getByRole("link", { name: "BuyBox Social" }).click();
+  await client.getByRole("link", { name: "Porchcard" }).click();
   await expect(client).toHaveURL(/localhost:\d+\/$/);
 
   expect(pageErrors).toEqual([]);

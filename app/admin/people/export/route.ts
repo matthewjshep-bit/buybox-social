@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
   return new Response(lines.join("\r\n") + "\r\n", {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="buybox-people-${status ?? "everyone"}-${date}.csv"`,
+      "Content-Disposition": `attachment; filename="porchcard-people-${status ?? "everyone"}-${date}.csv"`,
       "Cache-Control": "no-store",
     },
   });

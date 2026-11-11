@@ -3,7 +3,7 @@ import { AdminNav } from "@/components/admin";
 import { requireAdmin } from "@/lib/auth";
 
 export const metadata: Metadata = {
-  title: "Admin · BuyBox Social",
+  title: "Admin · Porchcard",
   robots: { index: false, follow: false },
 };
 

@@ -160,7 +160,7 @@ test("the year built, the description and who listed it are each something to li
   await agent.getByRole("button", { name: "Close" }).click();
 
   // In the comments, what was said comes with what it's about.
-  await home.getByRole("button", { name: /comments?\. Read them$/ }).click();
+  await home.getByRole("button", { name: /^Comments, \d+$/ }).click();
   const sheet = page.getByRole("dialog", { name: "Comments" });
   const said = sheet.getByRole("listitem").filter({ hasText: "Barely ten years old, nice" });
   await expect(said).toBeVisible();

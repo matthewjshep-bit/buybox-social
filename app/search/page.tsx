@@ -8,7 +8,7 @@ import { searchHomes } from "@/lib/search";
 import { parseFilters } from "@/lib/search-options";
 import { getTaste } from "@/lib/taste";
 
-export const metadata = { title: "Map · BuyBox Social" };
+export const metadata = { title: "Map · Porchcard" };
 
 // The most homes shown beside the map at once.
 const MAX_SHOWN = 60;

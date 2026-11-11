@@ -1,6 +1,7 @@
 "use client";
 
 import { Heart, MessageCircle, Send, ThumbsDown, User } from "lucide-react";
+import { useLinkAgent } from "@/components/agent-notes";
 import { cn } from "@/lib/format";
 import type { TickerEvent } from "@/lib/ticker";
 import { avatarColor } from "@/lib/ui";
@@ -48,6 +49,7 @@ export function MarkFace({
   pin = false,
   caption = false,
   ghost = false,
+  image = null,
   className,
 }: {
   // None for someone unnamed.
@@ -63,6 +65,8 @@ export function MarkFace({
   caption?: boolean;
   // A copy that's on its way out: the initial drawn, not written.
   ghost?: boolean;
+  // Their own photo, where there is one (the agent's, on their link).
+  image?: string | null;
   className?: string;
 }) {
   const icon = pin ? 12 : caption ? 16 : 14;
@@ -82,7 +86,11 @@ export function MarkFace({
         className,
       )}
     >
-      {initial ? (
+      {image ? (
+        // A small resized photo stored inline, so next/image has nothing to add.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={image} alt="" className="absolute inset-0 size-full rounded-full object-cover" />
+      ) : initial ? (
         ghost ? (
           <span data-text={initial} className="before:content-[attr(data-text)]" />
         ) : (
@@ -126,11 +134,23 @@ export function EventFace({
   className?: string;
 }) {
   const { tone, name, agent } = event.who;
+  // On their link, the agent's face is theirs, as it is in the header and on
+  // the details they picked out: their photo, or their initials.
+  const link = useLinkAgent();
+  const theAgent = (tone === "agent" || Boolean(agent)) && link ? link.agent : null;
   // (Yours by your own name; the agent's own, on their link, by theirs, in ink.)
-  const initial = (tone === "you" ? (name ?? myName) : tone === "anonymous" ? null : name)?.trim()[0]?.toUpperCase();
+  const initial = theAgent
+    ? theAgent.full_name
+        .split(" ")
+        .map((part) => part[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase() || undefined
+    : (tone === "you" ? (name ?? myName) : tone === "anonymous" ? null : name)?.trim()[0]?.toUpperCase();
   return (
     <MarkFace
       initial={initial}
+      image={theAgent?.photo_data_url}
       agent={tone === "agent" || Boolean(agent)}
       mark={caption ? null : markOf(event)}
       plane={event.kind === "sent" && tone !== "you"}

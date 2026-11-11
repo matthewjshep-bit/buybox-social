@@ -24,7 +24,7 @@ test("signed out, the home page says what this is, shows three homes, then asks 
   await page.goto("/");
 
   // First: what this is, and a short form.
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Every home for sale, one swipe at a time.");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Every home has a conversation.");
   const intro = page.getByRole("form", { name: "Sign up" }).first();
   await expect(intro).toBeInViewport();
   await expect(intro.getByLabel("Name")).toBeVisible();

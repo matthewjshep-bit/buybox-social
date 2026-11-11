@@ -11,6 +11,7 @@ import {
   type Ref,
   type RefObject,
 } from "react";
+import { agentLiked, agentNotesOn, AgentTake, useNotesMode } from "@/components/agent-notes";
 import { CommentComposer, type SpotRef } from "@/components/listing-thread";
 import type { usePhotoLikes } from "@/components/photo-likes";
 import { CLEAR_MARGIN, isNear, keepClearOf, PhotoBox, type Box } from "@/components/reel-photos";
@@ -343,6 +344,7 @@ export function SpotLayer({
             spot={open}
             head={head}
             comments={pinsOf(photo, items, photos).find((p) => p.tag === open.tag)?.comments ?? []}
+            agentLiked={agentLiked(items, mediaKey, open.tag)}
             photos={photos}
             inline={fine}
             ringOnly={covered}
@@ -366,6 +368,7 @@ function SpotCard({
   spot,
   head,
   comments,
+  agentLiked,
   photos,
   inline,
   ringOnly,
@@ -379,6 +382,7 @@ function SpotCard({
   // Marks where the header ends.
   head: RefObject<HTMLElement | null>;
   comments: TimelineComment[];
+  agentLiked: boolean;
   photos: Photos;
   // Type the comment right here (a mouse or trackpad), rather than below.
   inline: boolean;
@@ -433,6 +437,7 @@ function SpotCard({
           label={spotLabel(photo, spot.tag)}
           phrase={spotPhrase(photo, spot.tag)}
           comments={comments}
+          agentLiked={agentLiked}
           photos={photos}
           inline={inline}
           keyboard={spot.keyboard}
@@ -460,6 +465,7 @@ export function ReactCard({
   label,
   phrase,
   comments,
+  agentLiked = false,
   photos,
   inline,
   keyboard = false,
@@ -479,6 +485,8 @@ export function ReactCard({
   label: string;
   phrase: string;
   comments: TimelineComment[];
+  // On an agent's link: the agent liked it.
+  agentLiked?: boolean;
   photos: Photos;
   // Type the comment right here (a mouse or trackpad), rather than in a sheet.
   inline: boolean;
@@ -498,6 +506,12 @@ export function ReactCard({
   const likes = photos.count(where, spot.tag);
   const dislikes = photos.dislikes(where, spot.tag);
   const choose = (value: "like" | "dislike") => photos.set(where, spot.tag, reaction === value ? null : value);
+  // The agent on their own link writes notes, and only likes: anything that
+  // isn't right goes in a note. Their take shows on its own, above the rest.
+  const notes = useNotesMode();
+  const write = notes ? `Add a note on ${phrase}…` : `Comment on ${phrase}…`;
+  const agentSaid = agentNotesOn(comments, spot.mediaKey, spot.tag);
+  const others = comments.filter((comment) => !comment.isAgent);
   return (
     <div
       ref={ref}
@@ -529,12 +543,14 @@ export function ReactCard({
         </button>
       </div>
 
+      <AgentTake notes={agentSaid} liked={agentLiked} />
+
       <div className="mt-2">
         {inline ? (
           <>
-            {comments.length > 0 && (
+            {others.length > 0 && (
               <ul aria-label={`Comments on ${phrase}`} className="mb-2 flex max-h-40 flex-col gap-2 overflow-y-auto px-1">
-                {comments.map((comment) => (
+                {others.map((comment) => (
                   <li key={comment.id} className="text-sm leading-snug">
                     <span className="font-semibold">{comment.name}</span> {comment.body}
                   </li>
@@ -544,7 +560,7 @@ export function ReactCard({
             <CommentComposer
               listingKey={listingKey}
               spot={spot}
-              placeholder={`Comment on ${phrase}…`}
+              placeholder={write}
               compact
               autoFocus={!keyboard}
               onPosted={onPosted}
@@ -558,12 +574,12 @@ export function ReactCard({
             onClick={onComment}
             className="flex min-h-10 w-full items-center gap-2 rounded-full bg-stone-100 pl-4 pr-3 text-left text-sm text-muted hit-44 hover:bg-stone-200"
           >
-            <span className="min-w-0 flex-1 truncate">Comment on {phrase}…</span>
-            {comments.length > 0 && (
+            <span className="min-w-0 flex-1 truncate">{write}</span>
+            {others.length > 0 && (
               <span className="flex shrink-0 items-center gap-1 font-semibold tabular-nums text-stone-700">
                 <MessageCircle aria-hidden size={14} />
-                {comments.length}
-                <span className="sr-only"> {comments.length === 1 ? "comment" : "comments"} so far</span>
+                {others.length}
+                <span className="sr-only"> {others.length === 1 ? "comment" : "comments"} so far</span>
               </span>
             )}
           </button>
@@ -591,6 +607,7 @@ export function ReactCard({
           {/* (Liked, in the button's own rose: grey on the pink is too faint to read.) */}
           {likes > 0 && <span className={cn("tabular-nums", reaction !== "like" && "text-stone-500")}>{likes}</span>}
         </button>
+        {!notes && (
         <button
           type="button"
           aria-pressed={reaction === "dislike"}
@@ -609,6 +626,7 @@ export function ReactCard({
           <ThumbsDown aria-hidden size={15} className={cn(reaction === "dislike" && "fill-amber-200")} />
           {dislikes > 0 && <span className="tabular-nums">{dislikes}</span>}
         </button>
+        )}
       </div>
     </div>
   );

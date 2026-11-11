@@ -2,7 +2,7 @@ import { sql } from "@/lib/db";
 import type { Listing } from "@/lib/listings/types";
 import { loadPhoto, PREVIEW_SIZE, PREVIEW_TYPE, PreviewFrame, PreviewHome, previewImage } from "./preview";
 
-export const alt = "A home on BuyBox Social";
+export const alt = "A home on Porchcard";
 export const size = PREVIEW_SIZE;
 export const contentType = PREVIEW_TYPE;
 
@@ -23,7 +23,7 @@ export default async function Image({ params }: { params: Promise<{ key: string 
       {listing ? (
         <PreviewHome listing={listing} />
       ) : (
-        <div style={{ display: "flex", fontSize: 56, fontWeight: 700 }}>BuyBox Social</div>
+        <div style={{ display: "flex", fontSize: 56, fontWeight: 700 }}>Porchcard</div>
       )}
     </PreviewFrame>,
   );

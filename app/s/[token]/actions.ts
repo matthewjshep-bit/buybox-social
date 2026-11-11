@@ -23,6 +23,7 @@ import {
   getShareByToken,
   getShareListings,
   shareHasListing,
+  type Share,
 } from "@/lib/shares";
 import type { SpotReaction } from "@/lib/photos";
 import { findSpot } from "@/lib/public";
@@ -140,13 +141,81 @@ async function personOn(found: Found) {
   return found.person ?? (await getParticipant(found.share.id, await readDevice()));
 }
 
-async function resolveActor(token: string, listingKey: string) {
+// (The agent on their own link: `preview` says so, and `found` is the link,
+// for what they can do there, their own first pass.)
+type Actor = { preview: string; found: Found } | { share: Share; participant: { id: string; first_name: string } };
+
+async function resolveActor(token: string, listingKey: string): Promise<Actor | null> {
   const found = await getShareByToken(token);
   if (!found || !(await shareHasListing(found.share.id, listingKey))) return null;
   const preview = await previewing(found);
-  if (preview) return { preview };
+  if (preview) return { preview, found };
   const participant = await personOn(found);
   return participant ? { share: found.share, participant } : null;
+}
+
+// What a reply answers, if it is one: a comment on this link, or someone's
+// likes here ("like:" and who they are on the link, as the page has it).
+// Replies go one level deep, and only ever among the people on this link.
+async function replyTarget(
+  shareId: string,
+  listingKey: string,
+  parentId: unknown,
+): Promise<{ parent: string | null; replyTo: string | null } | { error: string }> {
+  if (typeof parentId !== "string" || !parentId) return { parent: null, replyTo: null };
+  if (parentId.startsWith("like:")) {
+    const key = parentId.slice(5);
+    const people = await sql<{ id: string }[]>`select id from participants where share_id = ${shareId}`;
+    const person = people.find((p) => sharePersonKey(shareId, `p:${p.id}`) === key);
+    const [liked] = person
+      ? await sql`
+          select 1 from reactions
+          where share_id = ${shareId} and listing_key = ${listingKey} and participant_id = ${person.id}
+          union all
+          select 1 from photo_likes
+          where share_id = ${shareId} and listing_key = ${listingKey} and participant_id = ${person.id}
+          union all
+          select 1 from photo_dislikes
+          where share_id = ${shareId} and listing_key = ${listingKey} and participant_id = ${person.id}
+          limit 1`
+      : [];
+    if (!person || !liked) return { error: "Those likes aren't there anymore." };
+    return { parent: null, replyTo: person.id };
+  }
+  if (parentId.length > 64) return { error: "That comment isn't there anymore." };
+  const [found] = await sql`
+    select 1 from comments
+    where id::text = ${parentId} and share_id = ${shareId} and listing_key = ${listingKey}
+      and parent_id is null and reply_to_participant is null`;
+  if (!found) return { error: "That comment isn't there anymore." };
+  return { parent: parentId, replyTo: null };
+}
+
+// The agent's first pass on their own link: a note on the home, or on one
+// thing in it (the price, a spot in a photo), or a reply to someone there.
+// Everyone on the link reads it as the agent's; no email goes out about it.
+async function addAgentNote(
+  found: Found,
+  listingKey: string,
+  body: string,
+  parentId: unknown,
+  spot: unknown,
+): Promise<ActionResult> {
+  const target = await replyTarget(found.share.id, listingKey, parentId);
+  if ("error" in target) return fail(target.error);
+  const reply = target.parent !== null || target.replyTo !== null;
+  const anchor = reply ? null : await checkAnchor(listingKey, spot);
+  if (anchor === false) return fail("That photo isn't there anymore.");
+  const [{ count }] = await sql<{ count: number }[]>`
+    select count(*)::int as count from comments
+    where agent_id = ${found.share.agent_id} and created_at > now() - interval '1 minute'`;
+  if (count >= MAX_COMMENTS_PER_MINUTE) return fail("Slow down a little, then try again.");
+  await sql`
+    insert into comments (share_id, listing_key, agent_id, body, media_key, spot, parent_id, reply_to_participant)
+    values (${found.share.id}, ${listingKey}, ${found.share.agent_id}, ${body},
+      ${anchor?.mediaKey ?? null}, ${anchor?.tag ?? null}, ${target.parent}::uuid, ${target.replyTo}::uuid)`;
+  refresh();
+  return { ok: true };
 }
 
 const likesHome = async (participantId: string, listingKey: string) => {
@@ -174,7 +243,8 @@ export async function setReaction(
   const state = parsed.data;
   const actor = await resolveActor(token, listingKey);
   if (!actor) return fail("Please add your name first.");
-  if ("preview" in actor) return fail(`${actor.preview} Nothing here is saved.`);
+  // The heart on a home is the client's say; the agent's is in their notes.
+  if ("preview" in actor) return fail("The heart is for your client. Tap the price, or anything in a photo, to leave a note.");
 
   if (state.reaction === null) {
     await sql`
@@ -216,39 +286,10 @@ export async function addComment(
   if (!parsed.success) return fail("Comments can be up to 1,000 characters.");
   const actor = await resolveActor(token, listingKey);
   if (!actor) return fail("Please add your name first.");
-  if ("preview" in actor) return fail(`${actor.preview} To say something, reply from your dashboard.`);
-  // Replies go one level deep, and only ever among the people on this link.
-  let parent: string | null = null;
-  let replyTo: string | null = null;
-  if (typeof parentId === "string" && parentId) {
-    if (parentId.startsWith("like:")) {
-      const key = parentId.slice(5);
-      const people = await sql<{ id: string }[]>`select id from participants where share_id = ${actor.share.id}`;
-      const person = people.find((p) => sharePersonKey(actor.share.id, `p:${p.id}`) === key);
-      const [liked] = person
-        ? await sql`
-            select 1 from reactions
-            where share_id = ${actor.share.id} and listing_key = ${listingKey} and participant_id = ${person.id}
-            union all
-            select 1 from photo_likes
-            where share_id = ${actor.share.id} and listing_key = ${listingKey} and participant_id = ${person.id}
-            union all
-            select 1 from photo_dislikes
-            where share_id = ${actor.share.id} and listing_key = ${listingKey} and participant_id = ${person.id}
-            limit 1`
-        : [];
-      if (!person || !liked) return fail("Those likes aren't there anymore.");
-      replyTo = person.id;
-    } else {
-      if (parentId.length > 64) return fail("That comment isn't there anymore.");
-      const [found] = await sql`
-        select 1 from comments
-        where id::text = ${parentId} and share_id = ${actor.share.id} and listing_key = ${listingKey}
-          and parent_id is null and reply_to_participant is null`;
-      if (!found) return fail("That comment isn't there anymore.");
-      parent = parentId;
-    }
-  }
+  if ("preview" in actor) return addAgentNote(actor.found, listingKey, parsed.data, parentId, spot);
+  const target = await replyTarget(actor.share.id, listingKey, parentId);
+  if ("error" in target) return fail(target.error);
+  const { parent, replyTo } = target;
   const reply = parent !== null || replyTo !== null;
   // A reply is about whatever it answers.
   const anchor = reply ? null : await checkAnchor(listingKey, spot);
@@ -361,9 +402,26 @@ export async function likePhotoInShare(
   if (!input.success) return fail("We couldn't save that.");
   const actor = await resolveActor(token, listingKey);
   if (!actor) return fail("Please add your name first.");
-  if ("preview" in actor) return fail(`${actor.preview} Nothing here is saved.`);
   const spot = await findSpot(listingKey, mediaKey, tag);
   if (!spot) return fail("That photo isn't there anymore.");
+  // The agent's first pass: what they like, for everyone on the link to see.
+  // Anything that isn't right is said in a note.
+  if ("preview" in actor) {
+    if (reaction === "dislike") return fail("Leave a note to say what's not right with it.");
+    const shareId = actor.found.share.id;
+    if (reaction === "like") {
+      await sql`
+        insert into share_agent_likes (share_id, listing_key, media_key, tag)
+        values (${shareId}, ${listingKey}, ${mediaKey}, ${tag})
+        on conflict do nothing`;
+    } else {
+      await sql`
+        delete from share_agent_likes
+        where share_id = ${shareId} and listing_key = ${listingKey} and media_key = ${mediaKey} and tag = ${tag}`;
+    }
+    refresh();
+    return { ok: true };
+  }
   const where = sql`participant_id = ${actor.participant.id} and listing_key = ${listingKey}
     and media_key = ${mediaKey} and tag = ${tag}`;
   // A like replaces a dislike, and the other way around.

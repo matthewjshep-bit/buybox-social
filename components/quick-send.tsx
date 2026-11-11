@@ -66,7 +66,15 @@ const giveBack = (token: string) => void dropSendToken(token).catch(() => {});
 const primary = button({ kind: "primary", size: "lg", block: true });
 
 // `result` is the server's answer, once it's in: the sheet may open before it.
-export type Sent = { n: number; home: SendHome; claim: Promise<ClaimResult>; copied: boolean; result?: ClaimResult };
+// `token`: the link's own, for the agent's notes on it.
+export type Sent = {
+  n: number;
+  home: SendHome;
+  token: string;
+  claim: Promise<ClaimResult>;
+  copied: boolean;
+  result?: ClaimResult;
+};
 
 export type QuickSend = ReturnType<typeof useQuickSend>;
 
@@ -223,7 +231,7 @@ export function useQuickSend({
       setWaiting(false);
     });
     handed.then(
-      () => setSent({ n, home, claim: made, copied: !phone, result: answer }),
+      () => setSent({ n, home, token: ready, claim: made, copied: !phone, result: answer }),
       async (error: unknown) => {
         // Not sent after all, so the link goes again once it's been made.
         const result = await made;

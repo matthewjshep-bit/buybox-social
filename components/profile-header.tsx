@@ -80,7 +80,7 @@ export function ProfileHeader({
               <Globe aria-hidden size={14} className="mt-0.5 shrink-0" />
               Everyone can see this page. What you do on an agent&apos;s link never shows here.
             </p>
-            <ShareMyPage title={unnamed ? "My page on BuyBox Social" : `${name} on BuyBox Social`} />
+            <ShareMyPage title={unnamed ? "My page on Porchcard" : `${name} on Porchcard`} />
           </>
         )}
       </div>

@@ -9,15 +9,15 @@ type Props = { params: Promise<{ key: string }>; searchParams: Promise<Record<st
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { key } = await params;
   const data = await getPublicListing(decodeURIComponent(key));
-  if (!data) return { title: "Home not found · BuyBox Social" };
+  if (!data) return { title: "Home not found · Porchcard" };
   const { listing } = data;
   const place = `${listing.UnparsedAddress}, ${listing.City}`;
   // The listing alone, like its picture: no names, nothing anyone said.
   const description = `${[formatPrice(listing.ListPrice), homeFacts(listing)].filter(Boolean).join(" · ")}. See what people think.`;
   return {
-    title: `${place} · BuyBox Social`,
+    title: `${place} · Porchcard`,
     description,
-    openGraph: { title: place, description, type: "website", siteName: "BuyBox Social" },
+    openGraph: { title: place, description, type: "website", siteName: "Porchcard" },
     twitter: { card: "summary_large_image", title: place, description },
   };
 }

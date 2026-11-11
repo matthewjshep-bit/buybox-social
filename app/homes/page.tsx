@@ -11,7 +11,7 @@ import { searchHomes } from "@/lib/search";
 import { filtersQuery, parseFilters } from "@/lib/search-options";
 import { getTaste } from "@/lib/taste";
 
-export const metadata = { title: "Homes · BuyBox Social" };
+export const metadata = { title: "Homes · Porchcard" };
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 

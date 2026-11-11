@@ -64,17 +64,17 @@ const tasteOf = cache(async (person: ProfilePerson, mine: boolean) =>
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   const person = id.length > 64 ? null : await getProfilePerson(id);
-  if (!person) return { title: "Not found · BuyBox Social" };
+  if (!person) return { title: "Not found · Porchcard" };
   const visitor = await viewer();
   const isMe = visitor?.id === person.id;
   const story = await tasteOf(person, isMe);
   const { name, unnamed } = await nameOf(person, isMe);
-  const title = `${unnamed && isMe ? "Your page" : name} · BuyBox Social`;
+  const title = `${unnamed && isMe ? "Your page" : name} · Porchcard`;
   // The headline is from what everyone can see, whoever is looking, and it's
   // what a shared link to the page says under its title.
   const description =
     story.headline ??
-    (unnamed ? `What ${isMe ? "you like" : "they like"} in homes, on BuyBox Social.` : `What ${name} likes in homes, on BuyBox Social.`);
+    (unnamed ? `What ${isMe ? "you like" : "they like"} in homes, on Porchcard.` : `What ${name} likes in homes, on Porchcard.`);
   return { title, description, openGraph: { title, description } };
 }
 

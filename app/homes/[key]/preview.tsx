@@ -2,6 +2,9 @@ import { ImageResponse } from "next/og";
 import type { ReactElement, ReactNode } from "react";
 import { appUrl, BRAND_COLORS, formatPrice } from "@/lib/format";
 import type { Listing } from "@/lib/listings/types";
+import { porchcardLogoSvg } from "@/components/porchcard-logo";
+
+const LOGO = `data:image/svg+xml;base64,${Buffer.from(porchcardLogoSvg("#ffffff")).toString("base64")}`;
 
 // What a link preview (the picture and words a text message or chat shows for
 // a link) says about a home. Only the listing: never who sent it, who it's
@@ -97,6 +100,15 @@ export function PreviewFrame({
       >
         {children}
       </div>
+      {/* Porchcard's own logo, in white on the shade at the foot. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={LOGO}
+        alt=""
+        width={196}
+        height={45}
+        style={{ position: "absolute", right: 48, bottom: 44 }}
+      />
     </div>
   );
 }

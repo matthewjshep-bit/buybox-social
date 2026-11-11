@@ -1,7 +1,8 @@
 "use client";
 
-import { Check, ChevronDown, ChevronRight, Copy, MessageSquare, Plus, Share2, Undo2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, MessageSquare, PenLine, Plus, Share2, Undo2 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
 import {
   listRecentShares,
@@ -128,6 +129,7 @@ export function SentBody({
   const [others, setOthers] = useState<RecentShare[] | null>(null);
   const [showOthers, setShowOthers] = useState(false);
   const [undo, setUndo] = useState<"ask" | "opened" | "late" | null>(null);
+  const router = useRouter();
   // "Keep it" was pressed, so the cursor goes back to "Undo send".
   const [kept, setKept] = useState(false);
 
@@ -156,7 +158,9 @@ export function SentBody({
     );
   }
 
-  const save = () => {
+  // Saves who it's for and the note, if any. Then, with `notes`, on to the
+  // link as they'll see it, for the agent's take on the home.
+  const save = (notes = false) => {
     if (pending) return;
     startTransition(async () => {
       setError(null);
@@ -166,6 +170,11 @@ export function SentBody({
       if (clientName || note.trim()) {
         const saved = await nameQuickShare(id, { clientName, note }).catch(() => ({ error: "That didn't save. Try again." }));
         if (saved.error) return setError(saved.error);
+      }
+      if (notes) {
+        onDone();
+        router.push(`/s/${sent.token}`);
+        return;
       }
       onDone(clientName ? `Saved. Their link greets ${clientName}.` : undefined);
     });
@@ -225,8 +234,13 @@ export function SentBody({
         </p>
       )}
       <div className="mt-4 flex flex-col gap-2.5">
-        <button type="button" onClick={save} aria-disabled={pending} className={cn(primary, busy(pending))}>
+        <button type="button" onClick={() => save()} aria-disabled={pending} className={cn(primary, busy(pending))}>
           Save
+        </button>
+        {/* What they'll read first when they open it: a note or a like from
+            the agent on the price, a room, anything. */}
+        <button type="button" onClick={() => save(true)} aria-disabled={pending || !shareId} className={cn(secondary, busy(pending))}>
+          <PenLine aria-hidden size={16} /> Add your take
         </button>
         <button type="button" onClick={() => onDone()} className={secondary}>
           Skip

@@ -39,6 +39,7 @@ import { flushSync } from "react-dom";
 import { loadReel, recordView, reloadReelHome } from "@/app/homes/actions";
 import { ActivityTicker, useTicker } from "@/components/activity-ticker";
 import { AspectChips, useReactions } from "@/components/like-pass";
+import { AgentMark, agentLiked, agentMarked, useAgentMarkWords, useNotesMode } from "@/components/agent-notes";
 import {
   CommentComposer,
   NameGate,
@@ -58,10 +59,11 @@ import {
   type PickedSpot,
   type SpotLight,
 } from "@/components/photo-spots";
-import { photoFoot, photoPlace, ReelPhotos } from "@/components/reel-photos";
+import { photoFoot, photoPlace, ReelPhotos, STAGE_BAND, stageBlock, stageFoot } from "@/components/reel-photos";
 import { ScorecardBody } from "@/components/scorecard";
 import { Sheet } from "@/components/sheet";
 import { NudgeHint, useNudges, type Nudge } from "@/components/walkthrough";
+import { Tour, tourSteps, useTour, type TourKind } from "@/components/tour";
 import type { FeedPost } from "@/lib/feed";
 import { cn, formatPrice } from "@/lib/format";
 import { isSampleListing, type Listing, type ListingMedia } from "@/lib/listings/types";
@@ -141,6 +143,16 @@ const agentCalled = (agentName?: string) => (agentName && agentName !== "Your ag
 const agentFirstName = (agentName?: string) =>
   agentName && agentName !== "Your agent" ? (agentName.split(" ")[0] ?? agentName) : "your agent";
 
+// The arrows to the homes before and after, side by side: just the chevron,
+// faint until pointed at, in the middle of the window.
+const stageArrow =
+  "absolute left-1/2 z-30 hidden h-8 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-white/40 transition-colors hover:bg-white/10 hover:text-white split:flex";
+
+// The first of these that's showing: of two copies of a button (the rail's
+// on a phone, the panel's side by side), the one on screen.
+const visibleIn = (root: ParentNode | null | undefined, selector: string) =>
+  [...(root?.querySelectorAll<HTMLElement>(selector) ?? [])].find((el) => el.getClientRects().length > 0) ?? null;
+
 // "8", "1,204", "10.2K"
 const countLabel = (n: number) =>
   n < 10_000 ? n.toLocaleString("en-US") : new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n);
@@ -169,6 +181,7 @@ export function ReelFeed({
   onPhotoSeen,
   suggestedName,
   nameHint,
+  tour,
 }: {
   initial: FeedPost[];
   // Public pages, or an agent's private link.
@@ -217,6 +230,8 @@ export function ReelFeed({
   suggestedName?: string;
   // One more line in the name prompt, just above the name.
   nameHint?: string;
+  // A quick look at how it works, the first time (see tour.tsx).
+  tour?: TourKind;
 }) {
   // The order is fixed when the page opens, so a background refresh never
   // reshuffles the homes under your thumb. Agent links follow the page, which
@@ -285,10 +300,14 @@ export function ReelFeed({
   // link reads what's said there, each on a link of their own or not, so
   // "only you" is said only when the page knows nobody else can read it.
   const agent = agentCalled(agentName);
+  // The agent on their own link: what they write is their note, for everyone on it.
+  const notes = useNotesMode();
   const seenBy: SeenBy =
     mode === "public"
       ? { text: "Everyone can see your comment and first name.", private: false }
-      : alone
+      : notes
+        ? { text: `${notes.for === "your client" ? "Your client sees" : `${notes.for} sees`} your notes, and anyone on this link.`, private: true }
+        : alone
         ? { text: `Only you and ${agent} see this.`, private: true }
         : { text: `Only ${agent} and people on this link see this.`, private: true };
   // Where the name prompt rises from: side by side, the white panel's foot.
@@ -325,6 +344,7 @@ export function ReelFeed({
         onActiveChange={onActiveChange}
         hasMore={hasMore}
         loading={loading}
+        tour={tour}
         onNearEnd={async () => {
           if (!hasMore || loading) return;
           setLoading(true);
@@ -360,6 +380,7 @@ function Feed({
   loading,
   onNearEnd,
   nameAnchorRef,
+  tour,
 }: {
   posts: FeedPost[];
   mode: "public" | "share";
@@ -383,6 +404,7 @@ function Feed({
   onNearEnd: () => void;
   // Set to where the name prompt should rise from (none: the window's foot).
   nameAnchorRef?: RefObject<HTMLElement | null>;
+  tour?: TourKind;
 }) {
   const frame = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -501,9 +523,23 @@ function Feed({
     report.current?.(activeKey);
   }, [activeKey]);
 
+  // The first time: a quick look at how it works, once the first home is on
+  // screen with nothing open over it. The nudges below wait for it.
+  const notes = useNotesMode();
+  const tourNow = useTour(tour ?? null, !embedded && !sheet && Boolean(activePost) && !onOpen);
+  const tourWith = activePost
+    ? tourSteps(tour ?? "home", {
+        agent: agentFirstName(agentName),
+        notesFor: notes?.for,
+        agentTake: activePost.timeline.some((item) => (item.kind === "comment" ? item.isAgent && !item.parentId : item.isAgent)),
+        more: active - offset < posts.length - 1 || hasMore,
+      })
+    : [];
+
   // On an agent's link, the first time: how to see more photos, then more homes.
   const nudges = useNudges({
-    enabled: mode === "share" && !embedded && !sheet,
+    // (Not for the agent writing notes on their own link.)
+    enabled: mode === "share" && !embedded && !sheet && tourNow.done && !notes,
     home: activeKey,
     photoCount: activePost?.listing.Media.length ?? 0,
     hasNext: active - offset < posts.length - 1,
@@ -554,8 +590,8 @@ function Feed({
     const follow = now?.dataset.follow;
     const home = scroller.current?.querySelector<HTMLElement>(`[data-panel="${active}"]`);
     if (!now || !follow || !home || home.contains(now) || !scroller.current?.contains(now)) return;
-    const same = home.querySelector<HTMLElement>(`[data-follow="${follow}"]:not(:disabled)`);
-    (same ?? home.querySelector<HTMLElement>("[data-follow]:not(:disabled), button:not(:disabled)"))?.focus({
+    const same = visibleIn(home, `[data-follow="${follow}"]:not(:disabled)`);
+    (same ?? visibleIn(home, "[data-follow]:not(:disabled), button:not(:disabled)"))?.focus({
       preventScroll: true,
     });
   }, [active]);
@@ -690,7 +726,7 @@ function Feed({
   // A home's own button on the rail (the Scorecard's, More's), for the
   // keyboard to go back to.
   const railButton = (key: string, which: "scorecard" | "more") =>
-    frame.current?.querySelector<HTMLElement>(`[data-home="${CSS.escape(key)}"] [data-follow="${which}"]`) ?? null;
+    visibleIn(frame.current, `[data-home="${CSS.escape(key)}"] [data-follow="${which}"]`);
   // The homes you've had your say on, as the Scorecard counts it: liked or
   // passed on, something in it liked or not, or a word about it.
   const reviewed = posts.filter((post) => {
@@ -726,6 +762,9 @@ function Feed({
           z-40 (so it can always be closed), a toast z-50. Sheets open in the
           browser's top layer, over all of them. The header comes first in the
           page, as it reads and as Tab goes, though it floats over the homes. */}
+      {tourNow.showing && activePost && (
+        <Tour key={tour} root={() => frame.current} steps={tourWith} onDone={tourNow.finish} />
+      )}
       {header && (
         // Out of the way while a photo is cleared to be seen whole. Side by
         // side, what the page adds to it can line up with the stage (`split:`).
@@ -773,6 +812,8 @@ function Feed({
               wide={wide}
               narrow={narrow}
               near={Math.abs(active - (offset + i)) <= 1}
+              onPrevious={!embedded && offset + i > 0 ? () => goTo(offset + i - 1) : undefined}
+              onNext={embedded ? undefined : () => goTo(offset + i + 1)}
               nudge={active === offset + i ? nudges.showing : null}
               onSwipe={active === offset + i ? nudges.onSwipe : undefined}
               state={state}
@@ -805,8 +846,6 @@ function Feed({
               shareAs={kind}
               onShare={kind ? () => share(post) : undefined}
               // (Not in a pop-out, which has just the one home.)
-              onPrevious={!embedded && offset + i > 0 ? () => goTo(offset + i - 1) : undefined}
-              onNext={embedded ? undefined : () => goTo(offset + i + 1)}
             />
           );
         })}
@@ -1022,6 +1061,8 @@ function Panel({
   wide,
   narrow,
   near,
+  onPrevious,
+  onNext,
   nudge,
   onSwipe,
   state,
@@ -1049,8 +1090,6 @@ function Panel({
   onMore,
   shareAs,
   onShare,
-  onPrevious,
-  onNext,
 }: {
   index: number;
   post: FeedPost;
@@ -1069,6 +1108,9 @@ function Panel({
   // A phone's layout (narrower than 64rem), side by side or not.
   narrow: boolean;
   // Close enough to load its photos.
+  // Side by side, the homes before and after: small arrows above and below.
+  onPrevious?: () => void;
+  onNext?: () => void;
   near: boolean;
   nudge: Nudge | null;
   // Moved on to another photo.
@@ -1115,9 +1157,6 @@ function Panel({
   onMore: () => void;
   shareAs: ShareKind | null;
   onShare?: () => void;
-  // The homes before and after (side by side, the chevrons over the buttons).
-  onPrevious?: () => void;
-  onNext?: () => void;
 }) {
   const { listing } = post;
   const [first] = useState(() => Math.max(0, Math.min(listing.Media.length - 1, start ?? 0)));
@@ -1223,14 +1262,18 @@ function Panel({
     let frame = 0;
     let tries = 0;
     const focusMore = () => {
-      moreButton.current?.focus({ preventScroll: true });
-      if (document.activeElement !== moreButton.current && ++tries < 30) frame = requestAnimationFrame(focusMore);
+      // (The rail's on a phone; side by side, the one in the panel's row.)
+      const more = visibleIn(moreButton.current?.closest("article"), '[data-follow="more"]') ?? moreButton.current;
+      more?.focus({ preventScroll: true });
+      if (document.activeElement !== more && ++tries < 30) frame = requestAnimationFrame(focusMore);
     };
     focusMore();
     return () => cancelAnimationFrame(frame);
   }, [bare]);
   // Photos load as a home comes close, and stay once loaded.
   const [loaded, setLoaded] = useState(near);
+  // Side by side, where the block of photos and panel sits on the stage.
+  const block = useMemo(() => stageBlock(listing.Media), [listing.Media]);
   if (near && !loaded) setLoaded(true);
   const photos = usePhotoLikes(listing.ListingKey, post.photoLikes);
   // The Scorecard (outside the home) counts what you've just done here.
@@ -1264,6 +1307,7 @@ function Panel({
   // Nothing over the photo: held, or "Show the photo only".
   const hidden = clear || bare;
   const agentFirst = agentFirstName(agentName);
+  const notes = useNotesMode();
   // Side by side on a wide screen (never beside the map, just a look there).
   const split = SPLIT_WIDE && !onOpen;
   // The whole description opens where it is (side by side, in the panel;
@@ -1383,11 +1427,13 @@ function Panel({
         photos={photos}
         comments={
           post.timeline.filter(
-            (item) => item.kind === "comment" && !item.parentId && item.spot?.mediaKey === FACTS && item.spot.tag === tag,
+            (item) =>
+              item.kind === "comment" && !item.isAgent && !item.parentId && item.spot?.mediaKey === FACTS && item.spot.tag === tag,
           ).length
         }
         open={picked?.mediaKey === FACTS && picked.tag === tag}
         lit={litFact === tag}
+        agent={agentMarked(post.timeline, FACTS, tag)}
         look={look}
         onOpen={(keyboard) =>
           setPicked((now) => (now?.mediaKey === FACTS && now.tag === tag ? null : { mediaKey: FACTS, tag, x: 0, y: 0, keyboard }))
@@ -1526,14 +1572,21 @@ function Panel({
         bare
           ? "split:[--photo-align:0.5] split:[--photo-bottom:24px] split:[--photo-right:24px] split:[--photo-top:24px]"
           : cn(
-              "split:[--photo-align:0] split:[--photo-right:400px] split:[--photo-top:var(--stage-top)] split-xl:[--photo-right:440px]",
-              listing.Media.length > 1 ? "split:[--photo-bottom:120px]" : "split:[--photo-bottom:24px]",
+              // The photos at the top of a block centred between the header
+              // and the window's foot, with the strip under them (stageBlock).
+              "split:[--photo-align:0] split:[--photo-right:400px] split:[--photo-top:var(--block-top)] split:[--photo-bottom:var(--block-bottom)] split-xl:[--photo-right:440px]",
             ),
       )}
       style={
         {
           ...(wordsHeight && { "--words-height": `${wordsHeight}px` }),
           ...(railTop !== null && { "--rail-top": `${railTop}px` }),
+          "--block-top": block.top,
+          "--block-bottom": block.bottom,
+          // (Inside a photo's own slide, which is just the stage; a photo
+          // alone, at the whole window, is placed the same either way.)
+          "--stage-photo-top": bare ? "24px" : block.stageTop,
+          "--stage-photo-bottom": bare ? "24px" : block.stageBottom,
         } as CSSProperties
       }
     >
@@ -1586,7 +1639,7 @@ function Panel({
                     "split:top-[calc(var(--cap-foot)-1.5rem)] split:justify-center",
                     onOpen
                       ? "split:w-(--cap-width)"
-                      : "split:left-[calc(var(--cap-left)+4.5rem)] split:w-[calc(var(--cap-width)-9rem)]",
+                      : "split:w-(--cap-width)",
                   )}
                 >
                   <ActivityTicker
@@ -1605,9 +1658,11 @@ function Panel({
                     hint={
                       onOpen
                         ? null
-                        : mode === "share"
-                          ? `Tap anything in the photo to tell ${agentFirst} what you think`
-                          : "Tap anything in the photo to like it or say something"
+                        : notes
+                          ? "Tap anything in the photo to like it or add a note"
+                          : mode === "share"
+                            ? `Tap anything in the photo to tell ${agentFirst} what you think`
+                            : "Tap anything in the photo to like it or say something"
                     }
                   />
                 </div>
@@ -1680,67 +1735,22 @@ function Panel({
           )}
         >
           {!onOpen && (
-            // Side by side, the buttons float on the photo, down its right
-            // edge, as on a phone: the homes before and after at its top, the
-            // rest at its foot. They're placed in a layer the size of the
-            // photos' own, in a box the size and place of the photo on screen.
-            // (On a phone, these two layers aren't there: the buttons sit
-            // where they always have.)
-            <div className="contents split:pointer-events-none split:absolute split:inset-0 split:block split:[container-type:size]">
-              <div
-                // (Only side by side does this box show; on a phone it's no box at all.)
-                style={{
-                  left: `calc(${photoPlace(current).left})`,
-                  top: photoPlace(current).top,
-                  width: photoPlace(current).width,
-                  height: photoPlace(current).height,
-                }}
-                className="contents split:absolute split:block split:[container-type:size]"
-              >
-                {onNext && (
-                  // To the home before or after, for anyone who doesn't
-                  // think to scroll; not on a photo too short for them and
-                  // the buttons both (scrolling and the arrow keys still do).
-                  <div className="hidden split:block">
-                    <div className="pointer-events-auto absolute right-3 top-3 flex w-14 flex-col items-center gap-2 [@container(max-height:31rem)]:hidden">
-                      <button
-                        type="button"
-                        aria-label="Go to the previous home"
-                        data-follow="previous"
-                        disabled={!onPrevious}
-                        onClick={onPrevious}
-                        className="flex size-11 items-center justify-center rounded-full bg-black/35 text-white ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-black/55 disabled:invisible"
-                      >
-                        <ChevronUp aria-hidden size={24} className="drop-shadow" />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Go to the next home"
-                        data-follow="next"
-                        onClick={onNext}
-                        className="flex size-11 items-center justify-center rounded-full bg-black/35 text-white ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-black/55"
-                      >
-                        <ChevronDown aria-hidden size={24} className="drop-shadow" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-                <Rail
-                  address={listing.UnparsedAddress}
-                  things={things}
-                  liked={liked}
-                  likes={likes}
-                  comments={comments}
-                  shareAs={shareAs}
-                  onLike={onLike}
-                  onComments={onComments}
-                  onScorecard={() => onScorecard()}
-                  onShare={onShare}
-                  onMore={onMore}
-                  moreRef={moreButton}
-                />
-              </div>
-            </div>
+            // On a phone, down the right edge. Side by side there's none: the
+            // same things to do are in a row in the panel (PanelActions).
+            <Rail
+              address={listing.UnparsedAddress}
+              things={things}
+              liked={liked}
+              likes={likes}
+              comments={comments}
+              shareAs={shareAs}
+              onLike={onLike}
+              onComments={onComments}
+              onScorecard={() => onScorecard()}
+              onShare={onShare}
+              onMore={onMore}
+              moreRef={moreButton}
+            />
           )}
         </div>
 
@@ -1757,6 +1767,14 @@ function Panel({
           ref={words}
           data-words
           inert={docked || undefined}
+          // Side by side, it ends level with the photos beside it, the strip
+          // under them included: never so short there's no room to read,
+          // never past the window's foot.
+          style={
+            {
+              "--panel-height": `min(max(${stageFoot(listing.Media)} - var(--photo-top), 30rem), 100cqh - var(--photo-top) - ${STAGE_BAND})`,
+            } as CSSProperties
+          }
           className={cn(
             "absolute inset-x-0 bottom-0 flex flex-col bg-night pb-(--words-pad) transition-[opacity,visibility] duration-300 [--words-pad:calc(12px+env(safe-area-inset-bottom))]",
             more ? "h-auto" : "h-[calc(248px+var(--words-pad))]",
@@ -1771,7 +1789,7 @@ function Panel({
             // Side by side: on the same dark as the photo's stage (a shade
             // lighter, to hold together), so the photo and what it is read as
             // one, and the facts are glass to tap, as the buttons on the photo are.
-            "split:pointer-events-auto split:bottom-6 split:left-auto split:right-6 split:top-(--stage-top) split:h-auto split:w-[360px] split:overflow-hidden split:rounded-2xl split:bg-white/[0.04] split:bg-none split:pb-0 split:ring-1 split:ring-inset split:ring-white/[0.08] split:before:hidden split-xl:w-[400px]",
+            "split:pointer-events-auto split:bottom-auto split:left-auto split:right-6 split:top-(--photo-top) split:h-(--panel-height) split:w-[360px] split:overflow-hidden split:rounded-2xl split:bg-white/[0.04] split:bg-none split:pb-0 split:ring-1 split:ring-inset split:ring-white/[0.08] split:before:hidden split-xl:w-[400px]",
             // Beside the map on a phone, its Map button floats at the bottom.
             onOpen && "max-lg:[--words-pad:6rem]",
             covered && "invisible opacity-0",
@@ -1882,7 +1900,6 @@ function Panel({
                       )
                     }
                   />
-                  <Summary likes={likes} comments={comments} onLikes={() => onScorecard()} onComments={onComments} />
                 </>
               )}
             </div>
@@ -1904,6 +1921,20 @@ function Panel({
               "split:mt-0 split:border-t split:border-white/[0.08] split:p-3",
             )}
           >
+            {!onOpen && (
+              <PanelActions
+                address={listing.UnparsedAddress}
+                liked={liked}
+                likes={likes}
+                comments={comments}
+                shareAs={shareAs}
+                onLike={onLike}
+                onComments={onComments}
+                onScorecard={() => onScorecard()}
+                onShare={onShare}
+                onMore={onMore}
+              />
+            )}
             {onOpen ? (
               <button
                 type="button"
@@ -1923,7 +1954,11 @@ function Panel({
                 className="flex h-12 w-full items-center gap-3 rounded-full bg-white/12 pl-5 pr-3 text-left text-base text-white/75 ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18"
               >
                 <span className="min-w-0 flex-1 truncate">
-                  {mode === "share" ? `Tell ${agentFirst} what you think…` : "Add a comment…"}
+                  {notes
+                    ? `Add a note for ${notes.for}…`
+                    : mode === "share"
+                      ? `Tell ${agentFirst} what you think…`
+                      : "Add a comment…"}
                 </span>
                 <Send aria-hidden size={18} className="shrink-0 opacity-70" />
               </button>
@@ -1951,6 +1986,35 @@ function Panel({
             setLightPlace((now) => (now?.tag === tag && now.clear === clear ? now : { tag, clear }))
           }
         />
+      )}
+      {/* Side by side, the homes before and after: a small arrow centred in
+          the band above the block, and one in the band below it, each
+          bobbing gently. Never on a phone, which swipes. */}
+      {!onOpen && !bare && onPrevious && (
+        <button
+          type="button"
+          aria-label="Go to the previous home"
+          title="Previous home"
+          data-follow="previous"
+          onClick={onPrevious}
+          style={{ top: `calc((var(--stage-top) - 1rem + var(--photo-top)) / 2)` }}
+          className={stageArrow}
+        >
+          <ChevronUp aria-hidden size={22} strokeWidth={2.25} className="animate-[nudge-up_2.4s_ease-in-out_infinite]" />
+        </button>
+      )}
+      {!onOpen && !bare && onNext && (
+        <button
+          type="button"
+          aria-label="Go to the next home"
+          title="Next home"
+          data-follow="next"
+          onClick={onNext}
+          style={{ top: `calc((${stageFoot(listing.Media)} + 100cqh) / 2)` }}
+          className={stageArrow}
+        >
+          <ChevronDown aria-hidden size={22} strokeWidth={2.25} className="animate-[nudge-down_2.4s_ease-in-out_infinite]" />
+        </button>
       )}
     </article>
   );
@@ -2044,11 +2108,12 @@ function Rail({
       data-rail
       // Clear of a notch or rounded corner, on a phone on its side. There, in
       // two columns: one would run up under the header.
-      // Side by side: on the photo, just inside its bottom right corner.
       className={cn(
         "pointer-events-auto absolute bottom-[calc(68px+env(safe-area-inset-bottom))] right-[calc(0.5rem+env(safe-area-inset-right))] z-10 flex flex-col items-center gap-1 short:grid short:grid-cols-2 short:gap-x-2",
         legacy("@5xl:bottom-[max(5rem,calc(env(safe-area-inset-bottom)+4.25rem))] @5xl:right-[calc(1rem+env(safe-area-inset-right))]"),
-        "split:bottom-3 split:right-3 split:flex split:w-14",
+        // Side by side, there's no rail: the same buttons are in a row in
+        // the panel, above the comment box (PanelActions).
+        "split:hidden",
       )}
     >
       <LikeWithList things={things}>
@@ -2163,9 +2228,10 @@ function Facts({
         name={name}
         hint={hint}
         photos={photos}
-        comments={said(tag).length}
+        comments={said(tag).filter((comment) => !comment.isAgent).length}
         open={open === tag}
         lit={lit === tag}
+        agent={agentMarked(items, FACTS, tag)}
         look={look}
         onOpen={(keyboard) => onOpen(tag, keyboard)}
         className={className}
@@ -2222,7 +2288,7 @@ function Facts({
   }, [open]);
 
   return (
-    <div ref={root} className="relative">
+    <div ref={root} data-tour="facts" className="relative">
       {photos && (
         <span id={hint} hidden>
           Like, dislike or comment on it
@@ -2236,6 +2302,7 @@ function Facts({
           label={open}
           phrase={tagPhrase(open)}
           comments={said(open)}
+          agentLiked={agentLiked(items, FACTS, open)}
           photos={photos}
           inline={fine}
           keyboard={keyboard}
@@ -2356,6 +2423,7 @@ function FactButton({
   comments,
   open,
   lit = false,
+  agent = false,
   look = "chip",
   onOpen,
   className,
@@ -2370,6 +2438,8 @@ function FactButton({
   open: boolean;
   // What the line above is about just now.
   lit?: boolean;
+  // On an agent's link: the agent liked it or wrote about it (their face shows on it).
+  agent?: boolean;
   look?: FactLook;
   // `keyboard`: pressed with a key, rather than tapped.
   onOpen: (keyboard: boolean) => void;
@@ -2383,11 +2453,13 @@ function FactButton({
     dislikes > 0 && `${dislikes} ${dislikes === 1 ? "dislike" : "dislikes"}`,
     comments > 0 && `${comments} ${comments === 1 ? "comment" : "comments"}`,
   ].filter(Boolean);
+  const agentWords = useAgentMarkWords();
+  const marked = agent && agentWords !== null;
   return (
     <button
       type="button"
       aria-expanded={open}
-      aria-label={`${name}${counts.length > 0 ? `, ${counts.join(", ")}` : ""}`}
+      aria-label={`${name}${marked ? `, ${agentWords}` : ""}${counts.length > 0 ? `, ${counts.join(", ")}` : ""}`}
       aria-describedby={hint}
       data-fact={tag}
       onClick={(event) => onOpen(event.detail === 0)}
@@ -2401,59 +2473,114 @@ function FactButton({
           : open
             ? "bg-white/20 ring-1 ring-inset ring-white/35"
             : cn(FACT_GLASS, "hover:bg-white/[0.13] active:bg-white/[0.18]"),
+        marked && look === "tile" && "relative",
         className,
       )}
     >
       {children}
+      {marked && (
+        <AgentMark
+          size={look === "price" ? 22 : look === "small" ? 14 : 18}
+          className={cn(look === "tile" ? "absolute right-2 top-2" : "-mr-1 shrink-0", look === "price" && "text-[9px]")}
+        />
+      )}
     </button>
   );
 }
 
-// Under what the home is, side by side: how many liked it and how many said
-// something, each a way in: the likes to the Scorecard (what people think),
-// the comments to the comments.
-function Summary({
+// Side by side, everything there is to do with the home, in one row at the
+// panel's foot, just over the comment box: like it, the comments, the
+// Scorecard, then share (or invite, or send) and more. (On a phone these run
+// down the rail instead, and this row isn't there.) The same names, so the
+// keyboard and screen readers meet the same buttons either way.
+function PanelActions({
+  address,
+  liked,
   likes,
   comments,
-  onLikes,
+  shareAs,
+  onLike,
   onComments,
+  onScorecard,
+  onShare,
+  onMore,
 }: {
+  address: string;
+  liked: boolean;
   likes: number;
   comments: number;
-  onLikes: () => void;
+  shareAs: ShareKind | null;
+  onLike: () => void;
   onComments: () => void;
+  onScorecard: () => void;
+  onShare?: () => void;
+  onMore: () => void;
 }) {
-  const tile = cn(
-    "flex min-h-14 min-w-0 items-center gap-2.5 rounded-2xl px-4 text-left transition-colors hover:bg-white/[0.13] active:bg-white/[0.18]",
-    FACT_GLASS,
-  );
-  const count = (n: number, one: string, many: string) => (
-    <span className="min-w-0 flex-1">
-      <span className="block font-display text-lg font-semibold leading-6 tabular-nums text-white">{n.toLocaleString("en-US")}</span>
-      <span className="block text-meta leading-4 text-white/55">{n === 1 ? one : many}</span>
-    </span>
-  );
+  const action =
+    "flex h-10 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-sm font-semibold text-white/90 transition-colors hover:bg-white/10 active:bg-white/15";
+  const iconOnly = "flex size-10 shrink-0 items-center justify-center rounded-full text-white/85 transition-colors hover:bg-white/10 hover:text-white active:bg-white/15";
+  const sending = shareAs === "sending";
   return (
-    <div className="mt-3 grid grid-cols-2 gap-2">
+    <div data-actions className="-mx-1 mb-2 hidden items-center gap-0.5 split:flex">
       <button
         type="button"
-        onClick={onLikes}
-        aria-label={`${likes.toLocaleString("en-US")} ${likes === 1 ? "like" : "likes"}. See the scorecard`}
-        className={tile}
+        aria-label={`Like ${address}${likes ? `, ${likes} ${likes === 1 ? "like" : "likes"}` : ""}`}
+        aria-pressed={liked}
+        onClick={onLike}
+        className={action}
       >
-        <Heart aria-hidden size={18} className="shrink-0 fill-rose-500 text-rose-500" />
-        {count(likes, "like", "likes")}
-        <ChevronRight aria-hidden size={18} className="shrink-0 text-white/40" />
+        <Heart
+          aria-hidden
+          size={22}
+          strokeWidth={2}
+          className={cn("transition-transform active:scale-90", liked ? "fill-rose-500 text-rose-500" : "text-white")}
+        />
+        {likes > 0 && <span className="tabular-nums">{countLabel(likes)}</span>}
       </button>
+      <button type="button" aria-label={`Comments${comments ? `, ${comments}` : ""}`} onClick={onComments} className={action}>
+        <MessageCircle aria-hidden size={21} />
+        {comments > 0 && <span className="tabular-nums">{countLabel(comments)}</span>}
+      </button>
+      <button type="button" aria-label="Scorecard" data-follow="scorecard" onClick={onScorecard} className={action}>
+        <ClipboardList aria-hidden size={20} />
+        Scorecard
+      </button>
+      <span className="ml-auto" />
+      {onShare && (shareAs === "send" || sending) && (
+        <button
+          type="button"
+          aria-label={sending ? "Send to a client, getting a new link…" : "Send to a client"}
+          title="Send to a client"
+          aria-disabled={sending || undefined}
+          onClick={sending ? undefined : onShare}
+          className={cn(iconOnly, sending && "cursor-progress opacity-60")}
+        >
+          {sending ? (
+            <LoaderCircle aria-hidden size={20} className="animate-spin motion-reduce:animate-none" />
+          ) : (
+            <Send aria-hidden size={20} />
+          )}
+        </button>
+      )}
+      {onShare && shareAs === "invite" && (
+        <button type="button" aria-label="Invite someone" title="Invite someone" onClick={onShare} className={iconOnly}>
+          <UserPlus aria-hidden size={20} />
+        </button>
+      )}
+      {onShare && shareAs === "share" && (
+        <button type="button" aria-label="Share" title="Share" onClick={onShare} className={iconOnly}>
+          <Share2 aria-hidden size={20} />
+        </button>
+      )}
       <button
         type="button"
-        onClick={onComments}
-        aria-label={`${comments.toLocaleString("en-US")} ${comments === 1 ? "comment" : "comments"}. Read them`}
-        className={tile}
+        aria-label="More options"
+        title="More"
+        data-follow="more"
+        onClick={onMore}
+        className={iconOnly}
       >
-        <MessageCircle aria-hidden size={18} className="shrink-0 text-white/75" />
-        {count(comments, "comment", "comments")}
-        <ChevronRight aria-hidden size={18} className="shrink-0 text-white/40" />
+        <Ellipsis aria-hidden size={22} />
       </button>
     </div>
   );
@@ -2721,6 +2848,7 @@ function HomeSheet({
   onPass: (listingKey: string) => void;
   onOpenMore: (listingKey: string) => void;
 }) {
+  const notes = useNotesMode();
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const end = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -2849,12 +2977,16 @@ function HomeSheet({
             spot={spot}
             placeholder={
               name
-                ? `Comment on ${name}…`
-                : mode === "share"
-                  ? `Tell ${agentFirstName(agentName)} what you think…`
-                  : undefined
+                ? notes
+                  ? `Add a note on ${name}…`
+                  : `Comment on ${name}…`
+                : notes
+                  ? `Add a note for ${notes.for}…`
+                  : mode === "share"
+                    ? `Tell ${agentFirstName(agentName)} what you think…`
+                    : undefined
             }
-            label={name ? undefined : "Add a comment"}
+            label={name ? undefined : notes ? "Add a note" : "Add a comment"}
             // At a phone's two heights, the emoji wait for the box, so the
             // comments get the room until you go to say something.
             quickOnFocus={!spot && photoFoot !== undefined}

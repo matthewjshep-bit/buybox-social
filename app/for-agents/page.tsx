@@ -6,7 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { button } from "@/lib/ui";
 
 export const metadata = {
-  title: "For agents · BuyBox Social",
+  title: "For agents · Porchcard",
   description: "Send clients a few homes as a link. See what they like and pass on, in their own words.",
 };
 

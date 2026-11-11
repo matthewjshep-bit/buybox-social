@@ -14,7 +14,7 @@ export async function generateImageMetadata({ params }: { params: { token: strin
   const by = found?.agent.full_name || "your agent";
   const alt =
     listings.length === 0
-      ? "BuyBox Social"
+      ? "Porchcard"
       : `${listings.length === 1 ? listings[0].UnparsedAddress : `${listings.length} homes`} picked for you by ${by}`;
   return [{ id: "card", alt, size: PREVIEW_SIZE, contentType: PREVIEW_TYPE }];
 }
@@ -38,7 +38,7 @@ export default async function Image({ params }: { params: Promise<{ token: strin
           <PreviewHome listing={listing} />
         )
       ) : (
-        <div style={{ display: "flex", fontSize: 56, fontWeight: 700 }}>BuyBox Social</div>
+        <div style={{ display: "flex", fontSize: 56, fontWeight: 700 }}>Porchcard</div>
       )}
       {agent && (
         <div style={{ display: "flex", alignItems: "center", marginTop: 20, fontSize: 28 }}>

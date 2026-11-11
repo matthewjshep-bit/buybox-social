@@ -159,8 +159,9 @@ export type PersonTake = {
 const topComments = (items: TimelineItem[]) =>
   items.filter((item): item is TimelineComment => item.kind === "comment" && !item.parentId);
 const allComments = (items: TimelineItem[]) => items.filter((item): item is TimelineComment => item.kind === "comment");
+// (Not the agent's own likes: the Scorecard is the clients' take.)
 const reactionLines = (items: TimelineItem[]) =>
-  items.filter((item): item is TimelineReaction => item.kind === "reaction");
+  items.filter((item): item is TimelineReaction => item.kind === "reaction" && !item.isAgent);
 
 const splitId = (id: string) => {
   const at = id.indexOf("\u0000");

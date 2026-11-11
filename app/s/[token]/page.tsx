@@ -53,16 +53,18 @@ export default async function SharePage({ params }: Props) {
     person ? isPrivateTo(share.id, person.id) : false,
   ]);
   // The agent looking at their own link (Preview, on the client's page): never
-  // taken for the client. The header says so, and nothing they do here is
-  // saved as anyone (actions.ts).
+  // taken for the client. The header says so. What they like or write here
+  // is their own first pass, for everyone on the link (actions.ts).
   const agentViewing = viewer?.id === share.agent_id;
-  const preview = agentViewing ? `Viewing as ${person?.first_name || share.client_name || "your client"}` : undefined;
+  const client = person?.first_name || share.client_name || "your client";
+  const preview = agentViewing ? `Viewing as ${client}` : undefined;
   // Someone's own link is them; otherwise it's whoever this device joined as.
-  const me = person ?? (await getParticipant(share.id, device));
+  // (The agent is never anyone on it, even on someone's own link.)
+  const me = agentViewing ? null : (person ?? (await getParticipant(share.id, device)));
   const keys = listings.map((listing) => listing.ListingKey);
   const [timelines, photoLikes] = await Promise.all([
     getShareTimelines(share.id, listings, me?.id ?? null),
-    getSharePhotoLikes(share.id, keys, me?.id ?? null),
+    getSharePhotoLikes(share.id, keys, me?.id ?? null, { agent: agentViewing }),
   ]);
   // Your own reaction to a home is your line in its timeline.
   const mineFor = (key: string) =>
@@ -96,7 +98,7 @@ export default async function SharePage({ params }: Props) {
     // Everyone here who liked the home, or anything in its photos.
     const likes = timeline.filter(
       (item): item is TimelineReaction =>
-        item.kind === "reaction" && (item.state.reaction === "like" || item.photos.length > 0),
+        item.kind === "reaction" && !item.isAgent && (item.state.reaction === "like" || item.photos.length > 0),
     );
     return {
       listing,
@@ -132,6 +134,7 @@ export default async function SharePage({ params }: Props) {
         whoCanSee={whoCanSee}
         askToSee={askToSee.bind(null, token)}
         preview={preview}
+        notes={agentViewing ? { for: client, done: `/dashboard/shares/${share.id}` } : undefined}
         // (No name: the feed says "your agent".)
         agentName={agent.full_name || undefined}
         // A personal link opens as its owner, so it isn't one to pass around.
@@ -145,7 +148,7 @@ export default async function SharePage({ params }: Props) {
           likePhoto: likePhotoInShare.bind(null, token),
         }}
         // (The agent's own look is never asked a name: nothing there is saved.)
-        myName={me?.first_name ?? (agentViewing ? agentFirstName(agent.full_name, "You") : null)}
+        myName={agentViewing ? agentFirstName(agent.full_name, "You") : (me?.first_name ?? null)}
         prompt={`So ${agentName} and anyone else on this link know who's talking. No account or password needed.`}
         suggestedName={expected}
         nameHint={expected && `${agentFirst} sent this to ${expected}. Not ${expected}? Type your name.`}

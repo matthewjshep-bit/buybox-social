@@ -86,7 +86,10 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
   await sendButton(agent, "96 Fernhollow Ln").click();
   const sheet = agent.getByRole("dialog", { name: "Sent. Who's it for?" });
   await expect(sheet).toBeVisible();
-  const waiting = agent.locator('article[aria-label="96 Fernhollow Ln"] button[aria-label="Send to a client, getting a new link…"]');
+  // (The one showing: on a phone, the rail's.)
+  const waiting = agent.locator(
+    'article[aria-label="96 Fernhollow Ln"] button[aria-label="Send to a client, getting a new link…"]:visible',
+  );
   await expect(waiting).toHaveAttribute("aria-disabled", "true");
   seen.hold = null;
   release();
@@ -137,13 +140,15 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
   await agent.goto("/dashboard");
   await expect(agent.getByRole("link", { name: /Toby/ })).toContainText("1 home · 96 Fernhollow Ln");
 
-  // The agent looking at their own link isn't taken for Toby: it's a
-  // preview, with no name asked, and nothing they tap is saved.
+  // The agent looking at their own link isn't taken for Toby: it's their
+  // notes for him, with no name asked, and the heart on the home is his.
   await agent.goto(url);
   const own = homeIn(agent, "96 Fernhollow Ln");
-  await expect(agent.getByRole("banner")).toContainText("Viewing as Toby");
+  await expect(agent.getByRole("banner")).toContainText("Your notes for Toby");
   await heartOf(own).click();
-  await expect(own.getByRole("alert")).toHaveText("You're previewing what Toby sees. Nothing here is saved.");
+  await expect(own.getByRole("alert")).toHaveText(
+    "The heart is for your client. Tap the price, or anything in a photo, to leave a note.",
+  );
   await expect(agent.getByRole("dialog", { name: "What's your first name?" })).toBeHidden();
 
   // [P] The link carries nothing of the agent's but what they chose to show,

@@ -1,7 +1,7 @@
 import { requireAgent } from "@/lib/auth";
 import { DashboardNav } from "./nav";
 
-export const metadata = { title: "Dashboard · BuyBox Social" };
+export const metadata = { title: "Dashboard · Porchcard" };
 
 // The agent's own colour is set around this and the header together, so the
 // logo is theirs too (BrandScope, app/layout.tsx).

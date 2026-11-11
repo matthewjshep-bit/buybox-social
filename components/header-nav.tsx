@@ -1,10 +1,11 @@
 "use client";
 
-import { Bell, Home, LayoutDashboard, LogOut, UserRound } from "lucide-react";
+import { Bell, LayoutDashboard, LogOut, UserRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
 import { signOut } from "@/app/login/actions";
+import { PorchcardLogo, PorchcardMark } from "@/components/porchcard-logo";
 import { Avatar } from "@/components/ui";
 import { cn } from "@/lib/format";
 
@@ -17,23 +18,21 @@ function useCurrent(href: string, section: boolean) {
   return undefined;
 }
 
-// The logo, which always goes home. Over the feed its tile gets a faint edge.
+// Porchcard's logo, which always goes home: navy on the white header, white
+// over the feed (with a soft shadow, for a bright photo). On a narrow phone,
+// just the house with its heart.
 export function SiteLogo({ overlay = false }: { overlay?: boolean }) {
   return (
     <Link
       href="/"
-      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-xl font-display text-lg font-semibold"
+      className={cn(
+        "flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl px-1",
+        overlay ? "text-white drop-shadow-[0_1px_2px_rgb(0_0_0/0.45)]" : "text-[#052747]",
+      )}
     >
-      <span
-        aria-hidden
-        className={cn(
-          "flex size-9 items-center justify-center rounded-xl bg-brand text-white",
-          overlay && "ring-1 ring-white/30",
-        )}
-      >
-        <Home size={18} />
-      </span>
-      <span className="max-[420px]:sr-only">BuyBox Social</span>
+      <PorchcardLogo className="h-7 w-auto max-[420px]:hidden" />
+      <PorchcardMark className="hidden h-8 w-auto max-[420px]:block" />
+      <span className="sr-only">Porchcard</span>
     </Link>
   );
 }

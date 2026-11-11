@@ -1,10 +1,11 @@
 "use client";
 
-import { ArrowDown, CalendarCheck, Check, Eye, Home, Mail, MessageSquare, Phone, type LucideIcon } from "lucide-react";
+import { ArrowDown, CalendarCheck, Check, Eye, Mail, MessageSquare, PenLine, Phone, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { AskResult } from "@/app/s/[token]/actions";
 import { AgentAvatar } from "@/components/agent-avatar";
+import { PorchcardMark } from "@/components/porchcard-logo";
 import { useThread } from "@/components/listing-thread";
 import { Sheet } from "@/components/sheet";
 import { phoneDigits } from "@/lib/contact";
@@ -48,6 +49,7 @@ export function ShareHeader({
   open,
   onOpenChange,
   preview,
+  notes = null,
 }: {
   agent: ShareAgent;
   note: string;
@@ -61,6 +63,8 @@ export function ShareHeader({
   onOpenChange: (open: boolean) => void;
   // The agent looking at their own link: "Viewing as Dana".
   preview?: string;
+  // And writing their notes on it: who for, and the way back once done.
+  notes?: { for: string; done: string } | null;
 }) {
   // What Contact rises from, worked out each time it's placed (as it opens,
   // and if the window changes size meanwhile).
@@ -90,10 +94,9 @@ export function ShareHeader({
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-3 sm:px-6 split:max-w-none split:px-6">
           {/* Every agent colour is dark: over the photo, focus is white with a dark edge. */}
           <Link href="/" className={cn("flex size-11 shrink-0 items-center justify-center rounded-xl", focusOnDark)}>
-            <span aria-hidden className="flex size-9 items-center justify-center rounded-xl bg-brand ring-1 ring-white/30">
-              <Home size={18} />
-            </span>
-            <span className="sr-only">BuyBox Social</span>
+            {/* Porchcard's house, in white over the photo; the agent is beside it. */}
+            <PorchcardMark className="h-8 w-auto text-white drop-shadow-[0_1px_2px_rgb(0_0_0/0.45)]" />
+            <span className="sr-only">Porchcard</span>
           </Link>
           <AgentAvatar agent={agent} size={36} decorative className="text-sm ring-1 ring-white/60" />
           <div className="min-w-0 flex-1 leading-tight [text-shadow:0_1px_3px_rgb(0_0_0/0.5)]">
@@ -104,28 +107,48 @@ export function ShareHeader({
               // they know): it's a preview, said in the space the header
               // already has, so the home sits just where it does for the client.
               <p className="flex items-center gap-1 text-meta font-medium">
-                <Eye aria-hidden size={14} className="shrink-0" />
+                {notes ? (
+                  <PenLine aria-hidden size={14} className="shrink-0" />
+                ) : (
+                  <Eye aria-hidden size={14} className="shrink-0" />
+                )}
                 <span className="truncate">
                   <span className="sr-only">Preview, </span>
-                  {preview}
+                  {notes ? `Your notes for ${notes.for}` : preview}
                 </span>
               </p>
             ) : (
               agent.brokerage && <p className="truncate text-meta">{agent.brokerage}</p>
             )}
           </div>
-          <button
-            type="button"
-            aria-haspopup="dialog"
-            onClick={() => onOpenChange(true)}
-            className={cn(
-              "flex min-h-11 shrink-0 items-center gap-1.5 rounded-full bg-white/15 px-4 text-sm font-semibold backdrop-blur-md hover:bg-white/25",
-              focusOnDark,
-            )}
-          >
-            <Phone aria-hidden size={16} />
-            Contact
-          </button>
+          {notes ? (
+            // The agent needn't contact themselves: back to the link's page,
+            // where it's sent.
+            <Link
+              href={notes.done}
+              data-tour="done"
+              className={cn(
+                "flex min-h-11 shrink-0 items-center gap-1.5 rounded-full bg-white px-4 text-sm font-semibold text-ink hover:bg-white/90",
+                focusOnDark,
+              )}
+            >
+              <Check aria-hidden size={16} />
+              Done
+            </Link>
+          ) : (
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              onClick={() => onOpenChange(true)}
+              className={cn(
+                "flex min-h-11 shrink-0 items-center gap-1.5 rounded-full bg-white/15 px-4 text-sm font-semibold backdrop-blur-md hover:bg-white/25",
+                focusOnDark,
+              )}
+            >
+              <Phone aria-hidden size={16} />
+              Contact
+            </button>
+          )}
         </div>
       </header>
       <Sheet

@@ -9,7 +9,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL(appUrl()),
-  title: "BuyBox Social",
+  title: "Porchcard",
   description: "Send clients homes they can react to and talk about together.",
 };
 

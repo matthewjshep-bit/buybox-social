@@ -1,4 +1,4 @@
-# BuyBox Social
+# Porchcard
 
 Agents send clients a branded link to a few listings. Clients and their family react and comment with no app and no password, and the agent sees it all on a dashboard.
 
@@ -52,7 +52,7 @@ You need free accounts at Supabase, Vercel and Resend.
    | `SUPABASE_URL` | From Supabase |
    | `SUPABASE_PUBLISHABLE_KEY` | From Supabase |
    | `RESEND_API_KEY` | From Resend |
-   | `EMAIL_FROM` | For example `BuyBox Social <alerts@yourdomain.com>` |
+   | `EMAIL_FROM` | For example `Porchcard <alerts@yourdomain.com>` |
 
 Then send yourself a link by text to check the preview image.
 

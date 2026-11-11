@@ -81,7 +81,7 @@ test("one home: the link opens on it, in the agent's space, with a way to text, 
   const header = page.getByRole("banner");
   await expect(header.getByText("Jordan Rivera", { exact: true })).toBeVisible();
   await expect(header.getByText("Harbor & Pine Realty", { exact: true })).toBeVisible();
-  await expect(header.getByRole("link", { name: "BuyBox Social" })).toHaveAttribute("href", "/");
+  await expect(header.getByRole("link", { name: "Porchcard" })).toHaveAttribute("href", "/");
   for (const name of ["Map", "Sign in", "Sign up"]) {
     await expect(page.getByRole("link", { name, exact: true })).toHaveCount(0);
   }
@@ -135,7 +135,7 @@ test("one home: the link opens on it, in the agent's space, with a way to text, 
   await page.reload();
   await expect(home).toBeInViewport({ ratio: 0.9 });
   const panel = (await home.locator("[data-words]").boundingBox())!;
-  const logo = (await header.getByRole("link", { name: "BuyBox Social" }).boundingBox())!;
+  const logo = (await header.getByRole("link", { name: "Porchcard" }).boundingBox())!;
   const contactButton = (await header.getByRole("button", { name: "Contact" }).boundingBox())!;
   expect(Math.round(logo.x)).toBe(24);
   expect(Math.round(contactButton.x + contactButton.width)).toBe(Math.round(panel.x + panel.width));
@@ -205,10 +205,15 @@ test("ask to see it: a first name, then the ask under the home and an email to t
   expect(emailsTo("ask-agent@example.com")).toHaveLength(3);
 });
 
-test("the agent's own Preview shows their client's view, and saves nothing as them", async ({ browser, request }) => {
-  test.setTimeout(60_000);
+test("the agent's own Preview is their first pass: what they like and say there is theirs, never Dana's", async ({
+  browser,
+  request,
+}) => {
+  test.setTimeout(90_000);
   const agent = await signInAgent(browser, "own-preview@example.com", "Priya Shah");
   const { url, dashboardUrl } = await createShare(agent, ["1204 Quillan"], ["Dana"]);
+  // Asked for before it's sent, and only asked.
+  await expect(agent.locator("[data-your-take]")).toContainText("Add your take before you send");
 
   // Preview, on Dana's page, opens her link in a new tab, still signed in.
   const [preview] = await Promise.all([
@@ -217,27 +222,30 @@ test("the agent's own Preview shows their client's view, and saves nothing as th
   ]);
   const home = homeIn(preview, "1204 Quillan St SE");
   await expect(home).toBeInViewport({ ratio: 0.9 });
-  await expect(preview.getByRole("banner")).toContainText("Viewing as Dana");
+  const banner = preview.getByRole("banner");
+  await expect(banner).toContainText("Your notes for Dana");
+  // Nothing to contact: Done, back to Dana's page.
+  await expect(banner.getByRole("button", { name: "Contact" })).toHaveCount(0);
+  await expect(banner.getByRole("link", { name: "Done" })).toHaveAttribute("href", new URL(dashboardUrl).pathname);
 
-  // [P] A like, a like in a photo, a comment and an ask: each says it isn't
-  // saved, and none of it is, as Dana or anyone.
-  const notSaved = "You're previewing what Dana sees. Nothing here is saved.";
+  // [P] The heart on the home is Dana's to give.
   await heartOf(home).click();
-  await expect(home.getByRole("alert")).toHaveText(notSaved);
-  const door = (await pick(home, "the red front door")).getByRole("button", { name: /^Like the red front door(,|$)/ });
+  await expect(home.getByRole("alert")).toHaveText(
+    "The heart is for your client. Tap the price, or anything in a photo, to leave a note.",
+  );
+  // A like in a photo, and a note: the agent's own. (What isn't right goes in a note.)
+  const card = await pick(home, "the red front door");
+  await expect(card.getByRole("button", { name: /^Dislike/ })).toHaveCount(0);
+  const door = card.getByRole("button", { name: /^Like the red front door(,|$)/ });
   await door.click();
-  await expect(door).toHaveAttribute("aria-pressed", "false");
+  await expect(door).toHaveAttribute("aria-pressed", "true");
   await preview.keyboard.press("Escape");
   const chat = await openComments(preview, home);
-  await chat.getByLabel("Add a comment").fill("Testing my link before I send it");
+  await chat.getByLabel("Add a note").fill("Testing my link before I send it");
   await chat.getByRole("button", { name: "Post", exact: true }).click();
-  await expect(chat.getByText("You're previewing what Dana sees. To say something, reply from your dashboard.")).toBeVisible();
+  await expect(commentIn(chat, "Priya Shah", "Testing my link before I send it")).toBeVisible();
   await preview.keyboard.press("Escape");
   await expect(chat).toBeHidden();
-  await preview.getByRole("banner").getByRole("button", { name: "Contact" }).click();
-  const contact = preview.getByRole("dialog", { name: "Contact Priya Shah" });
-  await contact.getByRole("button", { name: "Ask to see it" }).click();
-  await expect(contact.getByRole("status")).toHaveText("You're previewing what Dana sees. Nothing was sent.");
 
   await preview.reload();
   const again = homeIn(preview, "1204 Quillan St SE");
@@ -245,16 +253,35 @@ test("the agent's own Preview shows their client's view, and saves nothing as th
   const doorAgain = (await pick(again, "the red front door")).getByRole("button", {
     name: /^Like the red front door(,|$)/,
   });
-  await expect(doorAgain).toHaveAttribute("aria-pressed", "false");
-  const html = await (await request.get(url)).text();
-  expect(html).not.toContain("Testing my link");
-  expect(html).not.toContain("Can we see it in person?");
-  // Dana's page: not opened, nothing liked or said, and no email about any of it.
+  await expect(doorAgain).toHaveAttribute("aria-pressed", "true");
+
+  // Dana's page: not opened, nothing from Dana, and no email about any of it;
+  // the agent's take is on it.
   await agent.goto(dashboardUrl);
   await expect(agent.getByText("Dana hasn't opened it yet")).toBeVisible();
-  await expect(agent.getByText(/Dana liked|Testing my link|Can we see it/)).toHaveCount(0);
+  await expect(agent.getByText(/Dana liked/)).toHaveCount(0);
+  await expect(agent.getByText("1 note and 1 like, for Dana to see.")).toBeVisible();
   await preview.waitForTimeout(1000);
   expect(emailsTo("own-preview@example.com")).toEqual([]);
+
+  // Dana reads it as Priya's: her note, and her like on the door, which is no
+  // like of Dana's and isn't counted among the link's.
+  const dana = await (await browser.newContext()).newPage();
+  await dana.goto(url);
+  const hers = homeIn(dana, "1204 Quillan St SE");
+  const doorCard = await pick(hers, "the red front door");
+  const take = doorCard.locator("[data-agent-take]");
+  await expect(take).toContainText("Priya, your agent");
+  await expect(take).toContainText("Likes this");
+  await expect(doorCard.getByRole("button", { name: /^Like the red front door/ })).toHaveAccessibleName(
+    "Like the red front door",
+  );
+  await dana.keyboard.press("Escape");
+  const thread = await openComments(dana, hers);
+  await expect(commentIn(thread, "Priya Shah", "Testing my link before I send it")).toBeVisible();
+  // [P] And only on the link: never on the home's public page.
+  const listingKey = await hers.getAttribute("data-home");
+  if (listingKey) expect(await (await request.get(`/homes/${listingKey}`)).text()).not.toContain("Testing my link");
 });
 
 test("several homes open on a word from the agent over the first one's photo, with a button down to it", async ({
@@ -425,5 +452,5 @@ test("a link that isn't there says so, with a way home", async ({ page }) => {
   const res = await page.goto(`/s/${"x".repeat(32)}`);
   expect(res?.status()).toBe(404);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("This link isn't available");
-  await expect(page.getByRole("link", { name: "Go to BuyBox Social" })).toHaveAttribute("href", "/");
+  await expect(page.getByRole("link", { name: "Go to Porchcard" })).toHaveAttribute("href", "/");
 });

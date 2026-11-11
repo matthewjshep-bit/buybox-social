@@ -306,10 +306,11 @@ export async function claimQuickShare(input: { token: string; listingKey: string
 }
 
 // Nobody has opened the link (`s`), joined it or said anything on it yet.
+// (The agent's own notes on it don't count: theirs to take back with it.)
 const unopened = () => sql`
   not exists (select 1 from share_opens o where o.share_id = s.id)
   and not exists (select 1 from participants p where p.share_id = s.id)
-  and not exists (select 1 from comments c where c.share_id = s.id)`;
+  and not exists (select 1 from comments c where c.share_id = s.id and c.participant_id is not null)`;
 
 export type ReleaseResult = { released: boolean; opened?: boolean };
 

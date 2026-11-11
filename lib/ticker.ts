@@ -108,7 +108,11 @@ export function eventsFromTimeline(items: TimelineItem[], { agentViewing = false
       });
       continue;
     }
-    const who: TickerEvent["who"] = item.mine
+    const who: TickerEvent["who"] = item.isAgent
+      ? agentViewing
+        ? { tone: "you", name: item.name, agent: true }
+        : { tone: "agent", name: item.name, ...(item.personKey && { key: item.personKey }) }
+      : item.mine
       ? { tone: "you", name: null }
       : item.fromPrivateChat
         ? { tone: "anonymous", name: null }
@@ -141,7 +145,10 @@ export function eventsFromTimeline(items: TimelineItem[], { agentViewing = false
       }
     }
   }
-  return events.sort(newestFirst).slice(0, TICKER_EVENTS);
+  // The agent's own take leads the line for everyone else on their link: it's
+  // what they sent it to say, their words before their likes. Then the newest first.
+  const agentFirst = (event: TickerEvent) => (event.who.tone === "agent" ? (event.kind === "comment" ? 0 : 1) : 2);
+  return events.sort((a, b) => agentFirst(a) - agentFirst(b) || newestFirst(a, b)).slice(0, TICKER_EVENTS);
 }
 
 // From the one latest thing, where a page has nothing more (an older caller).
@@ -189,8 +196,12 @@ export function buildCycle(
   if (photoOnly) events = events.filter((event) => !onPhoto(event) || event.mediaKey === photoKey);
   if (events.length === 0) return [];
   const here = (event: TickerEvent) => Boolean(photoKey) && event.mediaKey === photoKey && onPhoto(event);
-  // It leads with the newest (what you've just done, when you have).
-  const first = events.find((event) => !isDislike(event)) ?? events[0];
+  // It leads with the newest (what you've just done, when you have), or on an
+  // agent's link, the agent's own words.
+  const first =
+    events.find((event) => event.who.tone === "agent" && event.kind === "comment") ??
+    events.find((event) => !isDislike(event)) ??
+    events[0];
   const close = (event: TickerEvent) =>
     mode === "share" ? event.who.tone !== "anonymous" : event.who.tone === "client";
   const kindTier = (event: TickerEvent) =>
@@ -203,10 +214,13 @@ export function buildCycle(
           : event.kind === "anon-likes"
             ? 3
             : 4;
+  // On their link, the agent's own take goes round before anyone else's.
+  const lead = (event: TickerEvent) => (event.who.tone === "agent" ? (event.kind === "comment" ? 0 : 1) : 2);
   const rest = events
     .filter((event) => event !== first)
     .sort(
       (a, b) =>
+        lead(a) - lead(b) ||
         Number(here(b)) - Number(here(a)) ||
         (here(a) ? 0 : Number(close(b)) - Number(close(a)) || kindTier(a) - kindTier(b)) ||
         newestFirst(a, b),
@@ -228,7 +242,9 @@ export function buildCycle(
   for (const event of [first, ...rest]) {
     const person = personOf(event);
     const key = person ? `${person}\u0001${placeOf(event)}` : `anonymous\u0001${readsAs(event)}`;
-    if (seen.has(key) || (person && (perPerson.get(person) ?? 0) >= 2)) continue;
+    // (The agent's take, all of it, as far as the line holds.)
+    const most = event.who.tone === "agent" ? CYCLE_MOST : 2;
+    if (seen.has(key) || (person && (perPerson.get(person) ?? 0) >= most)) continue;
     seen.add(key);
     if (person) perPerson.set(person, (perPerson.get(person) ?? 0) + 1);
     cycle.push(event);
