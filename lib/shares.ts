@@ -25,6 +25,8 @@ export type Share = {
   agent_id: string;
   client_name: string;
   note: string;
+  // The welcome screen's headline in the agent's words; empty for the standard line.
+  headline: string;
 };
 
 export type ThreadReaction = {
@@ -144,7 +146,7 @@ export async function reserveSendTokenFor(agentId: string) {
 export async function getShareByToken(token: string) {
   if (!isShareToken(token)) return null;
   const [row] = await sql<(Share & ShareAgent & { person_id: string | null; person_name: string | null })[]>`
-    select s.id, s.token, s.agent_id, s.client_name, s.note,
+    select s.id, s.token, s.agent_id, s.client_name, s.note, s.headline,
            a.full_name, a.brokerage, a.photo_data_url, a.brand_color, a.contact_phone, a.contact_email,
            p.id as person_id, p.first_name as person_name
     from shares s

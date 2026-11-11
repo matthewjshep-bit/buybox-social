@@ -64,6 +64,16 @@ export async function signUpBuyer(browser: Browser, email: string, name: string,
 // The feed: one home per screen.
 export const homeIn = (page: Page, address: string) => page.getByRole("article", { name: address });
 
+// An agent's link opens on its welcome screen, a word from the agent: on to
+// the first home the way its button goes.
+export async function toFirstHome(page: Page) {
+  await page.getByRole("button", { name: /^See the (home|\d+ homes)$/ }).click();
+  const first = page.getByRole("article").first();
+  await expect(first).toBeInViewport({ ratio: 0.9 });
+  // Come to rest: a tap while it's still sliding into place can miss.
+  await expect.poll(async () => Math.abs((await first.boundingBox())?.y ?? 99)).toBeLessThan(1);
+}
+
 // The heart on a home's rail (photo hearts are named "Like the kitchen").
 // The home's own heart on the rail (not a heart on a comment, in the feed beside the photo).
 export const heartOf = (home: Locator) => home.getByRole("button", { name: /^Like (?!the )(?!.*\bcomment\b)/ });

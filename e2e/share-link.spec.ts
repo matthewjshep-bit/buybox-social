@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import {
+import { toFirstHome,
   commentIn,
   createShare,
   heartOf,
@@ -32,7 +32,7 @@ const emailsTo = (address: string) =>
     .split("\n")
     .filter((line) => line.includes(`[email] to=${address} `));
 
-test("one home: the link opens on it, in the agent's space, with a way to text, call or email them", async ({
+test("one home: the link opens on a word from the agent, then the home, in the agent's space, with a way to text, call or email them", async ({
   browser,
   request,
 }) => {
@@ -47,23 +47,21 @@ test("one home: the link opens on it, in the agent's space, with a way to text, 
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto(url);
 
-  // The home itself, straight away: no welcome screen, no keypress.
+  // A word from the agent first, as on any link: the greeting, with Owen's
+  // name (the page's one heading), and their note. No photo hangs below it.
+  const welcome = page.getByRole("region", { name: "Welcome" });
+  await expect(welcome).toBeInViewport();
+  await expect(page.locator("h1")).toHaveCount(1);
+  await expect(welcome.getByRole("heading", { level: 1 })).toHaveText("Owen, I picked this home for you");
+  await expect(welcome.getByText("This one has the yard you mentioned.")).toBeVisible();
+  // (Only the agent's own face is drawn from data; the one photo is the home's.)
+  await expect(welcome.locator('img:not([src^="data:"])')).toHaveCount(1);
+  // Then the home, one tap (or a swipe) away, with its own description.
+  await welcome.getByRole("button", { name: "See the home" }).click();
   const home = homeIn(page, "4127 Larkmoor Ave NE");
   await expect(home).toBeInViewport({ ratio: 0.9 });
-  await expect(page.getByRole("region", { name: "Welcome" })).toHaveCount(0);
-  // The agent's greeting and note are the home's caption, under its photo,
-  // ahead of the description: the page's one heading.
-  await expect(page.locator("h1")).toHaveCount(1);
-  await expect(home.getByRole("heading", { level: 1 })).toHaveText("Owen, I picked this home for you");
-  await expect(home.getByRole("heading", { level: 1 })).toBeVisible();
-  await expect(home.getByText(/^This one has the yard/)).toBeVisible();
-  // The note whole, then the home's own description, one tap on "more" away.
-  await home.getByRole("button", { name: "more", exact: true }).click();
-  const about = page.getByRole("dialog", { name: "Porchcard" });
-  await expect(about.getByText("This one has the yard you mentioned.")).toBeVisible();
-  await expect(about).toContainText("A warm Ravenna-area Craftsman");
-  await page.keyboard.press("Escape");
-  await expect(about).toBeHidden();
+  await expect(home).toContainText("A warm Ravenna-area Craftsman");
+  await expect(home).not.toContainText("This one has the yard");
   // The agent's header comes first, as it reads and as Tab goes, though it floats over the home.
   expect(
     await page.evaluate(() => {
@@ -133,6 +131,7 @@ test("one home: the link opens on it, in the agent's space, with a way to text, 
   // Contact rises from the white panel beside the photo, as More does.
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.reload();
+  await toFirstHome(page);
   await expect(home).toBeInViewport({ ratio: 0.9 });
   const panel = (await home.locator("[data-words]").boundingBox())!;
   const logo = (await header.getByRole("link", { name: "Porchcard" }).boundingBox())!;
@@ -170,6 +169,7 @@ test("ask to see it: a first name, then the ask under the home and an email to t
   // Someone else asks to see it, from Contact. Their first name first.
   const eli = await (await browser.newContext()).newPage();
   await eli.goto(url);
+  await toFirstHome(eli);
   await expect(homeIn(eli, "812 N Corbel St")).toBeInViewport({ ratio: 0.9 });
   await eli.getByRole("button", { name: "Contact" }).click();
   const contact = eli.getByRole("dialog", { name: "Contact Priya Shah" });
@@ -220,6 +220,7 @@ test("the agent's own Preview is their first pass: what they like and say there 
     agent.context().waitForEvent("page"),
     agent.getByRole("link", { name: "Preview Dana's link", exact: true }).click(),
   ]);
+  await toFirstHome(preview);
   const home = homeIn(preview, "1204 Quillan St SE");
   await expect(home).toBeInViewport({ ratio: 0.9 });
   const banner = preview.getByRole("banner");
@@ -299,8 +300,9 @@ test("several homes open on a word from the agent over the first one's photo, wi
   await nina.goto(urls.Nina);
   const welcome = nina.getByRole("region", { name: "Welcome" });
   await expect(welcome.getByRole("heading", { level: 1 })).toHaveText("Nina, I picked these 3 homes for you");
-  // The first home's photo behind it, and peeking up from below.
-  await expect(welcome.locator('img[src*="kirkland"]')).toHaveCount(2);
+  // The first home's photo behind it, blurred; nothing hanging off the foot.
+  await expect(welcome.locator('img:not([src^="data:"])')).toHaveCount(1);
+  await expect(welcome.locator('img[src*="kirkland"]')).toHaveCount(1);
   // Her own link: just for her.
   await expect(welcome).toContainText("This link is just for you, Nina. Ask Jordan Rivera if someone else should see these.");
   await expect(welcome).not.toContainText("Anyone with this link");
@@ -322,7 +324,7 @@ test("several homes open on a word from the agent over the first one's photo, wi
   await expect(first).toBeInViewport({ ratio: 0.9 });
   await expect(first).toBeFocused();
 
-  // A tap on the home peeking up from the bottom goes there too.
+  // A tap on the bobbing arrow at the foot goes there too.
   await nina.goto(urls.Nina);
   await expect(welcome).toBeInViewport();
   await welcome.locator("button[aria-hidden]").click();
@@ -384,6 +386,7 @@ test("one person on two devices is one person, and never 'not yet' to themselves
   const joinWithPass = async (name: string, keep: boolean) => {
     const page = await (await browser.newContext()).newPage();
     await page.goto(url);
+    await toFirstHome(page);
     const home = homeIn(page, ADDRESS);
     await expect(home).toBeInViewport({ ratio: 0.9 });
     const more = await openMore(page, home);
@@ -426,6 +429,7 @@ test("'only you' is said only when nobody else can read it: not once the package
   // Someone opens the package's own link, and never says who they are.
   const holder = await (await browser.newContext()).newPage();
   await holder.goto(url);
+  await toFirstHome(holder);
   await expect(homeIn(holder, "4127 Larkmoor Ave NE")).toBeInViewport({ ratio: 0.9 });
 
   // Then the agent adds Owen, with a link of his own.
@@ -434,6 +438,7 @@ test("'only you' is said only when nobody else can read it: not once the package
   const owenUrl = await agent.getByLabel("Owen's link").inputValue();
   const owen = await (await browser.newContext()).newPage();
   await owen.goto(owenUrl);
+  await toFirstHome(owen);
   const home = homeIn(owen, "4127 Larkmoor Ave NE");
   await expect(home).toBeInViewport({ ratio: 0.9 });
   // Whoever holds the package's link reads what he says there too.

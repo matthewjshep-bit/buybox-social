@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import type { Listing } from "../lib/listings/types";
-import { createShare, heartOf, homeIn, joinAs, openComments, openMore, pick, settle, signInAgent, tapPhoto } from "./helpers";
+import { toFirstHome, createShare, heartOf, homeIn, joinAs, openComments, openMore, pick, settle, signInAgent, tapPhoto } from "./helpers";
 
 // The line at the photo's foot: what people did on the photo on screen, one
 // at a time, each with a hotspot on the spot where they did it. Timers run on
@@ -344,8 +344,8 @@ test("on a link, what you said is \"You\", and the agent's own words are theirs"
   const { url, dashboardUrl } = await createShare(agent, ["719 Saltmarsh"], ["Kit"]);
   const kit = await (await browser.newContext()).newPage();
   await kit.goto(url);
+  await toFirstHome(kit);
   const home = homeIn(kit, SALTMARSH);
-  await home.scrollIntoViewIfNeeded();
   await settled(home);
   const chat = await openComments(kit, home);
   await chat.getByLabel("Add a comment").fill("Is the roof new?");
@@ -372,6 +372,7 @@ test("on a link, what you said is \"You\", and the agent's own words are theirs"
 
   // To Kit, the same words are her agent's.
   await kit.reload();
+  await toFirstHome(kit);
   await settled(home);
   await expect(lineOf(home)).toHaveAccessibleName(/^Vera \(your agent\) commented: New in 2021\. /);
   await expect(activityOf(home).getByRole("link")).toHaveCount(0);

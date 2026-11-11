@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, signInAgent, signUpBuyer } from "./helpers";
+import { toFirstHome, createShare, heartOf, homeIn, joinAs, signInAgent, signUpBuyer } from "./helpers";
 
 type Shared = { title?: string; text?: string; url?: string; inTap: boolean };
 type Stubbed = { shared: Shared[]; shareAnswer: "send" | "cancel"; inTap: boolean };
@@ -108,6 +108,7 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
   // The client opens it straight onto the home, from the agent.
   const client = await (await browser.newContext()).newPage();
   await client.goto(url);
+  await toFirstHome(client);
   await expect(homeIn(client, "96 Fernhollow Ln")).toBeInViewport({ ratio: 0.9 });
   await expect(client.getByRole("heading", { level: 1 })).toHaveText("I picked this home for you");
   await expect(client.locator("h1")).toHaveCount(1);

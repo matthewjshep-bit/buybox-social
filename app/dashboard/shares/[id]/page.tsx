@@ -32,6 +32,7 @@ import { Opened } from "../../opened";
 import {
   AddPersonForm,
   ClientNameEditor,
+  WelcomeEditor,
   CommentLike,
   CommentMenu,
   HomeMovedStatus,
@@ -60,7 +61,7 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
   if (!z.uuid().safeParse(id).success) notFound();
 
   const [share] = await sql<Share[]>`
-    select id, token, agent_id, client_name, note from shares
+    select id, token, agent_id, client_name, note, headline from shares
     where id = ${id} and agent_id = ${agent.id}`;
   if (!share) notFound();
 
@@ -110,6 +111,8 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
   const photos = active.reduce((sum, listing) => sum + listing.Media.length, 0);
   // Each home as its Porchcard needs it, from this link alone: never anything
   // public, and nobody from any other link.
+  // (Without when it was taken off the link: the card shows the listing alone.)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const posts = listings.map(({ removedAt, ...listing }): FeedPost => {
     const timeline = timelines.get(listing.ListingKey) ?? [];
     const likes = timeline.filter(
@@ -130,8 +133,6 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
       mine: NO_REACTION,
       buzz: { sends: 0, views: 0, lastActivityAt: null, trending: false },
       reasons: [],
-      // The note is the caption of a link with one home, as the client sees it.
-      ...(active.length === 1 && !removedAt && share.note && { note: share.note }),
       members: people.map((person) => person.first_name),
     };
   });
@@ -160,6 +161,17 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
               <h2 id="links-title" className="sr-only">
                 Their links
               </h2>
+              {active.length > 0 && (
+                <WelcomeEditor
+                  shareId={share.id}
+                  headline={share.headline}
+                  note={share.note}
+                  // As the first person on it sees it (each sees their own name).
+                  standard={`${invitees[0]?.first_name || share.client_name ? `${invitees[0]?.first_name || share.client_name}, I` : "I"} picked ${
+                    active.length === 1 ? "this home" : `these ${active.length} homes`
+                  } for you`}
+                />
+              )}
               {active.length > 0 && (
                 <YourTake
                   // Their link, as the first of them will see it.

@@ -38,6 +38,8 @@ test("admins see every person, home and comment, and can follow up, fix and remo
 
   // The owner, from the header.
   const admin = await signIn(browser, OWNER);
+  // Admin is under your initial, with everything else of yours.
+  await admin.getByRole("button", { name: "Your profile" }).click();
   await admin.getByRole("link", { name: "Admin" }).click();
   await expect(admin.getByRole("heading", { level: 1 })).toHaveText("Overview");
 

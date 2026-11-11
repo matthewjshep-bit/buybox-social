@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, homeIn, signInAgent } from "./helpers";
+import { toFirstHome, createShare, homeIn, signInAgent } from "./helpers";
 
 // The phone settings carry over to new contexts, touch included; a desktop has none.
 const DESKTOP = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, isMobile: false, hasTouch: false };
@@ -82,14 +82,16 @@ test("an agent's link nudges a first-timer: swipe for photos, then on to the nex
   expect(pageErrors).toEqual([]);
 });
 
-test("a link with one home opens on it, and the photo nudge shows there", async ({ browser }) => {
+test("a link with one home opens on a word from the agent, then the home, where the photo nudge shows", async ({ browser }) => {
   const agent = await signInAgent(browser, "nell-one@example.com", "Nell Agent");
   const { url } = await createShare(agent, ["96 Fernhollow"], ["Ivy"]);
 
   const page = await (await browser.newContext()).newPage();
   await page.goto(url);
-  // No welcome screen to get past.
-  await expect(page.getByRole("region", { name: "Welcome" })).toHaveCount(0);
+  // A word from the agent first, then the home.
+  await expect(page.getByRole("region", { name: "Welcome" })).toBeInViewport();
+  await expect(nudge(page)).toHaveCount(0);
+  await toFirstHome(page);
   const home = homeIn(page, "96 Fernhollow Ln");
   await expect(home).toBeInViewport({ ratio: 0.9 });
   await expect(home.getByText("Swipe for more photos")).toBeVisible();

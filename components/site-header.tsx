@@ -1,4 +1,4 @@
-import { Bell, Map as MapIcon, Shield } from "lucide-react";
+import { Bell, Search as SearchIcon } from "lucide-react";
 import Link from "next/link";
 import { signOut } from "@/app/login/actions";
 import { AccountMenu, NavLink, SiteLogo } from "@/components/header-nav";
@@ -55,20 +55,23 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
       >
         <SiteLogo overlay={overlay} />
         <div className="flex min-w-0 items-center gap-0.5 text-sm font-medium">
-          {/* On phones the logo is the way home. */}
-          <NavLink href="/" className={`${navItem} hidden md:flex`}>
-            Home
-          </NavLink>
-          <NavLink href="/search" className={navItem}>
-            <MapIcon aria-hidden size={18} />
-            <span className="sr-only md:not-sr-only">Map</span>
-          </NavLink>
+          {/* Signed out, just two things: the page for agents, and Sign in
+              (which signs up too). The logo is the way home. */}
+          {/* Signed in: Search, the bell, and you (where everything else is:
+              your profile, Activity, the Dashboard, Admin). The logo is the
+              way home. */}
+          {user && (
+            <NavLink href="/search" className={navItem}>
+              <SearchIcon aria-hidden size={18} />
+              <span className="sr-only md:not-sr-only">Search</span>
+            </NavLink>
+          )}
           {!user && (
-            <NavLink href="/for-agents" className={`${navItem} hidden md:flex`}>
+            <NavLink href="/for-agents" className={navItem}>
               For agents
             </NavLink>
           )}
-          {visitor && (
+          {user && visitor && (
             <NavLink href="/activity" className={`${navItem} relative`}>
               <Bell aria-hidden size={18} />
               <span className="sr-only">
@@ -84,18 +87,6 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
               )}
             </NavLink>
           )}
-          {admin && (
-            <NavLink href="/admin" section className={navItem}>
-              <Shield aria-hidden size={18} className="md:hidden" />
-              <span className="sr-only md:not-sr-only">Admin</span>
-            </NavLink>
-          )}
-          {user?.role === "agent" && (
-            // In words on phones too: it's where an agent's work is.
-            <NavLink href="/dashboard" section className={navItem}>
-              Dashboard
-            </NavLink>
-          )}
           {user?.role ? (
             <AccountMenu
               profile={visitor ? `/people/${visitor.id}` : "/people/me"}
@@ -103,6 +94,7 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
               name={user.full_name.trim()}
               email={user.email}
               agent={user.role === "agent"}
+              admin={admin}
               unread={unread}
               overlay={overlay}
             />
@@ -113,14 +105,10 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
               </button>
             </form>
           ) : (
-            <>
-              <NavLink href="/login" className={navItem}>
-                Sign in
-              </NavLink>
-              <Link href="/login" className={cn(button({ kind: "primary" }), "ml-1 shrink-0")}>
-                Sign up
-              </Link>
-            </>
+            // The one thing to do, so it's the button.
+            <Link href="/login" className={cn(button({ kind: "primary" }), "ml-1 shrink-0")}>
+              Sign in
+            </Link>
           )}
         </div>
       </nav>

@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import type { Listing } from "../lib/listings/types";
 import { mediaKeyOf } from "../lib/photos";
 import { describeReaction, spotPlace } from "../lib/reactions";
-import {
+import { toFirstHome,
   commentIn,
   createShare,
   heartOf,
@@ -75,6 +75,7 @@ test("an agent's phone and email for clients: checked, kept as digits, and never
   const { url } = await createShare(agent, ["96 Fernhollow"], ["Robin"]);
   const client = await (await browser.newContext()).newPage();
   await client.goto(url);
+  await toFirstHome(client);
   await expect(homeIn(client, "96 Fernhollow Ln")).toBeInViewport({ ratio: 0.9 });
   await client.getByRole("button", { name: "Contact" }).click();
   const contact = client.getByRole("dialog", { name: "Contact Casey Agent" });
@@ -216,6 +217,7 @@ test("the agent sees how much of a link was looked at, and the link never says s
   const owen = await (await browser.newContext()).newPage();
   await owen.addInitScript(() => localStorage.setItem("buybox:nudges", JSON.stringify({ photos: true, next: true })));
   await owen.goto(url);
+  await toFirstHome(owen);
   const home = homeIn(owen, "10421 Halvard Way NE");
   await expect(home).toBeInViewport({ ratio: 0.9 });
   // Each counts once it has come to rest, when what's in it can be tapped.

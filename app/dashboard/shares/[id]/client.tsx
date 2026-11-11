@@ -43,6 +43,7 @@ import {
   renameClient,
   replyAsAgent,
   setHomeRemoved,
+  updateWelcome,
   type AddPersonState,
   type FormState,
 } from "../../actions";
@@ -145,6 +146,110 @@ export function ClientNameEditor({ shareId, name }: { shareId: string; name: str
         Cancel
       </button>
     </form>
+  );
+}
+
+// What the link opens on, before the homes: the headline (the standard line
+// unless the agent writes their own) and their note under it. Shown as it
+// reads, with Edit to change either; the client sees it the next time they open it.
+export function WelcomeEditor({
+  shareId,
+  headline,
+  note,
+  standard,
+}: {
+  shareId: string;
+  headline: string;
+  note: string;
+  // The headline when they haven't written one.
+  standard: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [state, action, pending] = useActionState<FormState, FormData>(
+    async (previous, form) => {
+      const result = await updateWelcome(shareId, previous, form);
+      if (!result.error) setEditing(false);
+      return result;
+    },
+    {},
+  );
+  const ids = useId();
+
+  return (
+    <section aria-labelledby={`${ids}-title`} data-welcome className={cn(card, "mb-3 p-4")}>
+      <div className="flex items-center justify-between gap-2">
+        <h2 id={`${ids}-title`} className="text-sm font-semibold">
+          What it opens on
+        </h2>
+        {!editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className={cn(button({ kind: "ghost" }), "-my-2 -mr-2 text-stone-700")}
+          >
+            <Pencil aria-hidden size={15} />
+            Edit<span className="sr-only"> what it opens on</span>
+          </button>
+        )}
+      </div>
+      {!editing ? (
+        <div className="mt-1">
+          <p className="font-display text-xl leading-snug">{headline || standard}</p>
+          <p className={cn("mt-1 whitespace-pre-line text-sm", note ? "text-stone-700" : "text-muted")}>
+            {note || "No note yet. Add a word on why you picked these."}
+          </p>
+        </div>
+      ) : (
+        <form action={action} className="mt-2 flex flex-col gap-3">
+          <div>
+            <label htmlFor={`${ids}-headline`} className="text-sm font-medium">
+              Headline
+            </label>
+            <input
+              id={`${ids}-headline`}
+              name="headline"
+              defaultValue={headline}
+              maxLength={90}
+              autoFocus
+              autoComplete="off"
+              placeholder={standard}
+              aria-describedby={`${ids}-headline-hint`}
+              className={cn(field(), "mt-1")}
+            />
+            <p id={`${ids}-headline-hint`} className="mt-1 text-meta text-muted">
+              Leave it empty for the standard line, with each person&apos;s own name.
+            </p>
+          </div>
+          <div>
+            <label htmlFor={`${ids}-note`} className="text-sm font-medium">
+              Note (optional)
+            </label>
+            <textarea
+              id={`${ids}-note`}
+              name="note"
+              rows={3}
+              maxLength={500}
+              defaultValue={note}
+              placeholder="This one has the yard you mentioned."
+              className={cn(field({ lines: true }), "mt-1")}
+            />
+          </div>
+          {state.error && (
+            <p role="alert" className="text-sm text-red-700">
+              {state.error}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <button type="submit" disabled={pending} className={button({ kind: "primary" })}>
+              {pending ? "Saving…" : "Save"}
+            </button>
+            <button type="button" onClick={() => setEditing(false)} className={cn(button({ kind: "ghost" }), "text-stone-700")}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }
 

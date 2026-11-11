@@ -72,9 +72,12 @@ export default async function SharePage({ params }: Props) {
     NO_REACTION;
   const agentName = agent.full_name || "Your agent";
   const count = listings.length;
-  const greeting = `${person ? `${person.first_name}, I` : share.client_name ? `${share.client_name}, I` : "I"} picked ${
-    count === 1 ? "this home" : `these ${count} homes`
-  } for you`;
+  // The welcome screen's headline: the agent's own words, or the standard line.
+  const greeting =
+    share.headline ||
+    `${person ? `${person.first_name}, I` : share.client_name ? `${share.client_name}, I` : "I"} picked ${
+      count === 1 ? "this home" : `these ${count} homes`
+    } for you`;
   // A link the agent made for one person, opened before anyone has said who
   // they are on it, is most likely theirs: the name prompt starts with it.
   const expected =
@@ -114,8 +117,6 @@ export default async function SharePage({ params }: Props) {
       mine: mineFor(listing.ListingKey),
       buzz: { sends: 0, views: 0, lastActivityAt: null, trending: false },
       reasons: [],
-      // One home opens straight on it, so the agent's greeting and note are its caption.
-      ...(count === 1 && { greeting, note: share.note || undefined }),
       members,
       // The agent on their own link: what they said there is theirs, so the
       // line above the price says "You", as it does for anyone's own.
@@ -152,9 +153,10 @@ export default async function SharePage({ params }: Props) {
         prompt={`So ${agentName} and anyone else on this link know who's talking. No account or password needed.`}
         suggestedName={expected}
         nameHint={expected && `${agentFirst} sent this to ${expected}. Not ${expected}? Type your name.`}
-        // Several homes start with a word from the agent over the first one's photo.
+        // Every link starts with a word from the agent over the first home's
+        // photo, then the homes below it.
         intro={
-          count > 1 ? (
+          count > 0 ? (
             <ShareWelcome
               key="welcome"
               agent={agent}

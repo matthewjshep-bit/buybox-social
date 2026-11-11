@@ -169,6 +169,23 @@ export async function addSuggestedHome(shareId: string, listingKey: string): Pro
   await addHomesToShare(shareId, [listingKey]);
 }
 
+const welcomeSchema = z.object({
+  headline: z.string().trim().max(90),
+  note: z.string().trim().max(500),
+});
+
+// What the link's welcome screen says: the headline (empty for the standard
+// line) and the agent's note under it. Clients see it the next time they open it.
+export async function updateWelcome(shareId: string, _: FormState, form: FormData): Promise<FormState> {
+  const agent = await requireAgent();
+  const parsed = welcomeSchema.safeParse({ headline: form.get("headline") ?? "", note: form.get("note") ?? "" });
+  if (!parsed.success) return { error: "Headlines can be up to 90 characters, and notes up to 500." };
+  if (!(await ownShare(agent.id, shareId))) return { error: "We couldn't find that link." };
+  await sql`update shares set headline = ${parsed.data.headline}, note = ${parsed.data.note} where id = ${shareId}`;
+  refresh();
+  return {};
+}
+
 export async function renameClient(shareId: string, _: FormState, form: FormData): Promise<FormState> {
   const agent = await requireAgent();
   const name = z.string().trim().min(1).max(60).safeParse(form.get("clientName"));

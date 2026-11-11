@@ -1,7 +1,6 @@
 "use client";
 
-import { ArrowDown, Check, Phone, UserPlus } from "lucide-react";
-import Image from "next/image";
+import { ArrowDown, Check, ChevronDown, Phone, UserPlus } from "lucide-react";
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { LinkAgentProvider, type LinkAgent } from "@/components/agent-notes";
@@ -209,9 +208,11 @@ export function ShareReel({
   );
 }
 
-// A link with several homes starts with a word from the agent, over the first
-// home's photo, with that home peeking up from below. (Built here rather than
-// on the server, like the end screen, so the feed is handed one element.)
+// Every link starts with a word from the agent, on a blurred wash of the
+// first home's photo: who it's from, their headline and note, and the way on
+// to the homes below, a button and a gently bobbing arrow at the foot. (Built
+// here rather than on the server, like the end screen, so the feed is handed
+// one element.)
 export function ShareWelcome({
   agent,
   greeting,
@@ -233,7 +234,7 @@ export function ShareWelcome({
     <div className="relative flex h-full flex-col">
       <Backdrop photo={photo} priority blurred tinted />
       <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-6 pt-[calc(env(safe-area-inset-top)+4.5rem)] sm:px-10">
-        <div className="mx-auto mt-auto w-full max-w-2xl pb-6 [@media(max-height:44rem)]:pb-4">
+        <div className="mx-auto my-auto w-full max-w-2xl py-6 [@media(max-height:44rem)]:py-4">
           {/* On a short screen the header above already says who it's from. */}
           <div className="mb-5 flex items-center gap-3 [@media(max-height:44rem)]:hidden">
             <AgentAvatar agent={agent} size={56} decorative className="text-lg ring-2 ring-white/70" />
@@ -258,19 +259,20 @@ export function ShareWelcome({
           </p>
         </div>
       </div>
-      {photo && (
-        // A tap on the first home, peeking up, goes to it. The button above
-        // does the same for keyboards and screen readers.
-        <button
-          type="button"
-          aria-hidden
-          tabIndex={-1}
-          onClick={goToFirstHome}
-          className="relative mx-auto block h-24 w-full max-w-2xl shrink-0 overflow-hidden rounded-t-3xl shadow-[0_-8px_30px_rgb(0_0_0/0.35)] sm:w-[calc(100%-5rem)] [@media(max-height:44rem)]:h-16"
-        >
-          <Image src={photo.MediaURL} alt="" fill sizes="(min-width: 768px) 672px, 100vw" className="object-cover" />
-        </button>
-      )}
+      {/* The homes are below: an arrow at the foot, bobbing, to say so. A tap
+          on it goes there too (the button above does the same for keyboards
+          and screen readers). */}
+      <button
+        type="button"
+        aria-hidden
+        tabIndex={-1}
+        onClick={goToFirstHome}
+        className="relative mx-auto mb-[max(1rem,env(safe-area-inset-bottom))] flex shrink-0 flex-col items-center gap-0.5 rounded-full px-4 pt-1 text-meta font-medium text-white/80 transition-colors hover:text-white"
+      >
+        <span className="pointer-fine:hidden">Swipe up</span>
+        <span className="hidden pointer-fine:inline">Scroll</span>
+        <ChevronDown size={26} strokeWidth={2.25} className="animate-[nudge-down_1.6s_ease-in-out_infinite]" />
+      </button>
     </div>
   );
 }
@@ -321,24 +323,18 @@ export function ShareEnd({
   );
 }
 
-// On the welcome screen of a link with several homes: down to the first one,
-// for anyone who'd rather tap than swipe. Focus goes with it.
+// On the welcome screen: down to the first home, for anyone who'd rather tap
+// than swipe. Focus goes with it.
 function SeeHomes({ count }: { count: number }) {
   return (
-    <div className="mt-8 inline-flex flex-col items-center gap-1.5 [@media(max-height:44rem)]:mt-6">
-      <button
-        type="button"
-        onClick={goToFirstHome}
-        className={cn(button({ kind: "light", size: "lg" }), "shadow-lg")}
-      >
-        <ArrowDown aria-hidden size={18} />
-        {`See the ${count} homes`}
-      </button>
-      <p className="text-meta text-white/80">
-        <span className="pointer-fine:hidden">or swipe up</span>
-        <span className="hidden pointer-fine:inline">or scroll</span>
-      </p>
-    </div>
+    <button
+      type="button"
+      onClick={goToFirstHome}
+      className={cn(button({ kind: "light", size: "lg" }), "mt-8 shadow-lg [@media(max-height:44rem)]:mt-6")}
+    >
+      <ArrowDown aria-hidden size={18} />
+      {count === 1 ? "See the home" : `See the ${count} homes`}
+    </button>
   );
 }
 

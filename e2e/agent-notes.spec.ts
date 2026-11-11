@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, settle, signInAgent } from "./helpers";
+import { toFirstHome, createShare, heartOf, homeIn, settle, signInAgent } from "./helpers";
 
 // The tour stays out of the way of scripted browsers unless they ask for it.
 const withTour = async (page: Page) => {
@@ -20,6 +20,7 @@ test("an agent's take before they send: a note and a like on the price, which th
   await expect(ask).toContainText("Wren sees them on the link");
   await ask.getByRole("link", { name: "Add your notes" }).click();
   await agent.waitForURL("**/s/*");
+  await toFirstHome(agent);
   const home = homeIn(agent, "1204 Quillan St SE");
   await expect(home).toBeInViewport({ ratio: 0.9 });
   await expect(agent.getByRole("banner")).toContainText("Your notes for Wren");
@@ -62,6 +63,7 @@ test("an agent's take before they send: a note and a like on the price, which th
   const errors: string[] = [];
   wren.on("pageerror", (error) => errors.push(error.message));
   await wren.goto(url);
+  await toFirstHome(wren);
   const hers = homeIn(wren, "1204 Quillan St SE");
   await expect(hers.locator("[data-photo-caption]")).toContainText("Nell (your agent)");
   await expect(hers.locator("[data-photo-caption]")).toContainText("Priced under the last two sales");

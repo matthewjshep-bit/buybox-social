@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, LayoutDashboard, LogOut, UserRound } from "lucide-react";
+import { Bell, LayoutDashboard, LogOut, Shield, UserRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
@@ -66,6 +66,7 @@ export function AccountMenu({
   name,
   email,
   agent,
+  admin = false,
   unread,
   overlay,
 }: {
@@ -75,6 +76,8 @@ export function AccountMenu({
   name: string;
   email: string;
   agent: boolean;
+  // Runs the site: Admin is in here too.
+  admin?: boolean;
   unread: number;
   overlay: boolean;
 }) {
@@ -224,6 +227,11 @@ export function AccountMenu({
           {agent && (
             <MenuLink href="/dashboard" section icon={<LayoutDashboard aria-hidden size={18} />} onGo={close}>
               Dashboard
+            </MenuLink>
+          )}
+          {admin && (
+            <MenuLink href="/admin" section icon={<Shield aria-hidden size={18} />} onGo={close}>
+              Admin
             </MenuLink>
           )}
         </ul>
