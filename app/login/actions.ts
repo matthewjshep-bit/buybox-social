@@ -8,6 +8,7 @@ import { sql } from "@/lib/db";
 import { readDevice } from "@/lib/engagement";
 import { siteOrigin } from "@/lib/site";
 import { createSupabase, supabaseConfigured } from "@/lib/supabase/server";
+import { clearTestUser, setTestUser, testPasswordMatches, testSignInEnabled } from "@/lib/test-sign-in";
 
 // Signing up and signing in are one thing, done on the page you're on: an
 // email (and, new here, a first name), then the code emailed to it. No
@@ -18,7 +19,7 @@ import { createSupabase, supabaseConfigured } from "@/lib/supabase/server";
 export type CodeState = {
   error?: string;
   // Which field to fix.
-  field?: "firstName" | "phone" | "email" | "code";
+  field?: "firstName" | "phone" | "email" | "code" | "password";
   // Sent: to this email.
   sent?: string;
   // Locally: the code, since no email goes out.
@@ -63,11 +64,7 @@ export async function sendCode(input: {
         phone = coalesce(nullif(excluded.phone, ''), signups.phone),
         updated_at = now()`;
   }
-  if (input.asAgent === true) {
-    await sql`
-      insert into account_intents (email, role) values (${email.data}, 'agent')
-      on conflict (email) do update set role = excluded.role, created_at = now()`;
-  }
+  if (input.asAgent === true) await signingUpAsAgent(email.data);
   if (supabaseConfigured) {
     const next = await safeNext(input.next);
     const supabase = await createSupabase();
@@ -112,6 +109,7 @@ export async function verifyCode(input: { email: string; code: string }): Promis
     const { data, error } = await supabase.auth.verifyOtp({ email: email.data, token: code, type: "email" });
     if (error || !data.user?.email) return wrong;
     user = { id: data.user.id, email: data.user.email.toLowerCase() };
+    await clearTestUser();
   } else if (devLoginEnabled) {
     if (code !== DEV_CODE) return wrong;
     (await cookies()).set(DEV_COOKIE, email.data, { httpOnly: true, sameSite: "lax", path: "/" });
@@ -119,7 +117,41 @@ export async function verifyCode(input: { email: string; code: string }): Promis
   } else {
     return { error: "Sign-in isn't set up yet." };
   }
+  return signedIn(user);
+}
 
+// For testing, while sign-in emails aren't set up (lib/test-sign-in.ts): any
+// email and the site's test password, and they're signed in as that email, no
+// code. The account already there for the email is theirs, or a new one is.
+export async function testSignIn(input: { email: string; password: string; asAgent?: boolean }): Promise<CodeState> {
+  if (!testSignInEnabled) return { error: "Test sign-in is off." };
+  const email = emailSchema.safeParse(String(input.email ?? "").trim().toLowerCase());
+  if (!email.success) return { error: "Please enter a valid email address.", field: "email" };
+  if (!testPasswordMatches(String(input.password ?? ""))) {
+    // (Slows guessing.)
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    return { error: "That isn't the test password.", field: "password" };
+  }
+  if (input.asAgent === true) await signingUpAsAgent(email.data);
+  const [existing] = await sql<{ auth_user_id: string }[]>`
+    select auth_user_id from accounts where lower(email) = ${email.data} order by created_at limit 1`;
+  const user = { id: existing?.auth_user_id ?? `test:${email.data}`, email: email.data };
+  // Out of any emailed sign-in on this browser (only here), so it's this one.
+  if (supabaseConfigured) await (await createSupabase()).auth.signOut({ scope: "local" });
+  await setTestUser(user);
+  return signedIn(user);
+}
+
+// From "For agents": signing up (or in) as an agent.
+async function signingUpAsAgent(email: string) {
+  await sql`
+    insert into account_intents (email, role) values (${email}, 'agent')
+    on conflict (email) do update set role = excluded.role, created_at = now()`;
+}
+
+// Proved to be them: their account (made the first time, an agent's if they
+// came through "For agents"), and what this browser did before becomes its.
+async function signedIn(user: { id: string; email: string }): Promise<CodeState> {
   await claimAgentIntent(user.email);
   const account = await accountFor(user);
   // A name from the form, for an account that has none yet.
@@ -144,6 +176,7 @@ export async function signOut() {
     await supabase.auth.signOut();
   }
   (await cookies()).delete(DEV_COOKIE);
+  await clearTestUser();
   redirect("/login");
 }
 

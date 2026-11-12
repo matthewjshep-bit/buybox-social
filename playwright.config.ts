@@ -37,6 +37,8 @@ export default defineConfig({
         DATABASE_POOL_MAX: "1",
         APP_URL: `http://localhost:${PORT}`,
         ALLOW_DEV_LOGIN: "true",
+        // Sign-in with the test password, while emails aren't set up (e2e/test-sign-in.spec.ts).
+        TEST_SIGN_IN_PASSWORD: "e2e-test-password",
         SUPABASE_URL: "",
         SUPABASE_PUBLISHABLE_KEY: "",
         // Never the model, even with a key in the shell: taste descriptions come from the template.

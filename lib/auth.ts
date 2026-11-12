@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 import { sql } from "./db";
 import { createSupabase, supabaseConfigured } from "./supabase/server";
+import { readTestUser } from "./test-sign-in";
 
 export type Role = "agent" | "buyer";
 
@@ -28,13 +29,13 @@ async function getAuthUser(): Promise<{ id: string; email: string } | null> {
   if (supabaseConfigured) {
     const supabase = await createSupabase();
     const { data } = await supabase.auth.getUser();
-    return data.user?.email ? { id: data.user.id, email: data.user.email } : null;
-  }
-  if (devLoginEnabled) {
+    if (data.user?.email) return { id: data.user.id, email: data.user.email };
+  } else if (devLoginEnabled) {
     const email = (await cookies()).get(DEV_COOKIE)?.value;
-    return email ? { id: `dev:${email}`, email } : null;
+    if (email) return { id: `dev:${email}`, email };
   }
-  return null;
+  // Signed in with the test password, while that's on (lib/test-sign-in.ts).
+  return readTestUser();
 }
 
 // Their first name, or "" until they've said it (signed in with just an

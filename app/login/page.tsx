@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { devLoginEnabled, getCurrentUser } from "@/lib/auth";
 import { safeNext } from "./actions";
+import { testSignInEnabled } from "@/lib/test-sign-in";
 import { LoginForm } from "./form";
+import { TestSignIn } from "./test-sign-in";
 
 export const metadata = { title: "Sign in or sign up · Porchcard" };
 
@@ -31,6 +33,7 @@ export default async function LoginPage({
         </p>
       )}
       <LoginForm asAgent={agent} next={next} />
+      {testSignInEnabled && <TestSignIn asAgent={agent} next={next} />}
     </main>
   );
 }
