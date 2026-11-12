@@ -5,8 +5,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { accountFor, claimAgentIntent, DEV_COOKIE, devLoginEnabled, requireUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
-import { appUrl } from "@/lib/format";
 import { readDevice } from "@/lib/engagement";
+import { siteOrigin } from "@/lib/site";
 import { createSupabase, supabaseConfigured } from "@/lib/supabase/server";
 
 // Signing up and signing in are one thing, done on the page you're on: an
@@ -75,8 +75,10 @@ export async function sendCode(input: {
       email: email.data,
       options: {
         shouldCreateUser: true,
+        // Back to this address (www.porchcard.com, say), where the code was
+        // asked for: signed in at one address, they aren't at another.
         // (Always with a query, so the email's link can add the token to it.)
-        emailRedirectTo: `${appUrl()}/auth/callback?next=${encodeURIComponent(next ?? "/")}`,
+        emailRedirectTo: `${await siteOrigin()}/auth/callback?next=${encodeURIComponent(next ?? "/")}`,
       },
     });
     if (error) {
@@ -97,7 +99,12 @@ export async function verifyCode(input: { email: string; code: string }): Promis
   if (!email.success) return { error: "Please enter a valid email address.", field: "email" };
   const code = String(input.code ?? "").replace(/\s+/g, "");
   if (!/^\d{6,10}$/.test(code)) return { error: "Enter the code from the email.", field: "code" };
-  const wrong: CodeState = { error: "That code didn't work. Check the email, or send a new code.", field: "code" };
+  // (A code works once, and only the newest: the email's link is the same
+  // code, so opening it uses the code up.)
+  const wrong: CodeState = {
+    error: "That code didn't work. Use the newest email's code (opening its link uses the code up), or send a new code.",
+    field: "code",
+  };
 
   let user: { id: string; email: string };
   if (supabaseConfigured) {
