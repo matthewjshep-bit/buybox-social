@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createShare, heartOf, homeIn, joinAs, openComments, signInAgent } from "./helpers";
 
-test("an agent's home: their client's face, what she's waiting on them for, a reply right there, and her day opening her homes; her home: her agent's homes first, and more picked for her", async ({
+test("an agent's home: their client as a person, what she said on her card with Reply right there, and her card opening her homes; her home: her agent's homes first, and more picked for her", async ({
   browser,
 }) => {
   test.setTimeout(120_000);
@@ -17,13 +17,13 @@ test("an agent's home: their client's face, what she's waiting on them for, a re
   await joinAs(jo, "Jo", "jo.feed@example.com");
   await expect(heartOf(quillan)).toHaveAttribute("aria-pressed", "true");
 
-  // The agent's home: Jo's face among their clients, along the top, after
-  // the way to send homes to anyone.
+  // The agent's home: Jo among their clients, as a person, to her page;
+  // and the way to send homes to anyone.
   await agent.goto("/");
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Hi, Fern");
-  const faces = agent.getByRole("navigation", { name: "Your clients" });
-  await expect(faces.getByRole("link", { name: "Send homes" })).toHaveAttribute("href", "/dashboard/new?focus=to");
-  await expect(faces.getByRole("link", { name: /^Jo\b/ })).toHaveAttribute("href", /^\/reel\?from=client%3A[\w-]+$/);
+  await expect(agent.getByRole("link", { name: "Send homes to a client" })).toHaveAttribute("href", "/dashboard/new?focus=to");
+  const clients = agent.getByRole("region", { name: "Your clients" });
+  await expect(clients.getByRole("link", { name: /^Jo\b/ })).toHaveAttribute("href", /^\/people\/[\w-]+$/);
   // None of a buyer's home: nothing picked for them, nobody to follow.
   await expect(agent.getByText("Picked for you")).toHaveCount(0);
   await expect(agent.getByText("People to follow")).toHaveCount(0);
@@ -35,46 +35,37 @@ test("an agent's home: their client's face, what she's waiting on them for, a re
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByLabel("Add a comment")).toHaveValue("");
 
-  // It waits for the agent at the top of their home, with Reply right there.
+  // It's beside her name, and on her card in the stream, with Reply right there.
   await agent.reload();
-  const needs = agent.getByRole("region", { name: "Needs you" });
-  const row = needs.getByRole("listitem").filter({ hasText: "Is the basement finished?" });
-  await expect(row).toContainText("Jo on 1204 Quillan St SE");
-  // (The row itself opens her homes on that one, at what she said.)
-  await expect(row.getByRole("link").first()).toHaveAttribute(
-    "href",
-    /^\/reel\?from=client%3A[\w-]+&home=SAMPLE-\d+&comment=[0-9a-f-]{36}$/,
-  );
-  await row.getByRole("button", { name: "Reply to Jo" }).click();
-  const box = needs.getByRole("textbox", { name: "Reply to Jo" });
+  await expect(clients.getByRole("link", { name: /^Jo\b/ })).toContainText("“Is the basement finished?”");
+  const card = agent.getByRole("listitem").filter({ hasText: "Only you see this" }).filter({ hasText: "Is the basement finished?" });
+  await expect(card).toContainText("1204 Quillan St SE");
+  await card.getByRole("button", { name: "Reply to Jo" }).click();
+  const box = card.getByRole("textbox", { name: "Reply to Jo" });
   await expect(box).toBeFocused();
   await box.fill("Yes, it was finished in 2019.");
-  await needs.getByRole("button", { name: "Send", exact: true }).click();
-  // Sent from right there: the row says so and stays put.
-  await expect(row.getByRole("status")).toContainText("Sent to Jo");
+  await card.getByRole("button", { name: "Send", exact: true }).click();
+  // Sent from right there: the card says so and stays put.
+  await expect(card.getByRole("status")).toContainText("Sent to Jo");
   await expect(box).toHaveCount(0);
   // It's in the conversation on her link: the agent's page for it shows it.
-  await row.getByRole("link", { name: "Open their link" }).click();
+  await card.getByRole("link", { name: "Open their link" }).click();
   await agent.waitForURL(/\/dashboard\/shares\/[\w-]+\?tab=homes/);
   await expect(agent.getByText("Yes, it was finished in 2019.")).toBeVisible();
 
-  // Answered, it's gone from Needs you. Jo's day is a card in the Clients
-  // stream: the home she liked opens her homes in a pop-out over the page,
-  // on that one; Escape closes it, back where it was.
+  // Answered, there's nothing to reply to. Her card opens her homes in a
+  // pop-out over the page, on that one; Escape closes it, back where it was.
   await agent.goto("/");
-  await expect(needs.getByText("Is the basement finished?")).toHaveCount(0);
-  const day = agent.getByRole("listitem").filter({ hasText: "Only you see this" }).filter({ hasText: "Jo" });
-  await expect(day).toContainText("Jo reacted to 1 home");
-  await expect(day).toContainText("“Is the basement finished?”");
-  const thumb = day.getByRole("link", { name: "1204 Quillan St SE, liked" });
-  await thumb.click();
+  await expect(card.getByRole("button", { name: "Reply to Jo" })).toHaveCount(0);
+  const open = card.getByRole("link", { name: /^1204 Quillan St SE: / });
+  await expect(open).toHaveAttribute("href", /^\/reel\?from=client%3A[\w-]+&home=SAMPLE-\d+/);
+  await open.click();
   await agent.waitForURL(/\/reel\?from=client%3A[\w-]+&home=SAMPLE-/);
   const popout = agent.getByRole("dialog", { name: "Homes" });
   await expect(homeIn(popout, "1204 Quillan St SE")).toBeInViewport({ ratio: 0.9 });
   await agent.keyboard.press("Escape");
   await expect(popout).toHaveCount(0);
   await agent.waitForURL((u) => u.pathname === "/");
-  await expect(thumb).toBeFocused();
   // The Following stream, by its own address (a link sent, a reload), fills
   // the screen, with Back.
   await agent.goto(`/reel?from=feed&home=SAMPLE-1004`);
@@ -89,14 +80,10 @@ test("an agent's home: their client's face, what she's waiting on them for, a re
   await jo.goto(`${joPage}/followers`);
   await expect(jo.getByRole("list", { name: "Your followers" }).getByRole("link", { name: /Fern/ })).toBeVisible();
 
-  // Jo's own home: her agent first along the top, and the homes Fern sent
-  // her, the one she hasn't rated yet waiting, a tap from her own link.
+  // Jo's own home: the homes Fern sent her first, the one she hasn't rated
+  // yet waiting, a tap from her own link.
   await jo.goto("/");
   const link = new URL(url).pathname;
-  await expect(jo.getByRole("navigation", { name: "People" }).getByRole("link", { name: /^Fern, your agent/ })).toHaveAttribute(
-    "href",
-    link,
-  );
   const fromAgent = jo.getByRole("region", { name: "1 new home for you" });
   await expect(fromAgent).toContainText("From Fern Feed");
   await expect(fromAgent).toContainText("you've rated 1 of 2");

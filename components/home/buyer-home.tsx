@@ -1,12 +1,14 @@
+import { House, Map as MapIcon, Send, UserRound } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { PeopleFaces } from "@/components/home/faces-row";
 import { FollowText } from "@/components/home/follow-text";
+import { HomeShell, ProfileRail, type RailLink } from "@/components/home/home-shell";
 import { Lenses } from "@/components/home/lens-pills";
 import { PicksMasonry } from "@/components/home/picks-masonry";
 import { FollowingFeed } from "@/components/home-feed";
 import { Avatar } from "@/components/ui";
 import type { FeedPost } from "@/lib/feed";
+import type { FollowCounts } from "@/lib/follows";
 import { cn } from "@/lib/format";
 import type { FeedWho, FollowedFace, HomeFeedEntry } from "@/lib/home-feed";
 import type { MyLink } from "@/lib/my-links";
@@ -14,12 +16,12 @@ import type { ReactionState } from "@/lib/reactions";
 import { button, card } from "@/lib/ui";
 import type { HomeLens } from "./agent-home";
 
-// Anyone else's home: discovery. Their agent and the people they follow
-// along the top; the homes their agent sent, when there are any; then what
-// the people they follow liked (or, a tap away, homes picked for them), until
-// "You're all caught up"; then more homes picked by their taste. Beside it on
-// a wide screen, people worth following. One filled button: their agent's
-// homes.
+// Anyone else's home: discovery. Down the left, them: their card (who they
+// follow, who follows them) and their places. In the middle, the homes their
+// agent sent, when there are any; then what the people they follow liked (or,
+// a tap away, homes picked for them), until "You're all caught up"; then more
+// homes picked by their taste. Down the right on a wide screen, people worth
+// following. One filled button: their agent's homes.
 
 // "Bellevue · Kirkland · you've rated 3 of 9"
 function metaOf(link: MyLink) {
@@ -108,9 +110,10 @@ function TastePeople({ people }: { people: (FeedWho & { profileId: string })[] }
 
 export function BuyerHome({
   firstName,
+  me,
+  follows,
   profileHref,
   links,
-  brands,
   followed,
   suggestions,
   feed,
@@ -120,10 +123,11 @@ export function BuyerHome({
   lens,
 }: {
   firstName: string;
+  me: { name: string; photo: string | null };
+  follows: FollowCounts;
   profileHref: string;
   // The links they're on, newest first.
   links: MyLink[];
-  brands: Record<string, string>;
   followed: FollowedFace[];
   suggestions: (FeedWho & { profileId: string })[];
   feed: HomeFeedEntry[];
@@ -136,67 +140,71 @@ export function BuyerHome({
   // agent, whose clients follow them); otherwise homes picked for them.
   const fallback = followed.length >= 3 || links.length > 0 ? "following" : "foryou";
   const initial = lens.initial === "following" || lens.initial === "foryou" ? lens.initial : fallback;
-  // With nobody along the top yet, the first few suggestions are there; the
-  // rail has the next ones.
-  const empty = links.length === 0 && followed.length === 0;
-  const railPeople = empty ? suggestions.slice(4) : suggestions;
+  const agentName = links[0] && (links[0].agent.firstName || links[0].agent.name);
+  const places: RailLink[] = [
+    ...(links[0]
+      ? [{ href: `/s/${links[0].token}`, label: `Homes from ${agentName}`, icon: <Send size={18} /> }]
+      : []),
+    { href: "/reel", label: "Browse homes", icon: <House size={18} /> },
+    { href: "/search", label: "Map", icon: <MapIcon size={18} /> },
+    { href: profileHref, label: "Your page", icon: <UserRound size={18} /> },
+  ];
+  const listOf = (which: "following" | "followers") =>
+    profileHref.endsWith("/me") ? profileHref : `${profileHref}/${which}`;
   return (
-    <main className="mx-auto grid max-w-[908px] grid-cols-1 gap-8 px-4 pb-16 pt-2 lg:grid-cols-[minmax(0,560px)_300px] lg:justify-center lg:pt-5">
-      <h1 className="sr-only">{firstName ? `Hi, ${firstName}` : "Your home"}</h1>
-      <div className="flex min-w-0 flex-col gap-5">
-        <PeopleFaces links={links} brands={brands} followed={followed} seenAt={seenAt} suggestions={suggestions} />
-        {links.length > 0 && <FromYourAgent links={links} />}
-        <section aria-labelledby="stream-title">
-          <h2 id="stream-title" className="sr-only">
-            What&apos;s new
-          </h2>
-          <Lenses
-            label="Show"
-            lenses={[
-              { key: "following", label: "Following" },
-              { key: "foryou", label: "For you" },
-            ]}
-            initial={initial}
-            fromUrl={lens.fromUrl && (lens.initial === "following" || lens.initial === "foryou")}
-            panels={{
-              following: (
-                <FollowingFeed
-                  entries={feed}
-                  mine={mine}
-                  seenAt={seenAt}
-                  suggestions={empty ? [] : suggestions}
-                  empty={
-                    followed.length === 0
-                      ? "Follow people with your taste, and what they like shows up here."
-                      : "Nothing from the people you follow yet. What they like shows up here."
-                  }
-                />
-              ),
-              foryou: null,
-            }}
-          />
-        </section>
-        <PicksMasonry
-          picks={picks}
-          intro={followed.length === 0 && links.length === 0 ? "Like a few homes and we'll learn your taste." : undefined}
+    <HomeShell
+      title={firstName ? `Hi, ${firstName}` : "Your home"}
+      left={
+        <ProfileRail
+          name={me.name}
+          photo={me.photo}
+          agent={false}
+          line={agentName ? `Looking with ${links[0].agent.name}` : "Finding a home"}
+          href={profileHref}
+          stats={[
+            { label: "Following", value: follows.following, href: listOf("following") },
+            { label: "Followers", value: follows.followers, href: listOf("followers") },
+          ]}
+          links={places}
         />
-      </div>
-      <aside aria-label="People and places" className="hidden flex-col gap-4 lg:sticky lg:top-5 lg:flex lg:self-start">
-        <TastePeople people={railPeople} />
-        <p className="flex flex-wrap items-center px-1 text-meta text-muted">
-          <Link href="/reel" className="inline-flex min-h-11 items-center hover:text-ink hover:underline">
-            Browse homes
-          </Link>
-          <span aria-hidden className="px-1.5">·</span>
-          <Link href="/search" className="inline-flex min-h-11 items-center hover:text-ink hover:underline">
-            Map
-          </Link>
-          <span aria-hidden className="px-1.5">·</span>
-          <Link href={profileHref} className="inline-flex min-h-11 items-center hover:text-ink hover:underline">
-            Your page
-          </Link>
-        </p>
-      </aside>
-    </main>
+      }
+      right={<TastePeople people={suggestions} />}
+    >
+      {links.length > 0 && <FromYourAgent links={links} />}
+      <section aria-labelledby="stream-title">
+        <h2 id="stream-title" className="sr-only">
+          What&apos;s new
+        </h2>
+        <Lenses
+          label="Show"
+          lenses={[
+            { key: "following", label: "Following" },
+            { key: "foryou", label: "For you" },
+          ]}
+          initial={initial}
+          fromUrl={lens.fromUrl && (lens.initial === "following" || lens.initial === "foryou")}
+          panels={{
+            following: (
+              <FollowingFeed
+                entries={feed}
+                mine={mine}
+                seenAt={seenAt}
+                suggestions={suggestions}
+                empty={
+                  followed.length === 0
+                    ? "Follow people with your taste, and what they like shows up here."
+                    : "Nothing from the people you follow yet. What they like shows up here."
+                }
+              />
+            ),
+            foryou: null,
+          }}
+        />
+      </section>
+      <PicksMasonry
+        picks={picks}
+        intro={followed.length === 0 && links.length === 0 ? "Like a few homes and we'll learn your taste." : undefined}
+      />
+    </HomeShell>
   );
 }

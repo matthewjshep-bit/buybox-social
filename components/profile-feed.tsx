@@ -110,6 +110,7 @@ export function ActivityCard({
   href,
   nameHref,
   avatarPhoto,
+  footer,
 }: {
   card: ProfileCard;
   name: string;
@@ -121,6 +122,8 @@ export function ActivityCard({
   nameHref?: string;
   // Their own photo, where they've added one, in place of their initial.
   avatarPhoto?: string | null;
+  // Under it all, above the card's own link: what only the agent sees, Reply.
+  footer?: ReactNode;
 }) {
   const { home, photo } = card;
   // A day when all they did was like someone's comment: a small card, no photo.
@@ -235,7 +238,7 @@ export function ActivityCard({
           </ul>
         </div>
       )}
-      <div className="h-4" />
+      {footer ? <div className="relative z-20 px-4 pb-1">{footer}</div> : <div className="h-4" />}
     </li>
   );
 }

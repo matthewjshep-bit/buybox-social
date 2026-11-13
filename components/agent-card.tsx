@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, Bell, CalendarCheck, Check, Eye, Mail, MessageSquare, PenLine, Phone, type LucideIcon } from "lucide-react";
+import { ArrowDown, Bell, CalendarCheck, Check, Mail, MessageSquare, Phone, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId, useMemo, useRef, useState, useTransition, type ComponentProps } from "react";
 import { FollowButton } from "@/app/people/[id]/client";
@@ -127,23 +127,11 @@ export function ShareHeader({
           <div className="min-w-0 flex-1 leading-tight [text-shadow:0_1px_3px_rgb(0_0_0/0.5)]">
             <p className="truncate text-body font-semibold">{agent.full_name}</p>
             {/* Full white: over a bright photo, anything fainter falls short of easy reading. */}
-            {preview ? (
-              // The agent on their own link, in place of their brokerage (which
-              // they know): it's a preview, said in the space the header
-              // already has, so the home sits just where it does for the client.
-              <p className="flex items-center gap-1 text-meta font-medium">
-                {notes ? (
-                  <PenLine aria-hidden size={14} className="shrink-0" />
-                ) : (
-                  <Eye aria-hidden size={14} className="shrink-0" />
-                )}
-                <span className="truncate">
-                  <span className="sr-only">Preview, </span>
-                  {notes ? `Your notes for ${notes.for}` : preview}
-                </span>
-              </p>
-            ) : (
-              agent.brokerage && <p className="truncate text-meta">{agent.brokerage}</p>
+            {agent.brokerage && <p className="truncate text-meta">{agent.brokerage}</p>}
+            {/* The agent on their own link sees it just as the client does;
+                that it's their preview is said for a screen reader only. */}
+            {preview && (
+              <p className="sr-only">Preview, {notes ? `your notes for ${notes.for}` : preview}</p>
             )}
           </div>
           {notes ? (

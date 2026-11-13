@@ -18,9 +18,12 @@ import {
 import { ASPECTS, aspectLabel, describeReaction, NO_REACTION, type Aspect, type ReactionState, type Sentiment } from "./reactions";
 
 // Someone's public page: everything they've liked, passed on and said in
-// public, as a feed of one card per home per day. It reads only their own
-// public rows (and the names of people they replied to, which are public too):
-// what they do on an agent's link never appears here.
+// public, as a feed of one card per home per day. It reads their own public
+// rows (and the names of people they replied to, which are public too). What
+// a client does on an agent's link never appears here. An agent's own marks
+// on the homes they send do: what they liked and didn't in each, and their
+// notes on them (never their replies to a client, which are that client's
+// conversation), as theirs, on their page.
 
 // Days start and end here, where the homes are, whoever is looking.
 export const PROFILE_TIME_ZONE = "America/Los_Angeles";
@@ -218,7 +221,16 @@ export const isVideo = (photo: ListingMedia) =>
 const names = (list: string[]) => (list.length <= 1 ? (list[0] ?? "") : `${list.slice(0, -1).join(", ")} and ${list.at(-1)}`);
 
 export type ReactionRow = ReactionState & { listing_key: string; at: Date };
-export type SpotRow = { listing_key: string; media_key: string; tag: string; aspect?: Aspect | null; at: Date };
+// `link`: an agent's own, from one of their links, rather than in public. It
+// shows like the rest, but is taken back on the link, not from their page.
+export type SpotRow = {
+  listing_key: string;
+  media_key: string;
+  tag: string;
+  aspect?: Aspect | null;
+  at: Date;
+  link?: boolean;
+};
 export type CommentRow = {
   id: string;
   listing_key: string;
@@ -232,6 +244,7 @@ export type CommentRow = {
   replies: number;
   // Replies from anyone else (unknown: treated as all of them).
   others_replies?: number;
+  link?: boolean;
 };
 type CommentLikeRow = { listing_key: string; author: string; body: string; at: Date };
 
@@ -258,12 +271,61 @@ export type ProfileRows = {
 // than 25 hours).
 const restOfDay = (before: Date) => new Date(+before + 25 * 3_600_000);
 
-// Their public rows, newest first, from before `before` (when given). Comment
-// likes they gave only for their own page (`mine`).
+// The account behind a page, when it's an agent's: their marks on their own
+// links are theirs on their page too.
+const agentAccountOf = cache(async (visitorId: string): Promise<string | null> => {
+  const [row] = await sql<{ id: string }[]>`
+    select a.id from visitors v join accounts a on a.id = v.account_id
+    where v.id::text = ${visitorId} and a.role = 'agent'`;
+  return row?.id ?? null;
+});
+
+// An agent's likes (or dislikes) of things in the homes on their own links.
+// (With no agent, nothing.)
+const agentMarks = (account: string | null, reaction: "like" | "dislike") => sql`
+  from share_agent_likes al join shares s on s.id = al.share_id
+  where s.agent_id = ${account} and al.reaction = ${reaction}`;
+
+// An agent's own notes on the homes on their links: what they wrote on a
+// spot or a fact, or about a home before any client had said anything there.
+// Never a reply: that's the client's conversation, and stays on the link.
+const agentNotes = (account: string | null) => sql`
+  from comments c join shares s on s.id = c.share_id
+  where s.agent_id = ${account} and c.agent_id = ${account}
+    and c.parent_id is null and c.reply_to_participant is null
+    and (c.spot is not null or not exists (
+      select 1 from comments x
+      where x.share_id = c.share_id and x.listing_key = c.listing_key
+        and x.participant_id is not null and x.created_at < c.created_at))`;
+
+// Each thing once: the first of each in `rows` (the public one, before the
+// same from a link), newest first.
+function onceEach<T extends { at: Date }>(rows: T[], key: (row: T) => string) {
+  const seen = new Set<string>();
+  return rows
+    .filter((row) => !seen.has(key(row)) && Boolean(seen.add(key(row))))
+    .sort((a, b) => +b.at - +a.at)
+    .slice(0, PROFILE_ROW_LIMIT);
+}
+const spotKey = (row: SpotRow) => `${row.listing_key}|${row.media_key}|${row.tag}`;
+
+// Their public rows, newest first, from before `before` (when given), and an
+// agent's own from their links. Comment likes they gave only for their own
+// page (`mine`).
 const loadRows = cache(async (visitorId: string, before: string | null, mine: boolean): Promise<ProfileRows> => {
   const until = before ? new Date(before) : null;
   const end = until && restOfDay(until);
-  const [reactions, likes, dislikes, comments, commentLikes, after] = await Promise.all([
+  const account = await agentAccountOf(visitorId);
+  const linkMarks = (reaction: "like" | "dislike") =>
+    account
+      ? sql<SpotRow[]>`
+          select al.listing_key, al.media_key, al.tag, al.created_at as at, true as link
+          ${agentMarks(account, reaction)} ${until ? sql`and al.created_at < ${until}` : sql``}
+          order by al.created_at desc
+          limit ${PROFILE_ROW_LIMIT}`
+      : Promise.resolve([] as SpotRow[]);
+  const [reactions, publicLikes, publicDislikes, publicComments, commentLikes, after, linkLikes, linkDislikes, notes] =
+    await Promise.all([
     sql<ReactionRow[]>`
       select listing_key, reaction, liked, disliked, updated_at as at
       from public_reactions
@@ -328,6 +390,13 @@ const loadRows = cache(async (visitorId: string, before: string | null, mine: bo
             union all
             select listing_key, created_at, false from public_comments
               where visitor_id = ${visitorId} and created_at >= ${until} and created_at < ${end}
+            union all
+            select al.listing_key, al.created_at, al.reaction = 'dislike' from share_agent_likes al
+              join shares s on s.id = al.share_id
+              where s.agent_id = ${account} and al.created_at >= ${until} and al.created_at < ${end}
+            union all
+            select c.listing_key, c.created_at, false ${agentNotes(account)}
+              and c.created_at >= ${until} and c.created_at < ${end}
             ${
               mine
                 ? sql`union all
@@ -340,7 +409,28 @@ const loadRows = cache(async (visitorId: string, before: string | null, mine: bo
           ) t
           group by listing_key`
       : Promise.resolve([] as { listing_key: string; at: Date; kept_at: Date | null }[]),
+    linkMarks("like"),
+    linkMarks("dislike"),
+    account
+      ? sql<CommentRow[]>`
+          select * from (
+            select distinct on (c.listing_key, c.spot, c.body) c.id, c.listing_key, c.body, c.created_at as at,
+              c.media_key, c.spot, null::uuid as reply_to_id, null::text as reply_to_name,
+              (select count(*)::int from share_comment_likes cl where cl.comment_id = c.id) as likes,
+              (select count(*)::int from comments r where r.parent_id = c.id) as replies,
+              true as link
+            ${agentNotes(account)} ${until ? sql`and c.created_at < ${until}` : sql``}
+            -- The same note on several links is one note: the newest.
+            order by c.listing_key, c.spot, c.body, c.created_at desc
+          ) n
+          order by at desc
+          limit ${PROFILE_ROW_LIMIT}`
+      : Promise.resolve([] as CommentRow[]),
   ]);
+  // A thing liked in public and on a link (or on two links) is liked once.
+  const likes = onceEach([...publicLikes, ...linkLikes], spotKey);
+  const dislikes = onceEach([...publicDislikes, ...linkDislikes], spotKey);
+  const comments = [...publicComments, ...notes].sort((a, b) => +b.at - +a.at);
 
   // Each home once, its photos in order, its status from the column, and
   // their like or pass on it as it stands.
@@ -365,7 +455,7 @@ const loadRows = cache(async (visitorId: string, before: string | null, mine: bo
     ]),
   );
   const standing = new Map(homes.flatMap((row) => (row.reaction ? [[row.listing_key, row.reaction] as const] : [])));
-  const floors = [reactions, likes, dislikes, comments, commentLikes].flatMap((list) =>
+  const floors = [reactions, publicLikes, publicDislikes, publicComments, commentLikes, linkLikes, linkDislikes, notes].flatMap((list) =>
     list.length >= PROFILE_ROW_LIMIT ? [+list.at(-1)!.at] : [],
   );
   const day = until && dayOf(until);
@@ -703,9 +793,10 @@ export function buildCards(rows: ProfileRows): ProfileCard[] {
         quiet: !b.reaction && !likes.length && !dislikes.length && !comments.length,
         controls: [
           ...(b.reaction?.reaction ? [{ kind: "reaction" as const, sentiment: b.reaction.reaction }] : []),
-          ...spotControls(listing, "like", likes),
-          ...spotControls(listing, "dislike", dislikes),
-          ...comments.map((c) => ({
+          // (What's from a link is taken back there.)
+          ...spotControls(listing, "like", likes.filter((row) => !row.link)),
+          ...spotControls(listing, "dislike", dislikes.filter((row) => !row.link)),
+          ...comments.filter((c) => !c.link).map((c) => ({
             kind: "comment" as const,
             id: c.id,
             body: c.body,
@@ -834,6 +925,7 @@ const loadFeed = cache(
 // photo for the band at the top, and the topics `?about=` may name. Without
 // `passes`, as someone else sees it when they keep passes private.
 export const getProfileSummary = cache(async (visitorId: string, mine: boolean, passes = true) => {
+  const account = await agentAccountOf(visitorId);
   const [[counts], rows] = await Promise.all([
     sql<{ liked: number; passed: number; comments: number; homes: number }[]>`
       select
@@ -842,10 +934,13 @@ export const getProfileSummary = cache(async (visitorId: string, mine: boolean, 
           union
           select listing_key from public_photo_likes pl where visitor_id = ${visitorId}
             and not exists (select 1 from public_reactions r
-              where r.visitor_id = ${visitorId} and r.listing_key = pl.listing_key)) h) as liked,
+              where r.visitor_id = ${visitorId} and r.listing_key = pl.listing_key)
+          union
+          select al.listing_key ${agentMarks(account, "like")}) h) as liked,
         (select count(*)::int from public_reactions
           where visitor_id = ${visitorId} and reaction = 'dislike') as passed,
-        (select count(*)::int from public_comments where visitor_id = ${visitorId}) as comments,
+        (select count(*)::int from public_comments where visitor_id = ${visitorId})
+          + (select count(*)::int from (select distinct c.listing_key, c.spot, c.body ${agentNotes(account)}) n) as comments,
         (select count(*)::int from (
           select listing_key from public_reactions where visitor_id = ${visitorId}
             ${passes ? sql`` : sql`and reaction = 'like'`}
@@ -857,7 +952,10 @@ export const getProfileSummary = cache(async (visitorId: string, mine: boolean, 
                     where r.visitor_id = ${visitorId} and r.listing_key = pl.listing_key and r.reaction = 'dislike')`
             }
           ${passes ? sql`union select listing_key from public_photo_dislikes where visitor_id = ${visitorId}` : sql``}
-          union select listing_key from public_comments where visitor_id = ${visitorId}) h) as homes`,
+          union select listing_key from public_comments where visitor_id = ${visitorId}
+          union select al.listing_key ${agentMarks(account, "like")}
+          ${passes ? sql`union select al.listing_key ${agentMarks(account, "dislike")}` : sql``}
+          union select c.listing_key ${agentNotes(account)}) h) as homes`,
     loadRows(visitorId, null, mine),
   ]);
   const seen = passes ? rows : withoutPasses(rows);

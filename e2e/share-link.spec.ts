@@ -224,7 +224,7 @@ test("the agent's own Preview is their first pass: what they like and say there 
   const home = homeIn(preview, "1204 Quillan St SE");
   await expect(home).toBeInViewport({ ratio: 0.9 });
   const banner = preview.getByRole("banner");
-  await expect(banner).toContainText("Your notes for Dana");
+  await expect(banner).toContainText("your notes for Dana");
   // Nothing to contact: Done, back to Dana's page.
   await expect(banner.getByRole("button", { name: "Contact" })).toHaveCount(0);
   await expect(banner.getByRole("link", { name: "Done" })).toHaveAttribute("href", new URL(dashboardUrl).pathname);

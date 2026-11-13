@@ -1,140 +1,129 @@
 import { cache } from "react";
 import { sql } from "./db";
-import type { Listing } from "./listings/types";
 import { linkTitle } from "./people-picker";
 import { photoUrl } from "./person-photo";
-import type { ReactionState } from "./reactions";
-import { clientActivity, describeTake, getHomeViews, homeViewKey } from "./shares";
+import { clientActivity, getHomeViews, photosSeenLine } from "./shares";
+import { ANONYMOUS_BUYER } from "./timeline";
 
-// An agent's clients: everyone they've sent homes to, one entry per client,
-// read once and shared by the dashboard and the agent's home. Links with the
-// same name (any case) are one client, so a second link to Jenny lands on the
-// same card; a link with nobody named on it is a client of its own. Only ever
-// for the agent whose links they are: what's here (passes, time spent, who's
-// on a link right now, requests to see a home) is theirs alone.
+// An agent's clients are people: everyone they've sent homes to, each once,
+// with the links (packages of homes) they're on listed under them. Someone
+// signed up is one person however many links they're on; someone known only
+// by the first name the agent gave them is one person per name, and joins a
+// signed-up client with that same first name when there's exactly one. A link
+// with nobody on it yet isn't a person: it's listed apart, as a link.
+// Only ever for the agent whose links they are: what's here (passes, time
+// spent, who's on a link right now, requests to see a home) is theirs alone.
 
-// Someone on one of the agent's links, as the agent may see them: a first
-// name, and their own photo and page once they've signed up. Never an email.
-export type ClientPerson = {
-  participantId: string;
+// One link (one send of homes), as it's listed under a person or on its own.
+export type ClientLink = {
   shareId: string;
-  name: string;
-  profileId: string | null;
-  photo: string | null;
-};
-
-export type AgentClient = {
-  // Stays the same between loads: the name in lower case, or link:<id>.
-  key: string;
-  // The link's title ("Ben & Nina"), or "Link for <first address>" when it has
-  // nobody on it yet. Never "Unnamed client".
-  name: string;
-  // Their page: the link with something new on it, or else the latest.
+  // "Jenny & Mike", or "Link for 5902 Lakeview Terrace SE" with nobody on it.
+  title: string;
   href: string;
-  shareIds: string[];
-  people: ClientPerson[];
   sentAt: Date;
   openedAt: Date | null;
-  lastActivity: Date | null;
-  // Something they did that the agent hasn't seen yet.
+  homes: number;
+  // The first few homes' photos, in the link's order.
+  photos: (string | null)[];
+  firstAddress: string | null;
+  // The others on it, by first name (not the person it's listed under).
+  with: string[];
+  unread: boolean;
+  // "saw 3 of 4 photos": the most of it one of their devices looked at.
+  seen: string | null;
+};
+
+export type ClientStatus =
+  | { kind: "ask"; address: string; href: string }
+  | { kind: "active" }
+  | { kind: "comment"; body: string; href: string }
+  | { kind: "liked"; n: number; of: number }
+  | { kind: "opened" }
+  | { kind: "unopened"; sentAt: Date };
+
+export type Client = {
+  // Stays the same between loads: acct:<account>, name:<first name>, or p:<participant>.
+  key: string;
+  name: string;
+  photo: string | null;
+  // Their public page, once they've signed up.
+  profileId: string | null;
+  // Where their name goes: their page, or else their newest link.
+  href: string;
+  participantIds: string[];
+  // Newest first.
+  links: ClientLink[];
+  // Each home once, however many links it's on.
+  homes: number;
+  liked: number;
+  passed: number;
+  comments: number;
+  // Requests to see a home in person the agent hasn't answered in its thread.
+  asks: number;
+  // Threads where what they said last has no word from the agent since.
+  unanswered: number;
+  opened: boolean;
+  // The last thing they did (a like, a comment), or the last time they looked.
+  lastActive: Date | null;
+  sentAt: Date;
+  // Something on one of their links the agent hasn't seen yet.
   unread: boolean;
   // On one of their links in the last few minutes.
   activeNow: boolean;
-  // Requests to see a home that the agent hasn't answered in that home's thread.
-  asks: number;
-  comments: number;
-  // Homes at least one of them liked.
-  likedHomes: number;
-  // Each home once, with the link it was taken from (the newest that has it),
-  // so a thumbnail opens that link rather than whichever is the client's page.
-  homes: {
-    key: string;
-    shareId: string;
-    address: string;
-    photo: string | null;
-    liked: number;
-    passed: number;
-    seconds: number;
-  }[];
-  // The one thing to say first: an open request to see a home, or else the
-  // newest thing they did. `what` is the rest of the sentence after the name
-  // ("commented: “…”", "liked the kitchen"); for an ask it names the home
-  // itself ("asked to see 1204 Quillan St SE"), so it reads alone. `shareId`
-  // is the link it happened on, which may not be the client's page.
-  latest: {
-    kind: "comment" | "like" | "pass" | "ask";
-    shareId: string;
-    name: string;
-    what: string;
-    address: string;
-    at: Date;
-    listingKey: string;
-    commentId: string | null;
-  } | null;
-  // How much of what they were sent they've looked at (the most photos one of
-  // their devices saw, of all the photos on their links), and for how long.
-  photosSeen: number;
-  photoCount: number;
+  // Time spent on their links, every visit and device together.
   seconds: number;
+  // The one thing to say about them first.
+  status: ClientStatus;
 };
-
-type Home = { key: string; address: string; photo: string | null; liked: number; passed: number };
 
 type ShareRow = {
   id: string;
   client_name: string;
   created_at: Date;
-  homes: Home[];
-  comment_count: number;
+  homes: { key: string; address: string; photo: string | null }[];
   opened_at: Date | null;
-  // The most photos anyone has looked at on it, of all it has.
   photos_seen: number;
   photo_count: number;
-  last_activity: Date | null;
   unread: boolean;
   active_now: boolean;
 };
 
-type Latest = NonNullable<AgentClient["latest"]>;
-type News = { shareId: string; at: Date; latest: Latest };
+type PersonRow = {
+  id: string;
+  share_id: string;
+  first_name: string;
+  account_id: string | null;
+  profile: string | null;
+  photo_v: string | null;
+  liked_keys: string[];
+  passed_keys: string[];
+  comments: number;
+  opened: boolean;
+  last_active: Date | null;
+  // Their newest comment that's still waiting for the agent, and how many are.
+  unanswered: number;
+  waiting_body: string | null;
+  waiting_key: string | null;
+  waiting_at: Date | null;
+};
 
-type Mark = { media: string; tag: string };
+type AskRow = { participant_id: string; share_id: string; listing_key: string; address: string; at: Date };
 
-// A long comment, cut to fit a line or two.
+// A long comment, cut to fit a line.
 const clip = (body: string) => (body.length > 90 ? `${body.slice(0, 87).trimEnd()}…` : body);
 
-// Every link the agent has sent, newest first. Per home, each person on the
-// link once: liked (the home, or something in it) or passed (Not for me, or
-// only dislikes), as on the client's page.
+const newest = (a: Date | null, b: Date | null) => (!a ? b : !b ? a : a > b ? a : b);
+
+// Every link the agent has sent, newest first, with its homes in order.
 const loadShares = (agentId: string) => sql<ShareRow[]>`
   select s.id, s.client_name, s.created_at,
     (select coalesce(json_agg(json_build_object(
           'key', sl.listing_key, 'address', l.data->>'UnparsedAddress',
-          'photo', l.data->'Media'->0->>'MediaURL',
-          'liked', v.liked, 'passed', v.passed
+          'photo', l.data->'Media'->0->>'MediaURL'
         ) order by sl.position), '[]')
        from share_listings sl
        join listings l on l.listing_key = sl.listing_key
-       cross join lateral (
-         select count(*) filter (where verdict = 'like')::int as liked,
-                count(*) filter (where verdict = 'pass')::int as passed
-         from (
-           select case
-             when r.reaction = 'like' then 'like'
-             when r.reaction = 'dislike' then 'pass'
-             when exists (select 1 from photo_likes pl
-                          where pl.participant_id = p.id and pl.listing_key = sl.listing_key) then 'like'
-             when exists (select 1 from photo_dislikes pd
-                          where pd.participant_id = p.id and pd.listing_key = sl.listing_key) then 'pass'
-           end as verdict
-           from participants p
-           left join reactions r
-             on r.participant_id = p.id and r.share_id = sl.share_id and r.listing_key = sl.listing_key
-           where p.share_id = sl.share_id
-         ) person
-       ) v
        where sl.share_id = s.id and sl.removed_at is null) as homes,
-    (select count(*)::int from comments c where c.share_id = s.id and c.agent_id is null) as comment_count,
     -- Doing anything on a link means it was open then, so links sent before
     -- opens were counted don't read "Not opened yet" under their comments.
     greatest((select max(o.last_at) from share_opens o where o.share_id = s.id), activity.at) as opened_at,
@@ -142,7 +131,6 @@ const loadShares = (agentId: string) => sql<ShareRow[]>`
     (select coalesce(sum(jsonb_array_length(l.data->'Media')), 0)::int
        from share_listings sl join listings l on l.listing_key = sl.listing_key
        where sl.share_id = s.id and sl.removed_at is null) as photo_count,
-    activity.at as last_activity,
     coalesce(activity.at > s.agent_seen_at, activity.at is not null) as unread,
     exists (select 1 from share_home_views hv
             where hv.share_id = s.id and hv.last_at > now() - interval '3 minutes') as active_now
@@ -153,33 +141,70 @@ const loadShares = (agentId: string) => sql<ShareRow[]>`
   where s.agent_id = ${agentId}
   order by s.created_at desc`;
 
-// Everyone on the agent's links, in the order they were added, with their
-// page and photo once they've signed up. Never the agent themselves.
-const loadPeople = (agentId: string) => sql<
-  { id: string; share_id: string; first_name: string; profile: string | null; photo_v: string | null }[]
->`
-  select p.id, p.share_id, p.first_name, v.id as profile, left(md5(acc.photo_data_url), 10) as photo_v
+// Everyone on the agent's links (never the agent themselves), in the order
+// they were added, with what each of them did there: the homes they liked
+// (the home, or something in it) and passed on (Not for me, or only
+// dislikes), what they said, whether they've opened it, and when they were
+// last on it.
+const loadPeople = (agentId: string) => sql<PersonRow[]>`
+  select p.id, p.share_id, p.first_name, p.account_id, v.id as profile,
+    left(md5(acc.photo_data_url), 10) as photo_v,
+    coalesce(verdicts.liked, '{}') as liked_keys,
+    coalesce(verdicts.passed, '{}') as passed_keys,
+    (select count(*)::int from comments c where c.participant_id = p.id) as comments,
+    exists (select 1 from share_opens o where o.participant_id = p.id) as opened,
+    greatest(
+      (select max(o.last_at) from share_opens o where o.participant_id = p.id),
+      (select max(a.at) from (${clientActivity()}) a where a.participant_id = p.id)
+    ) as last_active,
+    waiting.n as unanswered, waiting.body as waiting_body, waiting.listing_key as waiting_key, waiting.at as waiting_at
   from participants p
   join shares s on s.id = p.share_id
   left join visitors v on v.account_id = p.account_id
   left join accounts acc on acc.id = p.account_id
+  cross join lateral (
+    select array_agg(x.listing_key) filter (where x.verdict = 'like') as liked,
+           array_agg(x.listing_key) filter (where x.verdict = 'pass') as passed
+    from (
+      select sl.listing_key, case
+        when r.reaction = 'like' then 'like'
+        when r.reaction = 'dislike' then 'pass'
+        when exists (select 1 from photo_likes pl
+                     where pl.participant_id = p.id and pl.listing_key = sl.listing_key) then 'like'
+        when exists (select 1 from photo_dislikes pd
+                     where pd.participant_id = p.id and pd.listing_key = sl.listing_key) then 'pass'
+      end as verdict
+      from share_listings sl
+      left join reactions r
+        on r.participant_id = p.id and r.share_id = sl.share_id and r.listing_key = sl.listing_key
+      where sl.share_id = p.share_id and sl.removed_at is null
+    ) x
+  ) verdicts
+  cross join lateral (
+    select count(*)::int as n,
+      (array_agg(last.body order by last.created_at desc))[1] as body,
+      (array_agg(last.listing_key order by last.created_at desc))[1] as listing_key,
+      max(last.created_at) as at
+    from (
+      select distinct on (c.listing_key) c.listing_key, c.body, c.created_at
+      from comments c
+      where c.participant_id = p.id
+      order by c.listing_key, c.created_at desc
+    ) last
+    where not exists (
+      select 1 from comments r
+      where r.share_id = p.share_id and r.listing_key = last.listing_key
+        and r.agent_id is not null and r.created_at > last.created_at)
+  ) waiting
   where s.agent_id = ${agentId} and (p.account_id is null or p.account_id <> s.agent_id)
-  order by p.invited_at nulls last, p.created_at, p.first_name`;
+  order by p.invited_at nulls last, p.position nulls last, p.created_at, p.first_name`;
 
 // Requests to see a home in person that the agent hasn't answered yet: no
-// word from them in that home's thread since. The ask posts its own comment
-// in the same moment, which is the one to open.
-const loadAsks = (agentId: string) => sql<
-  { share_id: string; listing_key: string; first_name: string; address: string; at: Date; comment_id: string | null }[]
->`
-  select a.share_id, a.listing_key, p.first_name, l.data->>'UnparsedAddress' as address, a.asked_at as at,
-    (select c.id from comments c
-      where c.share_id = a.share_id and c.listing_key = a.listing_key
-        and c.participant_id = a.participant_id and c.created_at = a.asked_at
-      limit 1) as comment_id
+// word from them in that home's thread since.
+const loadAsks = (agentId: string) => sql<AskRow[]>`
+  select a.participant_id, a.share_id, a.listing_key, l.data->>'UnparsedAddress' as address, a.asked_at as at
   from share_asks a
   join shares s on s.id = a.share_id
-  join participants p on p.id = a.participant_id
   join share_listings sl on sl.share_id = a.share_id and sl.listing_key = a.listing_key and sl.removed_at is null
   join listings l on l.listing_key = a.listing_key
   where s.agent_id = ${agentId}
@@ -189,207 +214,153 @@ const loadAsks = (agentId: string) => sql<
         and r.agent_id is not null and r.created_at > a.asked_at)
   order by a.asked_at desc`;
 
-// The newest things clients did, link by link: a person's take on a home
-// (their verdict and what they liked or not in it) as one, each comment on
-// its own.
-async function latestNews(agentId: string): Promise<News[]> {
-  const [comments, takes] = await Promise.all([
-    sql<{ id: string; share_id: string; listing_key: string; first_name: string; body: string; address: string; at: Date }[]>`
-      select distinct on (c.share_id) c.id, c.share_id, c.listing_key, p.first_name, c.body,
-        l.data->>'UnparsedAddress' as address, c.created_at as at
-      from comments c
-      join shares s on s.id = c.share_id
-      join participants p on p.id = c.participant_id
-      join listings l on l.listing_key = c.listing_key
-      where s.agent_id = ${agentId}
-      order by c.share_id, c.created_at desc`,
-    sql<
-      ({ share_id: string; first_name: string; data: Listing; at: Date; photo_likes: Mark[]; photo_dislikes: Mark[] } &
-        ReactionState)[]
-    >`
-      select t.share_id, p.first_name, l.data, t.at,
-        r.reaction, coalesce(r.liked, '{}') as liked, coalesce(r.disliked, '{}') as disliked,
-        (select coalesce(json_agg(json_build_object('media', pl.media_key, 'tag', pl.tag) order by pl.created_at), '[]')
-           from photo_likes pl
-           where pl.participant_id = t.participant_id and pl.listing_key = t.listing_key) as photo_likes,
-        (select coalesce(json_agg(json_build_object('media', pd.media_key, 'tag', pd.tag) order by pd.created_at), '[]')
-           from photo_dislikes pd
-           where pd.participant_id = t.participant_id and pd.listing_key = t.listing_key) as photo_dislikes
-      from (
-        select distinct on (a.share_id) a.share_id, a.listing_key, a.participant_id, a.at
-        from (
-          select share_id, listing_key, participant_id, updated_at as at from reactions
-          union all
-          select share_id, listing_key, participant_id, created_at from photo_likes
-          union all
-          select share_id, listing_key, participant_id, created_at from photo_dislikes
-        ) a
-        join shares s on s.id = a.share_id
-        where s.agent_id = ${agentId}
-        order by a.share_id, a.at desc
-      ) t
-      join participants p on p.id = t.participant_id
-      join listings l on l.listing_key = t.listing_key
-      left join reactions r
-        on r.share_id = t.share_id and r.listing_key = t.listing_key and r.participant_id = t.participant_id`,
-  ]);
-  return [
-    ...comments.map(
-      (c): News => ({
-        shareId: c.share_id,
-        at: c.at,
-        latest: {
-          kind: "comment",
-          shareId: c.share_id,
-          name: c.first_name,
-          what: `commented: “${clip(c.body)}”`,
-          address: c.address,
-          at: c.at,
-          listingKey: c.listing_key,
-          commentId: c.id,
-        },
-      }),
-    ),
-    ...takes.map((t): News => {
-      const passed = t.reaction === "dislike" || (!t.reaction && t.photo_likes.length === 0 && t.photo_dislikes.length > 0);
-      return {
-        shareId: t.share_id,
-        at: t.at,
-        latest: {
-          kind: passed ? "pass" : "like",
-          shareId: t.share_id,
-          name: t.first_name,
-          what: describeTake(
-            t.data,
-            { reaction: t.reaction, liked: t.liked, disliked: t.disliked },
-            t.photo_likes.map((m) => ({ mediaKey: m.media, tag: m.tag })),
-            t.photo_dislikes.map((m) => ({ mediaKey: m.media, tag: m.tag })),
-          )
-            .replace(/^liked this(?=,|$)/, "liked this home")
-            .replace(/^passed on this$/, "passed on this home"),
-          address: t.data.UnparsedAddress,
-          at: t.at,
-          listingKey: t.data.ListingKey,
-          commentId: null,
-        },
-      };
-    }),
-  ];
-}
+const homeAnchor = (shareId: string, listingKey: string) =>
+  `/dashboard/shares/${shareId}?tab=homes#home-${encodeURIComponent(listingKey)}`;
 
-const newest = (date: Date | null, other: Date | null) => (!date ? other : !other ? date : date > other ? date : other);
-
-// Links with the same name (any case) are one client; a link with nobody on
-// it yet is a client of its own. Anyone with something new first, then
-// whoever was on theirs most recently.
-function clientsFrom(
-  shares: ShareRow[],
-  people: Awaited<ReturnType<typeof loadPeople>>,
-  asks: Awaited<ReturnType<typeof loadAsks>>,
-  news: News[],
-  seconds: Map<string, number>,
-): AgentClient[] {
-  const groups = new Map<string, ShareRow[]>();
-  for (const share of shares) {
-    const key = share.client_name.trim().toLowerCase() || `link:${share.id}`;
-    groups.set(key, [...(groups.get(key) ?? []), share]);
+// Which person each participant is: their account, else their first name
+// (joining the one signed-up client with that name, when there's just one),
+// else, with no name at all, themselves.
+function personKeys(people: PersonRow[]) {
+  const accountsByName = new Map<string, Set<string>>();
+  for (const p of people) {
+    if (!p.account_id) continue;
+    const name = p.first_name.trim().toLowerCase();
+    if (name) accountsByName.set(name, (accountsByName.get(name) ?? new Set()).add(p.account_id));
   }
-  return [...groups]
-    .map(([key, links]): AgentClient => {
-      const ids = new Set(links.map((link) => link.id));
-      const busiest = [...links].sort(
-        (a, b) => (b.last_activity ?? b.created_at).getTime() - (a.last_activity ?? a.created_at).getTime(),
-      );
-      const homes: AgentClient["homes"] = [];
-      for (const link of links) {
-        for (const home of link.homes) {
-          if (homes.some((h) => h.key === home.key)) continue;
-          homes.push({ ...home, shareId: link.id, seconds: seconds.get(homeViewKey(link.id, home.key)) ?? 0 });
-        }
-      }
-      // Each person once, from their busiest link: the same account on two
-      // links is one face, and so is the same name with no account.
-      const faces: ClientPerson[] = [];
-      for (const link of busiest) {
-        for (const person of people.filter((p) => p.share_id === link.id)) {
-          const same = (face: ClientPerson) =>
-            person.profile ? face.profileId === person.profile : face.name.toLowerCase() === person.first_name.trim().toLowerCase();
-          if (faces.some(same)) continue;
-          faces.push({
-            participantId: person.id,
-            shareId: link.id,
-            name: person.first_name.trim(),
-            profileId: person.profile,
-            photo: person.profile ? photoUrl(person.profile, person.photo_v) : null,
-          });
-        }
-      }
-      const open = asks.filter((ask) => ids.has(ask.share_id));
-      const said = news.filter((item) => ids.has(item.shareId)).sort((a, b) => b.at.getTime() - a.at.getTime());
-      // An open request to see a home says more than any like or pass.
-      const ask = open[0];
-      const latest: Latest | null = ask
-        ? {
-            kind: "ask",
-            shareId: ask.share_id,
-            name: ask.first_name,
-            what: `asked to see ${ask.address}`,
-            address: ask.address,
-            at: ask.at,
-            listingKey: ask.listing_key,
-            commentId: ask.comment_id,
-          }
-        : (said[0]?.latest ?? null);
-      return {
-        key,
-        name: linkTitle(links[0].client_name, links[0].homes[0]?.address),
-        href: `/dashboard/shares/${(busiest.find((link) => link.unread) ?? busiest[0]).id}`,
-        shareIds: links.map((link) => link.id),
-        people: faces,
-        sentAt: links.reduce((at, link) => (link.created_at > at ? link.created_at : at), links[0].created_at),
-        openedAt: links.reduce<Date | null>((at, link) => newest(at, link.opened_at), null),
-        lastActivity: links.reduce<Date | null>((at, link) => newest(at, link.last_activity), null),
-        unread: links.some((link) => link.unread),
-        activeNow: links.some((link) => link.active_now),
-        asks: open.length,
-        comments: links.reduce((sum, link) => sum + link.comment_count, 0),
-        likedHomes: homes.filter((home) => home.liked > 0).length,
-        homes,
-        latest,
-        photosSeen: links.reduce((sum, link) => sum + Math.min(link.photos_seen, link.photo_count), 0),
-        photoCount: links.reduce((sum, link) => sum + link.photo_count, 0),
-        seconds: homes.reduce((sum, home) => sum + home.seconds, 0),
-      };
-    })
-    .sort(
-      (a, b) =>
-        Number(b.unread) - Number(a.unread) ||
-        (newest(b.lastActivity, b.openedAt) ?? b.sentAt).getTime() - (newest(a.lastActivity, a.openedAt) ?? a.sentAt).getTime(),
-    );
+  return new Map(
+    people.map((p) => {
+      if (p.account_id) return [p.id, `acct:${p.account_id}`];
+      const name = p.first_name.trim().toLowerCase();
+      if (!name) return [p.id, `p:${p.id}`];
+      const accounts = accountsByName.get(name);
+      return [p.id, accounts?.size === 1 ? `acct:${[...accounts][0]}` : `name:${name}`];
+    }),
+  );
 }
+
+function statusOf(c: Omit<Client, "status">, ask: AskRow | undefined, waiting: PersonRow | undefined): ClientStatus {
+  if (ask) return { kind: "ask", address: ask.address, href: homeAnchor(ask.share_id, ask.listing_key) };
+  if (c.activeNow) return { kind: "active" };
+  if (waiting?.waiting_body && waiting.waiting_key)
+    return { kind: "comment", body: clip(waiting.waiting_body), href: homeAnchor(waiting.share_id, waiting.waiting_key) };
+  if (c.liked > 0) return { kind: "liked", n: c.liked, of: c.homes };
+  if (c.opened) return { kind: "opened" };
+  return { kind: "unopened", sentAt: c.sentAt };
+}
+
+export type ClientBook = { clients: Client[]; unclaimed: ClientLink[] };
 
 // Every client of this agent, once per request however many parts of the page ask.
-export const getClients = cache(async (agentId: string): Promise<AgentClient[]> => {
-  const [shares, people, asks, news] = await Promise.all([
-    loadShares(agentId),
-    loadPeople(agentId),
-    loadAsks(agentId),
-    latestNews(agentId),
-  ]);
+export const getClientBook = cache(async (agentId: string): Promise<ClientBook> => {
+  const [shares, people, asks] = await Promise.all([loadShares(agentId), loadPeople(agentId), loadAsks(agentId)]);
   const views = await getHomeViews(shares.map((share) => share.id));
-  const seconds = new Map([...views].map(([key, view]) => [key, view.seconds]));
-  return clientsFrom(shares, people, asks, news, seconds);
+  const secondsOf = new Map<string, number>();
+  for (const [key, view] of views) {
+    const shareId = key.slice(0, key.indexOf(":"));
+    secondsOf.set(shareId, (secondsOf.get(shareId) ?? 0) + view.seconds);
+  }
+  const shareOf = new Map(shares.map((share) => [share.id, share]));
+  const keyOf = personKeys(people);
+  const onLink = new Map<string, PersonRow[]>();
+  for (const p of people) onLink.set(p.share_id, [...(onLink.get(p.share_id) ?? []), p]);
+
+  const linkFor = (share: ShareRow, others: string[]): ClientLink => ({
+    shareId: share.id,
+    title: linkTitle(share.client_name, share.homes[0]?.address),
+    href: `/dashboard/shares/${share.id}`,
+    sentAt: share.created_at,
+    openedAt: share.opened_at,
+    homes: share.homes.length,
+    photos: share.homes.slice(0, 3).map((home) => home.photo),
+    firstAddress: share.homes[0]?.address ?? null,
+    with: others,
+    unread: share.unread,
+    seen: photosSeenLine(share.photos_seen, share.photo_count),
+  });
+
+  const groups = new Map<string, PersonRow[]>();
+  for (const p of people) {
+    if (!shareOf.has(p.share_id)) continue;
+    const key = keyOf.get(p.id)!;
+    groups.set(key, [...(groups.get(key) ?? []), p]);
+  }
+
+  const clients = [...groups].map(([key, rows]): Client => {
+    // Their links, newest first, each once.
+    const linkIds = [...new Set(rows.map((row) => row.share_id))]
+      .map((id) => shareOf.get(id)!)
+      .sort((a, b) => +b.created_at - +a.created_at);
+    const mine = new Set(rows.map((row) => row.id));
+    const links = linkIds.map((share) =>
+      linkFor(
+        share,
+        (onLink.get(share.id) ?? [])
+          .filter((other) => !mine.has(other.id) && keyOf.get(other.id) !== key)
+          .map((other) => other.first_name.trim())
+          .filter(Boolean),
+      ),
+    );
+    const homeKeys = new Set(linkIds.flatMap((share) => share.homes.map((home) => home.key)));
+    const liked = new Set(rows.flatMap((row) => row.liked_keys));
+    const passed = new Set(rows.flatMap((row) => row.passed_keys).filter((k) => !liked.has(k)));
+    const signedUp = rows.find((row) => row.profile);
+    const named = rows.find((row) => row.first_name.trim());
+    const opened =
+      rows.some((row) => row.opened || row.last_active) ||
+      // On a link of their own, the link's opens are theirs.
+      linkIds.some((share) => share.opened_at && (onLink.get(share.id)?.length ?? 0) === 1);
+    const lastActive = rows.reduce<Date | null>((at, row) => newest(at, row.last_active), null);
+    const waiting = rows
+      .filter((row) => row.unanswered > 0)
+      .sort((a, b) => +(b.waiting_at ?? 0) - +(a.waiting_at ?? 0))[0];
+    const ids = new Set(rows.map((row) => row.id));
+    const open = asks.filter((ask) => ids.has(ask.participant_id));
+    const base = {
+      key,
+      name: named?.first_name.trim() || ANONYMOUS_BUYER,
+      photo: signedUp?.profile ? photoUrl(signedUp.profile, signedUp.photo_v) : null,
+      profileId: signedUp?.profile ?? null,
+      href: signedUp?.profile ? `/people/${signedUp.profile}` : links[0].href,
+      participantIds: rows.map((row) => row.id),
+      links,
+      homes: homeKeys.size,
+      liked: [...liked].filter((k) => homeKeys.has(k)).length,
+      passed: [...passed].filter((k) => homeKeys.has(k)).length,
+      comments: rows.reduce((sum, row) => sum + row.comments, 0),
+      asks: open.length,
+      unanswered: rows.reduce((sum, row) => sum + row.unanswered, 0),
+      opened,
+      lastActive,
+      sentAt: linkIds[0].created_at,
+      unread: links.some((link) => link.unread),
+      activeNow: linkIds.some((share) => share.active_now),
+      seconds: linkIds.reduce((sum, share) => sum + (secondsOf.get(share.id) ?? 0), 0),
+    };
+    return { ...base, status: statusOf(base, open[0], waiting) };
+  });
+
+  // Whoever asked to see a home first, then anyone with something new, then
+  // whoever was on theirs most recently (or was sent homes most recently).
+  clients.sort(
+    (a, b) =>
+      Number(b.asks > 0) - Number(a.asks > 0) ||
+      Number(b.activeNow) - Number(a.activeNow) ||
+      Number(b.unread) - Number(a.unread) ||
+      +(newest(b.lastActive, b.sentAt) ?? 0) - +(newest(a.lastActive, a.sentAt) ?? 0),
+  );
+
+  const unclaimed = shares.filter((share) => !onLink.has(share.id)).map((share) => linkFor(share, []));
+  return { clients, unclaimed };
 });
 
-export type ClientFilterKey = "all" | "new" | "asks" | "unopened" | "liked" | "commented";
+export type ClientFilterKey = "all" | "new" | "asks" | "commented" | "liked" | "unopened";
 
-// The ways to see just some clients, with the count of each: the dashboard's
-// tiles, and the same numbers wherever else they're shown.
-export const CLIENT_FILTERS: readonly { key: ClientFilterKey; label: string; test: (c: AgentClient) => boolean }[] = [
-  { key: "all", label: "All clients", test: () => true },
+// The ways to see just some clients, with the count of each.
+export const CLIENT_FILTERS: readonly { key: ClientFilterKey; label: string; test: (c: Client) => boolean }[] = [
+  { key: "all", label: "All", test: () => true },
   { key: "new", label: "New activity", test: (c) => c.unread },
   { key: "asks", label: "Wants a showing", test: (c) => c.asks > 0 },
-  { key: "unopened", label: "Not opened yet", test: (c) => !c.openedAt },
-  { key: "liked", label: "Liked a home", test: (c) => c.likedHomes > 0 },
-  { key: "commented", label: "Commented", test: (c) => c.comments > 0 },
+  { key: "commented", label: "Waiting on a reply", test: (c) => c.unanswered > 0 },
+  { key: "liked", label: "Liked a home", test: (c) => c.liked > 0 },
+  { key: "unopened", label: "Not opened", test: (c) => !c.opened },
 ];

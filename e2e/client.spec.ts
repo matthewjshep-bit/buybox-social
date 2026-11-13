@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { signedIn, createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, openMore, signInAgent } from "./helpers";
+import { clientRow, signedIn, createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, openMore, signInAgent } from "./helpers";
 
 test("an agent's client page: what they want, remove and restore, add homes, private only", async ({
   browser,
@@ -103,13 +103,12 @@ test("an agent's client page: what they want, remove and restore, add homes, pri
 
   // The dashboard lists the client by name, with how they came down on each home.
   await agent.goto("/dashboard");
-  const row = agent.getByRole("region", { name: "Clients" }).getByRole("link", { name: /Joe/ });
+  const row = clientRow(agent, "Joe");
   await expect(row).toBeVisible();
-  await expect(row.getByRole("listitem").filter({ hasText: "10421 Halvard Way NE" })).toContainText("1 liked");
-  await expect(row.getByRole("listitem").filter({ hasText: "1204 Quillan St SE" })).toContainText("1 passed");
-  await expect(row.getByRole("listitem").filter({ hasText: "812 N Corbel St" })).toContainText("no reactions yet");
-  // ...and the last thing Joe did, never the public's.
-  await expect(row).toContainText(/Joe (commented|liked|passed)/);
+  await expect(row).toContainText(/3\s*homes sent/);
+  await expect(row).toContainText(/1\s*liked/);
+  await expect(row).toContainText(/1\s*passed/);
+  // ...and only what Joe did, never the public's.
   await expect(row).not.toContainText("Stella");
   await expect(row).not.toContainText("that staircase!");
 });

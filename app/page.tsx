@@ -5,13 +5,13 @@ import { JoinGate, JoinIntro } from "@/components/join";
 import { PUBLIC_PROMPT, publicReelActions } from "@/components/listing-detail";
 import { ReelFeed } from "@/components/reel";
 import { SiteHeader } from "@/components/site-header";
-import { getClientDays } from "@/lib/agent-feed";
 import { devLoginEnabled, firstName, getCurrentUser, getViewAs } from "@/lib/auth";
-import { getClients } from "@/lib/clients";
+import { getClientCards } from "@/lib/client-feed";
+import { getClientBook } from "@/lib/clients";
 import { readDevice } from "@/lib/engagement";
+import { getFollowCounts } from "@/lib/follows";
 import { getReel } from "@/lib/feed";
 import {
-  brandColorsOf,
   feedKeys,
   getFollowedFaces,
   getHomeFeed,
@@ -22,24 +22,22 @@ import {
   suggestPeople,
 } from "@/lib/home-feed";
 import { getMyLinks } from "@/lib/my-links";
-import { getNeedsYou } from "@/lib/needs-you";
 import { photoUrl, photoVersion } from "@/lib/person-photo";
 import { getPublicIdentity } from "@/lib/public";
 import { getTaste } from "@/lib/taste";
 
 // How many homes someone sees before they're asked to sign up.
 const FREE_HOMES = 3;
-// Needs-you rows the page brings: five show, the rest fill in after a Done.
-const NEEDS_READ = 15;
-// People worth following: four along the top for someone with nobody yet,
-// and three beside the stream.
-const SUGGESTIONS = 7;
+// People worth following, beside the stream (and in it, on a phone).
+const SUGGESTIONS = 5;
 
 // The home page. Signed out: homes full screen, one after another, opening on
 // what this is and a short sign-up form, then asking them to sign up to see
-// the rest. Signed in, an agent's "Today" (what clients are waiting on them
-// for, then what their clients did: AgentHome), or anyone else's home (their
-// agent's homes, the people they follow, homes picked for them: BuyerHome).
+// the rest. Signed in, everyone's home is laid out the same way (their card
+// down the left, the feed, what's beside it down the right): an agent's is
+// what their clients did and their clients as people (AgentHome); anyone
+// else's is their agent's homes, the people they follow and homes picked for
+// them (BuyerHome).
 export default async function Home({
   searchParams,
 }: {
@@ -84,28 +82,31 @@ export default async function Home({
     });
   }
 
+  const me = {
+    name: user.full_name.trim() || user.email,
+    photo: visitorId ? photoUrl(visitorId, photoVersion(user.photo_data_url)) : user.photo_data_url,
+  };
+  const noFollows = { followers: 0, following: 0 };
+
   if (user.role === "agent") {
     // (No homes picked for an agent, nor people to follow: their home is
     // their clients, and it loads without the scan those take.)
-    const [clients, needs, days, feed, seenAt] = await Promise.all([
-      getClients(user.id),
-      getNeedsYou(user.id, NEEDS_READ),
-      getClientDays(user.id),
+    const [book, cards, feed, seenAt, follows] = await Promise.all([
+      getClientBook(user.id),
+      getClientCards(user.id),
       getHomeFeed(user, visitorId),
       getHomeSeen(visitorId),
+      visitorId ? getFollowCounts(visitorId) : noFollows,
     ]);
     const mine = await myReactions(visitorId, feedKeys(feed));
     return (
       <AgentHome
         firstName={firstName(user)}
-        me={{
-          name: user.full_name.trim() || user.email,
-          photo: visitorId ? photoUrl(visitorId, photoVersion(user.photo_data_url)) : user.photo_data_url,
-        }}
+        me={{ ...me, brokerage: user.brokerage }}
         profileHref={profileHref}
-        clients={clients}
-        needs={needs}
-        days={days}
+        book={book}
+        cards={cards}
+        follows={follows}
         feed={feed}
         mine={mine}
         seenAt={seenAt}
@@ -114,24 +115,23 @@ export default async function Home({
     );
   }
 
-  const [feed, links, followed, seenAt, picks, suggestions] = await Promise.all([
+  const [feed, links, followed, seenAt, picks, suggestions, follows] = await Promise.all([
     getHomeFeed(user, visitorId),
     getMyLinks(user.id),
     getFollowedFaces(visitorId),
     getHomeSeen(visitorId),
     getPicks(user, device, visitorId),
     suggestPeople(visitorId, SUGGESTIONS),
+    visitorId ? getFollowCounts(visitorId) : noFollows,
   ]);
-  const [mine, brands] = await Promise.all([
-    myReactions(visitorId, feedKeys(feed)),
-    brandColorsOf(links.flatMap((link) => (link.agent.profileId ? [link.agent.profileId] : []))),
-  ]);
+  const mine = await myReactions(visitorId, feedKeys(feed));
   return (
     <BuyerHome
       firstName={firstName(user)}
+      me={me}
+      follows={follows}
       profileHref={profileHref}
       links={links}
-      brands={brands}
       followed={followed}
       suggestions={suggestions}
       feed={feed}

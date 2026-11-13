@@ -97,6 +97,14 @@ export async function enterCode(where: Page | Locator) {
 }
 
 // The feed: one home per screen.
+// A person on the agent's Clients page (/dashboard): their row, found by
+// the heading that's their name.
+export const clientRow = (page: Page, name: string) =>
+  page
+    .getByRole("region", { name: "Clients" })
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("heading", { name, exact: true }) });
+
 export const homeIn = (page: Page | Locator, address: string) => page.getByRole("article", { name: address });
 
 // An agent's link opens on its welcome screen, a word from the agent: on to

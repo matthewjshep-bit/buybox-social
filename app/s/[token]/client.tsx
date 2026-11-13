@@ -1,13 +1,26 @@
 "use client";
 
 import { ArrowDown, Check, ChevronDown, Heart, Home, Mail, MessageSquare, Phone, Send, UserPlus } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import { createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ComponentProps,
+} from "react";
 import { Toast } from "@/app/people/[id]/client";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { LinkAgentProvider, type LinkAgent } from "@/components/agent-notes";
 import { LeaveLink, looksLikeEmail, ShareHeader, type ContactExtras, type LinkAccount } from "@/components/agent-card";
 import { Backdrop } from "@/components/join";
+import type { MapHome } from "@/components/listing-map";
 import { ReelFeed } from "@/components/reel";
 import { phoneDigits } from "@/lib/contact";
 import { agentFirstName, cn } from "@/lib/format";
@@ -17,6 +30,15 @@ import { button, card, focusOnDark } from "@/lib/ui";
 import { recordHomeTime, recordOpen, type AskResult } from "./actions";
 
 type ReelProps = ComponentProps<typeof ReelFeed>;
+
+// Wide enough for the map beside the welcome's words (Tailwind's lg).
+const WIDE = "(min-width: 64rem)";
+
+// The map draws with WebGL in the browser, so it never renders on the server.
+const ListingMap = dynamic(() => import("@/components/listing-map"), {
+  ssr: false,
+  loading: () => <div className="size-full animate-pulse bg-white/10" />,
+});
 
 // Down to the first home, and focus with it: from the welcome screen, or from
 // Contact before any home has been seen. A link's page has the one feed.
@@ -386,9 +408,10 @@ export function ShareReel({
 
 // Every link starts with a word from the agent, on a blurred wash of the
 // first home's photo: who it's from, their headline and note, and the way on
-// to the homes below, a button and a gently bobbing arrow at the foot. (Built
-// here rather than on the server, like the end screen, so the feed is handed
-// one element.)
+// to the homes below, a button and a gently bobbing arrow at the foot. On a
+// wide screen, beside it, a map of where the homes are, each a pin that goes
+// straight to that home. (Built here rather than on the server, like the end
+// screen, so the feed is handed one element.)
 export function ShareWelcome({
   agent,
   greeting,
@@ -398,6 +421,7 @@ export function ShareWelcome({
   sample,
   whoCanSee,
   profile = null,
+  homes = [],
 }: {
   agent: ShareAgent;
   greeting: string;
@@ -408,7 +432,23 @@ export function ShareWelcome({
   whoCanSee: string;
   // The agent's own page, once they have one: their face and name go there.
   profile?: string | null;
+  // The homes on the link that have a place on the map, in the link's order.
+  homes?: MapHome[];
 }) {
+  const { goToHome } = useContext(ContactAgent);
+  const [hovered, setHovered] = useState<string | null>(null);
+  // Only on a wide screen is there room beside the words: a phone never
+  // loads the map at all.
+  const wide = useSyncExternalStore(
+    (changed) => {
+      const query = window.matchMedia(WIDE);
+      query.addEventListener("change", changed);
+      return () => query.removeEventListener("change", changed);
+    },
+    () => window.matchMedia(WIDE).matches,
+    () => false,
+  );
+  const mapped = wide && homes.length > 0;
   const who = (
     <>
       <AgentAvatar agent={agent} size={72} sizes="size-14 sm:size-18" decorative className="text-lg ring-2 ring-white/70 sm:text-xl" />
@@ -422,7 +462,13 @@ export function ShareWelcome({
     <div className="relative flex h-full flex-col">
       <Backdrop photo={photo} priority blurred tinted />
       <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-6 pt-[calc(env(safe-area-inset-top)+4.5rem)] sm:px-10">
-        <div className="mx-auto my-auto w-full max-w-2xl py-6 [@media(max-height:44rem)]:py-4">
+        <div
+          className={cn(
+            "mx-auto my-auto w-full max-w-2xl py-6 [@media(max-height:44rem)]:py-4",
+            mapped && "lg:grid lg:max-w-6xl lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-center lg:gap-12",
+          )}
+        >
+          <div className="min-w-0">
           {/* On a short screen the header above already says who it's from. */}
           <div className="mb-5 flex [@media(max-height:44rem)]:hidden">
             {profile ? (
@@ -450,6 +496,24 @@ export function ShareWelcome({
             {sample && "Sample listings, fictional and not for sale. "}
             {whoCanSee}
           </p>
+          </div>
+          {/* Where they are: each pin goes to that home. On a wide screen
+              only, where it sits beside the words rather than in the way of
+              a swipe. */}
+          {mapped && (
+            <section
+              aria-label={count === 1 ? "Where the home is" : `Where the ${count} homes are`}
+              className="relative h-[min(36rem,70vh)] overflow-hidden rounded-3xl bg-stone-200 text-ink shadow-2xl ring-1 ring-white/30"
+            >
+              <ListingMap
+                homes={homes}
+                activeKey={null}
+                hoveredKey={hovered}
+                onHover={setHovered}
+                onSelect={goToHome}
+              />
+            </section>
+          )}
         </div>
       </div>
       {/* The homes are below: an arrow at the foot, bobbing, to say so. A tap

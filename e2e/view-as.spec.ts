@@ -34,7 +34,7 @@ test("an admin sees the site as one of its people, a bar saying so, until Stop; 
   await expect(admin.getByRole("heading", { level: 1 })).toHaveText("Hi, Vera");
   // Her dashboard too.
   await admin.goto("/dashboard");
-  await expect(admin.getByRole("heading", { level: 1 })).toHaveText("Your clients");
+  await expect(admin.getByRole("heading", { level: 1 })).toHaveText("Clients");
   await expect(bar).toBeVisible();
   // The admin pages stay the admin's own meanwhile.
   await bar.getByRole("link", { name: "Admin" }).click();

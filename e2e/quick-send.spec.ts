@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { enterCode, toFirstHome, createShare, heartOf, homeIn, joinAs, signInAgent, signUpBuyer } from "./helpers";
+import { clientRow, enterCode, toFirstHome, createShare, heartOf, homeIn, joinAs, signInAgent, signUpBuyer } from "./helpers";
 
 type Shared = { title?: string; text?: string; url?: string; inTap: boolean };
 type Stubbed = { shared: Shared[]; shareAnswer: "send" | "cancel"; inTap: boolean };
@@ -144,15 +144,15 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
 
   // It's on the dashboard like any other link.
   await agent.goto("/dashboard");
-  const toby = agent.getByRole("region", { name: "Clients" }).getByRole("link", { name: /Toby/ });
-  await expect(toby).toContainText("1 home sent");
-  await expect(toby.getByRole("listitem").filter({ hasText: "96 Fernhollow Ln" })).toBeVisible();
+  const toby = clientRow(agent, "Toby");
+  await expect(toby).toContainText(/1\s*home sent/);
+  await expect(toby.getByRole("link", { name: /^96 Fernhollow Ln/ })).toBeVisible();
 
   // The agent looking at their own link isn't taken for Toby: it's their
   // notes for him, with no name asked, and the heart on the home is his.
   await agent.goto(url);
   const own = homeIn(agent, "96 Fernhollow Ln");
-  await expect(agent.getByRole("banner")).toContainText("Your notes for Toby");
+  await expect(agent.getByRole("banner")).toContainText("your notes for Toby");
   await heartOf(own).click();
   await expect(own.getByRole("alert")).toHaveText(
     "The heart is for your client. Tap the price, or anything in a photo, to leave a note.",

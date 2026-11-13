@@ -269,6 +269,19 @@ export default async function SharePage({ params, searchParams }: Props) {
               sample={listings.some(isSampleListing)}
               whoCanSee={whoCanSee}
               profile={agentProfile ? `/people/${agentProfile.id}` : null}
+              homes={listings.flatMap((listing) =>
+                listing.Latitude != null && listing.Longitude != null
+                  ? [
+                      {
+                        key: listing.ListingKey,
+                        latitude: listing.Latitude,
+                        longitude: listing.Longitude,
+                        price: listing.ListPrice,
+                        address: listing.UnparsedAddress,
+                      },
+                    ]
+                  : [],
+              )}
             />
           ) : undefined
         }

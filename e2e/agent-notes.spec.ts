@@ -23,7 +23,7 @@ test("an agent's take before they send: a note and a like on the price, a dislik
   await toFirstHome(agent);
   const home = homeIn(agent, "1204 Quillan St SE");
   await expect(home).toBeInViewport({ ratio: 0.9 });
-  await expect(agent.getByRole("banner")).toContainText("Your notes for Wren");
+  await expect(agent.getByRole("banner")).toContainText("your notes for Wren");
 
   // The price: a note, then a like. (A dislike is there too, as for anyone.)
   const price = home.locator('[data-fact="Price"]');
