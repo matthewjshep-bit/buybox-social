@@ -139,7 +139,9 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
 
   // It's on the dashboard like any other link.
   await agent.goto("/dashboard");
-  await expect(agent.getByRole("link", { name: /Toby/ })).toContainText("1 home · 96 Fernhollow Ln");
+  const toby = agent.getByRole("region", { name: "Clients" }).getByRole("link", { name: /Toby/ });
+  await expect(toby).toContainText("1 home sent");
+  await expect(toby.getByRole("listitem").filter({ hasText: "96 Fernhollow Ln" })).toBeVisible();
 
   // The agent looking at their own link isn't taken for Toby: it's their
   // notes for him, with no name asked, and the heart on the home is his.

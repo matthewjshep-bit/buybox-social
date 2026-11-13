@@ -19,6 +19,7 @@ import {
 import { notifyAgent } from "@/lib/notify";
 import {
   deviceHashFor,
+  joinedLink,
   getParticipant,
   accountParticipant,
   getShareByToken,
@@ -69,6 +70,7 @@ export async function joinThread(token: string, firstName: string): Promise<Acti
       values (${found.share.id}, ${`account:${account.id}`}, ${name}, ${account.id})
       on conflict do nothing
       returning id`;
+    if (joined) await joinedLink(account.id, found.share.id);
     // The agent's "opened it" line can now say who.
     const device = await readDevice();
     if (joined && device) {
@@ -139,6 +141,45 @@ export async function recordOpen(token: string, photosSeen?: unknown): Promise<v
         { open: true },
       );
     });
+  }
+}
+
+// The most seconds one report can add to a home: the page reports every
+// half-minute or so, and when it's put away.
+const MAX_SECONDS_PER_REPORT = 300;
+
+// Where someone spent their time on the link, for the agent: how long each
+// home was on their screen while they were using it, since the page last said,
+// and how many of its photos they've looked at. Only from a device whose open
+// was counted (recordOpen), and never the agent's own look.
+export async function recordHomeTime(token: string, homes: unknown): Promise<void> {
+  if (!Array.isArray(homes) || homes.length === 0 || homes.length > 50) return;
+  const found = await getShareByToken(token);
+  if (!found) return;
+  const viewer = await getCurrentUser();
+  if (viewer?.id === found.share.agent_id) return;
+  const device = await readDevice();
+  if (!device) return;
+  const rows = homes.flatMap((home) => {
+    const { listingKey, seconds, photos } = (home ?? {}) as Record<string, unknown>;
+    if (typeof listingKey !== "string" || listingKey.length > 100) return [];
+    const s = Number.isInteger(seconds) ? Math.min(Math.max(seconds as number, 0), MAX_SECONDS_PER_REPORT) : 0;
+    const p = Number.isInteger(photos) ? Math.min(Math.max(photos as number, 0), 1000) : 0;
+    return s > 0 || p > 0 ? [{ listingKey, seconds: s, photos: p }] : [];
+  });
+  if (rows.length === 0) return;
+  const hash = deviceHashFor(device, found.share.id);
+  for (const row of rows) {
+    // Only a home on this link, from a device counted as opening it.
+    await sql`
+      insert into share_home_views (share_id, listing_key, device_hash, seconds, photos_seen)
+      select ${found.share.id}::uuid, ${row.listingKey}::text, ${hash}::text, ${row.seconds}::int, ${row.photos}::int
+      where exists (select 1 from share_listings where share_id = ${found.share.id} and listing_key = ${row.listingKey})
+        and exists (select 1 from share_opens where share_id = ${found.share.id} and device_hash = ${hash})
+      on conflict (share_id, listing_key, device_hash) do update set
+        seconds = share_home_views.seconds + excluded.seconds,
+        photos_seen = greatest(share_home_views.photos_seen, excluded.photos_seen),
+        last_at = now()`;
   }
 }
 

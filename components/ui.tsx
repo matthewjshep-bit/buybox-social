@@ -60,6 +60,7 @@ const MARK: Record<AvatarSize, string> = {
 // same everywhere, so a face says who someone is before their name does.
 // (An agent's own photo, where they have one, is AgentAvatar; on the dark
 // ground, MarkFace.) `badge`: a small mark on its corner for what they did.
+// `photo`: their own photo, where they've added one, in place of the initial.
 // `className`: its place and any edge (a ring, a margin), never its size or
 // colour.
 export function Avatar({
@@ -67,17 +68,28 @@ export function Avatar({
   tone = "person",
   size = 9,
   badge,
+  photo,
   className,
 }: {
   name: string | null;
   tone?: AvatarTone;
   size?: AvatarSize;
   badge?: ReactNode;
+  photo?: string | null;
   className?: string;
 }) {
   const initial = tone === "anonymous" ? undefined : name?.trim()[0]?.toUpperCase();
   const face = FACE[size];
-  const shown = (
+  const shown = photo ? (
+    // A small square photo of their own, served as it is.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={photo}
+      alt=""
+      aria-hidden
+      className={cn("shrink-0 rounded-full bg-stone-200 object-cover", face.box, !badge && className)}
+    />
+  ) : (
     <span
       aria-hidden
       className={cn(

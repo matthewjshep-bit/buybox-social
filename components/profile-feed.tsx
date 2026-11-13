@@ -11,7 +11,8 @@ import { button, card as cardClass, glass } from "@/lib/ui";
 
 // Everything someone has done, Facebook-style: one card per home per day,
 // under "Today", "Yesterday" and so on. Each card shows the photo with the
-// spots they picked out, the home, and what they said, and opens the home.
+// spots they picked out, the home, and what they said, and opens the homes
+// full screen, in this page's order, on that one.
 
 // Where a pin sits, in percent of the photo, to a tenth.
 const at = ({ x, y }: { x: number; y: number }) => ({
@@ -26,6 +27,8 @@ export function ProfileFeed({
   isMe,
   agent = false,
   earlierHref,
+  reelFrom,
+  photo,
 }: {
   cards: ProfileCard[];
   name: string;
@@ -35,6 +38,10 @@ export function ProfileFeed({
   // An agent's face is ink, as everywhere.
   agent?: boolean;
   earlierHref: string | null;
+  // Whose page this is, for the homes full screen (`/reel?from=`).
+  reelFrom: string;
+  // Their own photo, where they've added one.
+  photo?: string | null;
 }) {
   const days: { heading: string; cards: ProfileCard[] }[] = [];
   // A home on more than one day here: each card's menu says which day it's for.
@@ -52,7 +59,7 @@ export function ProfileFeed({
           <h2 className="px-1 text-body font-semibold text-muted">{day.heading}</h2>
           <ul className="mt-2 flex flex-col gap-3">
             {day.cards.map((card) => (
-              <Card
+              <ActivityCard
                 key={card.id}
                 card={card}
                 name={name}
@@ -60,6 +67,8 @@ export function ProfileFeed({
                 isMe={isMe}
                 agent={agent}
                 day={seen.get(card.home.key)! > 1 ? dayName(card.day) : undefined}
+                href={reelHref(reelFrom, card)}
+                avatarPhoto={photo}
               />
             ))}
           </ul>
@@ -74,13 +83,22 @@ export function ProfileFeed({
   );
 }
 
-function Card({
+// The homes of a feed full screen, opened on this card's.
+export const reelHref = (from: string, card: Pick<ProfileCard, "home" | "photo">) =>
+  `/reel?${new URLSearchParams({ from, home: card.home.key, ...(card.photo && { photo: String(card.photo.index) }) })}`;
+
+// One card: who, what they did and when; the photo, the home, what they said.
+// The whole card opens `href`; `nameHref`, their page, from their name.
+export function ActivityCard({
   card,
   name,
   face,
   isMe,
   agent,
   day,
+  href,
+  nameHref,
+  avatarPhoto,
 }: {
   card: ProfileCard;
   name: string;
@@ -88,9 +106,12 @@ function Card({
   isMe: boolean;
   agent: boolean;
   day?: string;
+  href: string;
+  nameHref?: string;
+  // Their own photo, where they've added one, in place of their initial.
+  avatarPhoto?: string | null;
 }) {
   const { home, photo } = card;
-  const href = `/homes/${encodeURIComponent(home.key)}${photo ? `?photo=${photo.index}` : ""}`;
   // A day when all they did was like someone's comment: a small card, no photo.
   const { quiet } = card;
   return (
@@ -104,9 +125,19 @@ function Card({
         className="absolute inset-0 z-10 scroll-mt-[var(--filters)] rounded-2xl focus-visible:outline-offset-[-3px]!"
       />
       <div className="flex items-start gap-3 p-4 pb-3">
-        <Avatar name={face} tone={agent ? "agent" : "person"} size={8} />
+        <Avatar name={face} tone={agent ? "agent" : "person"} size={8} photo={avatarPhoto} />
         <p className="min-w-0 flex-1 pt-1 text-body leading-snug text-ink">
-          <strong className="font-semibold">{isMe ? "You" : name}</strong> {card.sentence}
+          {nameHref ? (
+            <Link
+              href={nameHref}
+              className="relative z-20 font-semibold underline-offset-2 before:absolute before:-inset-x-1 before:-inset-y-[13px] hover:underline"
+            >
+              {name}
+            </Link>
+          ) : (
+            <strong className="font-semibold">{isMe ? "You" : name}</strong>
+          )}{" "}
+          {card.sentence}
           {/* Held to the last word, so the time never starts a line on its own. */}
           {"\u00a0"}
           <span className="whitespace-nowrap text-meta text-muted">

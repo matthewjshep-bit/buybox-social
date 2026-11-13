@@ -36,10 +36,11 @@ function when(iso: string, timeZone?: string) {
 }
 
 // When a link was last opened, for the agent: "Opened 2:14 pm", or with who it
-// was, "Owen opened it Tuesday, 2:14 pm".
-export function Opened({ at, name }: { at: string; name?: string | null }) {
+// was, "Owen opened it Tuesday, 2:14 pm". `bare`: just when ("Today, 2:14 pm").
+export function Opened({ at, name, bare = false }: { at: string; name?: string | null; bare?: boolean }) {
   const label = (timeZone?: string) => {
     const { today, text } = when(at, timeZone);
+    if (bare) return today ? `Today, ${text}` : text[0].toUpperCase() + text.slice(1);
     return name ? `${name} opened it ${today ? "at " : ""}${text}` : `Opened ${text}`;
   };
   const text = useSyncExternalStore(

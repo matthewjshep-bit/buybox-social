@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { after } from "next/server";
 import { cache, type CSSProperties } from "react";
-import { Toast } from "@/app/people/[id]/client";
+import { FollowButton, Toast } from "@/app/people/[id]/client";
 import { ProfileFeed } from "@/components/profile-feed";
 import { ProfileHeader } from "@/components/profile-header";
 import { TasteControls } from "@/components/taste-controls";
@@ -12,6 +12,7 @@ import { TasteStoryCard } from "@/components/taste-story-card";
 import { EmptyState } from "@/components/ui";
 import { getCurrentUser } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
+import { follows, getFollowCounts } from "@/lib/follows";
 import { cn } from "@/lib/format";
 import {
   getProfileFeed,
@@ -121,6 +122,13 @@ export default async function ProfilePage({ params, searchParams }: Props) {
     ? { cards: [], earlier: null }
     : await getProfileFeed(person.id, { show, about, side, before, mine: isMe, passes });
   const story = await tasteOf(person, isMe);
+  // Who follows them, whom they follow, and whether that's whoever's looking.
+  const [account, people, following, followsYou] = await Promise.all([
+    getCurrentUser(),
+    getFollowCounts(person.id),
+    follows(visitor?.id, person.id),
+    visitor ? follows(person.id, visitor.id) : false,
+  ]);
 
   // The same page with other filters; paging starts over.
   const href = (next: { show?: ProfileShow; about?: string | null; side?: TopicSide; before?: string | null }) => {
@@ -176,6 +184,19 @@ export default async function ProfilePage({ params, searchParams }: Props) {
           counts={summary.counts}
           cover={summary.cover}
           showPassed={passes}
+          people={{ ...people, href: `/people/${person.id}` }}
+          photo={person.photo}
+          followsYou={followsYou}
+          follow={
+            isMe ? undefined : (
+              <FollowButton
+                personId={person.id}
+                name={name}
+                following={following}
+                signIn={account?.role ? undefined : `/login?next=${encodeURIComponent(`/people/${person.id}`)}`}
+              />
+            )
+          }
         />
         {showTaste && (
           <TasteStoryCard
@@ -212,7 +233,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
               icon={Home}
               title="Your page fills up as you go"
               action={
-                <Link href="/" className={button({ kind: "primary" })}>
+                <Link href="/" data-empty-action className={button({ kind: "primary" })}>
                   See homes
                 </Link>
               }
@@ -271,6 +292,8 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                 isMe={isMe}
                 agent={person.isAgent}
                 earlierHref={feed.earlier ? href({ before: feed.earlier }) : null}
+                reelFrom={person.id}
+                photo={person.photo}
               />
             ) : before ? (
               <EmptyState icon={Home} title="That's everything">

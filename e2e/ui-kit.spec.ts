@@ -91,11 +91,13 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   await expectKitButtons(agent, "dashboard");
   const ink = await colourOf(agent, "var(--ink)");
 
-  // Their own page: their face in ink, as it is in the header beside it.
+  // Their own page: their face as it is in the header beside it, the photo
+  // they added on signing up (without one, their initial in ink).
   await agent.goto("/people/me");
   await expect(agent.locator("#profile-name")).toHaveText("Una (you)");
-  const big = agent.locator("#profile-name").locator("xpath=preceding-sibling::span[1]");
-  expect(await big.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(ink);
+  const big = agent.locator("#profile-name").locator("xpath=preceding-sibling::*[1]");
+  await expect(big).toHaveAttribute("src", /^\/people\/[\w-]+\/photo\?v=\w+$/);
+  await expect(agent.getByRole("banner").getByRole("button", { name: "Your profile" }).locator("img")).toBeVisible();
 
   // Picking homes for a link: the search box, and each home's price.
   await agent.goto("/dashboard/new");
@@ -106,14 +108,20 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   expect(await price.evaluate((el) => getComputedStyle(el).fontFamily)).toBe(heading);
 
   const { dashboardUrl } = await createShare(agent, ["812 N Corbel"], ["Kit"]);
+  // Each part of the client page: sending it (where it starts), then the homes.
   await agent.goto(dashboardUrl);
   await expectKitButtons(agent, "client page");
+  await agent.goto(`${dashboardUrl}?tab=homes`);
+  await expectKitButtons(agent, "client page's homes");
   const home = agent.getByRole("region", { name: "812 N Corbel St" });
   expect(await home.getByText("$724,900").evaluate((el) => getComputedStyle(el).fontFamily)).toBe(heading);
   // ...on a 360px phone, where Text, Copy and Preview share the card...
   const wide = agent.viewportSize();
   await agent.setViewportSize({ width: 360, height: 640 });
+  await agent.goto(`${dashboardUrl}?tab=people`);
   await expectKitButtons(agent, "client page at 360px");
+  await agent.goto(`${dashboardUrl}?tab=homes`);
+  await expectKitButtons(agent, "client page's homes at 360px");
   // ...and in the home's Porchcard, open beside it.
   await home.getByRole("button", { name: "Porchcard for 812 N Corbel St" }).click();
   await expect(agent.getByRole("dialog", { name: "Porchcard" })).toBeVisible();
@@ -130,9 +138,8 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   await expect(said).toBeVisible();
   const face = said.locator("span[aria-hidden]").filter({ hasText: /^U$/ }).first();
   expect(await face.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(ink);
-  // ...and the same face in the header.
-  const mine = agent.getByRole("button", { name: "Your profile" }).locator("span").first();
-  expect(await mine.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(ink);
+  // ...and in the header, the photo they added.
+  await expect(agent.getByRole("button", { name: "Your profile" }).locator("img")).toBeVisible();
 
   await agent.goto("/dashboard/profile");
   await expectKitButtons(agent, "brand");

@@ -3,9 +3,10 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { accountFor, claimAgentIntent, DEV_COOKIE, devLoginEnabled, requireUser } from "@/lib/auth";
+import { accountFor, claimAgentIntent, DEV_COOKIE, devLoginEnabled, requireUser, VIEW_AS_COOKIE } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { readDevice } from "@/lib/engagement";
+import { ensureLinkProfile, joinedLink } from "@/lib/shares";
 import { siteOrigin } from "@/lib/site";
 import { createSupabase, supabaseConfigured } from "@/lib/supabase/server";
 import { clearTestUser, setTestUser, testPasswordMatches, testSignInEnabled } from "@/lib/test-sign-in";
@@ -158,7 +159,11 @@ async function signedIn(user: { id: string; email: string }): Promise<CodeState>
   await sql`
     update accounts a set full_name = s.full_name from signups s
     where a.id = ${account.id} and a.full_name = '' and s.email = ${user.email} and s.full_name <> ''`;
-  await claimDevice(account.id);
+  // A place on an agent's link this browser had becomes theirs: they and the
+  // agent follow each other. Any link they're on: a profile, if they had none,
+  // so the agent's pages can link their name to it.
+  for (const shareId of await claimDevice(account.id)) await joinedLink(account.id, shareId);
+  await ensureLinkProfile(account.id);
   return { done: { agent: account.role === "agent" } };
 }
 
@@ -176,6 +181,7 @@ export async function signOut() {
     await supabase.auth.signOut();
   }
   (await cookies()).delete(DEV_COOKIE);
+  (await cookies()).delete(VIEW_AS_COOKIE);
   await clearTestUser();
   redirect("/login");
 }
@@ -183,15 +189,17 @@ export async function signOut() {
 // On signing in: what this browser did before becomes the account's. Its
 // public self (when the account has none yet), and its place on any agent's
 // link where the account has none yet.
-async function claimDevice(accountId: string) {
+async function claimDevice(accountId: string): Promise<string[]> {
   const device = await readDevice();
-  if (!device) return;
+  if (!device) return [];
   await sql`
     update visitors set account_id = ${accountId}
     where device_token = ${device} and account_id is null
       and not exists (select 1 from visitors where account_id = ${accountId})`;
-  await sql`
+  const claimed = await sql<{ share_id: string }[]>`
     update participants p set account_id = ${accountId}
     where p.device_token = ${device} and p.account_id is null
-      and not exists (select 1 from participants q where q.share_id = p.share_id and q.account_id = ${accountId})`;
+      and not exists (select 1 from participants q where q.share_id = p.share_id and q.account_id = ${accountId})
+    returning p.share_id`;
+  return claimed.map((row) => row.share_id);
 }

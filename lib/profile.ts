@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { sql } from "./db";
+import { photoUrl } from "./person-photo";
 import type { Listing, ListingMedia } from "./listings/types";
 import {
   aspectOfFact,
@@ -408,13 +409,14 @@ export const getProfilePerson = cache(async (visitorId: string) => {
       hide_passes: boolean;
       taste_hidden: unknown;
       is_agent: boolean;
+      photo_v: string | null;
     }[]
   >`
     select v.id, v.created_at, v.hide_passes, v.taste_hidden,
       -- An account with no name yet has none here either, even where an
       -- older visitor row stood in with "Someone".
       case when a.id is not null and btrim(a.full_name) = '' then '' else v.first_name end as first_name,
-      coalesce(a.role = 'agent', false) as is_agent
+      coalesce(a.role = 'agent', false) as is_agent, left(md5(a.photo_data_url), 10) as photo_v
     from visitors v left join accounts a on a.id = v.account_id
     where v.id::text = ${visitorId}`;
   if (!visitor) return null;
@@ -424,6 +426,8 @@ export const getProfilePerson = cache(async (visitorId: string) => {
     name: visitor.first_name,
     since: visitor.created_at.toISOString(),
     isAgent: visitor.is_agent,
+    // Their own photo, where they've added one.
+    photo: photoUrl(visitor.id, visitor.photo_v),
     hidePasses: visitor.hide_passes,
     // Lower-case keys of the things their taste says that they've switched off.
     tasteHidden: hidden.filter((key): key is string => typeof key === "string").map((key) => key.toLowerCase()),

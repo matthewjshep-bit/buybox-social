@@ -1,38 +1,42 @@
 import { connection } from "next/server";
-import type { ComponentProps } from "react";
-import { FeedEnd } from "@/components/feed-end";
+import { HomeFeed } from "@/components/home-feed";
 import { JoinGate, JoinIntro } from "@/components/join";
 import { PUBLIC_PROMPT, publicReelActions } from "@/components/listing-detail";
-import { QuickSendReel } from "@/components/quick-send";
 import { ReelFeed } from "@/components/reel";
 import { SiteHeader } from "@/components/site-header";
-import { devLoginEnabled, getCurrentUser } from "@/lib/auth";
+import { devLoginEnabled, firstName, getCurrentUser } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
 import { getReel } from "@/lib/feed";
+import { getFollowCounts } from "@/lib/follows";
+import { getHomeFeed, suggestPeople } from "@/lib/home-feed";
 import { getPublicIdentity } from "@/lib/public";
 import { getTaste } from "@/lib/taste";
 
 // How many homes someone sees before they're asked to sign up.
 const FREE_HOMES = 3;
+// While someone follows fewer than this, the feed suggests people to follow.
+const SUGGEST_UNDER = 5;
+// Homes picked for them, on a feed with little in it yet.
+const PICKS = 4;
 
-// The home page: homes full screen, one after another, best matches for your
-// taste first. Signed in, it keeps going for as long as you scroll. Signed
-// out, it opens on what this is and a short sign-up form, shows a few homes,
-// then asks them to sign up to see the rest.
+// The home page. Signed out: homes full screen, one after another, opening on
+// what this is and a short sign-up form, then asking them to sign up to see
+// the rest. Signed in: their feed (see HomeFeed), each home in it opening them
+// all full screen; every home is one tap away, under Browse homes.
 export default async function Home() {
   await connection();
   const [user, device] = await Promise.all([getCurrentUser(), readDevice()]);
   const { visitor, name } = await getPublicIdentity(user, device);
   const taste = await getTaste(visitor?.id);
-  const posts = await getReel(user, device, taste);
 
   if (!user) {
+    const posts = await getReel(user, device, taste);
     const free = posts.slice(0, FREE_HOMES);
     // The next home waits, blurred, behind the sign-up.
     const next = (posts[FREE_HOMES] ?? free.at(-1))?.listing.Media[0];
     return (
       <ReelFeed
-        // Signing up comes back to this page: a new feed, not this one's state.
+        // Signing up comes back to this page: their feed, not this one's state.
         key="guest"
         initial={free}
         mode="public"
@@ -48,20 +52,25 @@ export default async function Home() {
     );
   }
 
-  const feed: ComponentProps<typeof ReelFeed> = {
-    initial: posts,
-    mode: "public",
-    infinite: true,
-    actions: publicReelActions,
-    myName: name,
-    prompt: PUBLIC_PROMPT,
-    header: <SiteHeader overlay />,
-    end: <FeedEnd taste={taste} account={user} visitorId={visitor?.id ?? null} />,
-  };
-  // An agent's share button sends the home to a client.
-  return user.role === "agent" ? (
-    <QuickSendReel key="member" {...feed} profileComplete={Boolean(user.full_name)} />
-  ) : (
-    <ReelFeed key="member" {...feed} />
+  const [entries, counts] = await Promise.all([
+    getHomeFeed(user, visitor?.id ?? null),
+    visitor ? getFollowCounts(visitor.id) : { followers: 0, following: 0 },
+  ]);
+  const [suggestions, picks] = await Promise.all([
+    counts.following < SUGGEST_UNDER ? suggestPeople(visitor?.id ?? null) : [],
+    entries.length < PICKS ? getReel(user, device, taste, { limit: PICKS }) : [],
+  ]);
+  return (
+    <HomeFeed
+      entries={entries}
+      suggestions={suggestions}
+      firstName={firstName(user)}
+      picks={picks.map((post) => ({
+        key: post.listing.ListingKey,
+        address: post.listing.UnparsedAddress,
+        price: post.listing.ListPrice,
+        photo: post.listing.Media[0]?.MediaURL ?? null,
+      }))}
+    />
   );
 }

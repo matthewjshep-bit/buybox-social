@@ -1,6 +1,6 @@
-import { ArrowLeft, Check, ChevronRight, Globe, Heart, PenLine, Plus, Tag, ThumbsDown } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, Clock, Globe, Heart, PenLine, Plus, Tag, ThumbsDown } from "lucide-react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { LiveRefresh } from "@/components/live-refresh";
 import { Avatar, Badge, HomeThumb } from "@/components/ui";
@@ -11,16 +11,21 @@ import { appUrl, cn, formatPrice, timeAgo } from "@/lib/format";
 import { aspectOfTag, FACTS, mediaKeyOf, NO_PHOTO_LIKES, photoTags, tagPosition, thingOf } from "@/lib/photos";
 import { aspectLabel, NO_REACTION, type Aspect, type ReactionState } from "@/lib/reactions";
 import { comparePeople, suggestHomes, type Suggestion } from "@/lib/compare";
+import { photoUrl } from "@/lib/person-photo";
 import { getSharePhotoLikes, getShareTimelines, type TimelineReaction } from "@/lib/timeline";
 import {
   clientActivity,
   confidantOf,
   describeTake,
+  duration,
+  getHomeViews,
   getShareListings,
+  homeViewKey,
   spotsWhere,
   getShareOpens,
   getThread,
   photosSeenLine,
+  type HomeView,
   type Share,
   type ShareOpen,
   type TakeMark,
@@ -39,6 +44,7 @@ import {
   HomeScorecards,
   MarkSeen,
   RemoveHomeButton,
+  RemovePersonButton,
   ReplyForm,
   ScorecardButton,
   SendLink,
@@ -53,11 +59,29 @@ type Thread = Awaited<ReturnType<typeof getThread>>;
 const key = (thing: string) => thing.toLowerCase();
 const uniq = (things: string[]) => things.filter((thing, i) => things.findIndex((t) => key(t) === key(thing)) === i);
 
-// Everything one client has told this agent, on one page. Wide screens get two
-// columns: what they want on the left, the homes and what was said on the right.
-export default async function ShareDetailPage({ params }: { params: Promise<{ id: string }> }) {
+// A client's page, one part at a time: the homes and what was said about
+// them; what they want, and homes to send them next; and the people on it,
+// each with their own link to send, and what it opens on.
+const TABS = [
+  { key: "homes", label: "Homes" },
+  { key: "want", label: "What they want" },
+  { key: "people", label: "People & link" },
+] as const;
+type Tab = (typeof TABS)[number]["key"];
+
+// Everything one client has told this agent. At the top, who it's for and how
+// it's going; then the part they asked for. Until it's been opened it starts
+// on sending it, after that on the homes.
+export default async function ShareDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const agent = await requireAgent();
   const { id } = await params;
+  const { tab: asked } = await searchParams;
   if (!z.uuid().safeParse(id).success) notFound();
 
   const [share] = await sql<Share[]>`
@@ -65,15 +89,18 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
     where id = ${id} and agent_id = ${agent.id}`;
   if (!share) notFound();
 
-  const [listings, thread, people, opens, [{ latest }], confidant, [take]] = await Promise.all([
+  const [listings, thread, people, opens, [{ latest }], confidant, [take], views, others] = await Promise.all([
     getShareListings(share.id, { includeRemoved: true }),
     getThread(share.id),
     // Everyone on the package: people the agent added, and anyone who joined
-    // through the package's own link.
-    sql<{ id: string; first_name: string; token: string | null }[]>`
-      select id, first_name, token from participants
-      where share_id = ${id}
-      order by invited_at nulls last, created_at, first_name`,
+    // through the package's own link; with their profile, once they've signed up.
+    sql<{ id: string; first_name: string; token: string | null; profile: string | null; photo_v: string | null }[]>`
+      select p.id, p.first_name, p.token, v.id as profile, left(md5(acc.photo_data_url), 10) as photo_v
+      from participants p
+      left join visitors v on v.account_id = p.account_id
+      left join accounts acc on acc.id = p.account_id
+      where p.share_id = ${id}
+      order by p.invited_at nulls last, p.created_at, p.first_name`,
     getShareOpens(share.id),
     // The newest thing a client did here, to the microsecond, so seeing this
     // page clears exactly that much from the dashboard's "new".
@@ -89,13 +116,34 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
           where share_id = ${id} and agent_id is not null and parent_id is null and reply_to_participant is null) as notes,
         (select count(*)::int from share_agent_likes where share_id = ${id} and reaction = 'like') as likes,
         (select count(*)::int from share_agent_likes where share_id = ${id} and reaction = 'dislike') as dislikes`,
+    // Where they spent their time on it, home by home.
+    getHomeViews([id]),
+    // Other links to the same client (the same name), newest first.
+    share.client_name.trim()
+      ? sql<{ id: string; created_at: Date; homes: number }[]>`
+          select s.id, s.created_at,
+            (select count(*)::int from share_listings sl where sl.share_id = s.id and sl.removed_at is null) as homes
+          from shares s
+          where s.agent_id = ${agent.id} and s.id <> ${id}
+            and lower(trim(s.client_name)) = ${share.client_name.trim().toLowerCase()}
+          order by s.created_at desc`
+      : [],
   ]);
+  const lastOpen = opens.reduce<string | null>((at, open) => (!at || open.lastAt > at ? open.lastAt : at), null);
+  const tab = TABS.find((t) => t.key === asked)?.key;
+  const tabHref = (key: Tab) => `/dashboard/shares/${share.id}?tab=${key}`;
+  // Which part it starts on goes in the address, so the page stays on it when
+  // it refreshes (a client opening the link meanwhile doesn't move the agent).
+  if (!tab) redirect(tabHref(lastOpen ? "homes" : "people"));
   const active = listings.filter((l) => !l.removedAt);
   const removed = listings.filter((l) => l.removedAt);
   const clientName = share.client_name || "Unnamed client";
   const invitees = people.filter((p) => p.token);
+  const joined = people.filter((p) => !p.token);
   const packageOpens = opens.filter((open) => !invitees.some((person) => person.id === open.participantId));
   const everyone = people.map((p) => ({ id: p.id, name: p.first_name }));
+  // Each person who has signed up, to their profile.
+  const profiles = new Map(people.flatMap((p) => (p.profile ? [[p.id, `/people/${p.profile}`] as const] : [])));
   const comparison = comparePeople(everyone, thread, listings);
   const [{ suggestions, together }, timelines, photoLikes] = await Promise.all([
     suggestHomes(everyone, thread, listings),
@@ -110,6 +158,14 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
   const oneHome = active.length === 1 ? { address: active[0].UnparsedAddress, price: active[0].ListPrice } : undefined;
   // Every photo on their link, for "saw 3 of 4 photos".
   const photos = active.reduce((sum, listing) => sum + listing.Media.length, 0);
+  // At a glance, at the top: when they last opened it, how the homes on it
+  // went, how much of it they looked at, and for how long.
+  const verdicts = active.map((listing) => homeVerdict(listing.ListingKey, thread));
+  const likedHomes = verdicts.filter((v) => v === "like").length;
+  const passedHomes = verdicts.filter((v) => v === "pass").length;
+  const photosLooked = Math.min(photos, Math.max(0, ...opens.map((open) => open.photosSeen)));
+  const viewOf = (listingKey: string) => views.get(homeViewKey(share.id, listingKey));
+  const seconds = active.reduce((sum, listing) => sum + (viewOf(listing.ListingKey)?.seconds ?? 0), 0);
   // Each home as its Porchcard needs it, from this link alone: never anything
   // public, and nobody from any other link.
   // (Without when it was taken off the link: the card shows the listing alone.)
@@ -137,135 +193,124 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
       members: people.map((person) => person.first_name),
     };
   });
-
   return (
     <HomeScorecards
       posts={posts}
       offLink={removed.map((listing) => listing.ListingKey)}
       agentName={agent.full_name || "Your agent"}
     >
-      {/* Two columns when there's room for them: on a wide screen, and still
-          beside the Scorecard's panel on a very wide one. */}
-      <div data-wide className="@container">
+      <div className="@container">
         <LiveRefresh />
         <HomeMovedStatus />
         <MarkSeen shareId={share.id} latest={latest} />
         <ShowTarget />
         <Link href="/dashboard" className="flex min-h-11 w-fit items-center gap-1.5 text-sm font-medium">
-          <ArrowLeft aria-hidden size={16} /> All links
+          <ArrowLeft aria-hidden size={16} /> All clients
         </Link>
-        <ClientNameEditor shareId={share.id} name={share.client_name} />
 
-        <div className="@4xl:grid @4xl:grid-cols-2 @4xl:items-start @4xl:gap-x-8">
-          <div>
-            <section aria-labelledby="links-title" className="mt-4">
-              <h2 id="links-title" className="sr-only">
-                Their links
-              </h2>
-              {active.length > 0 && (
-                <WelcomeEditor
-                  shareId={share.id}
-                  headline={share.headline}
-                  note={share.note}
-                  // As the first person on it sees it (each sees their own name).
-                  standard={`${invitees[0]?.first_name || share.client_name ? `${invitees[0]?.first_name || share.client_name}, I` : "I"} picked ${
-                    active.length === 1 ? "this home" : `these ${active.length} homes`
-                  } for you`}
-                />
-              )}
-              {active.length > 0 && (
-                <YourTake
-                  // Their link, as the first of them will see it.
-                  href={`/s/${invitees[0]?.token ?? share.token}`}
-                  who={invitees.length === 1 ? invitees[0].first_name : share.client_name || "your client"}
-                  notes={take.notes}
-                  likes={take.likes}
-                  dislikes={take.dislikes}
-                  homes={active.length}
-                />
-              )}
-              <div className="flex flex-col gap-3">
-                {invitees.length > 0 ? (
-                  <>
-                    {invitees.map((person) => (
-                      <SendLink
-                        key={person.id}
-                        url={`${appUrl()}/s/${person.token}`}
-                        clientName={person.first_name}
-                        count={active.length}
-                        home={oneHome}
-                        label={`${person.first_name}'s link`}
-                        who={person.first_name}
-                        status={
-                          <OpenedBy
-                            opens={opens.filter((o) => o.participantId === person.id)}
-                            name={person.first_name}
-                            photos={photos}
-                          />
-                        }
-                      />
-                    ))}
-                    {/* The package's own link, sent before anyone was added, still
-                        says who opened it. */}
-                    {packageOpens.length > 0 && (
-                      <div className={cn(card, "p-4 text-sm")}>
-                        <p className="font-semibold">The link you sent first</p>
-                        <p className="mt-0.5 text-muted">
-                          <OpenedBy opens={packageOpens} photos={photos} />
-                        </p>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <SendLink
-                    url={`${appUrl()}/s/${share.token}`}
-                    clientName={share.client_name}
-                    count={active.length}
-                    home={oneHome}
-                    status={<OpenedBy opens={opens} photos={photos} />}
-                  />
-                )}
-              </div>
-              <p className="mt-3 text-sm text-muted">
-                Everyone gets their own link, so you can see what each person likes, and where they agree.
-              </p>
-              <div className="mt-2">
-                <AddPersonForm shareId={share.id} confidant={confidant?.first_name ?? null} />
-              </div>
-            </section>
-
-            <WhatTheyWant clientName={clientName} comparison={comparison} homeCount={listings.length} thread={thread} />
-            <Suggestions
-              shareId={share.id}
-              suggestions={suggestions}
-              together={together}
-              people={comparison.likers.map((s) => s.person.name)}
-              everyone={everyone}
-              thread={thread}
-            />
+        {/* Who it's for, and the one thing to do next: send them more. */}
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+          <div className="min-w-0">
+            <ClientNameEditor shareId={share.id} name={share.client_name} />
           </div>
-
-          <div>
-            <div className="mt-8 flex items-center justify-between gap-3 @4xl:mt-4">
-              <h2 id="homes-title" className="font-display text-2xl">
-                On their link
-              </h2>
-              <Link href={`/dashboard/new?share=${share.id}`} className={button({ kind: "secondary" })}>
-                <Plus aria-hidden size={16} /> Add homes
+          <Link
+            href={`/dashboard/new?share=${share.id}`}
+            className={cn(button({ kind: "primary" }), "mt-1 shrink-0 whitespace-nowrap")}
+          >
+            <Plus aria-hidden size={16} /> Send more homes
+          </Link>
+        </div>
+        {people.length > 0 && (
+          <p className="mt-1 text-sm text-stone-700">
+            On this link:{" "}
+            {people.map((person, i) => (
+              <span key={person.id}>
+                {i > 0 && " · "}
+                <PersonName name={person.first_name} href={profiles.get(person.id)} />
+              </span>
+            ))}{" "}
+            ·{" "}
+            <Link href={tabHref("people")} scroll={false} className="font-medium text-brand underline-offset-2 hover:underline">
+              Add or remove people
+            </Link>
+          </p>
+        )}
+        {others.length > 0 && (
+          <nav aria-label={`Other links to ${clientName}`} className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-stone-700">Also sent to {clientName}:</span>
+            {others.map((other) => (
+              <Link
+                key={other.id}
+                href={`/dashboard/shares/${other.id}`}
+                className="rounded-full bg-white px-3 py-1.5 font-medium ring-1 ring-stone-200 hover:ring-stone-400"
+              >
+                {other.created_at.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Los_Angeles" })}{" "}
+                · {other.homes === 1 ? "1 home" : `${other.homes} homes`}
               </Link>
-            </div>
+            ))}
+          </nav>
+        )}
+
+        <dl aria-label="At a glance" className="mt-4 grid grid-cols-2 gap-2 @2xl:grid-cols-4">
+          <Glance label="Last opened" warn={!lastOpen}>
+            {lastOpen ? <Opened at={lastOpen} bare /> : "Not yet"}
+          </Glance>
+          <Glance label={active.length === 1 ? "The home sent" : `${active.length} homes sent`}>
+            {likedHomes + passedHomes === 0
+              ? "No reactions yet"
+              : [likedHomes > 0 && `${likedHomes} liked`, passedHomes > 0 && `${passedHomes} passed`].filter(Boolean).join(" · ")}
+          </Glance>
+          <Glance label="Photos looked at">{photos ? `${photosLooked} of ${photos}` : "None yet"}</Glance>
+          <Glance label="Time on the homes">{seconds > 0 ? duration(seconds) : "None yet"}</Glance>
+        </dl>
+
+        <nav aria-label="Parts of this page" className="mt-6 flex gap-1 overflow-x-auto border-b border-stone-200">
+          {TABS.map((t) => {
+            const count = t.key === "homes" ? active.length : t.key === "people" ? people.length : null;
+            return (
+              <Link
+                key={t.key}
+                href={tabHref(t.key)}
+                scroll={false}
+                aria-current={t.key === tab ? "page" : undefined}
+                className={cn(
+                  "-mb-px flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 text-sm font-semibold",
+                  t.key === tab ? "border-stone-900 text-ink" : "border-transparent text-stone-600 hover:text-ink",
+                )}
+              >
+                {t.label}
+                {count !== null && count > 0 && (
+                  <span className="rounded-full bg-stone-200 px-1.5 text-xs font-semibold text-stone-700">{count}</span>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {tab === "homes" && (
+          <section aria-labelledby="homes-title" className="mt-5">
+            <h2 id="homes-title" className="sr-only">
+              Homes you sent
+            </h2>
             {active.length === 0 ? (
-              <p className={cn(card, "mt-3 p-6 text-center text-stone-700")}>
-                No homes on this link right now. Add some, or restore one below.
+              <p className={cn(card, "p-6 text-center text-stone-700")}>
+                No homes on this link right now. Send some, or restore one below.
               </p>
             ) : (
-              <div className="mt-3 flex flex-col gap-5">
+              <div className="flex flex-col gap-4">
                 {active.map((listing) => (
-                  <HomePanel key={listing.ListingKey} shareId={share.id} listing={listing} thread={thread} liked={liked} />
+                  <HomePanel
+                    key={listing.ListingKey}
+                    shareId={share.id}
+                    listing={listing}
+                    thread={thread}
+                    liked={liked}
+                    view={viewOf(listing.ListingKey)}
+                    profiles={profiles}
+                  />
                 ))}
               </div>
             )}
-
             {removed.length > 0 && (
               <section aria-labelledby="removed-title" className="mt-10">
                 <h2 id="removed-title" className="font-display text-2xl">
@@ -274,19 +319,244 @@ export default async function ShareDetailPage({ params }: { params: Promise<{ id
                 <p className="text-sm text-stone-700">
                   {clientName} can&apos;t see these anymore. What they said about them still counts.
                 </p>
-                <div className="mt-3 flex flex-col gap-5">
+                <div className="mt-3 flex flex-col gap-4">
                   {removed.map((listing) => (
-                    <HomePanel key={listing.ListingKey} shareId={share.id} listing={listing} thread={thread} liked={liked} />
+                    <HomePanel
+                      key={listing.ListingKey}
+                      shareId={share.id}
+                      listing={listing}
+                      thread={thread}
+                      liked={liked}
+                      profiles={profiles}
+                    />
                   ))}
                 </div>
               </section>
             )}
-          </div>
-        </div>
+          </section>
+        )}
+
+        {tab === "want" && (
+          <>
+            <WhatTheyWant
+              clientName={clientName}
+              comparison={comparison}
+              homeCount={listings.length}
+              thread={thread}
+              profiles={profiles}
+            />
+            <Suggestions
+              shareId={share.id}
+              suggestions={suggestions}
+              together={together}
+              people={comparison.likers.map((s) => s.person.name)}
+              everyone={everyone}
+              thread={thread}
+            />
+          </>
+        )}
+
+        {tab === "people" && (
+          <>
+            <section aria-labelledby="links-title" className="mt-5">
+              <h2 id="links-title" className="font-display text-2xl">
+                People on this link
+              </h2>
+              <p className="text-sm text-stone-700">
+                Everyone gets their own link, so you can see what each person likes, and where they agree.
+              </p>
+              <ul className="mt-3 flex flex-col gap-3">
+                {invitees.map((person) => (
+                  <li key={person.id} className={cn(card, "p-4")}>
+                    <PersonHeader
+                      shareId={share.id}
+                      person={person}
+                      profile={profiles.get(person.id)}
+                      photo={person.profile ? photoUrl(person.profile, person.photo_v) : null}
+                      removable={people.length > 1}
+                      status={
+                        <OpenedBy
+                          opens={opens.filter((o) => o.participantId === person.id)}
+                          name={person.first_name}
+                          photos={photos}
+                        />
+                      }
+                    />
+                    <SendLink
+                      bare
+                      url={`${appUrl()}/s/${person.token}`}
+                      clientName={person.first_name}
+                      count={active.length}
+                      home={oneHome}
+                      label={`${person.first_name}'s link`}
+                      who={person.first_name}
+                    />
+                  </li>
+                ))}
+                {/* Joined through the link the agent sent before adding anyone. */}
+                {joined.map((person) => (
+                  <li key={person.id} className={cn(card, "p-4")}>
+                    <PersonHeader
+                      shareId={share.id}
+                      person={person}
+                      profile={profiles.get(person.id)}
+                      photo={person.profile ? photoUrl(person.profile, person.photo_v) : null}
+                      removable={people.length > 1}
+                      status="Joined through the link you sent first"
+                    />
+                  </li>
+                ))}
+                {invitees.length === 0 && (
+                  <li>
+                    <SendLink
+                      url={`${appUrl()}/s/${share.token}`}
+                      clientName={share.client_name}
+                      count={active.length}
+                      home={oneHome}
+                      status={<OpenedBy opens={opens} photos={photos} />}
+                    />
+                  </li>
+                )}
+                {/* The package's own link, sent before anyone was added, still
+                    says who opened it. */}
+                {invitees.length > 0 && packageOpens.length > 0 && (
+                  <li className={cn(card, "p-4 text-sm")}>
+                    <p className="font-semibold">The link you sent first</p>
+                    <p className="mt-0.5 text-muted">
+                      <OpenedBy opens={packageOpens} photos={photos} />
+                    </p>
+                  </li>
+                )}
+              </ul>
+              <div className="mt-3">
+                <AddPersonForm shareId={share.id} confidant={confidant?.first_name ?? null} />
+              </div>
+            </section>
+
+            {active.length > 0 && (
+              <section aria-labelledby="opens-on-title" className="mt-10">
+                <h2 id="opens-on-title" className="font-display text-2xl">
+                  What their link opens on
+                </h2>
+                <div className="mt-3">
+                  <WelcomeEditor
+                    shareId={share.id}
+                    headline={share.headline}
+                    note={share.note}
+                    // As the first person on it sees it (each sees their own name).
+                    standard={`${invitees[0]?.first_name || share.client_name ? `${invitees[0]?.first_name || share.client_name}, I` : "I"} picked ${
+                      active.length === 1 ? "this home" : `these ${active.length} homes`
+                    } for you`}
+                  />
+                  {/* (Asked for before it's sent; once it's been opened, only said if it's there.) */}
+                  {(!lastOpen || take.notes + take.likes + take.dislikes > 0) && (
+                    <YourTake
+                      // Their link, as the first of them will see it.
+                      href={`/s/${invitees[0]?.token ?? share.token}`}
+                      who={invitees.length === 1 ? invitees[0].first_name : share.client_name || "your client"}
+                      notes={take.notes}
+                      likes={take.likes}
+                      dislikes={take.dislikes}
+                      homes={active.length}
+                    />
+                  )}
+                </div>
+              </section>
+            )}
+          </>
+        )}
       </div>
     </HomeScorecards>
   );
 }
+
+// A person's name, to their profile once they've signed up.
+function PersonName({ name, href, className }: { name: string; href?: string; className?: string }) {
+  if (!href) return <span className={cn("font-semibold", className)}>{name}</span>;
+  return (
+    <Link href={href} className={cn("font-semibold underline decoration-stone-300 underline-offset-2 hover:decoration-ink", className)}>
+      {name}
+    </Link>
+  );
+}
+
+// Who someone on the link is: their name, whether they've opened it, their
+// profile once they've signed up, and taking them off it.
+function PersonHeader({
+  shareId,
+  person,
+  profile,
+  photo,
+  removable,
+  status,
+}: {
+  shareId: string;
+  person: { id: string; first_name: string };
+  profile?: string;
+  photo?: string | null;
+  removable: boolean;
+  status: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
+      <Avatar name={person.first_name} photo={photo} />
+      <div className="min-w-0 flex-1">
+        <p className="flex flex-wrap items-baseline gap-x-2">
+          <span className="font-semibold">{person.first_name}</span>
+          {profile ? (
+            <Link href={profile} className="text-sm font-medium text-brand underline-offset-2 hover:underline">
+              View profile<span className="sr-only"> of {person.first_name}</span>
+            </Link>
+          ) : (
+            <span className="text-sm text-muted">Hasn&apos;t signed up yet</span>
+          )}
+        </p>
+        <p className="text-sm text-muted">{status}</p>
+      </div>
+      {removable && <RemovePersonButton shareId={shareId} personId={person.id} name={person.first_name} />}
+    </div>
+  );
+}
+
+// One number (or word) at the top of a client's page, with what it is.
+function Glance({ label, warn = false, children }: { label: string; warn?: boolean; children: React.ReactNode }) {
+  return (
+    <div className={cn(card, "p-3")}>
+      <dt className="text-sm text-stone-700">{label}</dt>
+      <dd className={cn("mt-0.5 font-semibold leading-snug", warn && "text-amber-900")}>{children}</dd>
+    </div>
+  );
+}
+
+// How a home went with everyone on the link: liked if anyone liked it (or
+// something in it), passed if it was only passed on, null before anyone said.
+function homeVerdict(listingKey: string, thread: Thread): "like" | "pass" | null {
+  const people = new Set(
+    [...thread.reactions, ...thread.photoLikes, ...thread.photoDislikes]
+      .filter((row) => row.listingKey === listingKey)
+      .map((row) => row.participantId),
+  );
+  let verdict: "like" | "pass" | null = null;
+  for (const person of people) {
+    const theirs = <T extends { participantId: string; listingKey: string }>(rows: T[]) =>
+      rows.some((row) => row.participantId === person && row.listingKey === listingKey);
+    const reaction = thread.reactions.find((r) => r.participantId === person && r.listingKey === listingKey)?.state.reaction;
+    const said =
+      reaction === "like"
+        ? "like"
+        : reaction === "dislike"
+          ? "pass"
+          : theirs(thread.photoLikes)
+            ? "like"
+            : theirs(thread.photoDislikes)
+              ? "pass"
+              : null;
+    if (said === "like") return "like";
+    verdict ??= said;
+  }
+  return verdict;
+}
+
 
 // The agent's first pass, before the link goes out (or after): their notes,
 // likes and dislikes on the price, a room, anything, which everyone on the link sees
@@ -459,11 +729,14 @@ function WhatTheyWant({
   comparison,
   homeCount,
   thread,
+  profiles,
 }: {
   clientName: string;
   comparison: ReturnType<typeof comparePeople>;
   homeCount: number;
   thread: Thread;
+  // Each person who has signed up, to their profile.
+  profiles: Map<string, string>;
 }) {
   const { summaries, homes, likers, both, only } = comparison;
   const several = summaries.length >= 2;
@@ -536,7 +809,7 @@ function WhatTheyWant({
             {summaries.map((s) => (
               <li key={s.person.id}>
                 <p className="text-body">
-                  <span className="font-semibold">{s.person.name}</span>{" "}
+                  <PersonName name={s.person.name} href={profiles.get(s.person.id)} />{" "}
                   {tally[s.person.id].liked + tally[s.person.id].passed === 0 ? (
                     <span className="text-muted">hasn&apos;t reacted yet</span>
                   ) : (
@@ -816,13 +1089,24 @@ function HomePanel({
   listing,
   thread,
   liked,
+  view,
+  profiles,
 }: {
   shareId: string;
   listing: Listing;
   thread: Thread;
   // The comments the agent has hearted.
   liked: Set<string>;
+  // Each person who has signed up, to their profile.
+  profiles: Map<string, string>;
+  // How long it was on their screen, and how many of its photos they looked at.
+  view?: HomeView;
 }) {
+  const looked = view
+    ? [view.seconds > 0 && `Spent ${duration(view.seconds)} on it`, photosSeenLine(view.photosSeen, listing.Media.length)]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
   // One line per person: their reaction plus what they liked, and didn't, in
   // the photos and the facts.
   const lines = new Map<string, { name: string; state: ReactionState; likes: TakeMark[]; dislikes: TakeMark[]; tags: string[] }>();
@@ -872,6 +1156,12 @@ function HomePanel({
             <span className="font-display text-lg text-ink">{formatPrice(listing.ListPrice)}</span>{" "}
             <span className="whitespace-nowrap">· {listing.City}</span>
           </p>
+          {looked && (
+            <p className="mt-1 flex items-start gap-1.5 text-sm text-stone-700">
+              <Clock aria-hidden size={14} className="mt-[3px] shrink-0 text-stone-500" />
+              <span>{looked[0].toUpperCase() + looked.slice(1)}</span>
+            </p>
+          )}
         </div>
         {/* What everyone on the link thinks of it, then Remove. */}
         <div className="col-span-2 mt-3 flex flex-wrap items-center gap-1 @md:col-span-1 @md:-mr-1 @md:mt-0 @md:justify-self-end">
@@ -894,7 +1184,8 @@ function HomePanel({
               <li key={r.participantId} className="flex items-start gap-2">
                 <Icon aria-hidden size={15} className={cn("mt-0.5 shrink-0", passed ? "text-amber-800" : "text-rose-600")} />
                 <span>
-                  <span className="font-semibold">{r.name}</span> {describeTake(listing, r.state, r.likes, r.dislikes)}
+                  <PersonName name={r.name} href={profiles.get(r.participantId)} />{" "}
+                  {describeTake(listing, r.state, r.likes, r.dislikes)}
                 </span>
               </li>
             );
@@ -916,7 +1207,11 @@ function HomePanel({
               <Avatar name={comment.name} tone={comment.isAgent ? "agent" : "person"} />
               <div className="min-w-0 flex-1">
                 <p className="flex flex-wrap items-center gap-x-1.5 text-meta leading-snug text-muted">
-                  <span className="text-sm font-semibold text-ink">{comment.name}</span>
+                  <PersonName
+                    name={comment.name}
+                    href={comment.participantId ? profiles.get(comment.participantId) : undefined}
+                    className="text-sm text-ink"
+                  />
                   {comment.isAgent && (
                     <Badge tone="ink" small>
                       Agent

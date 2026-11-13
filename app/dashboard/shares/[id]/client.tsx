@@ -11,6 +11,7 @@ import {
   Pencil,
   RotateCcw,
   Share,
+  UserMinus,
   UserPlus,
   X,
 } from "lucide-react";
@@ -40,6 +41,7 @@ import {
   addPerson,
   markShareSeen,
   removeComment,
+  removePerson,
   renameClient,
   replyAsAgent,
   setHomeRemoved,
@@ -266,6 +268,7 @@ export function SendLink({
   label = "Your link is ready",
   who,
   status,
+  bare = false,
 }: {
   url: string;
   clientName: string;
@@ -279,6 +282,8 @@ export function SendLink({
   who?: string;
   // Whether it's been opened, and when.
   status?: ReactNode;
+  // Inside a card of its own (a person's, with their name), not one of its own.
+  bare?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const id = useId();
@@ -292,8 +297,8 @@ export function SendLink({
   const message = `${words} ${url}`;
   const whose = (text: string) => who && <span className="sr-only"> {text}</span>;
   return (
-    <div className={cn(card, "p-4")}>
-      <label htmlFor={id} className="text-sm font-semibold">
+    <div className={bare ? "mt-3" : cn(card, "p-4")}>
+      <label htmlFor={id} className={cn("text-sm font-semibold", bare && "text-stone-700")}>
         {label}
       </label>
       {status && <p className="mt-0.5 text-sm text-muted">{status}</p>}
@@ -1004,5 +1009,72 @@ export function RemoveHomeButton({
       {removed ? "Restore" : "Remove"}
       <span className="sr-only"> {address}</span>
     </button>
+  );
+}
+
+// Takes someone off the link, once the agent has said so right here: their own
+// link stops working, and what they liked and said on it goes with them.
+export function RemovePersonButton({ shareId, personId, name }: { shareId: string; personId: string; name: string }) {
+  const [asking, setAsking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const question = useRef<HTMLParagraphElement>(null);
+  const opener = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (asking) question.current?.focus();
+  }, [asking]);
+  if (!asking) {
+    return (
+      <button
+        ref={opener}
+        type="button"
+        onClick={() => {
+          setError(null);
+          setAsking(true);
+        }}
+        className={cn(button({ kind: "ghost" }), "shrink-0 text-stone-700")}
+      >
+        <UserMinus aria-hidden size={15} /> Remove<span className="sr-only"> {name}</span>
+      </button>
+    );
+  }
+  return (
+    <div role="group" aria-labelledby={`remove-${personId}`} className="mt-3 w-full rounded-xl bg-red-50 p-3 ring-1 ring-red-200">
+      <p id={`remove-${personId}`} ref={question} tabIndex={-1} className="text-sm outline-none">
+        <span className="font-semibold">Remove {name} from this link?</span> Their link stops working, and what they liked,
+        passed on and said here is deleted.
+      </p>
+      {error && (
+        <p role="alert" className="mt-1 text-sm text-red-700">
+          {error}
+        </p>
+      )}
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button
+          type="button"
+          aria-disabled={pending}
+          onClick={() => {
+            if (pending) return;
+            startTransition(async () => {
+              const result = await removePerson(shareId, personId);
+              if (result.error) setError(result.error);
+            });
+          }}
+          className={cn(button({ kind: "primary" }), "bg-red-700 hover:bg-red-800")}
+        >
+          {pending ? "Removing…" : `Remove ${name}`}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setAsking(false);
+            requestAnimationFrame(() => opener.current?.focus());
+          }}
+          className={button({ kind: "secondary" })}
+        >
+          Keep {name}
+        </button>
+      </div>
+    </div>
   );
 }

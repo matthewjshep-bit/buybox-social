@@ -115,7 +115,7 @@ test("a profile is one card per home per day, with the photo and the spots picke
   // The price they liked is a chip, so the sentence keeps to the photo.
   const sentence = "liked the wraparound porch but not the cedar shingles";
   const link = lena.getByRole("link", { name: `${CORBEL}: ${sentence}`, exact: true });
-  await expect(link).toHaveAttribute("href", "/homes/SAMPLE-1003?photo=0");
+  await expect(link).toHaveAttribute("href", /^\/reel\?from=[\w-]+&home=SAMPLE-1003&photo=0$/);
   const card = cardOf(lena, `${CORBEL}: ${sentence}`);
   await expect(card).toContainText(`You ${sentence}`);
   await expect(card.getByRole("img", { name: "Shingled home with a wraparound porch and green lawn" })).toBeVisible();
@@ -213,21 +213,23 @@ test("a card opens its home over the page, on the photo it's about with the spot
   await noor.goto("/people/me");
   await noor.waitForURL(/\/people\/[0-9a-f-]{36}$/);
   const link = noor.getByRole("link", { name: `${CORBEL}: liked the subway backsplash`, exact: true });
-  await expect(link).toHaveAttribute("href", "/homes/SAMPLE-1003?photo=2");
+  await expect(link).toHaveAttribute("href", /^\/reel\?from=[\w-]+&home=SAMPLE-1003&photo=2$/);
+  // It opens her page's homes full screen, on this one, on the photo it was about.
+  const page = noor.url();
   await link.click();
-  const popout = noor.getByRole("dialog", { name: "Home details" });
-  await expect(popout).toBeVisible();
-  const home = popout.getByRole("article", { name: CORBEL });
+  await noor.waitForURL(/\/reel\?from=/);
+  const home = homeIn(noor, CORBEL);
   await expect(home.getByText("Kitchen · 3 of 3", { exact: true })).toBeVisible();
   await expect(home.getByRole("img", { name: "White kitchen with an island and pendant lights" })).toBeInViewport();
   // What she did there leads the line at the photo's foot, with a hotspot on it.
   await expect(home.getByRole("group", { name: "Recent activity" })).toContainText("subway backsplash");
   await expect(home.locator("[data-spot-highlight]")).toHaveCount(1);
 
-  // Closed, the keyboard is back on the card that opened it.
+  // Back (or Escape) goes back to her page.
+  await expect(noor.getByRole("link", { name: "Back to your page" }).first()).toBeVisible();
   await noor.keyboard.press("Escape");
-  await expect(popout).toBeHidden();
-  await expect(link).toBeFocused();
+  await noor.waitForURL(page);
+  await expect(link).toBeVisible();
 });
 
 test("an empty page says what will show up there", async ({ browser }) => {

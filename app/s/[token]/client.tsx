@@ -11,7 +11,7 @@ import { agentFirstName, cn } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
 import type { ShareAgent } from "@/lib/shares";
 import { button, card } from "@/lib/ui";
-import { recordOpen, type AskResult } from "./actions";
+import { recordHomeTime, recordOpen, type AskResult } from "./actions";
 
 type ReelProps = ComponentProps<typeof ReelFeed>;
 
@@ -30,6 +30,10 @@ function goToFirstHome() {
 
 // How long after the last new photo the count of photos seen goes to the agent.
 const SEEN_AFTER_MS = 1500;
+// Time on a home stops counting this long after they last touched the page.
+const IDLE_MS = 2 * 60 * 1000;
+// How often the time spent on each home goes to the agent while it's open.
+const REPORT_TIME_MS = 30 * 1000;
 
 // The photos this phone has looked at on a link, kept between visits so a
 // second look adds to the first. (Just this browser's own note.)
@@ -103,6 +107,74 @@ export function ShareReel({
     }
     return n;
   };
+  // Where they spend their time, for the agent: how long each home is on screen
+  // while the page is in front of them and they're using it (a phone left
+  // lying on a home stops counting after a while), and how many of each home's
+  // photos they've looked at. Said every half-minute, and when the page is put
+  // away or closed.
+  const onScreen = useRef<string | null>(homes.length === 1 ? homes[0].ListingKey : null);
+  const timing = useRef({ since: 0, lastUse: 0, spent: new Map<string, number>(), photosTold: new Map<string, number>() });
+  const bankTime = useRef(() => {});
+  const tellTime = useRef(() => {});
+  useLayoutEffect(() => {
+    bankTime.current = () => {
+      const t = timing.current;
+      const now = Date.now();
+      if (t.since && onScreen.current && shown.current) {
+        const until = Math.min(now, t.lastUse + IDLE_MS);
+        if (until > t.since) t.spent.set(onScreen.current, (t.spent.get(onScreen.current) ?? 0) + until - t.since);
+      }
+      t.since = document.visibilityState === "visible" ? now : 0;
+    };
+    tellTime.current = () => {
+      if (!shown.current) return;
+      bankTime.current();
+      const t = timing.current;
+      looked.current ??= seenBefore(token);
+      const report = onLink.current.flatMap((listing) => {
+        const key = listing.ListingKey;
+        const seconds = Math.floor((t.spent.get(key) ?? 0) / 1000);
+        let photos = 0;
+        for (const photo of looked.current!) {
+          const at = photo.lastIndexOf(":");
+          if (photo.slice(0, at) === key && Number(photo.slice(at + 1)) < listing.Media.length) photos++;
+        }
+        const morePhotos = photos > (t.photosTold.get(key) ?? 0);
+        if (seconds < 1 && !morePhotos) return [];
+        // What's sent is taken off; the part of a second left keeps counting.
+        t.spent.set(key, (t.spent.get(key) ?? 0) - seconds * 1000);
+        t.photosTold.set(key, photos);
+        return [{ listingKey: key, seconds, photos }];
+      });
+      if (report.length) recordHomeTime(token, report).catch(() => {});
+    };
+  });
+  useEffect(() => {
+    const used = () => {
+      const now = Date.now();
+      // Back after a while away: the time away doesn't count.
+      if (now - timing.current.lastUse > IDLE_MS) bankTime.current();
+      timing.current.lastUse = now;
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") tellTime.current();
+      else if (shown.current) timing.current.since = timing.current.lastUse = Date.now();
+    };
+    const now = () => tellTime.current();
+    const every = setInterval(now, REPORT_TIME_MS);
+    const events = ["pointerdown", "keydown", "wheel", "touchstart", "scroll"] as const;
+    for (const event of events) document.addEventListener(event, used, { capture: true, passive: true });
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", now);
+    return () => {
+      clearInterval(every);
+      for (const event of events) document.removeEventListener(event, used, { capture: true });
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", now);
+      now();
+    };
+  }, []);
+
   // Tells the agent how many photos have been looked at, if that's more than
   // they know. Only once the page has been on screen.
   const tellSeen = useRef(() => {});
@@ -125,6 +197,7 @@ export function ShareReel({
     const record = () => {
       if (document.visibilityState !== "visible") return false;
       shown.current = true;
+      timing.current.since = timing.current.lastUse = Date.now();
       const count = seenCount();
       told.current = Math.max(told.current, count);
       recordOpen(token, count || undefined).catch(() => {});
@@ -180,6 +253,9 @@ export function ShareReel({
         mode="share"
         tour={notes ? "notes" : "link"}
         onActiveChange={(key) => {
+          // The time on the home that was on screen counts up to now.
+          bankTime.current();
+          onScreen.current = key ?? null;
           if (key) setSeen(key);
         }}
         onPhotoSeen={photoSeen}

@@ -92,8 +92,8 @@ test("signed in, you're one button: your places and Sign out are behind your ini
   await expect(me).toHaveAttribute("aria-expanded", "false");
   expect(await page.evaluate(() => Boolean(document.activeElement?.closest("#account-menu, header")))).toBe(false);
 
-  // Over the feed, ↓ in it stays in it: the home behind doesn't change.
-  await page.goto("/");
+  // Over the homes full screen, ↓ in it stays in it: the home behind doesn't change.
+  await page.goto("/reel");
   await me.click();
   await page.keyboard.press("Tab");
   await page.keyboard.press("ArrowDown");

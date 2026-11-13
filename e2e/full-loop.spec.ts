@@ -53,7 +53,15 @@ test("one package, a link for each person: they react, the agent compares and re
 
   const jamieChat = await openComments(jamie, house);
   await jamieChat.getByLabel("Add a comment").fill("That porch is perfect.");
+  // (Saved before Sam looks: it shows here at once, before it is.)
+  const posted = jamie.waitForResponse(
+    (res) =>
+      res.request().method() === "POST" &&
+      Boolean(res.request().headers()["next-action"]) &&
+      (res.request().postData() ?? "").includes("That porch is perfect."),
+  );
   await jamieChat.getByRole("button", { name: "Post", exact: true }).click();
+  await posted;
   await expect(jamieChat.getByText("That porch is perfect.")).toBeVisible();
   await jamie.keyboard.press("Escape");
 
@@ -109,7 +117,7 @@ test("one package, a link for each person: they react, the agent compares and re
   await expect(notForMe).toHaveAttribute("aria-pressed", "true");
 
   // The agent sees all of it in plain words, and replies.
-  await agent.reload();
+  await agent.goto(`${agent.url().split("?")[0]}?tab=homes`);
   const panel = agent.getByRole("region", { name: "4127 Larkmoor Ave NE" });
   await expect(panel.getByText("liked the kitchen and marble counters")).toBeVisible();
   await expect(panel.getByText("passed on this")).toBeVisible();
@@ -136,11 +144,20 @@ test("one package, a link for each person: they react, the agent compares and re
   await sam.keyboard.press("Escape");
   await samHouse.getByRole("button", { name: "Next photo" }).click();
   await samHouse.getByRole("button", { name: "Next photo" }).click();
+  // (Saved before the agent looks.)
+  const kitchenSaved = sam.waitForResponse(
+    (res) =>
+      res.request().method() === "POST" &&
+      Boolean(res.request().headers()["next-action"]) &&
+      /kitchen/i.test(res.request().postData() ?? ""),
+  );
   await (await photoList(samHouse)).getByRole("button", { name: /^Like the kitchen(,|$)/ }).click();
+  await kitchenSaved;
   await pick(samHouse, "the marble counters");
 
   // The agent sees them side by side: where they agree, and where they don't.
-  await agent.reload();
+  const part = (tab: string) => agent.goto(`${agent.url().split("?")[0]}?tab=${tab}`);
+  await part("want");
   const compare = agent.getByRole("region", { name: "What they each want" });
   await expect(compare).toContainText("Both like: Kitchen");
   await expect(compare).toContainText("Only Jamie: Marble counters");
@@ -153,11 +170,14 @@ test("one package, a link for each person: they react, the agent compares and re
   const suggested = agent.getByRole("region", { name: "Homes they might both like" });
   await expect(suggested).toContainText("812 N Corbel St");
   await suggested.getByRole("button", { name: "Add 812 N Corbel St" }).click();
+  await expect(suggested.getByRole("button", { name: "Add 812 N Corbel St" })).toHaveCount(0);
+  await part("homes");
   await expect(agent.getByRole("region", { name: "812 N Corbel St" })).toBeVisible();
   await sam.reload();
   await expect(homeIn(sam, "812 N Corbel St")).toBeAttached();
 
   // Someone else can be added later, with a link of their own.
+  await part("people");
   await agent.getByPlaceholder("Their first name").fill("Robin");
   await agent.getByRole("button", { name: "Add a person" }).click();
   const robinUrl = await agent.getByLabel("Robin's link").inputValue();

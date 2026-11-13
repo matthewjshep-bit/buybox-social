@@ -222,7 +222,7 @@ export function ReelFeed({
   onSend?: (home: SendHome, panel?: HTMLElement | null) => void;
   // Send's next link is on its way: the button waits, and says so.
   sendBusy?: boolean;
-  // The photo (from 0) the first home opens on.
+  // The photo (from 0) the home it opens on opens on: the first, or `focus`'s.
   initialPhoto?: number;
   // A photo has settled on screen.
   onPhotoSeen?: (listingKey: string, index: number) => void;
@@ -805,7 +805,8 @@ function Feed({
               mode={mode}
               agentName={agentName}
               myName={myName}
-              start={i === 0 ? initialPhoto : undefined}
+              // (On the home it opens on: the first, or the one it goes to.)
+              start={(focus ? key === focus.key : i === 0) ? initialPhoto : undefined}
               onPhotoSeen={onPhotoSeen}
               counter={mode === "share" && posts.length > 1 ? `Home ${i + 1} of ${posts.length}` : undefined}
               active={active === offset + i}

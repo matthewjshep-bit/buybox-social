@@ -26,7 +26,8 @@ export type TickerEvent = {
   // `key`: on an agent's link, who it is, the same on every load and giving
   // nothing away (two people can share a first name). `agent`: "You" is the
   // agent, on their own link, so their face stays in ink, with their `name`.
-  who: { tone: TickerTone; name: string | null; profileId?: string; key?: string; agent?: boolean };
+  // `following`: someone whoever's looking follows.
+  who: { tone: TickerTone; name: string | null; profileId?: string; key?: string; agent?: boolean; following?: boolean };
   at: string;
   // The photo it's in, or the facts (FACTS).
   mediaKey?: string;
@@ -196,14 +197,16 @@ export function buildCycle(
   if (photoOnly) events = events.filter((event) => !onPhoto(event) || event.mediaKey === photoKey);
   if (events.length === 0) return [];
   const here = (event: TickerEvent) => Boolean(photoKey) && event.mediaKey === photoKey && onPhoto(event);
-  // It leads with the newest (what you've just done, when you have), or on an
-  // agent's link, the agent's own words.
+  // It leads with what you've just done, when you have; else what someone you
+  // follow did; else the newest. On an agent's link, the agent's own words.
   const first =
     events.find((event) => event.who.tone === "agent" && event.kind === "comment") ??
+    (events[0]?.who.tone === "you" ? events[0] : undefined) ??
+    events.find((event) => event.who.following && !isDislike(event)) ??
     events.find((event) => !isDislike(event)) ??
     events[0];
   const close = (event: TickerEvent) =>
-    mode === "share" ? event.who.tone !== "anonymous" : event.who.tone === "client";
+    mode === "share" ? event.who.tone !== "anonymous" : event.who.tone === "client" || Boolean(event.who.following);
   const kindTier = (event: TickerEvent) =>
     onPhoto(event)
       ? 0
@@ -259,6 +262,7 @@ function whoText(who: TickerEvent["who"]) {
   if (who.tone === "anonymous" || !who.name) return "A buyer";
   if (who.tone === "client") return `${who.name}, your client,`;
   if (who.tone === "agent") return `${who.name.split(" ")[0] || who.name} (your agent)`;
+  if (who.following) return `${who.name}, who you follow,`;
   return who.name;
 }
 

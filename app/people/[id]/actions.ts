@@ -5,8 +5,29 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { fail, readDevice, type ActionResult } from "@/lib/engagement";
-import { getPublicIdentity } from "@/lib/public";
+import { ensureAccountVisitor, getPublicIdentity } from "@/lib/public";
 import type { Sentiment } from "@/lib/reactions";
+
+// Follows someone, or stops. Only someone signed in follows anyone, as their
+// own page (made now if they have none yet), and never themselves. `stay`:
+// the page isn't refreshed (a list keeps whoever was just unfollowed, to undo).
+export async function setFollowing(personId: string, on: boolean, stay = false): Promise<ActionResult> {
+  if (!z.uuid().safeParse(personId).success || typeof on !== "boolean") return fail("We couldn't do that.");
+  const account = await getCurrentUser();
+  if (!account?.role) return fail("Sign in to follow people.");
+  const me = await ensureAccountVisitor(account);
+  if (me.id === personId) return fail("That's you.");
+  if (on) {
+    await sql`
+      insert into follows (follower_id, followed_id)
+      select ${me.id}, id from visitors where id = ${personId}
+      on conflict do nothing`;
+  } else {
+    await sql`delete from follows where follower_id = ${me.id} and followed_id = ${personId}`;
+  }
+  if (stay !== true) refresh();
+  return { ok: true };
+}
 
 // Only ever your own page: each of these works on whoever is asking, never
 // on a page named in the request.
@@ -117,6 +138,21 @@ export async function deleteMyComment(id: string): Promise<ActionResult> {
   });
   if (outcome === "gone") return fail("That comment isn't there anymore.");
   if (outcome === "answered") return fail("Comments with replies can't be deleted here.");
+  refresh();
+  return { ok: true };
+}
+
+const PHOTO = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/;
+
+// Your own photo, in place of your initial wherever you appear: a small square
+// JPEG made in the browser (lib/resize-photo.ts). Empty takes it away.
+export async function setMyPhoto(photo: string): Promise<ActionResult> {
+  if (typeof photo !== "string" || photo.length > 200_000 || (photo !== "" && !PHOTO.test(photo))) {
+    return fail("We couldn't use that photo. Try a JPEG or PNG.");
+  }
+  const account = await getCurrentUser();
+  if (!account?.role) return fail("Sign in to add a photo.");
+  await sql`update accounts set photo_data_url = ${photo || null} where id = ${account.id}`;
   refresh();
   return { ok: true };
 }

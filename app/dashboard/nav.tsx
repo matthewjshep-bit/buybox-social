@@ -5,12 +5,12 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/format";
 
 const LINKS = [
-  { href: "/dashboard", label: "Your links" },
+  { href: "/dashboard", label: "Clients" },
   { href: "/dashboard/profile", label: "Your brand" },
 ];
 
 // The dashboard's two places. A client's page and a new link count as part
-// of "Your links". The one you're in is marked the way the header marks the
+// of "Clients". The one you're in is marked the way the header marks the
 // page you're on: a soft grey pill, in ink.
 export function DashboardNav() {
   const pathname = usePathname();

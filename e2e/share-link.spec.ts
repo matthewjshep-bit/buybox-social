@@ -333,7 +333,8 @@ test("several homes open on a word from the agent over the first one's photo, wi
 
 test("a link whose homes were all taken off says so, with a way to reach the agent", async ({ browser }) => {
   const agent = await signInAgent(browser, "empty-agent@example.com", "Jordan Rivera");
-  const { url } = await createShare(agent, ["1880 Tamsen"], ["Ruth"]);
+  const { url, dashboardUrl } = await createShare(agent, ["1880 Tamsen"], ["Ruth"]);
+  await agent.goto(`${dashboardUrl}?tab=homes`);
   await agent.getByRole("button", { name: /^Remove 1880 Tamsen/ }).click();
   await expect(agent.getByRole("region", { name: "Removed from their link" })).toBeVisible();
 

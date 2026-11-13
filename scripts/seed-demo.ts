@@ -3,12 +3,17 @@
 // liking spots in the sample homes and talking about them, a buyer with a full
 // profile, and an agent with two links; then a crowd on top (four dozen more
 // buyers, some signed up, and four more agents with clients of their own), so
-// every home looks lived in. Runs against this machine, or another database
-// only when DEMO_SEED_HOST names that database's host, on purpose.
+// every home looks lived in. Most have a photo of their own (drawn portraits,
+// scripts/demo-avatars), every agent's clients have signed up on their links
+// and follow them back, and the buyers follow one another, so feeds and
+// follower lists have people in them. Runs against this machine, or another
+// database only when DEMO_SEED_HOST names that database's host, on purpose.
 // Safe to run again: it clears its own rows (demo emails, "demo:" devices)
 // and makes them fresh, leaving everything else alone. With --clear, it only
 // clears them.
 import { createHash } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import postgres from "postgres";
 import type { Listing } from "../lib/listings/types";
 import {
@@ -70,6 +75,20 @@ const d = (days: number) => days * 24;
 const h = (hours: number) => hours;
 const m = (minutes: number) => minutes / 60;
 const ago = (hours: number) => new Date(NOW - hours * 3_600_000);
+
+// Their own photos: drawn portraits (scripts/demo-avatars), no one real. Each
+// person gets the next one, so no two side by side share a face; `none`
+// leaves someone with their initial, as anyone who hasn't added one has.
+const AVATAR_DIR = join(process.cwd(), "scripts/demo-avatars");
+const AVATARS = readdirSync(AVATAR_DIR)
+  .filter((file) => file.endsWith(".jpg"))
+  .sort()
+  .map((file) => `data:image/jpeg;base64,${readFileSync(join(AVATAR_DIR, file)).toString("base64")}`);
+const photos = new Map<string, string | null>();
+const photoFor = (who: string, none = false) => {
+  if (!photos.has(who)) photos.set(who, none ? null : AVATARS[[...photos.values()].filter(Boolean).length % AVATARS.length]);
+  return photos.get(who)!;
+};
 // A few minutes after `at`, but never in the future.
 const after = (at: number, minutes: number) => Math.max(at - minutes / 60, 1 / 60);
 
@@ -585,6 +604,21 @@ const VISITS: Record<string, Visit[]> = {
   ],
 };
 
+// The regulars' surnames, as they signed up.
+const SURNAMES: Record<string, string> = {
+  matthew: "Ross",
+  sofia: "Alvarez",
+  marcus: "Bell",
+  priya: "Raman",
+  elena: "Petrova",
+  james: "O'Neill",
+  hannah: "Lee",
+  theo: "Grant",
+  grace: "Kim",
+  diego: "Santos",
+  aisha: "Bello",
+};
+
 // The demo buyer, signed in by email with no password on a local server.
 const MAYA = {
   id: demoId("account:maya"),
@@ -974,6 +1008,10 @@ function moreAgents(listings: Map<string, Listing>) {
   });
 }
 
+// Every agent's clients, as they sign in (printed at the end), and how many.
+const clientEmails: string[] = [];
+let clients = 0;
+
 // People who only look: each opens a few homes, the busier ones more often.
 const LOOKERS = 140;
 
@@ -1100,8 +1138,9 @@ async function seedPublic(tx: Tx, listings: Map<string, Listing>) {
   };
 
   await tx`
-    insert into accounts (id, auth_user_id, email, full_name, role, phone, created_at)
-    values (${MAYA.id}, ${`dev:${MAYA.email}`}, ${MAYA.email}, ${MAYA.fullName}, 'buyer', ${MAYA.phone}, ${ago(MAYA.created)})`;
+    insert into accounts (id, auth_user_id, email, full_name, role, phone, photo_data_url, created_at)
+    values (${MAYA.id}, ${`dev:${MAYA.email}`}, ${MAYA.email}, ${MAYA.fullName}, 'buyer', ${MAYA.phone},
+      ${photoFor("maya")}, ${ago(MAYA.created)})`;
   await tx`
     insert into signups (email, full_name, phone, created_at, updated_at)
     values (${MAYA.email}, ${MAYA.fullName}, ${MAYA.phone}, ${ago(MAYA.created + m(3))}, ${ago(MAYA.created + m(3))})`;
@@ -1110,14 +1149,18 @@ async function seedPublic(tx: Tx, listings: Map<string, Listing>) {
   const views = new Map<string, Date>();
   const plans = PEOPLE.map((person) => ({ person, ...rowsFor(person.slug, VISITS[person.slug] ?? [], listings) }));
 
-  // Some of the crowd have signed up too.
+  // The regulars have signed up, and some of the crowd too.
   const signedUp = new Map(
-    CROWD.slice(0, CROWD_ACCOUNTS).map(([slug, , fullName]) => [slug, { id: demoId(`account:${slug}`), email: `${slug}${DEMO_DOMAIN}`, fullName }]),
+    [
+      ...PEOPLE.filter((p) => SURNAMES[p.slug]).map((p) => [p.slug, `${p.name} ${SURNAMES[p.slug]}`] as const),
+      ...CROWD.slice(0, CROWD_ACCOUNTS).map(([slug, , fullName]) => [slug, fullName] as const),
+    ].map(([slug, fullName]) => [slug, { id: demoId(`account:${slug}`), email: `${slug}${DEMO_DOMAIN}`, fullName }]),
   );
-  for (const [slug, account] of signedUp) {
+  for (const [i, [slug, account]] of [...signedUp].entries()) {
     await tx`
-      insert into accounts (id, auth_user_id, email, full_name, role, created_at)
-      values (${account.id}, ${`dev:${account.email}`}, ${account.email}, ${account.fullName}, 'buyer', ${ago(joined(slug) + m(5))})`;
+      insert into accounts (id, auth_user_id, email, full_name, role, photo_data_url, created_at)
+      values (${account.id}, ${`dev:${account.email}`}, ${account.email}, ${account.fullName}, 'buyer',
+        ${photoFor(slug, i % 3 === 2)}, ${ago(joined(slug) + m(5))})`;
   }
 
   for (const { person } of plans) {
@@ -1133,6 +1176,18 @@ async function seedPublic(tx: Tx, listings: Map<string, Listing>) {
         ${ago(isMaya ? MAYA.created : joined(person.slug))},
         ${isMaya ? ago(d(1.2)) : ago(h(2))})`;
   }
+
+  // Who follows whom: Maya follows a few of the crowd who've signed up, and
+  // they follow her and one another, so feeds and follower lists have people.
+  const crowd = [...signedUp.keys()].map(visitorOf);
+  const maya = visitorOf("maya");
+  const follows = crowd.flatMap((id, i) => [
+    ...(i < 5 ? [{ follower_id: maya, followed_id: id, created_at: ago(d(5 - i * 0.5)) }] : []),
+    ...(i < 7 ? [{ follower_id: id, followed_id: maya, created_at: ago(d(4 - i * 0.4)) }] : []),
+    { follower_id: id, followed_id: crowd[(i + 1) % crowd.length], created_at: ago(d(3)) },
+    { follower_id: id, followed_id: crowd[(i + 3) % crowd.length], created_at: ago(d(2)) },
+  ]);
+  await tx`insert into follows ${tx(follows)} on conflict do nothing`;
 
   for (const { person, reactions, likes, dislikes, views: seen } of plans) {
     const visitorId = visitorOf(person.slug);
@@ -1208,10 +1263,16 @@ async function seedAgent(
   shares: ShareSeed[] = SHARES,
 ) {
   await tx`
-    insert into accounts (id, auth_user_id, email, full_name, role, brokerage, brand_color, phone, contact_phone, contact_email, created_at)
+    insert into accounts (id, auth_user_id, email, full_name, role, brokerage, brand_color, phone, contact_phone, contact_email,
+      photo_data_url, created_at)
     values (${agent.id}, ${`dev:${agent.email}`}, ${agent.email}, ${agent.fullName}, 'agent',
       ${agent.brokerage}, ${agent.brandColor}, ${agent.phone}, ${agent.contactPhone ?? ""}, ${agent.contactEmail ?? ""},
-      ${ago(agent.created)})`;
+      ${photoFor(agent.email)}, ${ago(agent.created)})`;
+  // Their page, so their clients can follow them.
+  const agentVisitor = demoId(`visitor:${agent.email}`);
+  await tx`
+    insert into visitors (id, device_token, first_name, account_id, created_at, activity_seen_at)
+    values (${agentVisitor}, ${`account:${agent.id}`}, ${agent.fullName.split(" ")[0]}, ${agent.id}, ${ago(agent.created)}, ${ago(h(2))})`;
 
   const links: { clientName: string; homes: number; token: string; people: { name: string; token: string }[] }[] = [];
   const tally = { reactions: 0, likes: 0, dislikes: 0, comments: 0, replies: 0 };
@@ -1230,10 +1291,28 @@ async function seedAgent(
       // Everyone on a package has their own link, as when the agent adds them.
       const participantId = demoId(`participant:${share.slug}:${person.slug}`);
       const personToken = demoToken(`person:${share.slug}:${person.slug}`);
+      // Each signed up on their link: an account, a page, and they and the
+      // agent follow each other (as joining a link does).
+      const clientId = demoId(`account:client:${share.slug}:${person.slug}`);
+      // "lauren.priyanka@…": who, and whose client.
+      const clientEmail = `${person.name.toLowerCase()}.${agent.fullName.split(" ")[0].toLowerCase()}${DEMO_DOMAIN}`;
+      const joinedAt = ago(Math.max(m(20), share.created - h(1)));
       await tx`
-        insert into participants (id, share_id, device_token, first_name, token, invited_at, created_at)
+        insert into accounts (id, auth_user_id, email, full_name, role, photo_data_url, created_at)
+        values (${clientId}, ${`dev:${clientEmail}`}, ${clientEmail}, ${person.name}, 'buyer',
+          ${photoFor(clientEmail, clients++ % 4 === 3)}, ${joinedAt})`;
+      const clientVisitor = demoId(`visitor:client:${share.slug}:${person.slug}`);
+      await tx`
+        insert into visitors (id, device_token, first_name, account_id, created_at, activity_seen_at)
+        values (${clientVisitor}, ${`account:${clientId}`}, ${person.name}, ${clientId}, ${joinedAt}, ${ago(h(2))})`;
+      await tx`
+        insert into follows (follower_id, followed_id, created_at)
+        values (${clientVisitor}, ${agentVisitor}, ${joinedAt}), (${agentVisitor}, ${clientVisitor}, ${joinedAt})`;
+      clientEmails.push(`${clientEmail}  ${person.name}, ${agent.fullName}'s client`);
+      await tx`
+        insert into participants (id, share_id, device_token, first_name, token, invited_at, created_at, account_id)
         values (${participantId}, ${shareId}, ${`invite:${personToken}`}, ${person.name}, ${personToken},
-          ${ago(share.created)}, ${ago(share.created)})`;
+          ${ago(share.created)}, ${ago(share.created)}, ${clientId})`;
       people.push({ name: person.name, token: personToken });
 
       const rows = rowsFor(person.slug, person.visits, listings);
@@ -1348,7 +1427,9 @@ async function main() {
     for (const { agent, shares } of others) {
       console.log(`  ${agent.email}  ${agent.fullName}, ${agent.brokerage} (${shares.length} links)`);
     }
-    console.log(`  …and ${CROWD_ACCOUNTS} signed-up buyers, such as ${CROWD[0][0]}${DEMO_DOMAIN}`);
+    console.log(`  …and ${Object.keys(SURNAMES).length + CROWD_ACCOUNTS} signed-up buyers, such as matthew${DEMO_DOMAIN}`);
+    console.log(`\nAgents' clients (each signed up on their link):`);
+    for (const line of clientEmails) console.log(`  ${line}`);
   } else {
     // (No password-free sign-in there: the demo people are only to look at.)
     console.log(`\n${MAYA.fullName}'s profile: ${base}/people/${demoId("visitor:maya")}`);

@@ -1,15 +1,18 @@
 import { Globe } from "lucide-react";
 import Image from "next/image";
-import { AddFirstName, ShareMyPage } from "@/app/people/[id]/client";
+import Link from "next/link";
+import type { ReactNode } from "react";
+import { AddFirstName, PhotoControls, ShareMyPage } from "@/app/people/[id]/client";
 import { Avatar } from "@/components/ui";
 import { cn } from "@/lib/format";
 import { sinceLabel } from "@/lib/profile";
 import { card } from "@/lib/ui";
 
 // The top of someone's page: a band from the photo they liked most, their
-// initial, name, how long they've been looking and how much. Counts are plain
-// words, not links: the filters below the header do the filtering. Your own
-// page with no name yet says "Your page" and asks for one.
+// initial, name, how long they've been looking and how much. Those counts are
+// plain words, not links: the filters below the header do the filtering. Who
+// follows them and whom they follow are links, to those lists, with Follow
+// beside them. Your own page with no name yet says "Your page" and asks for one.
 export function ProfileHeader({
   name,
   face = name,
@@ -21,6 +24,10 @@ export function ProfileHeader({
   counts,
   cover,
   showPassed = true,
+  people,
+  followsYou = false,
+  follow,
+  photo,
 }: {
   name: string;
   // What their initial is from, if not their name ("" for a plain figure).
@@ -35,6 +42,14 @@ export function ProfileHeader({
   counts: { liked: number; passed: number; comments: number };
   cover: string | null;
   showPassed?: boolean;
+  // Their followers and whom they follow: how many, and the page listing each.
+  people?: { followers: number; following: number; href: string };
+  // They follow whoever's looking.
+  followsYou?: boolean;
+  // Follow (on anyone's page but your own).
+  follow?: ReactNode;
+  // Their own photo, where they've added one.
+  photo?: string | null;
 }) {
   return (
     <section aria-labelledby="profile-name" className={cn(card, "overflow-hidden")}>
@@ -49,12 +64,18 @@ export function ProfileHeader({
         )}
       </div>
       <div className="px-4 pb-4">
-        <Avatar name={face} tone={agent ? "agent" : "person"} size={18} className="relative -mt-9 ring-4 ring-white" />
+        <Avatar name={face} tone={agent ? "agent" : "person"} size={18} photo={photo} className="relative -mt-9 ring-4 ring-white" />
         {/* The keyboard comes here once you've said your name, as it changes. */}
         <h1 id="profile-name" tabIndex={-1} className="mt-2 break-words font-display text-[30px] leading-tight outline-none">
           {isMe ? (unnamed ? "Your page" : `${name} (you)`) : name}
         </h1>
+        {followsYou && (
+          <p className="mt-1">
+            <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-700">Follows you</span>
+          </p>
+        )}
         {isMe && unnamed && <AddFirstName />}
+        {isMe && <PhotoControls hasPhoto={Boolean(photo)} />}
         <p className="mt-1 text-body text-muted">
           Looking since {sinceLabel(since)}
           {homes > 0 && ` · ${homes} ${homes === 1 ? "home" : "homes"}`}
@@ -73,6 +94,23 @@ export function ProfileHeader({
             <strong className="font-semibold text-ink tabular-nums">{counts.comments}</strong>{" "}
             {counts.comments === 1 ? "comment" : "comments"}
           </p>
+        )}
+        {(people || follow) && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            {people && (
+              <p className="text-body text-stone-700">
+                <Link href={`${people.href}/followers`} className="underline-offset-2 hover:underline">
+                  <strong className="font-semibold text-ink tabular-nums">{people.followers}</strong>{" "}
+                  {people.followers === 1 ? "follower" : "followers"}
+                </Link>
+                {" · "}
+                <Link href={`${people.href}/following`} className="underline-offset-2 hover:underline">
+                  <strong className="font-semibold text-ink tabular-nums">{people.following}</strong> following
+                </Link>
+              </p>
+            )}
+            {follow}
+          </div>
         )}
         {isMe && (
           <>

@@ -1,6 +1,7 @@
 "use client";
 
-import { HeartOff, LoaderCircle, MoreHorizontal, Share2, Trash2, Undo2 } from "lucide-react";
+import { Camera, HeartOff, LoaderCircle, MoreHorizontal, Share2, Trash2, Undo2, UserCheck, UserPlus } from "lucide-react";
+import Link from "next/link";
 import {
   useEffect,
   useId,
@@ -19,7 +20,8 @@ import type { ActionResult } from "@/lib/engagement";
 import { cn } from "@/lib/format";
 import type { CardControl } from "@/lib/profile";
 import { button } from "@/lib/ui";
-import { deleteMyComment, removeMyReaction, removeMySpots } from "./actions";
+import { resizePhoto } from "@/lib/resize-photo";
+import { deleteMyComment, removeMyReaction, removeMySpots, setFollowing, setMyPhoto } from "./actions";
 
 const noop = () => () => {};
 
@@ -216,6 +218,8 @@ export function CardMenu({
           .map((card) => document.querySelector<HTMLElement>(`[data-card-link="${CSS.escape(card)}"]`))
           .find(Boolean) ??
         document.querySelector<HTMLElement>('nav[aria-label="Show"] [aria-current="page"]') ??
+        // (An empty page's way on, before the links in the header above it.)
+        document.querySelector<HTMLElement>("main [data-empty-action]") ??
         document.querySelector<HTMLElement>("main a[href]");
       target?.focus();
     },
@@ -468,5 +472,125 @@ export function MoreText({ children, meta, className }: { children: ReactNode; m
         </div>
       )}
     </>
+  );
+}
+
+// Follow, or Following (tap again to stop): what they like then comes to your
+// feed first. Signed out, it's the way to sign in, back to the same page.
+export function FollowButton({
+  personId,
+  name,
+  following,
+  signIn,
+  small = false,
+  stay = false,
+}: {
+  personId: string;
+  name: string;
+  following: boolean;
+  // Signed out: where signing in starts.
+  signIn?: string;
+  small?: boolean;
+  // In a list: stays as it is when tapped, so a mistaken tap can be undone.
+  stay?: boolean;
+}) {
+  const [on, setOn] = useState(following);
+  // What the server last said, so a refresh brings this along with it.
+  const [told, setTold] = useState(following);
+  if (told !== following) {
+    setTold(following);
+    setOn(following);
+  }
+  const [pending, startTransition] = useTransition();
+  const look = cn(button({ kind: on ? "secondary" : "primary" }), small && "min-h-11 px-4 text-sm", "shrink-0");
+  if (signIn) {
+    return (
+      <Link href={signIn} className={look}>
+        <UserPlus aria-hidden size={16} /> Follow<span className="sr-only"> {name}</span>
+      </Link>
+    );
+  }
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      aria-disabled={pending}
+      onClick={() => {
+        if (pending) return;
+        const next = !on;
+        setOn(next);
+        startTransition(async () => {
+          const result = await setFollowing(personId, next, stay);
+          if (!result.ok) {
+            setOn(!next);
+            say(result.error);
+          }
+        });
+      }}
+      className={look}
+    >
+      {on ? <UserCheck aria-hidden size={16} /> : <UserPlus aria-hidden size={16} />}
+      {on ? "Following" : "Follow"}
+      <span className="sr-only"> {name}</span>
+    </button>
+  );
+}
+
+// On your own page: a photo of you in place of your initial, wherever you
+// appear (your page, people's feeds, lists of followers), or none again.
+export function PhotoControls({ hasPhoto }: { hasPhoto: boolean }) {
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const id = useId();
+  const save = (photo: string) =>
+    startTransition(async () => {
+      const result = await setMyPhoto(photo);
+      setError(result.ok ? null : result.error);
+      if (result.ok) say(photo ? "Photo saved" : "Photo removed");
+    });
+  return (
+    <div className="mt-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <label
+          htmlFor={id}
+          aria-disabled={pending}
+          className={cn(button({ kind: "secondary" }), "cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand")}
+        >
+          <Camera aria-hidden size={16} /> {pending ? "Saving…" : hasPhoto ? "Change photo" : "Add a photo"}
+          <input
+            id={id}
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            disabled={pending}
+            onChange={async (event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (!file) return;
+              try {
+                save(await resizePhoto(file));
+              } catch {
+                setError("We couldn't read that image. Try a JPEG or PNG.");
+              }
+            }}
+          />
+        </label>
+        {hasPhoto && (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => save("")}
+            className={cn(button({ kind: "ghost" }), "text-stone-700")}
+          >
+            Remove photo
+          </button>
+        )}
+      </div>
+      {error && (
+        <p role="alert" className="mt-1 text-sm text-red-700">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

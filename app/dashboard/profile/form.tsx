@@ -5,32 +5,9 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { formatPhone, isContactPhone, phoneDigits } from "@/lib/contact";
 import { BRAND_COLORS, cn } from "@/lib/format";
+import { resizePhoto } from "@/lib/resize-photo";
 import { button, field } from "@/lib/ui";
 import { saveProfile, type ContactField, type ProfileState } from "../actions";
-
-const PHOTO_SIZE = 256;
-
-// Crops to a small square JPEG in the browser, small enough to store with the profile.
-async function resizePhoto(file: File) {
-  const bitmap = await createImageBitmap(file);
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = PHOTO_SIZE;
-  const side = Math.min(bitmap.width, bitmap.height);
-  canvas
-    .getContext("2d")!
-    .drawImage(
-      bitmap,
-      (bitmap.width - side) / 2,
-      (bitmap.height - side) / 2,
-      side,
-      side,
-      0,
-      0,
-      PHOTO_SIZE,
-      PHOTO_SIZE,
-    );
-  return canvas.toDataURL("image/jpeg", 0.82);
-}
 
 const inputClass = cn(field(), "mt-1");
 

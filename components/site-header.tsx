@@ -5,6 +5,7 @@ import { countUnreadActivity } from "@/lib/activity";
 import { getCurrentUser, isAdmin } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
 import { cn } from "@/lib/format";
+import { photoUrl, photoVersion } from "@/lib/person-photo";
 import { getPublicIdentity } from "@/lib/public";
 import { button } from "@/lib/ui";
 
@@ -89,6 +90,7 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
           {user?.role ? (
             <AccountMenu
               profile={visitor ? `/people/${visitor.id}` : "/people/me"}
+              photo={visitor ? photoUrl(visitor.id, photoVersion(user.photo_data_url)) : user.photo_data_url}
               initial={(user.full_name.trim() || user.email)[0]?.toUpperCase() ?? ""}
               name={user.full_name.trim()}
               email={user.email}

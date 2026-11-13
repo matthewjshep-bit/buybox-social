@@ -2,8 +2,9 @@ import { SessionProvider } from "@/components/session";
 import type { Metadata, Viewport } from "next";
 import { BrandScope, HeaderGate } from "@/components/header-gate";
 import { SiteHeader } from "@/components/site-header";
+import { ViewAsBar } from "@/components/view-as-bar";
 import { SkipLink } from "@/components/skip-link";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, getViewAs } from "@/lib/auth";
 import { appUrl } from "@/lib/format";
 import { fontVariables } from "./fonts";
 import "./globals.css";
@@ -22,7 +23,7 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children, modal }: LayoutProps<"/">) {
-  const user = await getCurrentUser();
+  const [user, viewing] = await Promise.all([getCurrentUser(), getViewAs()]);
   return (
     <html lang="en" className={`${fontVariables} antialiased`}>
       <body className="min-h-dvh font-sans">
@@ -42,6 +43,7 @@ export default async function RootLayout({ children, modal }: LayoutProps<"/">) 
             {children}
           </div>
           {modal}
+          {viewing && <ViewAsBar as={viewing.as} />}
         </BrandScope>
         </SessionProvider>
       </body>

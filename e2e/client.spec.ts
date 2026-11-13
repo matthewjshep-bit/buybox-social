@@ -5,7 +5,7 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
   browser,
 }) => {
   const agent = await signInAgent(browser, "gwen@example.com", "Gwen Agent");
-  const { url } = await createShare(agent, ["10421 Halvard", "1204 Quillan"], ["Joe"]);
+  const { url, dashboardUrl } = await createShare(agent, ["10421 Halvard", "1204 Quillan"], ["Joe"]);
 
   // The package can be renamed in place.
   await agent.getByRole("button", { name: "Rename" }).click();
@@ -62,10 +62,12 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
   await expect(agent.getByText("Stella")).toHaveCount(0);
 
   // What Joe wants, summed up across every home.
+  await agent.goto(`${dashboardUrl}?tab=want`);
   const profile = agent.getByRole("region", { name: "What Joe wants" });
   await expect(profile).toContainText("Joe liked 1 of 2 homes · passed on 1");
   await expect(profile.getByText("Floating staircase", { exact: true })).toBeVisible();
   await expect(profile.getByText("Exterior", { exact: true })).toBeVisible();
+  await agent.goto(`${dashboardUrl}?tab=homes`);
   await expect(agent.getByRole("region", { name: "10421 Halvard Way NE" })).toContainText(
     "Joe liked the floating staircase",
   );
@@ -76,8 +78,10 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
   await expect(removed.getByRole("heading", { name: "1204 Quillan St SE" })).toBeVisible();
   await expect(removed.getByText("Not a fan of farmhouse sinks.")).toBeVisible();
   await expect(removed.getByText("Joe passed, didn't like the exterior")).toBeVisible();
+  await agent.goto(`${dashboardUrl}?tab=want`);
   await expect(profile).toContainText("of 2 homes");
   await expect(profile.getByText("Exterior", { exact: true })).toBeVisible();
+  await agent.goto(`${dashboardUrl}?tab=homes`);
   await joe.reload();
   await expect(homeIn(joe, "1204 Quillan St SE")).toHaveCount(0);
   await expect(joe.getByRole("heading", { level: 1 })).toHaveText("Joe, I picked this home for you");
@@ -89,7 +93,7 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
   await expect(homeIn(joe, "1204 Quillan St SE")).toBeVisible();
 
   // More homes can go on the same link, so Joe's history stays in one place.
-  await agent.getByRole("link", { name: "Add homes" }).click();
+  await agent.getByRole("link", { name: "Send more homes" }).click();
   await expect(agent.getByRole("heading", { name: "Add homes for Joe" })).toBeVisible();
   await expect(agent.getByRole("button", { name: /10421 Halvard/ })).toHaveCount(0);
   await agent.getByRole("button", { name: /812 N Corbel/ }).click();
@@ -101,14 +105,13 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
 
   // The dashboard lists the client by name, with how they came down on each home.
   await agent.goto("/dashboard");
-  const row = agent.getByRole("region", { name: "Links you've sent" }).getByRole("link", { name: /Joe/ });
+  const row = agent.getByRole("region", { name: "Clients" }).getByRole("link", { name: /Joe/ });
   await expect(row).toBeVisible();
   await expect(row.getByRole("listitem").filter({ hasText: "10421 Halvard Way NE" })).toContainText("1 liked");
   await expect(row.getByRole("listitem").filter({ hasText: "1204 Quillan St SE" })).toContainText("1 passed");
-  await expect(row.getByRole("listitem").filter({ hasText: "812 N Corbel St" })).toContainText("No reactions yet");
-  // ...and what Joe said leads the page, never the public's.
-  const news = agent.getByRole("region", { name: "What's new" });
-  await expect(news.getByRole("link", { name: /^Joe commented: “Not a fan of farmhouse sinks\.”/ })).toBeVisible();
-  await expect(news).not.toContainText("Stella");
-  await expect(news).not.toContainText("that staircase!");
+  await expect(row.getByRole("listitem").filter({ hasText: "812 N Corbel St" })).toContainText("no reactions yet");
+  // ...and the last thing Joe did, never the public's.
+  await expect(row).toContainText(/Joe (commented|liked|passed)/);
+  await expect(row).not.toContainText("Stella");
+  await expect(row).not.toContainText("that staircase!");
 });

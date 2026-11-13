@@ -1,14 +1,15 @@
-import { ArrowLeft, Heart, ThumbsDown } from "lucide-react";
+import { ArrowLeft, Eye, Heart, ThumbsDown } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
-import { updatePerson, deleteLead } from "@/app/admin/actions";
+import { updatePerson, deleteLead, viewAs } from "@/app/admin/actions";
 import { ConfirmAction, PersonForm } from "@/components/admin";
 import { Card, ContactLinks, Empty, StatusBadge, when } from "@/components/admin-ui";
 import { Avatar, HomeThumb } from "@/components/ui";
 import { getPerson } from "@/lib/admin";
 import { requireAdmin } from "@/lib/auth";
 import { cn, timeAgo } from "@/lib/format";
+import { button } from "@/lib/ui";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -20,7 +21,7 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function AdminPerson({ params }: Props) {
   await connection();
-  await requireAdmin();
+  const admin = await requireAdmin();
   const person = await getPerson((await params).id);
   if (!person) notFound();
   const neverSignedIn = person.accountId === null;
@@ -52,6 +53,14 @@ export default async function AdminPerson({ params }: Props) {
           <div className="mt-3">
             <ContactLinks name={person.name} phone={person.phone} email={person.email} />
           </div>
+          {/* The site as they see it: their feed, their page, their dashboard. */}
+          {person.accountId && person.status !== "lead" && person.accountId !== admin.id && (
+            <form action={viewAs.bind(null, person.accountId)} className="mt-3">
+              <button type="submit" className={button({ kind: "secondary" })}>
+                <Eye aria-hidden size={16} /> View the site as {person.name.split(" ")[0] || "them"}
+              </button>
+            </form>
+          )}
         </div>
       </div>
 

@@ -80,10 +80,13 @@ export function AccountMenu({
   admin = false,
   unread,
   overlay,
+  photo,
 }: {
   // Your own page: straight to it once you have one (so it's marked when you're there).
   profile: string;
   initial: string;
+  // Your own photo, where you've added one, in place of your initial.
+  photo?: string | null;
   name: string;
   email: string;
   agent: boolean;
@@ -194,6 +197,7 @@ export function AccountMenu({
         <Avatar
           name={initial}
           tone={agent ? "agent" : "person"}
+          photo={photo}
           className={cn("[text-shadow:none]", overlay && "ring-1 ring-white/30")}
         />
       </button>

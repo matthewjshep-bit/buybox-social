@@ -42,14 +42,35 @@ async function getAuthUser(): Promise<{ id: string; email: string } | null> {
 // email). Never a stand-in: each page says that in its own words.
 export const firstName = (account: Pick<Account, "full_name">) => account.full_name.trim().split(/\s+/)[0] ?? "";
 
-// The signed-in person, if any. Their account is made on their first sign-in,
-// as whatever they signed up as: an agent if they came in through "For
-// agents", otherwise a buyer, named from the sign-up form if they used it.
-export const getCurrentUser = cache(async (): Promise<Account | null> => {
+// Who's actually signed in, if anyone. Their account is made on their first
+// sign-in, as whatever they signed up as: an agent if they came in through
+// "For agents", otherwise a buyer, named from the sign-up form if they used it.
+export const getSignedInUser = cache(async (): Promise<Account | null> => {
   const user = await getAuthUser();
   if (!user) return null;
   return accountFor(user);
 });
+
+// An admin seeing the site as one of its people (from that person's admin
+// page): the site is theirs, as they see it, until the admin stops. Only ever
+// for someone signed in as an admin: anyone else's cookie does nothing.
+export const VIEW_AS_COOKIE = "pc_view_as";
+export const getViewAs = cache(async (): Promise<{ as: Account; admin: Account } | null> => {
+  const id = (await cookies()).get(VIEW_AS_COOKIE)?.value;
+  if (!id || !/^[0-9a-f-]{36}$/.test(id)) return null;
+  const admin = await getSignedInUser();
+  if (!admin || admin.id === id || !(await isAdmin(admin))) return null;
+  const [as] = await sql<Account[]>`
+    select id, email, full_name, role, brokerage, photo_data_url, brand_color
+    from accounts where id = ${id} and role is not null`;
+  return as ? { as, admin } : null;
+});
+
+// The person the site is for right now: whoever's signed in, or whoever an
+// admin is seeing it as.
+export const getCurrentUser = cache(
+  async (): Promise<Account | null> => (await getViewAs())?.as ?? (await getSignedInUser()),
+);
 
 // The account for someone just proved to be signed in (by a code, a link, or
 // locally), made the first time.
@@ -107,9 +128,10 @@ export const isAdmin = cache(async (account: Pick<Account, "email"> | null) => {
 });
 
 // Signed out goes to sign in; anyone else signed in sees "not found", so the
-// admin pages don't show they exist.
+// admin pages don't show they exist. (Always the admin themselves, even while
+// they're seeing the site as someone else.)
 export async function requireAdmin(): Promise<Account & { superAdmin: boolean }> {
-  const user = await getCurrentUser();
+  const user = await getSignedInUser();
   if (!user) redirect("/login");
   if (!(await isAdmin(user))) notFound();
   return { ...user, superAdmin: isSuperAdmin(user) };

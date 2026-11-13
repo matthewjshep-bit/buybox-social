@@ -44,12 +44,15 @@ export async function createShare(page: Page, addresses: string[], people: strin
   await page.waitForURL("**/dashboard/shares/*");
   const urls: Record<string, string> = {};
   for (const name of people) urls[name] = await page.getByLabel(`${name}'s link`).inputValue();
-  return { url: urls[people[0]], urls, dashboardUrl: page.url() };
+  // (The client's page itself, without which part of it: that's up to the page.)
+  return { url: urls[people[0]], urls, dashboardUrl: page.url().split("?")[0] };
 }
 
 // A buyer signs up the way buyers do: the form on the home page, a first name
 // and an email, then the code (locally, always DEV_CODE, shown on the page).
-// They're signed in right there, on the feed. The phone is optional.
+// They're signed in right there: the home page is their feed now. Then on to
+// every home full screen (Browse homes), where most tests carry on. The phone
+// is optional.
 export async function signUpBuyer(browser: Browser, email: string, name: string, phone?: string) {
   const page = await (await browser.newContext()).newPage();
   await page.goto("/");
@@ -61,6 +64,9 @@ export async function signUpBuyer(browser: Browser, email: string, name: string,
   await enterCode(page.getByRole("form", { name: "Sign up" }).first());
   await expect(page.getByRole("button", { name: "Your profile" })).toBeVisible();
   await expect(page.getByRole("form", { name: "Sign up" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Browse homes" }).first()).toBeVisible();
+  await page.goto("/reel");
+  await expect(page.getByRole("article").first()).toBeVisible();
   return page;
 }
 

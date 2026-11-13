@@ -33,7 +33,15 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   const clientHome = homeIn(client, "96 Fernhollow Ln");
   await heartOf(clientHome).click();
   await expect(heartOf(clientHome)).toHaveAttribute("aria-pressed", "true");
+  // (Saved before the agent looks.)
+  const evergreensSaved = client.waitForResponse(
+    (res) =>
+      res.request().method() === "POST" &&
+      Boolean(res.request().headers()["next-action"]) &&
+      /evergreen/i.test(res.request().postData() ?? ""),
+  );
   await likeInPhoto(clientHome, "the evergreens");
+  await evergreensSaved;
 
   // That agent's feed names their own client, and says what they liked. (Each
   // home here is opened by its own link, which opens the feed on it: where it

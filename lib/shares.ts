@@ -94,6 +94,32 @@ export function photosSeenLine(seen: number, photos: number) {
   return `saw ${n === photos ? `all ${photos}` : `${n} of ${photos}`} photos`;
 }
 
+// "45 sec", "3 min", "1 hr 5 min": time spent, for the agent.
+export function duration(seconds: number) {
+  if (seconds < 60) return `${Math.max(1, Math.round(seconds))} sec`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const rest = minutes % 60;
+  return `${Math.floor(minutes / 60)} hr${rest ? ` ${rest} min` : ""}`;
+}
+
+// Where people spent their time on links (share_home_views), for the agent:
+// per link and home, the seconds it was on screen, every device together, and
+// the most of its photos one device looked at. Keyed `${shareId}:${listingKey}`.
+export type HomeView = { seconds: number; photosSeen: number };
+export const homeViewKey = (shareId: string, listingKey: string) => `${shareId}:${listingKey}`;
+export async function getHomeViews(shareIds: string[]): Promise<Map<string, HomeView>> {
+  if (shareIds.length === 0) return new Map();
+  const rows = await sql<{ share_id: string; listing_key: string; seconds: number; photos_seen: number }[]>`
+    select share_id, listing_key, sum(seconds)::int as seconds, max(photos_seen)::int as photos_seen
+    from share_home_views
+    where share_id in ${sql(shareIds)}
+    group by share_id, listing_key`;
+  return new Map(
+    rows.map((row) => [homeViewKey(row.share_id, row.listing_key), { seconds: row.seconds, photosSeen: row.photos_seen }]),
+  );
+}
+
 // Who has had a link open, and when they last did, newest first: for the agent
 // only. Anything someone did on it counts too, so a link sent before opens
 // were counted still shows who has been on it.
@@ -201,8 +227,49 @@ export async function accountParticipant(
       where id = ${person.id} and account_id is null
       returning id`;
     if (!claimed) return null;
+    await joinedLink(accountId, found.share.id);
   }
   return { id: person.id, first_name: person.first_name };
+}
+
+// Someone with an account just became theirs on an agent's link (claimed their
+// own link, joined a package's, or signed in on a browser that was on one):
+// they have a profile, and they and the agent follow each other, once. Either
+// can stop following later; nothing here starts it again.
+export async function joinedLink(accountId: string, shareId: string) {
+  await ensureLinkProfile(accountId);
+  const [agent] = await sql<{ agent_id: string }[]>`select agent_id from shares where id = ${shareId}`;
+  if (!agent || agent.agent_id === accountId) return;
+  // The agent's profile too, under their own first name.
+  await sql`
+    insert into visitors (device_token, first_name, account_id)
+    select 'account:' || a.id, split_part(regexp_replace(btrim(a.full_name), '[[:space:]]+', ' ', 'g'), ' ', 1), a.id
+    from accounts a where a.id = ${agent.agent_id}
+    on conflict do nothing`;
+  await sql`
+    insert into follows (follower_id, followed_id)
+    select one.id, other.id
+    from visitors one, visitors other
+    where (one.account_id, other.account_id) in ((${accountId}::uuid, ${agent.agent_id}::uuid), (${agent.agent_id}::uuid, ${accountId}::uuid))
+    on conflict do nothing`;
+}
+
+// Someone with an account on an agent's link has a profile, so wherever they
+// appear on the agent's pages their name can link to it: made the first time,
+// under the first name on their account, or else the one they have on a link.
+// (Only for people on links: anyone else's is made when they first need it.)
+export async function ensureLinkProfile(accountId: string) {
+  await sql`
+    insert into visitors (device_token, first_name, account_id)
+    select 'account:' || a.id,
+      coalesce(
+        nullif(split_part(regexp_replace(btrim(a.full_name), '[[:space:]]+', ' ', 'g'), ' ', 1), ''),
+        (select p.first_name from participants p where p.account_id = a.id order by p.created_at limit 1),
+        ''),
+      a.id
+    from accounts a
+    where a.id = ${accountId} and exists (select 1 from participants p where p.account_id = a.id)
+    on conflict do nothing`;
 }
 
 // The people an agent added to a package, each with their own link.

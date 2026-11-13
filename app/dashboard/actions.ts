@@ -159,7 +159,51 @@ export async function addPerson(shareId: string, _: AddPersonState, form: FormDa
   if (confidant && form.get("confirm") !== "yes") {
     return { confirm: { confidant: confidant.first_name, newcomer: name.data } };
   }
+  const before = await inviteeNames(shareId);
   await invitePerson(shareId, name.data);
+  await renameWithPeople(shareId, before, [...before, name.data]);
+  refresh();
+  return {};
+}
+
+// The first names of the people the agent added to a package, in order.
+async function inviteeNames(shareId: string) {
+  const rows = await sql<{ first_name: string }[]>`
+    select first_name from participants
+    where share_id = ${shareId} and token is not null
+    order by invited_at nulls last, created_at, first_name`;
+  return rows.map((row) => row.first_name);
+}
+
+// A link named for its people ("Ben & Nina") keeps saying who's on it as
+// people are added and taken off. A name the agent chose stays theirs.
+async function renameWithPeople(shareId: string, before: string[], after: string[]) {
+  const now = namesTogether(after).slice(0, 60);
+  if (!now) return;
+  await sql`
+    update shares set client_name = ${now}
+    where id = ${shareId} and client_name = ${namesTogether(before).slice(0, 60)}`;
+}
+
+// Takes someone off a package: their own link stops working, and what they
+// liked, passed on and said there goes with them. Never the last one on it.
+export async function removePerson(shareId: string, personId: string): Promise<FormState> {
+  const agent = await requireAgent();
+  if (!uuid.safeParse(personId).success || !(await ownShare(agent.id, shareId))) {
+    return { error: "We couldn't find them on this link." };
+  }
+  const people = await sql<{ id: string }[]>`select id from participants where share_id = ${shareId}`;
+  if (!people.some((person) => person.id === personId)) return { error: "They're not on this link anymore." };
+  if (people.length === 1) return { error: "They're the only one on this link." };
+  const before = await inviteeNames(shareId);
+  // (Never the last one, even with two taken off at once.)
+  const gone = await sql`
+    delete from participants
+    where id = ${personId} and share_id = ${shareId}
+      and (select count(*) from participants where share_id = ${shareId}) > 1
+    returning id`;
+  if (gone.length === 0) return { error: "They're the only one on this link." };
+  await renameWithPeople(shareId, before, await inviteeNames(shareId));
   refresh();
   return {};
 }

@@ -1,10 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { requireAdmin, requireSuperAdmin, SUPER_ADMIN_EMAIL } from "@/lib/auth";
+import { requireAdmin, requireSuperAdmin, SUPER_ADMIN_EMAIL, VIEW_AS_COOKIE } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { siteOrigin } from "@/lib/site";
 
 // Every action checks for an admin itself: a server action can be called
 // directly, not only from the page that shows its button.
@@ -76,4 +78,30 @@ export async function removeAdmin(email: string) {
   await requireSuperAdmin();
   await sql`delete from admins where email = ${email}`;
   revalidatePath("/admin", "layout");
+}
+
+// See the site as one of its people, to check what they see: their home page,
+// their profile, their dashboard. Everything done meanwhile is done as them,
+// which the bar along the foot of every page says until Stop.
+export async function viewAs(accountId: string) {
+  const admin = await requireAdmin();
+  if (!z.uuid().safeParse(accountId).success || accountId === admin.id) return;
+  const [person] = await sql`select 1 from accounts where id = ${accountId} and role is not null`;
+  if (!person) return;
+  (await cookies()).set(VIEW_AS_COOKIE, accountId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: (await siteOrigin()).startsWith("https:"),
+    path: "/",
+    maxAge: 60 * 60 * 4,
+  });
+  redirect("/");
+}
+
+// Back to being yourself, on the admin page of whoever it was.
+export async function stopViewingAs() {
+  const jar = await cookies();
+  const id = jar.get(VIEW_AS_COOKIE)?.value;
+  jar.delete(VIEW_AS_COOKIE);
+  redirect(id && z.uuid().safeParse(id).success ? `/admin/people/${id}` : "/admin/people");
 }

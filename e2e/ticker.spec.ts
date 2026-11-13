@@ -302,7 +302,7 @@ test("a pointer on the line holds it; a card open on the photo holds it, and onc
   await expect(lineOf(home)).toHaveAttribute("aria-label", shown);
 });
 
-test("opened over another page (from someone's profile), it still goes round", async ({ browser }) => {
+test("opened from someone's profile, it still goes round", async ({ browser }) => {
   // Bo's page: the front entry Bo liked shares its photo with Al's sconces,
   // so there's more than one thing to go round.
   const look = await (await browser.newContext()).newPage();
@@ -314,9 +314,10 @@ test("opened over another page (from someone's profile), it still goes round", a
   const page = await (await browser.newContext()).newPage();
   await page.clock.install();
   await page.goto(profile!);
-  // (A card opens on the photo it's about: `?photo=`.)
-  await page.locator('a[href^="/homes/SAMPLE-1007"]').first().click();
-  const home = page.locator("dialog[open]").getByRole("article", { name: WEXFORD });
+  // (A card opens their page's homes full screen, on the photo it's about: `?photo=`.)
+  await page.locator('a[href*="home=SAMPLE-1007"]').first().click();
+  await page.waitForURL(/\/reel\?from=/);
+  const home = homeIn(page, WEXFORD);
   await expect(home).toBeVisible();
   await expect(activityOf(home).getByRole("button", { name: "Pause activity" })).toBeVisible();
   const before = (await lineOf(home).getAttribute("aria-label"))!;

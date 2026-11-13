@@ -1,5 +1,6 @@
 import type { Account } from "./auth";
 import { sql } from "./db";
+import { getFollowedIds } from "./follows";
 import type { Listing } from "./listings/types";
 import {
   getPublicIdentity,
@@ -106,7 +107,8 @@ export async function getReel(
   const agentId = viewer?.role === "agent" ? viewer.id : null;
   const wanted = only ?? [];
 
-  const [rows, mine] = await Promise.all([
+  const followed = [...(await getFollowedIds(visitorId))];
+  const [rows, mine, followedLikes] = await Promise.all([
     sql<Row[]>`
       select l.data, t.*, h.kind as h_kind, h.name as h_name, h.source as h_source, h.at as h_at, h.tag as h_tag, h.media as h_media,
         json_build_object('reaction', h.reaction, 'liked', h.liked, 'disliked', h.disliked) as h_state
@@ -169,7 +171,19 @@ export async function getReel(
           select listing_key, reaction, liked, disliked from public_reactions
           where visitor_id = ${visitorId}`
       : Promise.resolve([]),
+    // The homes people they follow have liked, in public, and when last.
+    followed.length
+      ? sql<{ listing_key: string; at: Date }[]>`
+          select listing_key, max(at) as at from (
+            select listing_key, updated_at as at from public_reactions
+            where visitor_id in ${sql(followed)} and (reaction = 'like' or cardinality(liked) > 0)
+            union all
+            select listing_key, created_at from public_photo_likes where visitor_id in ${sql(followed)}
+          ) liked
+          group by listing_key`
+      : Promise.resolve([]),
   ]);
+  const followedLiked = new Map(followedLikes.map((row) => [row.listing_key, row.at.getTime()]));
 
   const mineByKey = new Map(
     mine.map((m) => [m.listing_key, { reaction: m.reaction, liked: m.liked, disliked: m.disliked }]),
@@ -179,13 +193,18 @@ export async function getReel(
     return { row, totals, match: matchTaste(taste, row.data, totals.aspects.liked) };
   });
 
-  // Homes you haven't reacted to, best match first (the sort is stable, so
-  // equal matches keep the busiest-this-week, newest-first order); then the
+  // Homes you haven't reacted to: first those people you follow have liked,
+  // most recently liked first; then best match first (the sort is stable, so
+  // equal matches keep the busiest-this-week, newest-first order). Then the
   // rest, latest activity first.
   const skip = new Set(exclude);
   const unreacted = scored
     .filter(({ row }) => !mineByKey.has(row.data.ListingKey))
-    .sort((a, b) => b.match.score - a.match.score);
+    .sort(
+      (a, b) =>
+        (followedLiked.get(b.row.data.ListingKey) ?? 0) - (followedLiked.get(a.row.data.ListingKey) ?? 0) ||
+        b.match.score - a.match.score,
+    );
   const reacted = scored
     .filter(({ row }) => mineByKey.has(row.data.ListingKey))
     .sort((a, b) => (b.totals.buzz.lastActivityAt ?? "").localeCompare(a.totals.buzz.lastActivityAt ?? ""));
@@ -228,7 +247,11 @@ export async function getReel(
     // never. No dislikes or passes at all: here it's who liked what.
     sql<EventRow[]>`
       select * from (
-        select e.*, row_number() over (partition by e.listing_key order by e.at desc, e.id) as n
+        select e.*, row_number() over (
+          partition by e.listing_key
+          -- (What people they follow did is kept, whatever else came since.)
+          order by coalesce(e.profile_id in ${sql(followed.length ? followed : [""])}, false) desc, e.at desc, e.id
+        ) as n
         from (
           select r.listing_key, 'reaction' as kind, md5('pr:' || r.listing_key || ':' || r.visitor_id) as id,
             vi.first_name as name, 'public' as source, r.updated_at as at, null::text as media_key,
@@ -313,7 +336,10 @@ export async function getReel(
       mine: mineByKey.get(key) ?? NO_REACTION,
       buzz: totals.buzz,
       reasons: match.reasons,
-      events: toEvents(events.filter((event) => event.listing_key === key)),
+      events: toEvents(
+        events.filter((event) => event.listing_key === key),
+        new Set(followed),
+      ),
     };
   };
 
@@ -354,7 +380,7 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 // "You" (your likes keyed so the one you just made matches what comes back),
 // and a home an agent sent is "You" to them, with their face in ink. Several
 // strangers' plain likes this week fold into one: "4 buyers liked this home".
-function toEvents(rows: EventRow[]): TickerEvent[] {
+function toEvents(rows: EventRow[], followed: Set<string>): TickerEvent[] {
   const events: TickerEvent[] = [];
   const folded: TickerEvent[] = [];
   for (const row of rows) {
@@ -368,6 +394,7 @@ function toEvents(rows: EventRow[]): TickerEvent[] {
               tone: row.source === "client" ? "client" : "person",
               name: row.name,
               ...(row.source === "public" && row.profile_id && { profileId: row.profile_id }),
+              ...(row.source === "public" && row.profile_id && followed.has(row.profile_id) && { following: true }),
             }
           : { tone: "anonymous", name: null };
     if (row.kind === "reaction") {

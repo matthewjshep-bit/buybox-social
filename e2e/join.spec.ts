@@ -66,8 +66,13 @@ test("signed out, the home page says what this is, shows three homes, then asks 
   await expect(page.getByRole("button", { name: "Your profile" })).toHaveText("R");
   await expect(page).toHaveURL(/localhost:\d+\/$/);
 
-  // Signed in, it's the feed, for as long as you scroll.
+  // Signed in, the home page is their feed, with every home one tap away,
+  // for as long as they scroll.
   await expect(page.getByRole("form", { name: "Sign up" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Hi, Robin");
+  await page.getByRole("link", { name: "Browse homes" }).first().click();
+  await page.waitForURL(/\/reel$/);
+  await expect(page.getByRole("article").first()).toBeVisible();
   await scrollToEnd(page);
   await expect(page.getByRole("article")).toHaveCount(13);
 

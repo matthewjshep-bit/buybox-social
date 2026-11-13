@@ -127,17 +127,17 @@ test("the dashboard leads with what's new, and says when each link was opened, n
   test.setTimeout(90_000);
   const agent = await signInAgent(browser, "olive-opens@example.com", "Olive Opens");
   const { url } = await createShare(agent, ["1204 Quillan", "719 Saltmarsh"], ["Owen"]);
-  const row = agent.getByRole("region", { name: "Links you've sent" }).getByRole("link", { name: /Owen/ });
-  const news = agent.getByRole("region", { name: "What's new" });
+  const row = agent.getByRole("region", { name: "Clients" }).getByRole("link", { name: /Owen/ });
+  const counts = agent.getByRole("navigation", { name: "Show clients" });
 
-  // Sent, and nothing since.
+  // Sent, and nothing since: who it went to, the homes, and that it isn't opened.
   await agent.goto("/dashboard");
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Your clients");
   await expect(row).toContainText("Not opened yet");
-  await expect(row.getByRole("listitem").filter({ hasText: "1204 Quillan St SE" })).toBeVisible();
-  // Said once for the link, not under every home.
-  await expect(row.getByText("No reactions yet")).toHaveCount(1);
+  await expect(row.getByRole("listitem").filter({ hasText: "1204 Quillan St SE" })).toContainText("no reactions yet");
   await expect(row).not.toHaveAccessibleName(/new since you last looked/);
-  await expect(news).toContainText("Nothing yet.");
+  await expect(counts.getByRole("link", { name: /Not opened yet/ })).toContainText("1");
+  await expect(counts.getByRole("link", { name: /New activity/ })).toContainText("0");
 
   // The agent looking at their own link doesn't count as it being opened.
   await Promise.all([actionAnswered(agent), agent.goto(url)]);
@@ -175,26 +175,29 @@ test("the dashboard leads with what's new, and says when each link was opened, n
   await expect.poll(() => emailsTo("olive-opens@example.com").length).toBe(2);
   expect(emailsTo("olive-opens@example.com")[1]).toContain("Owen liked this at 1204 Quillan St SE");
 
-  // One load of the dashboard has all of it: what's new first, a verdict on
-  // each home, when it was last busy, and a mark that there's something new.
+  // One load of the dashboard has all of it: the last thing he did, a verdict
+  // on each home, when it was last busy, and a mark that there's something new.
   await agent.goto("/dashboard");
-  const said = news.getByRole("link", { name: /^Owen commented: “Love the porch\.”/ });
-  await expect(said).toBeVisible();
-  await expect(news.getByRole("link", { name: /^Owen liked this home/ })).toBeVisible();
-  await expect(news.getByRole("link", { name: /^Owen passed on this home/ })).toBeVisible();
+  await expect(row).toContainText("Owen commented: “Love the porch.”");
   await expect(row.getByRole("listitem").filter({ hasText: "1204 Quillan St SE" })).toContainText("1 liked");
   await expect(row.getByRole("listitem").filter({ hasText: "719 Saltmarsh Ln" })).toContainText("1 passed");
   await expect(row).toContainText("1 comment");
   await expect(row).toContainText(/Last activity (just now|\d+m ago)/);
   await expect(row).toHaveAccessibleName(/new since you last looked/);
+  await expect(counts.getByRole("link", { name: /New activity/ })).toContainText("1");
+  // The counts are also the way to see just those clients.
+  await counts.getByRole("link", { name: /Not opened yet/ }).click();
+  await expect(agent).toHaveURL(/show=unopened$/);
+  await expect(row).toHaveCount(0);
+  await counts.getByRole("link", { name: /New activity/ }).click();
+  await expect(row).toBeVisible();
 
-  // Each item opens the thread it came from, marking for a moment which
-  // comment it was, and seeing it there clears the mark.
-  const marked = agent.waitForSelector("li[data-target]");
-  await Promise.all([actionAnswered(agent), said.click()]);
-  await expect(agent).toHaveURL(/\/dashboard\/shares\/[\w-]+#comment-[\w-]+$/);
-  await expect(agent.getByText("Love the porch.")).toBeInViewport();
-  expect(await (await marked).textContent()).toContain("Love the porch.");
+  // It opens his page, and seeing it there clears the mark.
+  await Promise.all([actionAnswered(agent), row.click()]);
+  await expect(agent).toHaveURL(/\/dashboard\/shares\/[\w-]+\?tab=homes$/);
+  await expect(agent.getByText("Love the porch.")).toBeVisible();
+  await expect(agent.getByLabel("At a glance")).toContainText(/Last opened(Today|Yesterday), \d/);
+  await agent.getByRole("navigation", { name: "Parts of this page" }).getByRole("link", { name: /People & link/ }).click();
   await expect(agent.getByText(/^Owen opened it (at |yesterday, )\d/)).toBeVisible();
   await agent.goto("/dashboard");
   await expect(row).toBeVisible();
@@ -228,19 +231,37 @@ test("the agent sees how much of a link was looked at, and the link never says s
 
   // The agent's page about him says so, under his link, and so does the dashboard.
   await expect(async () => {
-    await agent.goto(dashboardUrl);
+    await agent.goto(`${dashboardUrl}?tab=people`);
     await expect(agent.locator("main")).toContainText(/Owen opened it .+ · saw 3 of 4 photos/, { timeout: 1000 });
   }).toPass({ timeout: 20_000 });
   await agent.goto("/dashboard");
-  const row = agent.getByRole("region", { name: "Links you've sent" }).getByRole("link", { name: /Owen/ });
+  const row = agent.getByRole("region", { name: "Clients" }).getByRole("link", { name: /Owen/ });
   await expect(row).toContainText(/Opened .+ · saw 3 of 4 photos/);
 
-  // [P] Only the agent: the link itself never says what was looked at.
-  await expect(owen.getByText(/saw \d/)).toHaveCount(0);
-  expect(await (await request.get(url)).text()).not.toMatch(/saw \d/);
+  // And how long he spent on it: said when he puts the page away (and every
+  // half-minute while it's open), on the home and at the top of his page.
+  await owen.mouse.wheel(0, 1);
+  await owen.waitForTimeout(2_500);
+  await Promise.all([
+    owen.waitForResponse((res) => res.request().method() === "POST" && res.request().headers()["next-action"] !== undefined),
+    owen.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    }),
+  ]);
+  await agent.goto(dashboardUrl);
+  const halvard = agent.getByRole("region", { name: "10421 Halvard Way NE" });
+  await expect(halvard).toContainText(/Spent \d+ sec on it · saw 3 of 4 photos/);
+  await expect(agent.getByRole("definition").filter({ hasText: /^\d+ sec$/ })).toBeVisible();
+  await agent.goto("/dashboard");
+  await expect(row).toContainText(/spent \d+ sec/);
+
+  // [P] Only the agent: the link itself never says what was looked at, or for how long.
+  await expect(owen.getByText(/saw \d|spent \d/i)).toHaveCount(0);
+  expect(await (await request.get(url)).text()).not.toMatch(/saw \d|spent \d/i);
 });
 
-test("the agent's page about a client reads like the product: a card per home, spots, a careful delete, two columns", async ({
+test("the agent's page about a client reads like the product: a card per home, spots, a careful delete, one part at a time", async ({
   browser,
 }) => {
   test.setTimeout(90_000);
@@ -302,16 +323,24 @@ test("the agent's page about a client reads like the product: a card per home, s
   const more = await openMore(chris, homeIn(chris, "5902 Lakeview Terrace SE"));
   await more.getByRole("button", { name: "Not for me" }).click();
   const why = more.getByRole("group", { name: "What made you pass?" });
+  // (Saved before the agent looks.)
+  const priceSaved = chris.waitForResponse(
+    (res) =>
+      res.request().method() === "POST" &&
+      Boolean(res.request().headers()["next-action"]) &&
+      /price/i.test(res.request().postData() ?? ""),
+  );
   await why.getByRole("button", { name: "Price" }).click();
   await expect(why.getByRole("button", { name: "Price" })).toHaveAttribute("aria-pressed", "true");
+  await priceSaved;
 
   // On a phone, home by home is a card each, a line per person, nothing cut
   // off, not even a long name; folded away at first, since each home further
   // down says the same.
   await agent.setViewportSize({ width: 393, height: 852 });
-  await agent.goto(dashboardUrl);
+  await agent.goto(`${dashboardUrl}?tab=want`);
   const nav = agent.getByRole("navigation", { name: "Dashboard" });
-  await expect(nav.getByRole("link", { name: "Your links" })).toHaveAttribute("aria-current", "true");
+  await expect(nav.getByRole("link", { name: "Clients" })).toHaveAttribute("aria-current", "true");
   expect((await nav.getByRole("link", { name: "Your brand" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
   const compare = agent.getByRole("region", { name: "What they each want" });
   await expect(compare.getByRole("table")).toBeHidden();
@@ -353,6 +382,7 @@ test("the agent's page about a client reads like the product: a card per home, s
 
   // The thread: who, then what they said; a spot shows the photo with a dot
   // where they tapped, and says which photo a bare spot was in.
+  await agent.getByRole("navigation", { name: "Parts of this page" }).getByRole("link", { name: /Homes/ }).click();
   const home = agent.getByRole("region", { name: "719 Saltmarsh Ln" });
   await expect(home).toContainText("Nina liked a spot in the living room");
   const said = home.getByRole("listitem").filter({ hasText: "Where would the TV go?" });
@@ -399,13 +429,9 @@ test("the agent's page about a client reads like the product: a card per home, s
   await expect(home.getByText("Where would the TV go?")).toHaveCount(0);
   await expect(home.getByRole("textbox", { name: "Reply to your client" })).toBeFocused();
 
-  // Wide: what they want on the left, the homes and what was said on the right,
-  // and the side-by-side table, its homes kept in view as it scrolls.
+  // Wide: the side-by-side table, its homes kept in view as it scrolls.
   await agent.setViewportSize({ width: 1440, height: 900 });
-  await agent.reload();
-  const left = (await compare.boundingBox())!;
-  const right = (await agent.getByRole("heading", { name: "On their link" }).boundingBox())!;
-  expect(right.x).toBeGreaterThan(left.x + left.width);
+  await agent.goto(`${dashboardUrl}?tab=want`);
   await expect(compare.getByRole("table")).toBeVisible();
   await expect(compare.getByRole("row", { name: /^5902 Lakeview Terrace SE/ })).toContainText("passed on Price");
   await expect(compare.locator("summary")).toBeHidden();
@@ -414,8 +440,10 @@ test("the agent's page about a client reads like the product: a card per home, s
   // With one home left on it, the link's message names the home in the same
   // words as sending it from its page, and Share… hands it to the phone's
   // share sheet from the tap itself.
+  await agent.goto(`${dashboardUrl}?tab=homes`);
   await home.getByRole("button", { name: "Remove 719 Saltmarsh Ln" }).click();
   await expect(agent.getByRole("region", { name: "Removed from their link" })).toBeVisible();
+  await agent.getByRole("navigation", { name: "Parts of this page" }).getByRole("link", { name: /People & link/ }).click();
   // (The first link on the page, whoever's it is.)
   const firstUrl = await agent.locator("input[readonly]").first().inputValue();
   const message = "I picked a home for you: 5902 Lakeview Terrace SE, $2,450,000. Tell me what you think.";
@@ -485,8 +513,16 @@ test("the agent's Porchcard on a home: what each person thinks, the exact spot t
   const more = await openMore(cal, homeIn(cal, SALTMARSH));
   await more.getByRole("button", { name: "Not for me" }).click();
   const why = more.getByRole("group", { name: "What made you pass?" });
+  // (Saved before the agent looks.)
+  const priceSaved = cal.waitForResponse(
+    (res) =>
+      res.request().method() === "POST" &&
+      Boolean(res.request().headers()["next-action"]) &&
+      /price/i.test(res.request().postData() ?? ""),
+  );
   await why.getByRole("button", { name: "Price" }).click();
   await expect(why.getByRole("button", { name: "Price" })).toHaveAttribute("aria-pressed", "true");
+  await priceSaved;
 
   // On a phone: a Porchcard button on the home, and the Porchcard rises over the page.
   await agent.setViewportSize({ width: 393, height: 852 });
@@ -662,7 +698,7 @@ test("something liked in one home and passed on in another depends on the home, 
 
   // For Bob the layout depends on the home, once, on its own; and as they
   // haven't liked it in the same home, only Ann likes it.
-  await agent.goto(dashboardUrl);
+  await agent.goto(`${dashboardUrl}?tab=want`);
   const want = agent.getByRole("region", { name: "What they each want" });
   const person = (name: string) =>
     want.getByRole("listitem").filter({ has: agent.getByText(new RegExp(`^${name} (liked|passed on) (\\d|all|both)`)) });
@@ -890,14 +926,16 @@ test("Remove and Restore keep the keyboard with the home, and each person's link
 }) => {
   test.setTimeout(60_000);
   const agent = await signInAgent(browser, "kim-keys@example.com", "Kim Keys");
-  await createShare(agent, ["1204 Quillan", "719 Saltmarsh"], ["Ben", "Nina"]);
-  const links = agent.getByRole("region", { name: "Their links" });
+  const { dashboardUrl } = await createShare(agent, ["1204 Quillan", "719 Saltmarsh"], ["Ben", "Nina"]);
+  const links = agent.getByRole("region", { name: "People on this link" });
   for (const name of ["Ben", "Nina"]) {
     await expect(links.getByRole("link", { name: `Text ${name}`, exact: true })).toBeVisible();
     await expect(links.getByRole("button", { name: `Copy ${name}'s link`, exact: true })).toBeVisible();
     await expect(links.getByRole("link", { name: `Preview ${name}'s link`, exact: true })).toBeVisible();
+    await expect(links.getByRole("button", { name: `Remove ${name}`, exact: true })).toBeVisible();
   }
 
+  await agent.goto(`${dashboardUrl}?tab=homes`);
   await agent.getByRole("button", { name: "Remove 719 Saltmarsh Ln" }).focus();
   await agent.keyboard.press("Enter");
   const removed = agent.getByRole("region", { name: "Removed from their link" });
