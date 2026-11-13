@@ -1,10 +1,13 @@
 "use client";
 
-import { ArrowDown, CalendarCheck, Check, Eye, Mail, MessageSquare, PenLine, Phone, type LucideIcon } from "lucide-react";
+import { ArrowDown, Bell, CalendarCheck, Check, Eye, Mail, MessageSquare, PenLine, Phone, type LucideIcon } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useTransition, type ComponentProps } from "react";
+import { FollowButton } from "@/app/people/[id]/client";
 import type { AskResult } from "@/app/s/[token]/actions";
+import type { LeaveResult } from "@/app/s/[token]/leave";
 import { AgentAvatar } from "@/components/agent-avatar";
+import { AccountMenu } from "@/components/header-nav";
 import { PorchcardMark } from "@/components/porchcard-logo";
 import { useThread } from "@/components/listing-thread";
 import { Sheet } from "@/components/sheet";
@@ -16,7 +19,24 @@ import { button, focusOnDark, pill } from "@/lib/ui";
 // An agent's link is the agent's space: their name and face at the top, and
 // one tap to text, call or email them about the home on screen.
 
-const looksLikeEmail = (value: string) => /^[^\s@?&#/]+@[^\s@?&#/]+\.[^\s@?&#/]+$/.test(value);
+export const looksLikeEmail = (value: string) => /^[^\s@?&#/]+@[^\s@?&#/]+\.[^\s@?&#/]+$/.test(value);
+
+// Someone signed in, on a link that isn't their own to preview: they, and
+// the bell, as the site's header has them, so the link leads on to the rest
+// of Porchcard (their home, their page, what's new).
+export type LinkAccount = Omit<ComponentProps<typeof AccountMenu>, "overlay">;
+
+// What the Contact sheet offers someone signed in, beyond reaching the agent:
+// the agent's own page and following them, and leaving a link they were added
+// to by mistake. Each only where it applies.
+export type ContactExtras = {
+  // The agent's page (/people/<id>), once they have one.
+  profile?: string | null;
+  // Following the agent, by their page's id.
+  follow?: { personId: string; following: boolean } | null;
+  // Taking themselves off their own link.
+  leave?: (() => Promise<LeaveResult>) | null;
+};
 
 // The home on screen, for "About 4127 Larkmoor Ave NE" and asking to see it.
 export type HomeInView = { listingKey: string; address: string };
@@ -50,6 +70,8 @@ export function ShareHeader({
   onOpenChange,
   preview,
   notes = null,
+  account = null,
+  extras,
 }: {
   agent: ShareAgent;
   note: string;
@@ -65,6 +87,9 @@ export function ShareHeader({
   preview?: string;
   // And writing their notes on it: who for, and the way back once done.
   notes?: { for: string; done: string } | null;
+  // Someone signed in (never the agent previewing): their menu and the bell.
+  account?: LinkAccount | null;
+  extras?: ContactExtras;
 }) {
   // What Contact rises from, worked out each time it's placed (as it opens,
   // and if the window changes size meanwhile).
@@ -142,12 +167,41 @@ export function ShareHeader({
               onClick={() => onOpenChange(true)}
               className={cn(
                 "flex min-h-11 shrink-0 items-center gap-1.5 rounded-full bg-white/15 px-4 text-sm font-semibold backdrop-blur-md hover:bg-white/25",
+                // Beside the bell and their own face, on a phone just the
+                // icon (its name stays for screen readers), so the agent's
+                // name still has room.
+                account && "max-sm:w-11 max-sm:justify-center max-sm:px-0",
                 focusOnDark,
               )}
             >
               <Phone aria-hidden size={16} />
-              Contact
+              <span className={cn(account && "max-sm:sr-only")}>Contact</span>
             </button>
+          )}
+          {account && !notes && (
+            <div className="flex shrink-0 items-center gap-0.5 text-sm font-medium">
+              <Link
+                href="/activity"
+                className={cn(
+                  "relative flex size-11 shrink-0 items-center justify-center rounded-full hover:bg-white/15 [text-shadow:0_1px_3px_rgb(0_0_0/0.5)]",
+                  focusOnDark,
+                )}
+              >
+                <Bell aria-hidden size={18} className="drop-shadow-[0_1px_2px_rgb(0_0_0/0.45)]" />
+                <span className="sr-only">
+                  Activity{account.unread > 0 && `, ${account.unread} new`}
+                </span>
+                {account.unread > 0 && (
+                  <span
+                    aria-hidden
+                    className="absolute right-1 top-1.5 flex min-w-[18px] items-center justify-center rounded-full bg-rose-600 px-1 text-tiny font-bold leading-[18px] text-white tabular-nums [text-shadow:none]"
+                  >
+                    {account.unread > 9 ? "9+" : account.unread}
+                  </span>
+                )}
+              </Link>
+              <AccountMenu {...account} overlay />
+            </div>
           )}
         </div>
       </header>
@@ -172,6 +226,7 @@ export function ShareHeader({
             whoCanSee={whoCanSee}
             onAsk={onAsk}
             onSeeHomes={onSeeHomes}
+            {...extras}
           />
         )}
       </Sheet>
@@ -191,6 +246,9 @@ export function AgentContact({
   whoCanSee,
   onAsk,
   onSeeHomes,
+  profile = null,
+  follow = null,
+  leave = null,
 }: {
   agent: ShareAgent;
   note: string;
@@ -199,7 +257,7 @@ export function AgentContact({
   whoCanSee: string;
   onAsk?: (listingKey: string) => Promise<AskResult>;
   onSeeHomes?: () => void;
-}) {
+} & ContactExtras) {
   const { ensureName } = useThread();
   const [said, setSaid] = useState<string | null>(null);
   const [asked, setAsked] = useState(false);
@@ -245,12 +303,30 @@ export function AgentContact({
   return (
     <div className="pb-2">
       <div className="flex items-center gap-4 pr-10">
-        <AgentAvatar agent={agent} size={64} decorative light className="text-xl" />
-        <div className="min-w-0">
-          <p className="text-[17px] font-semibold leading-snug">{agent.full_name}</p>
-          {agent.brokerage && <p className="text-body text-muted">{agent.brokerage}</p>}
-        </div>
+        {/* A person on Porchcard like anyone: their face and name go to their page. */}
+        {profile ? (
+          <Link href={profile} className="-m-1 flex min-w-0 items-center gap-4 rounded-2xl p-1 hover:bg-stone-50">
+            <AgentAvatar agent={agent} size={64} decorative light className="text-xl" />
+            <span className="min-w-0">
+              <span className="block text-[17px] font-semibold leading-snug">{agent.full_name}</span>
+              {agent.brokerage && <span className="block text-body text-muted">{agent.brokerage}</span>}
+            </span>
+          </Link>
+        ) : (
+          <>
+            <AgentAvatar agent={agent} size={64} decorative light className="text-xl" />
+            <div className="min-w-0">
+              <p className="text-[17px] font-semibold leading-snug">{agent.full_name}</p>
+              {agent.brokerage && <p className="text-body text-muted">{agent.brokerage}</p>}
+            </div>
+          </>
+        )}
       </div>
+      {follow && (
+        <div className="mt-3">
+          <FollowButton small personId={follow.personId} name={first} following={follow.following} />
+        </div>
+      )}
       {note && (
         <p className="mt-4 whitespace-pre-line rounded-2xl bg-stone-50 p-4 text-body leading-relaxed text-stone-800">
           {note}
@@ -293,6 +369,116 @@ export function AgentContact({
           `${ways.length > 0 || canAsk ? "Or add" : "Add"} a comment under ${home ? "the home" : "any home"}. ${first} sees every one. `}
         {whoCanSee}
       </p>
+      {leave && <LeaveLink first={first} leave={leave} className="mt-2" />}
     </div>
+  );
+}
+
+// "Not for you? Leave this link": for someone the agent added to a link of
+// their own, perhaps by mistake. It asks once more first, in a small dialog
+// that starts on Cancel, so a stray tap or Enter never takes them off.
+// Leaving takes them home.
+export function LeaveLink({
+  first,
+  leave,
+  className,
+  onDark = false,
+}: {
+  first: string;
+  leave: () => Promise<LeaveResult>;
+  className?: string;
+  // On the dark end screen, rather than a white sheet.
+  onDark?: boolean;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
+  const opener = useRef<HTMLButtonElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const id = useId();
+
+  const open = () => {
+    setError(null);
+    dialog.current?.showModal();
+    cancel.current?.focus();
+  };
+  // (Not while it's leaving: the page is about to go home.)
+  const close = () => {
+    if (!pending) dialog.current?.close();
+  };
+  const go = () => {
+    if (pending) return;
+    startTransition(async () => {
+      const result = await leave();
+      // Gone, it goes home; this only comes back when it couldn't.
+      if (result?.error) setError(result.error);
+    });
+  };
+
+  return (
+    <>
+      <button
+        ref={opener}
+        type="button"
+        aria-haspopup="dialog"
+        onClick={open}
+        className={cn(
+          "inline-flex min-h-11 items-center gap-1 rounded-full px-2 text-sm",
+          onDark ? cn("text-white/80 hover:text-white", focusOnDark) : "text-muted hover:text-ink",
+          className,
+        )}
+      >
+        Not for you? <span className="underline underline-offset-4">Leave this link</span>
+      </button>
+      <dialog
+        ref={dialog}
+        aria-labelledby={`${id}-title`}
+        aria-describedby={`${id}-said`}
+        data-light
+        // Escape cancels, here and only here: not the sheet it may sit in.
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          event.preventDefault();
+          event.stopPropagation();
+          close();
+        }}
+        onCancel={(event) => {
+          event.preventDefault();
+          close();
+        }}
+        onClose={() => opener.current?.focus({ preventScroll: true })}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) close();
+        }}
+        className="m-auto w-[min(24rem,calc(100vw-2rem))] max-w-none rounded-2xl bg-white p-0 text-left text-ink shadow-[0_12px_40px_rgb(0_0_0/0.3)] backdrop:bg-black/50"
+      >
+        <div className="p-5">
+          <h2 id={`${id}-title`} className="text-[17px] font-semibold leading-snug">
+            Leave this link?
+          </h2>
+          <p id={`${id}-said`} className="mt-1 text-body text-muted">
+            {first} won&apos;t see your likes and comments on it any more.
+          </p>
+          {error && (
+            <p role="alert" className="mt-3 text-sm font-medium text-red-700">
+              {error}
+            </p>
+          )}
+          <div className="mt-5 flex flex-wrap justify-end gap-2">
+            <button ref={cancel} type="button" onClick={close} className={button({ kind: "secondary" })}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={go}
+              aria-disabled={pending}
+              className={cn(button({ kind: "danger" }), pending && "opacity-60")}
+            >
+              {pending ? "Leaving…" : "Leave"}
+            </button>
+          </div>
+        </div>
+      </dialog>
+    </>
   );
 }

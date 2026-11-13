@@ -3,7 +3,7 @@
 import { Hand, Heart, Pause, Play, StepForward } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
-import { EventFace } from "@/components/spot-highlight";
+import { EventFace, MarkFace } from "@/components/spot-highlight";
 import { cn, timeAgo } from "@/lib/format";
 import type { Listing } from "@/lib/listings/types";
 import { buildCycle, DOT, eventText, onPhoto, spokenAgo, type TickerEvent, type TickerTap } from "@/lib/ticker";
@@ -323,7 +323,21 @@ function Face({
       </span>
     );
   }
-  const face = <EventFace event={shown.event} myName={myName} caption ghost={ghost} />;
+  // Their own photo, where they've added one: the face their page shows.
+  const { who } = shown.event;
+  const face =
+    who.photo && who.tone !== "you" ? (
+      <MarkFace
+        initial={who.name?.trim()[0]?.toUpperCase()}
+        image={who.photo}
+        agent={who.tone === "agent" || Boolean(who.agent)}
+        mark={null}
+        caption
+        ghost={ghost}
+      />
+    ) : (
+      <EventFace event={shown.event} myName={myName} caption ghost={ghost} />
+    );
   const profile = link ? profileOf(shown.event, yours) : null;
   if (!profile) return <span aria-hidden>{face}</span>;
   return (

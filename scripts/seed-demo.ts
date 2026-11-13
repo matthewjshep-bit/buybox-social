@@ -1279,15 +1279,16 @@ async function seedAgent(
   for (const share of shares) {
     const shareId = demoId(`share:${share.slug}`);
     const token = demoToken(`share:${share.slug}`);
+    // (No name: the database names each link for the people on it, as they're added.)
     await tx`
-      insert into shares (id, token, agent_id, client_name, note, created_at)
-      values (${shareId}, ${token}, ${agent.id}, ${share.clientName}, ${share.note}, ${ago(share.created)})`;
+      insert into shares (id, token, agent_id, note, created_at)
+      values (${shareId}, ${token}, ${agent.id}, ${share.note}, ${ago(share.created)})`;
     for (const [position, home] of share.homes.entries()) {
       await tx`insert into share_listings (share_id, listing_key, position) values (${shareId}, ${key(home)}, ${position})`;
     }
 
     const people: { name: string; token: string }[] = [];
-    for (const person of share.people) {
+    for (const [position, person] of share.people.entries()) {
       // Everyone on a package has their own link, as when the agent adds them.
       const participantId = demoId(`participant:${share.slug}:${person.slug}`);
       const personToken = demoToken(`person:${share.slug}:${person.slug}`);
@@ -1309,10 +1310,13 @@ async function seedAgent(
         insert into follows (follower_id, followed_id, created_at)
         values (${clientVisitor}, ${agentVisitor}, ${joinedAt}), (${agentVisitor}, ${clientVisitor}, ${joinedAt})`;
       clientEmails.push(`${clientEmail}  ${person.name}, ${agent.fullName}'s client`);
+      // Added by the agent, in order, and linked to them (they follow each
+      // other, above) when they signed up.
       await tx`
-        insert into participants (id, share_id, device_token, first_name, token, invited_at, created_at, account_id)
+        insert into participants (id, share_id, device_token, first_name, token, invited_at, created_at, account_id,
+          position, added_from, linked_at)
         values (${participantId}, ${shareId}, ${`invite:${personToken}`}, ${person.name}, ${personToken},
-          ${ago(share.created)}, ${ago(share.created)}, ${clientId})`;
+          ${ago(share.created)}, ${ago(share.created)}, ${clientId}, ${position}, 'name', ${joinedAt})`;
       people.push({ name: person.name, token: personToken });
 
       const rows = rowsFor(person.slug, person.visits, listings);

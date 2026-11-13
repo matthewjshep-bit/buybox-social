@@ -26,8 +26,17 @@ export type TickerEvent = {
   // `key`: on an agent's link, who it is, the same on every load and giving
   // nothing away (two people can share a first name). `agent`: "You" is the
   // agent, on their own link, so their face stays in ink, with their `name`.
-  // `following`: someone whoever's looking follows.
-  who: { tone: TickerTone; name: string | null; profileId?: string; key?: string; agent?: boolean; following?: boolean };
+  // `following`: someone whoever's looking follows. `photo`: their own photo,
+  // where they've added one, so their face is the one their page shows.
+  who: {
+    tone: TickerTone;
+    name: string | null;
+    profileId?: string;
+    key?: string;
+    agent?: boolean;
+    following?: boolean;
+    photo?: string;
+  };
   at: string;
   // The photo it's in, or the facts (FACTS).
   mediaKey?: string;

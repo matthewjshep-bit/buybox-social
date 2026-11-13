@@ -9,6 +9,7 @@ import { Card, Empty, Stat } from "@/components/admin-ui";
 import { getHome } from "@/lib/admin";
 import { requireAdmin } from "@/lib/auth";
 import { cn, formatPrice, timeAgo } from "@/lib/format";
+import { linkTitle } from "@/lib/people-picker";
 import { aspectLabel } from "@/lib/reactions";
 import { button } from "@/lib/ui";
 
@@ -94,7 +95,7 @@ export default async function AdminHome({ params }: Props) {
                     <Link href={`/admin/people/${link.agent_id}`} className="font-semibold hover:underline">
                       {link.agent_name}
                     </Link>
-                    <span className="text-muted"> to {link.client_name || "a client"}</span>
+                    <span className="text-muted"> · {linkTitle(link.client_name, link.first_address)}</span>
                     <span className="text-stone-500"> · {timeAgo(link.created_at.toISOString())}</span>
                     {link.removed && <span className="text-stone-500"> · since taken off the link</span>}
                   </p>

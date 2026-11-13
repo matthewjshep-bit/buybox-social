@@ -10,6 +10,7 @@ import {
   describeActivity,
   groupActivity,
   quoteOf,
+  relationOf,
   sectionId,
   whoText,
   type ActivityItem,
@@ -18,6 +19,11 @@ import { homeIn, openComments, settle, signUpBuyer } from "./helpers";
 import { takeBackAll } from "./own-page";
 
 const LAKEVIEW = "5902 Lakeview Terrace SE";
+const PNG_1PX =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAEBgIApD5fRAAAAABJRU5ErkJggg==";
+// Someone's own photo, served by their page; a home's photo is anything else.
+const OWN_PHOTO = "img[src*='/photo?v=']";
+const HOME_PHOTO = "img:not([src*='/photo?v='])";
 const WORDS = "That courtyard would be my office.";
 const REPLY = "Same, with a coffee in hand.";
 
@@ -95,6 +101,16 @@ test("activity shows people and homes, with repeats on one comment on one line",
     people.push(page);
   }
   const [grace, hannah] = people;
+  // Grace has a photo of herself, which her line shows in place of her initial.
+  await grace.goto("/people/me");
+  await grace.waitForURL(/\/people\/[0-9a-f-]{36}$/);
+  const graceId = new URL(grace.url()).pathname.split("/").at(-1);
+  await grace.getByLabel("Add a photo").setInputFiles({
+    name: "me.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(PNG_1PX, "base64"),
+  });
+  await expect(grace.getByLabel("Change photo")).toBeAttached();
   await grace.goto("/homes/SAMPLE-1013");
   const chat = await openComments(grace, homeIn(grace, LAKEVIEW));
   await chat.getByRole("button", { name: "Reply to Ana", exact: true }).click();
@@ -118,13 +134,33 @@ test("activity shows people and homes, with repeats on one comment on one line",
   await expect(rows.nth(1)).toContainText(`Jules, Ivy and 2 others liked your comment on ${LAKEVIEW}`);
   await expect(rows.nth(1)).toContainText(WORDS);
   await expect(ana.getByText("(new)")).toHaveCount(2);
-  // Each line has the person, a rose heart for a like (no thumbs), and the home's photo; it opens the home.
+  // Each line has the person, a rose heart for a like (no thumbs), and the
+  // home's photo; it opens the home at the comment it's about.
   await expect(rows.nth(1).locator("svg.lucide-heart")).toHaveCount(1);
   await expect(ana.locator("main svg.lucide-thumbs-up")).toHaveCount(0);
   for (const row of [rows.nth(0), rows.nth(1)]) {
-    await expect(row.locator("img")).toHaveCount(1);
-    await expect(row.getByRole("link")).toHaveAttribute("href", "/homes/SAMPLE-1013?photo=0");
+    await expect(row.locator(HOME_PHOTO)).toHaveCount(1);
   }
+  const reply = rows.nth(0).getByRole("link", { name: new RegExp(`^Grace replied to your comment on ${LAKEVIEW}`) });
+  await expect(reply).toHaveAttribute("href", /^\/homes\/SAMPLE-1013\?photo=0&comment=[0-9a-f-]{36}$/);
+  const likes = rows.nth(1).getByRole("link", { name: /^Jules, Ivy and 2 others liked your comment/ });
+  await expect(likes).toHaveAttribute("href", /^\/homes\/SAMPLE-1013\?photo=0&comment=[0-9a-f-]{36}$/);
+  // The reply opens on Grace's reply, the likes on Ana's own comment.
+  expect(await reply.getAttribute("href")).not.toEqual(await likes.getAttribute("href"));
+  // Each name is a way to that person's page; "2 others" isn't anyone in particular.
+  await expect(rows.nth(0).getByRole("link", { name: "Grace", exact: true })).toHaveAttribute("href", `/people/${graceId}`);
+  for (const name of ["Jules", "Ivy"]) {
+    await expect(rows.nth(1).getByRole("link", { name, exact: true })).toHaveAttribute("href", /^\/people\/[0-9a-f-]{36}$/);
+  }
+  await expect(rows.nth(1).getByRole("link", { name: "2 others", exact: true })).toHaveCount(0);
+  // Grace's own photo, and the others' initials.
+  await expect(rows.nth(0).locator(OWN_PHOTO)).toBeVisible();
+  await expect(rows.nth(1).locator(OWN_PHOTO)).toHaveCount(0);
+  // Nothing on these lines is only between two people.
+  await expect(today.getByText("Only you see this")).toHaveCount(0);
+  // A name opens that person's page, not the home under it.
+  await rows.nth(0).getByRole("link", { name: "Grace", exact: true }).click();
+  await expect(ana).toHaveURL(new RegExp(`/people/${graceId}$`));
   expect(pageErrors).toEqual([]);
 
   // Someone it's all about the other way round has nothing here.
@@ -148,6 +184,8 @@ test("activity shows people and homes, with repeats on one comment on one line",
 
   // Once Grace takes her reply back, Ana can delete it, and everything from here is gone.
   await deleteMine(grace);
+  await grace.getByRole("button", { name: "Remove photo" }).click();
+  await expect(grace.getByLabel("Add a photo")).toBeAttached();
   await deleteMine(ana);
   await expect(ana.getByText("Your page fills up as you go")).toBeVisible();
   await ana.goto("/activity");
@@ -176,11 +214,16 @@ test("repeats group by comment and Seattle day, under Today, This week and Earli
     kind,
     who,
     whoId: who.toLowerCase(),
+    profileId: null,
     body: `About ${about}`,
     about,
     listingKey: "SAMPLE-1001",
     address: ADDRESS,
     photo: null,
+    commentId: null,
+    href: "/homes/SAMPLE-1001",
+    homes: null,
+    following: null,
     at,
     unread,
   });
@@ -231,6 +274,24 @@ test("repeats group by comment and Seattle day, under Today, This week and Earli
     "Mo: “About SAMPLE-1001”",
     "“About c2”",
   ]);
+  // The lines only one person sees: what happened, and whose it is.
+  expect(describeActivity({ kind: "link", address: null, homes: 3 })).toBe("sent you 3 homes");
+  expect(describeActivity({ kind: "link", address: null, homes: 1 })).toBe("sent you a home");
+  expect(describeActivity({ kind: "agent_reply", address: ADDRESS })).toBe(`replied on ${ADDRESS}`);
+  expect(describeActivity({ kind: "client_comment", address: ADDRESS })).toBe(`commented on ${ADDRESS}`);
+  expect(describeActivity({ kind: "client_like", address: ADDRESS })).toBe(`liked ${ADDRESS}`);
+  expect(describeActivity({ kind: "client_ask", address: ADDRESS })).toBe(`asked to see ${ADDRESS}`);
+  expect(describeActivity({ kind: "follow", address: null })).toBe("started following you");
+  expect(["client_ask", "link", "agent_reply", "follow", "reply"].map((kind) => relationOf(kind as ActivityItem["kind"]))).toEqual([
+    "Your client",
+    "Your agent",
+    "Your agent",
+    null,
+    null,
+  ]);
+  // A like or an ask has no words of its own to quote.
+  expect(quoteOf({ kind: "client_like", body: "", people: [] })).toBeNull();
+
   // Each section is named by its heading, so its id has no spaces.
   expect(ACTIVITY_SECTIONS.map(sectionId)).toEqual(["activity-today", "activity-this-week", "activity-earlier"]);
   // Six days back is still this week; seven is earlier.

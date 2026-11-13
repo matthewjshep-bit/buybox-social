@@ -67,6 +67,14 @@ test("an agent's take before they send: a note and a like on the price, a dislik
   await agent.waitForURL(dashboardUrl);
   await expect(agent.getByText("1 note, 1 like and 1 dislike, for Wren to see.")).toBeVisible();
   await expect(agent.locator("[data-your-take]")).toHaveCount(0);
+  // In the thread, the note wears the agent's own photo, as on the link.
+  await agent.goto(`${dashboardUrl}?tab=homes`);
+  const note = agent
+    .getByRole("region", { name: "1204 Quillan St SE" })
+    .getByRole("list", { name: "Comments" })
+    .getByRole("listitem")
+    .filter({ hasText: "Priced under the last two sales on this street." });
+  await expect(note.locator('img[src^="/people/"]')).toBeVisible();
 
   // Wren opens it: the agent's words lead the line on the photo, with their
   // face on the price, and their note and like on its card.

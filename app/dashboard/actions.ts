@@ -2,12 +2,34 @@
 
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { z } from "zod";
-import { getCurrentUser, requireAgent } from "@/lib/auth";
+import { getCurrentUser, getViewAs, requireAgent } from "@/lib/auth";
 import { isContactPhone, phoneDigits } from "@/lib/contact";
 import { sql } from "@/lib/db";
-import { BRAND_COLORS } from "@/lib/format";
-import { confidantOf, invitePerson, isShareToken, newShareToken, reserveSendTokenFor } from "@/lib/shares";
+import { BRAND_COLORS, escapeLike } from "@/lib/format";
+import { notifyClientAdded } from "@/lib/notify";
+import { photoUrl } from "@/lib/person-photo";
+import {
+  firstNameSchema,
+  pickError,
+  pickSchema,
+  type PersonOption,
+  type PersonPick,
+} from "@/lib/people-picker";
+import {
+  confidantOf,
+  ensureAgentProfile,
+  invitePerson,
+  isShareToken,
+  newcomerProblem,
+  newShareToken,
+  reserveSendTokenFor,
+  resolvePicks,
+  TOO_MANY_STRANGERS,
+  tooManyStrangers,
+  type Newcomer,
+} from "@/lib/shares";
 
 export type FormState = { error?: string };
 
@@ -81,22 +103,40 @@ export async function saveProfile(_: ProfileState, form: FormData): Promise<Prof
 
 const shareSchema = z.object({
   listingKeys: z.array(z.string().max(100)).min(1).max(3),
-  people: z.array(z.string().trim().max(40)).max(6),
+  people: z.array(pickSchema).max(6),
   note: z.string().trim().max(500),
 });
 
-// "Jenny", "Jenny & Mike", "Jenny, Mike & Sam".
-const namesTogether = (names: string[]) =>
-  names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} & ${names.at(-1)}`;
+// A database error for a row that's already there (someone added twice at once).
+const isDuplicate = (error: unknown) => (error as { code?: string } | null)?.code === "23505";
 
+// People the agent added who are on Porchcard: they hear from us, with their
+// own link (lib/notify.ts), after the page has answered. The agent's own
+// profile is made too, so the homes can say who they're from. Never while an
+// admin is looking at the site as the agent: nobody is emailed on their behalf.
+async function letThemKnow(agentId: string, participantIds: string[]) {
+  if (participantIds.length === 0) return;
+  await ensureAgentProfile(agentId);
+  if (await getViewAs()) return;
+  for (const id of participantIds) after(() => notifyClientAdded(id));
+}
+
+// A new link: its homes, a note, and the people it's for, each with their
+// own link. It's named for them (by the database, as they're added); with
+// nobody added, anyone with it can join, and it's named for whoever does.
 export async function createShare(input: {
   listingKeys: string[];
-  people: string[];
+  people: PersonPick[];
   note: string;
 }): Promise<FormState> {
   const agent = await requireAgent();
   const parsed = shareSchema.safeParse(input);
-  if (!parsed.success) return { error: "Pick between 1 and 3 homes." };
+  if (!parsed.success) {
+    const field = parsed.error.issues[0]?.path[0];
+    if (field === "people") return { error: pickError(input?.people) };
+    if (field === "note") return { error: "Notes can be up to 500 characters." };
+    return { error: "Pick between 1 and 3 homes." };
+  }
   const keys = [...new Set(parsed.data.listingKeys)];
 
   // Only homes still for sale, the same as adding homes to a link later.
@@ -105,28 +145,34 @@ export async function createShare(input: {
     where listing_key in ${sql(keys)} and standard_status = 'Active'`;
   if (found.length !== keys.length) return { error: "One of those homes is no longer available." };
 
-  const people = [...new Set(parsed.data.people.filter(Boolean))];
+  const resolved = await resolvePicks(sql, agent.id, parsed.data.people);
+  if ("error" in resolved) return { error: resolved.error };
+  if (await tooManyStrangers(sql, agent.id, resolved.people)) return { error: TOO_MANY_STRANGERS };
 
-  const shareId = await sql.begin(async (tx) => {
+  const made = await sql.begin(async (tx) => {
     const [share] = await tx<{ id: string }[]>`
-      insert into shares (token, agent_id, client_name, note)
-      values (${newShareToken()}, ${agent.id}, ${namesTogether(people).slice(0, 60)}, ${parsed.data.note})
+      insert into shares (token, agent_id, note)
+      values (${newShareToken()}, ${agent.id}, ${parsed.data.note})
       returning id`;
-    // Everyone gets their own link, so what each of them likes is theirs.
-    for (const name of people) {
-      const token = newShareToken();
-      await tx`
-        insert into participants (share_id, device_token, first_name, token, invited_at)
-        values (${share.id}, ${`invite:${token}`}, ${name}, ${token}, now())`;
+    // Everyone gets their own link, so what each of them likes is theirs, in
+    // the order the agent added them (which is the order the link names them).
+    const bound: string[] = [];
+    for (const person of resolved.people) {
+      const added = await invitePerson(share.id, person, tx);
+      if (person.accountId) bound.push(added.id);
     }
     for (const [position, key] of keys.entries()) {
       await tx`
         insert into share_listings (share_id, listing_key, position)
         values (${share.id}, ${key}, ${position})`;
     }
-    return share.id;
+    return { shareId: share.id, bound };
   });
-  redirect(`/dashboard/shares/${shareId}`);
+  // The agent's own profile, so their face is on their notes and their
+  // clients can follow them.
+  await ensureAgentProfile(agent.id);
+  await letThemKnow(agent.id, made.bound);
+  redirect(`/dashboard/shares/${made.shareId}`);
 }
 
 const uuid = z.uuid();
@@ -139,54 +185,245 @@ async function ownShare(agentId: string, shareId: string) {
   return share ?? null;
 }
 
+const searchSchema = z.object({
+  query: z.string().max(200),
+  shareId: z.uuid().optional(),
+  exclude: z.array(z.uuid()).max(25).optional(),
+});
+
+// How many of each kind of suggestion the people picker shows, and in all.
+const MOST = { client: 5, follow: 3, member: 5, recent: 6, all: 8 };
+
+// "Your client · 2 links".
+const clientLine = (links: number) => `Your client · ${links} ${links === 1 ? "link" : "links"}`;
+
+// Who an agent might be sending homes to, for the people picker: first their
+// clients (anyone on their links), then people they follow or who follow
+// them, then, once two letters are typed, anyone on Porchcard. Matched only on
+// the start of a public first name, never an email or a last name, and only
+// what anyone could see on someone's page comes back: their first name and
+// photo. Anyone already on the link (`shareId`) or already picked (`exclude`)
+// is left out. Nothing typed: their most recent clients.
+export async function searchPeople(input: {
+  query: string;
+  shareId?: string;
+  exclude?: string[];
+}): Promise<PersonOption[]> {
+  const agent = await requireAgent();
+  const parsed = searchSchema.safeParse(input);
+  if (!parsed.success) return [];
+  const query = parsed.data.query.trim().replace(/\s+/g, " ").slice(0, 40);
+  // An email finds nobody, so typing one can't tell whether they're here.
+  if (query.includes("@")) return [];
+  const { shareId } = parsed.data;
+  if (shareId && !(await ownShare(agent.id, shareId))) return [];
+  const exclude = new Set(parsed.data.exclude ?? []);
+  const prefix = `${escapeLike(query.toLowerCase())}%`;
+  // People already on the link: by account, and by name for those who haven't signed up.
+  const onLink = sql`select account_id from participants where share_id = ${shareId ?? null}::uuid and account_id is not null`;
+  const namesOnLink = sql`
+    select lower(btrim(first_name)) from participants where share_id = ${shareId ?? null}::uuid and account_id is null`;
+
+  type Row = { visitor_id: string | null; name: string; photo_v: string | null; role: string | null };
+  const [clients, follows, members] = await Promise.all([
+    sql<(Row & { links: number })[]>`
+      select v.id as visitor_id, coalesce(nullif(btrim(v.first_name), ''), c.name) as name,
+        left(md5(a.photo_data_url), 10) as photo_v, a.role, c.links
+      from (
+        select coalesce(p.account_id::text, 'n:' || lower(btrim(p.first_name))) as who,
+          (array_agg(p.account_id order by s.created_at desc))[1] as account_id,
+          (array_agg(btrim(p.first_name) order by s.created_at desc))[1] as name,
+          count(distinct s.id)::int as links,
+          max(s.created_at) as last_sent
+        from participants p join shares s on s.id = p.share_id
+        where s.agent_id = ${agent.id}
+          and (p.account_id is null or p.account_id <> ${agent.id})
+          and btrim(p.first_name) <> ''
+          and lower(btrim(p.first_name)) like ${prefix}
+          and (p.account_id is null or p.account_id not in (${onLink}))
+          and (p.account_id is not null or lower(btrim(p.first_name)) not in (${namesOnLink}))
+        group by 1
+      ) c
+      left join accounts a on a.id = c.account_id
+      left join visitors v on v.account_id = c.account_id
+      order by c.last_sent desc
+      limit 12`,
+    query
+      ? sql<(Row & { i_follow: boolean; follows_me: boolean })[]>`
+          select v.id as visitor_id, btrim(v.first_name) as name, left(md5(a.photo_data_url), 10) as photo_v, a.role,
+            bool_or(f.follower_id = me.id) as i_follow, bool_or(f.followed_id = me.id) as follows_me
+          from visitors me
+          join follows f on f.follower_id = me.id or f.followed_id = me.id
+          join visitors v on v.id = case when f.follower_id = me.id then f.followed_id else f.follower_id end
+          join accounts a on a.id = v.account_id
+          where me.account_id = ${agent.id}
+            and a.role is not null and a.id <> ${agent.id}
+            and btrim(v.first_name) <> '' and lower(v.first_name) like ${prefix}
+            and a.id not in (${onLink})
+          group by v.id, a.id
+          order by max(f.created_at) desc
+          limit 12`
+      : [],
+    query.length >= 2
+      ? sql<Row[]>`
+          select v.id as visitor_id, btrim(v.first_name) as name, left(md5(a.photo_data_url), 10) as photo_v, a.role
+          from visitors v join accounts a on a.id = v.account_id
+          where v.account_id is not null and lower(v.first_name) like ${prefix}
+            and a.role is not null and a.id <> ${agent.id} and btrim(v.first_name) <> ''
+            and a.id not in (${onLink})
+          order by lower(btrim(v.first_name)) = ${query.toLowerCase()} desc, v.created_at desc
+          limit 12`
+      : [],
+  ]);
+
+  const seen = new Set<string>();
+  const options: PersonOption[] = [];
+  const add = (option: PersonOption, room: number) => {
+    if (seen.has(option.key) || options.filter((o) => o.group === option.group).length >= room) return;
+    seen.add(option.key);
+    options.push(option);
+  };
+  const onPorchcard = (row: Row) => Boolean(row.visitor_id && row.role && !exclude.has(row.visitor_id));
+  // Someone already picked is no suggestion, in any group.
+  for (const id of exclude) seen.add(`v:${id}`);
+  for (const row of clients) {
+    const context = clientLine(row.links);
+    const room = query ? MOST.client : MOST.recent;
+    if (row.visitor_id && row.role) {
+      if (onPorchcard(row)) {
+        add(
+          {
+            key: `v:${row.visitor_id}`,
+            pick: { visitorId: row.visitor_id },
+            name: row.name,
+            photo: photoUrl(row.visitor_id, row.photo_v),
+            group: "client",
+            context,
+            agent: row.role === "agent",
+          },
+          room,
+        );
+      }
+      continue;
+    }
+    // A past client who never signed up: only their name, to type again.
+    add(
+      { key: `n:${row.name.toLowerCase()}`, pick: { name: row.name }, name: row.name, photo: null, group: "client", context, agent: false },
+      room,
+    );
+  }
+  for (const row of follows) {
+    if (!onPorchcard(row)) continue;
+    add(
+      {
+        key: `v:${row.visitor_id}`,
+        pick: { visitorId: row.visitor_id! },
+        name: row.name,
+        photo: photoUrl(row.visitor_id!, row.photo_v),
+        group: "follow",
+        context: row.i_follow && row.follows_me ? "You follow each other" : row.follows_me ? "Follows you" : "You follow",
+        agent: row.role === "agent",
+      },
+      MOST.follow,
+    );
+  }
+  for (const row of members) {
+    if (!onPorchcard(row)) continue;
+    add(
+      {
+        key: `v:${row.visitor_id}`,
+        pick: { visitorId: row.visitor_id! },
+        name: row.name,
+        photo: photoUrl(row.visitor_id!, row.photo_v),
+        group: "member",
+        context: row.role === "agent" ? "Agent on Porchcard" : "On Porchcard",
+        agent: row.role === "agent",
+      },
+      MOST.member,
+    );
+  }
+  return options.slice(0, MOST.all);
+}
+
 // Asking before someone joins a link whose one person was told only they and
 // the agent see what they say: who that is, and who would be added.
 export type AddPersonState = FormState & { confirm?: { confidant: string; newcomer: string } };
 
+// The person a form names: someone picked from Porchcard (`visitorId`), or a
+// first name typed in.
+const formPick = (form: FormData): unknown => {
+  const visitorId = form.get("visitorId");
+  return typeof visitorId === "string" && visitorId ? { visitorId } : { name: String(form.get("firstName") ?? "") };
+};
+
 // Adds someone to a package, with their own link. If the one person on it
 // was promised that only they and the agent see their words, the newcomer
 // would see them all, so it's done only once the agent has said so
-// (`confirm`), and never for a form that didn't ask.
+// (`confirm`), and never for a form that didn't ask. Someone on Porchcard is
+// theirs from the start, and hears about it from us.
 export async function addPerson(shareId: string, _: AddPersonState, form: FormData): Promise<AddPersonState> {
   const agent = await requireAgent();
-  const name = z.string().trim().min(1).max(40).safeParse(form.get("firstName"));
-  if (!name.success) return { error: "Please enter their first name." };
+  const raw = formPick(form);
+  const pick = pickSchema.safeParse(raw);
+  if (!pick.success) return { error: pickError(raw) };
   if (!(await ownShare(agent.id, shareId))) return { error: "We couldn't find that link." };
   const [{ count }] = await sql<{ count: number }[]>`
     select count(*)::int as count from participants where share_id = ${shareId}`;
   if (count >= 25) return { error: "That's as many people as one link can have." };
+  const resolved = await resolvePicks(sql, agent.id, [pick.data]);
+  if ("error" in resolved) return { error: resolved.error };
+  const [person] = resolved.people;
+  if (!person) return { error: "Please enter their first name." };
+  const problem = await newcomerProblem(sql, shareId, [person]);
+  if (problem) return { error: problem };
+  if (await tooManyStrangers(sql, agent.id, [person])) return { error: TOO_MANY_STRANGERS };
   const confidant = await confidantOf(shareId);
   if (confidant && form.get("confirm") !== "yes") {
-    return { confirm: { confidant: confidant.first_name, newcomer: name.data } };
+    return { confirm: { confidant: confidant.first_name, newcomer: person.firstName } };
   }
-  const before = await inviteeNames(shareId);
-  await invitePerson(shareId, name.data);
-  await renameWithPeople(shareId, before, [...before, name.data]);
+  let added: { id: string };
+  try {
+    added = await invitePerson(shareId, person);
+  } catch (error) {
+    if (isDuplicate(error)) return { error: `${person.firstName} is already on this link.` };
+    throw error;
+  }
+  if (person.accountId) await letThemKnow(agent.id, [added.id]);
   refresh();
   return {};
 }
 
-// The first names of the people the agent added to a package, in order.
-async function inviteeNames(shareId: string) {
-  const rows = await sql<{ first_name: string }[]>`
-    select first_name from participants
-    where share_id = ${shareId} and token is not null
-    order by invited_at nulls last, created_at, first_name`;
-  return rows.map((row) => row.first_name);
-}
-
-// A link named for its people ("Ben & Nina") keeps saying who's on it as
-// people are added and taken off. A name the agent chose stays theirs.
-async function renameWithPeople(shareId: string, before: string[], after: string[]) {
-  const now = namesTogether(after).slice(0, 60);
-  if (!now) return;
-  await sql`
-    update shares set client_name = ${now}
-    where id = ${shareId} and client_name = ${namesTogether(before).slice(0, 60)}`;
+// Fixes the first name of someone on a link who hasn't signed up (a typo,
+// say); the link's name follows. Someone who has signed up goes by their own.
+export async function renamePerson(shareId: string, personId: string, _: FormState, form: FormData): Promise<FormState> {
+  const agent = await requireAgent();
+  const typed = String(form.get("firstName") ?? "");
+  const name = firstNameSchema.safeParse(typed);
+  if (!name.success) return { error: pickError({ name: typed }) };
+  if (!uuid.safeParse(personId).success || !(await ownShare(agent.id, shareId))) {
+    return { error: "We couldn't find them on this link." };
+  }
+  const [person] = await sql<{ bound: boolean }[]>`
+    select account_id is not null as bound from participants where id = ${personId} and share_id = ${shareId}`;
+  if (!person) return { error: "They're not on this link anymore." };
+  if (person.bound) return { error: "They've signed up, so their name is their own." };
+  const [same] = await sql`
+    select 1 from participants
+    where share_id = ${shareId} and id <> ${personId} and account_id is null
+      and lower(btrim(first_name)) = ${name.data.toLowerCase()}`;
+  if (same) return { error: `${name.data} is already on this link.` };
+  const renamed = await sql`
+    update participants set first_name = ${name.data}
+    where id = ${personId} and share_id = ${shareId} and account_id is null
+    returning id`;
+  if (renamed.length === 0) return { error: "They've signed up, so their name is their own." };
+  refresh();
+  return {};
 }
 
 // Takes someone off a package: their own link stops working, and what they
 // liked, passed on and said there goes with them. Never the last one on it.
+// (The link's name follows, in the database.)
 export async function removePerson(shareId: string, personId: string): Promise<FormState> {
   const agent = await requireAgent();
   if (!uuid.safeParse(personId).success || !(await ownShare(agent.id, shareId))) {
@@ -195,7 +432,6 @@ export async function removePerson(shareId: string, personId: string): Promise<F
   const people = await sql<{ id: string }[]>`select id from participants where share_id = ${shareId}`;
   if (!people.some((person) => person.id === personId)) return { error: "They're not on this link anymore." };
   if (people.length === 1) return { error: "They're the only one on this link." };
-  const before = await inviteeNames(shareId);
   // (Never the last one, even with two taken off at once.)
   const gone = await sql`
     delete from participants
@@ -203,7 +439,6 @@ export async function removePerson(shareId: string, personId: string): Promise<F
       and (select count(*) from participants where share_id = ${shareId}) > 1
     returning id`;
   if (gone.length === 0) return { error: "They're the only one on this link." };
-  await renameWithPeople(shareId, before, await inviteeNames(shareId));
   refresh();
   return {};
 }
@@ -226,16 +461,6 @@ export async function updateWelcome(shareId: string, _: FormState, form: FormDat
   if (!parsed.success) return { error: "Headlines can be up to 90 characters, and notes up to 500." };
   if (!(await ownShare(agent.id, shareId))) return { error: "We couldn't find that link." };
   await sql`update shares set headline = ${parsed.data.headline}, note = ${parsed.data.note} where id = ${shareId}`;
-  refresh();
-  return {};
-}
-
-export async function renameClient(shareId: string, _: FormState, form: FormData): Promise<FormState> {
-  const agent = await requireAgent();
-  const name = z.string().trim().min(1).max(60).safeParse(form.get("clientName"));
-  if (!name.success) return { error: "Please enter a name, up to 60 characters." };
-  if (!(await ownShare(agent.id, shareId))) return { error: "We couldn't find that client." };
-  await sql`update shares set client_name = ${name.data} where id = ${shareId}`;
   refresh();
   return {};
 }
@@ -349,8 +574,8 @@ export async function claimQuickShare(input: { token: string; listingKey: string
       returning token`;
     if (!fresh) return null;
     const [share] = await tx<{ id: string }[]>`
-      insert into shares (token, agent_id, client_name, note, quick)
-      values (${token}, ${agent.id}, '', '', true)
+      insert into shares (token, agent_id, note, quick)
+      values (${token}, ${agent.id}, '', true)
       returning id`;
     await tx`
       insert into share_listings (share_id, listing_key, position)
@@ -367,10 +592,13 @@ export async function claimQuickShare(input: { token: string; listingKey: string
 }
 
 // Nobody has opened the link (`s`), joined it or said anything on it yet.
-// (The agent's own notes on it don't count: theirs to take back with it.)
+// (The agent's own notes on it don't count: theirs to take back with it. Nor
+// do the people they named on it, until one of them signs in there.)
 const unopened = () => sql`
   not exists (select 1 from share_opens o where o.share_id = s.id)
-  and not exists (select 1 from participants p where p.share_id = s.id)
+  and not exists (
+    select 1 from participants p
+    where p.share_id = s.id and (p.invited_at is null or p.linked_at is not null))
   and not exists (select 1 from comments c where c.share_id = s.id and c.participant_id is not null)`;
 
 export type ReleaseResult = { released: boolean; opened?: boolean };
@@ -393,23 +621,59 @@ export async function releaseQuickShare(shareId: string): Promise<ReleaseResult>
 }
 
 const quickNameSchema = z.object({
-  clientName: z.string().trim().max(40),
+  people: z.array(pickSchema).max(6),
   note: z.string().trim().max(500),
 });
 
-// Who a link from Send was for, and a note: the link greets them by name the
-// next time it loads, with no new link to send.
-export async function nameQuickShare(shareId: string, input: { clientName: string; note: string }): Promise<FormState> {
+// Who a link from Send was for, and a note: each person is added to it with a
+// link of their own, and it's named for them, so the link greets them by name
+// the next time it loads, with no new link to send. Nobody is emailed: the
+// agent has just sent it themselves. Returns the names given, including anyone
+// who had already joined under one of them.
+export async function nameQuickShare(
+  shareId: string,
+  input: { people: PersonPick[]; note: string },
+): Promise<FormState & { names?: string[] }> {
   const agent = await requireAgent();
   const parsed = quickNameSchema.safeParse(input);
-  if (!parsed.success) return { error: "Names can be up to 40 characters, and notes up to 500." };
+  if (!parsed.success) {
+    return parsed.error.issues[0]?.path[0] === "people"
+      ? { error: pickError(input?.people) }
+      : { error: "Notes can be up to 500 characters." };
+  }
   if (!uuid.safeParse(shareId).success) return { error: "We couldn't find that link." };
-  const updated = await sql`
-    update shares set client_name = ${parsed.data.clientName}, note = ${parsed.data.note}
-    where id = ${shareId} and agent_id = ${agent.id} and quick
-    returning id`;
-  if (updated.length === 0) return { error: "We couldn't find that link." };
-  return {};
+  const [share] = await sql`select 1 from shares where id = ${shareId} and agent_id = ${agent.id} and quick`;
+  if (!share) return { error: "We couldn't find that link." };
+  const resolved = await resolvePicks(sql, agent.id, parsed.data.people);
+  if ("error" in resolved) return { error: resolved.error };
+  // Someone may already have joined through the link the agent texted before
+  // naming it (joining means signing up, so newcomerProblem never sees them).
+  // A typed first name that matches theirs is them: adding it again would put a
+  // second, empty "Toby" on the link beside the real one.
+  const joined = new Set(
+    (
+      await sql<{ name: string }[]>`
+        select lower(btrim(first_name)) as name from participants
+        where share_id = ${shareId} and invited_at is null and account_id is not null`
+    ).map((row) => row.name),
+  );
+  const people: Newcomer[] = resolved.people.filter(
+    (person) => person.accountId || !joined.has(person.firstName.toLowerCase()),
+  );
+  const problem = people.length ? await newcomerProblem(sql, shareId, people) : null;
+  if (problem) return { error: problem };
+  if (await tooManyStrangers(sql, agent.id, people)) return { error: TOO_MANY_STRANGERS };
+  try {
+    await sql.begin(async (tx) => {
+      await tx`update shares set note = ${parsed.data.note} where id = ${shareId}`;
+      for (const person of people) await invitePerson(shareId, person, tx);
+    });
+  } catch (error) {
+    if (isDuplicate(error)) return { error: "One of them is already on this link." };
+    throw error;
+  }
+  if (people.some((person) => person.accountId)) await ensureAgentProfile(agent.id);
+  return { names: resolved.people.map((person) => person.firstName) };
 }
 
 export type RecentShare = {
@@ -446,6 +710,38 @@ export async function listRecentShares(): Promise<RecentShare[]> {
     firstAddress: row.first_address,
     sentAt: row.created_at.toISOString(),
   }));
+}
+
+// The newest link this agent sent someone they just picked again (by their
+// account, or by name for someone who never signed up), other than `except`:
+// a home from Send might belong on it instead.
+export async function newestLinkFor(pick: PersonPick, except?: string): Promise<RecentShare | null> {
+  const agent = await requireAgent();
+  const parsed = pickSchema.safeParse(pick);
+  if (!parsed.success) return null;
+  const other = except && uuid.safeParse(except).success ? except : null;
+  const who =
+    "visitorId" in parsed.data
+      ? sql`p.account_id = (select account_id from visitors where id = ${parsed.data.visitorId})`
+      : sql`p.account_id is null and lower(btrim(p.first_name)) = ${parsed.data.name.toLowerCase()}`;
+  const [row] = await sql<{ id: string; client_name: string; homes: number; first_address: string | null; created_at: Date }[]>`
+    select s.id, s.client_name, s.created_at,
+      (select count(*)::int from share_listings sl where sl.share_id = s.id and sl.removed_at is null) as homes,
+      (select l.data->>'UnparsedAddress'
+         from share_listings sl join listings l on l.listing_key = sl.listing_key
+         where sl.share_id = s.id and sl.removed_at is null order by sl.position limit 1) as first_address
+    from shares s join participants p on p.share_id = s.id
+    where s.agent_id = ${agent.id} and (${other}::uuid is null or s.id <> ${other}::uuid) and ${who}
+    order by s.created_at desc
+    limit 1`;
+  if (!row) return null;
+  return {
+    id: row.id,
+    clientName: row.client_name,
+    homes: row.homes,
+    firstAddress: row.first_address,
+    sentAt: row.created_at.toISOString(),
+  };
 }
 
 export type MoveResult = { clientName: string; closed: boolean } | { error: string };

@@ -3,7 +3,7 @@ import { cn } from "@/lib/format";
 import { card } from "@/lib/ui";
 
 // While the clients are read, under the tabs (which stay): the shape of the
-// heading, the counts and the first few clients. Only this page: a client's
+// heading, the six counts and the first few clients. Only this page: a client's
 // page, or one that isn't theirs, settles first, so a 404 is still a 404.
 export default function DashboardLoading() {
   return (
@@ -13,8 +13,8 @@ export default function DashboardLoading() {
         <Placeholder className="h-8 w-48" />
         <Placeholder className="h-12 w-36" />
       </div>
-      <div aria-hidden className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {[0, 1, 2, 3].map((tile) => (
+      <div aria-hidden className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {[0, 1, 2, 3, 4, 5].map((tile) => (
           <span key={tile} className={cn(card, "flex flex-col gap-2 p-3")}>
             <Placeholder className="h-7 w-10" />
             <Placeholder className="h-3.5 w-24" />

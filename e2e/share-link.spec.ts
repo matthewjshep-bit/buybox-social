@@ -166,7 +166,7 @@ test("ask to see it: a first name, then the ask under the home and an email to t
   expect(emailsTo("ask-agent@example.com").filter((email) => email.includes("was opened"))).toHaveLength(1);
   expect(emailsTo("ask-agent@example.com").filter((email) => email.includes("Dana liked"))).toHaveLength(1);
 
-  // Someone else asks to see it, from Contact. Their first name first.
+  // Someone else asks to see it, from Contact. Their name first.
   const eli = await (await browser.newContext()).newPage();
   await eli.goto(url);
   await toFirstHome(eli);
@@ -434,8 +434,8 @@ test("'only you' is said only when nobody else can read it: not once the package
   await expect(homeIn(holder, "4127 Larkmoor Ave NE")).toBeInViewport({ ratio: 0.9 });
 
   // Then the agent adds Owen, with a link of his own.
-  await agent.getByPlaceholder("Their first name").fill("Owen");
-  await agent.getByRole("button", { name: "Add a person" }).click();
+  await agent.getByRole("combobox", { name: "Add a person" }).fill("Owen");
+  await agent.getByRole("button", { name: "Add", exact: true }).click();
   const owenUrl = await agent.getByLabel("Owen's link").inputValue();
   const owen = await (await browser.newContext()).newPage();
   await owen.goto(owenUrl);

@@ -359,9 +359,21 @@ test("on a link with more than one home, the Porchcard sets this one beside the 
   await pass(more, "Price");
 
   // The first home's Porchcard: each home a column, this one first; whether
-  // people liked it, then each aspect anyone has a view on.
-  await ana.reload();
-  const card = await openScorecard(ana, homeIn(ana, QUILLAN));
+  // people liked it, then each aspect anyone has a view on. (Once Bo's pass
+  // is in: the wait for it above can be met by another save on his link,
+  // such as the time on the home.)
+  await expect(async () => {
+    await ana.reload();
+    const opened = await openScorecard(ana, homeIn(ana, QUILLAN));
+    await expect(
+      opened
+        .getByRole("row")
+        .filter({ has: ana.getByRole("rowheader", { name: "Price", exact: true }) })
+        .getByRole("cell")
+        .first(),
+    ).toHaveText(/^\s*1 pass$/, { timeout: 1000 });
+  }).toPass({ timeout: 20_000 });
+  const card = ana.getByRole("dialog", { name: "Porchcard" });
   await expect(card.getByRole("heading", { name: "Compare with the other home" })).toBeVisible();
   const table = card.getByRole("table", { name: /^This home beside the other home/ });
   await expect(table.getByRole("columnheader")).toHaveText(["Aspect", `This home, ${QUILLAN}`, LAKEVIEW]);

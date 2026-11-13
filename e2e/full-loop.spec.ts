@@ -178,8 +178,8 @@ test("one package, a link for each person: they react, the agent compares and re
 
   // Someone else can be added later, with a link of their own.
   await part("people");
-  await agent.getByPlaceholder("Their first name").fill("Robin");
-  await agent.getByRole("button", { name: "Add a person" }).click();
+  await agent.getByRole("combobox", { name: "Add a person" }).fill("Robin");
+  await agent.getByRole("button", { name: "Add", exact: true }).click();
   const robinUrl = await agent.getByLabel("Robin's link").inputValue();
   const robin = await (await browser.newContext()).newPage();
   await robin.goto(robinUrl);

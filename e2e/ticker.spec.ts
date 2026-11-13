@@ -314,13 +314,15 @@ test("opened from someone's profile, it still goes round", async ({ browser }) =
   const page = await (await browser.newContext()).newPage();
   await page.clock.install();
   await page.goto(profile!);
-  // (A card opens their page's homes full screen, on the photo it's about: `?photo=`.)
+  // (A card opens their page's homes in the pop-out, on the photo it's about: `?photo=`.)
   await page.locator('a[href*="home=SAMPLE-1007"]').first().click();
   await page.waitForURL(/\/reel\?from=/);
-  const home = homeIn(page, WEXFORD);
+  const home = homeIn(page.getByRole("dialog", { name: "Homes" }), WEXFORD);
   await expect(home).toBeVisible();
   await expect(activityOf(home).getByRole("button", { name: "Pause activity" })).toBeVisible();
+  // Their homes: what Bo did leads the line, then it goes round as ever.
   const before = (await lineOf(home).getAttribute("aria-label"))!;
+  expect(before).toMatch(/^Bo /);
   await page.clock.runFor(8000);
   await expect(lineOf(home)).not.toHaveAttribute("aria-label", before);
 });
@@ -344,6 +346,9 @@ test("on a link, what you said is \"You\", and the agent's own words are theirs"
   const agent = await signInAgent(browser, "vera@example.com", "Vera Agent");
   const { url, dashboardUrl } = await createShare(agent, ["719 Saltmarsh"], ["Kit"]);
   const kit = await signedIn(browser);
+  // (She knows her way round a link: no first-timer nudge over the photo,
+  // which puts the line away while it shows.)
+  await kit.addInitScript(() => localStorage.setItem("buybox:nudges", JSON.stringify({ photos: true, next: true })));
   await kit.goto(url);
   await toFirstHome(kit);
   const home = homeIn(kit, SALTMARSH);

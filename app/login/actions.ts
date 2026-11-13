@@ -6,7 +6,7 @@ import { z } from "zod";
 import { accountFor, claimAgentIntent, DEV_COOKIE, devLoginEnabled, requireUser, VIEW_AS_COOKIE } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { readDevice } from "@/lib/engagement";
-import { ensureLinkProfile, joinedLink } from "@/lib/shares";
+import { ensureLinkProfile, linkOnce } from "@/lib/shares";
 import { siteOrigin } from "@/lib/site";
 import { createSupabase, supabaseConfigured } from "@/lib/supabase/server";
 import { clearTestUser, setTestUser, testPasswordMatches, testSignInEnabled } from "@/lib/test-sign-in";
@@ -160,9 +160,9 @@ async function signedIn(user: { id: string; email: string }): Promise<CodeState>
     update accounts a set full_name = s.full_name from signups s
     where a.id = ${account.id} and a.full_name = '' and s.email = ${user.email} and s.full_name <> ''`;
   // A place on an agent's link this browser had becomes theirs: they and the
-  // agent follow each other. Any link they're on: a profile, if they had none,
-  // so the agent's pages can link their name to it.
-  for (const shareId of await claimDevice(account.id)) await joinedLink(account.id, shareId);
+  // agent follow each other, the first time they're linked. Any link they're
+  // on: a profile, if they had none, so the agent's pages can link their name to it.
+  for (const participantId of await claimDevice(account.id)) await linkOnce(account.id, participantId);
   await ensureLinkProfile(account.id);
   return { done: { agent: account.role === "agent" } };
 }
@@ -188,7 +188,7 @@ export async function signOut() {
 
 // On signing in: what this browser did before becomes the account's. Its
 // public self (when the account has none yet), and its place on any agent's
-// link where the account has none yet.
+// link where the account has none yet. Returns those places.
 async function claimDevice(accountId: string): Promise<string[]> {
   const device = await readDevice();
   if (!device) return [];
@@ -196,10 +196,10 @@ async function claimDevice(accountId: string): Promise<string[]> {
     update visitors set account_id = ${accountId}
     where device_token = ${device} and account_id is null
       and not exists (select 1 from visitors where account_id = ${accountId})`;
-  const claimed = await sql<{ share_id: string }[]>`
+  const claimed = await sql<{ id: string }[]>`
     update participants p set account_id = ${accountId}
     where p.device_token = ${device} and p.account_id is null
       and not exists (select 1 from participants q where q.share_id = p.share_id and q.account_id = ${accountId})
-    returning p.share_id`;
-  return claimed.map((row) => row.share_id);
+    returning p.id`;
+  return claimed.map((row) => row.id);
 }

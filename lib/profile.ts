@@ -2,6 +2,7 @@ import { cache } from "react";
 import { sql } from "./db";
 import { photoUrl } from "./person-photo";
 import type { Listing, ListingMedia } from "./listings/types";
+import type { ContextSpot } from "./reel-context";
 import {
   aspectOfFact,
   aspectOfTag,
@@ -81,6 +82,10 @@ export type ProfileCard = {
   };
   // What they did, without their name: "liked the front door and kitchen island".
   sentence: string;
+  // The same, as anyone else may see it on a new surface (the take on a home
+  // in the pop-out): what they liked, or else that they commented, never what
+  // they didn't like or passed on ("" when that leaves nothing).
+  likeSentence: string;
   // The photo of the newest thing they liked or said something about, else
   // the home's first; `index` is its place in the home's photos.
   photo: { url: string; index: number; alt: string; width?: number; height?: number } | null;
@@ -88,8 +93,11 @@ export type ProfileCard = {
   pins: { x: number; y: number; kind: PinKind }[];
   // Other photos of the home they did something on that day.
   otherPhotos: number;
-  // The facts they liked or didn't: "the price".
-  facts: { kind: "like" | "dislike"; phrase: string }[];
+  // The facts they liked or didn't: "the price" (and its tag, "Price", to open it).
+  facts: { kind: "like" | "dislike"; phrase: string; tag: string }[];
+  // Everything they picked out in the photos that day, newest first, each
+  // once, by name ("the front door"), to go to.
+  spots: ContextSpot[];
   comments: ProfileComment[];
   // Comments by others they liked. Only ever on their own page.
   likedComments: { author: string; body: string }[];
@@ -568,18 +576,29 @@ export function buildCards(rows: ProfileRows): ProfileCard[] {
           ? { name: spotName(listing, { mediaKey: c.media_key, tag: c.spot }), fact: c.media_key === FACTS }
           : null;
 
+      const commented = () => {
+        const spots = [...new Set(comments.map((c) => commentSpot(c)?.name ?? null))];
+        return spots.length <= 2 && spots.every(Boolean) ? `commented on ${spots.join(" and ")}` : "commented on this home";
+      };
       let sentence: string;
       if (b.reaction || likes.length || dislikes.length) {
         sentence = sentenceOf(listing, b.reaction, likes, dislikes);
       } else if (comments.length) {
-        const spots = [...new Set(comments.map((c) => commentSpot(c)?.name ?? null))];
-        sentence =
-          spots.length <= 2 && spots.every(Boolean) ? `commented on ${spots.join(" and ")}` : "commented on this home";
+        sentence = commented();
       } else {
         const authors = [...new Set(b.commentLikes.map((like) => like.author))];
         sentence =
           b.commentLikes.length === 1 ? `liked ${authors[0]}'s comment` : `liked what ${names(authors)} said`;
       }
+
+      // Only the good side: a like (or the specifics they liked, even on a
+      // home they passed on), and what they liked in it.
+      const kept: ReactionRow | null =
+        b.reaction && (b.reaction.reaction === "like" || b.reaction.liked.length > 0)
+          ? { ...b.reaction, reaction: b.reaction.reaction === "like" ? "like" : null, disliked: [] }
+          : null;
+      const likeSentence =
+        kept || likes.length ? sentenceOf(listing, kept, likes, []) : comments.length ? commented() : "";
 
       // Everything that day on a photo (not a fact), newest first.
       const onPhotos = [
@@ -648,6 +667,7 @@ export function buildCards(rows: ProfileRows): ProfileCard[] {
           active: listing.StandardStatus === "Active",
         },
         sentence,
+        likeSentence,
         photo: media
           ? {
               url: media.MediaURL,
@@ -664,7 +684,12 @@ export function buildCards(rows: ProfileRows): ProfileCard[] {
           ...dislikes.filter((row) => row.media_key === FACTS).map((row) => ({ kind: "dislike" as const, row })),
         ]
           .sort((a, b) => +a.row.at - +b.row.at)
-          .map(({ kind, row }) => ({ kind, phrase: tagPhrase(row.tag) })),
+          .map(({ kind, row }) => ({ kind, phrase: tagPhrase(row.tag), tag: row.tag })),
+        spots: onPhotos.flatMap((spot, i) =>
+          onPhotos.findIndex((other) => other.mediaKey === spot.mediaKey && other.tag === spot.tag && other.kind === spot.kind) === i
+            ? [{ mediaKey: spot.mediaKey, tag: spot.tag, kind: spot.kind, name: spotName(listing, spot) }]
+            : [],
+        ),
         comments: comments.map((c) => ({
           id: c.id,
           body: c.body,

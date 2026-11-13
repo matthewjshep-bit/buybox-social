@@ -1,6 +1,6 @@
 // Runs after the other specs (alphabetically last) because it likes a lot of
 // homes, which would throw off their counts.
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import {
   heartOf,
   homeIn,
@@ -80,11 +80,40 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
     await expect(card).toBeHidden();
   }
   expect(fits).toBe(true);
+
+  // Her home, following nobody yet, opens on more homes picked for her taste
+  // (the picks that used to sit beside the feed), each opening them all in
+  // that order, then the way to every home.
+  await pia.goto("/");
+  await expect(pia.getByRole("group", { name: "Show" }).getByRole("button", { name: "For you" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(pia.getByRole("heading", { name: "Picked for you" })).toHaveCount(0);
+  const picks = pia.getByRole("region", { name: "More homes for you" });
+  await expect(picks.getByRole("listitem").first().getByRole("link")).toHaveAttribute(
+    "href",
+    /^\/reel\?from=picks&home=SAMPLE-\d+$/,
+  );
+  await expect(picks.getByRole("link", { name: "Browse homes" })).toHaveAttribute("href", "/reel");
   expect(pageErrors).toEqual([]);
 });
 
+// Facts to like, beside what's in the photo: "Like the price".
+const FACTS = ["Price", "Bedrooms", "Bathrooms", "Square footage"];
+async function likeFact(home: Locator, tag: string) {
+  await home.locator(`[data-fact="${tag}"]`).first().click();
+  const card = home.getByRole("group", { name: tag });
+  await settle(card);
+  const like = card.getByRole("button", { name: new RegExp(`^Like the ${tag.toLowerCase()}`) });
+  await like.click();
+  await expect(like).toHaveAttribute("aria-pressed", "true");
+  await card.getByRole("button", { name: "Close" }).click();
+  await expect(card).toBeHidden();
+}
+
 test("replies, comment likes, the activity bell, trending, and who liked what", async ({ browser }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const FOXGLOVE = "24611 SE Foxglove Pl";
   const cleo = await signUpBuyer(browser, "cleo@example.com", "Cleo Ray");
   await cleo.goto("/homes/SAMPLE-1012");
@@ -125,10 +154,10 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   await heartOf(devHome).click();
   await expect(heartOf(devHome)).toHaveAttribute("aria-pressed", "true");
 
-  // Two more people like it, and plenty in its photo. (Trending takes
-  // several people, and a place among the busiest homes this week. The other
-  // tests make some homes busy too, so this one gets a clear lead of its own:
-  // 14 things this week, where the busiest of theirs has 12.)
+  // Two more people like it, and plenty in its photo and its facts.
+  // (Trending takes several people, and a place among the busiest homes this
+  // week. The other tests make some homes busy too, so this one gets a clear
+  // lead of its own: 22 things this week, well clear of theirs.)
   const fay = await signUpBuyer(browser, "fay@example.com", "Fay Lin");
   await fay.goto("/homes/SAMPLE-1012");
   const fayHome = homeIn(fay, FOXGLOVE);
@@ -138,6 +167,7 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
     const card = await likeInPhoto(fayHome, thing);
     await card.getByRole("button", { name: "Close" }).click();
   }
+  for (const fact of FACTS) await likeFact(fayHome, fact);
   const gus = await (await browser.newContext()).newPage();
   await gus.goto("/homes/SAMPLE-1012");
   const gusHome = homeIn(gus, FOXGLOVE);
@@ -148,6 +178,7 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
     const card = await likeInPhoto(gusHome, thing);
     await card.getByRole("button", { name: "Close" }).click();
   }
+  for (const fact of FACTS) await likeFact(gusHome, fact);
 
   // A third person comments on the home Cleo liked.
   const eli = await signUpBuyer(browser, "eli@example.com", "Eli Moss");
@@ -164,7 +195,15 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   );
   const eliChat = await openComments(eli, eliHome);
   await eliChat.getByLabel("Add a comment").fill("Is the garage heated?");
+  // (Saved before Cleo looks: it shows here at once, before it is.)
+  const posted = eli.waitForResponse(
+    (res) =>
+      res.request().method() === "POST" &&
+      Boolean(res.request().headers()["next-action"]) &&
+      (res.request().postData() ?? "").includes("Is the garage heated?"),
+  );
   await eliChat.getByRole("button", { name: "Post", exact: true }).click();
+  await posted;
   await expect(eliChat.getByText("Is the garage heated?")).toBeVisible();
 
   // Cleo's bell counts all three, and the activity page explains each.

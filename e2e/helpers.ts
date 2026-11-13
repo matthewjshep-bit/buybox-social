@@ -30,14 +30,18 @@ export async function signInAgent(browser: Browser, email: string, name: string)
 }
 
 // A package of homes for one or more people. Each person gets their own link.
+// (With nobody, it's a link anyone can join: packageLink, in share-link.spec.ts.)
 export async function createShare(page: Page, addresses: string[], people: string[] = ["Jamie"]) {
   await page.goto("/dashboard/new");
   for (const address of addresses) {
     await page.getByRole("button", { name: new RegExp(address) }).click();
   }
-  for (const [i, name] of people.entries()) {
-    if (i > 0) await page.getByRole("button", { name: "Add another person" }).click();
-    await page.getByLabel(`Person ${i + 1}'s first name`).fill(name);
+  // Who it's for: each first name typed, then Enter, as someone new.
+  const who = page.getByRole("combobox", { name: "Who's it for?" });
+  for (const name of people) {
+    await who.fill(name);
+    await who.press("Enter");
+    await expect(page.getByRole("list", { name: "Who it's for" }).getByText(name, { exact: true })).toBeVisible();
   }
   await page.getByLabel(/Personal note/).fill("This one has the yard you mentioned.");
   await page.getByRole("button", { name: /Create link/ }).click();
@@ -93,7 +97,7 @@ export async function enterCode(where: Page | Locator) {
 }
 
 // The feed: one home per screen.
-export const homeIn = (page: Page, address: string) => page.getByRole("article", { name: address });
+export const homeIn = (page: Page | Locator, address: string) => page.getByRole("article", { name: address });
 
 // An agent's link opens on its welcome screen, a word from the agent: on to
 // the first home the way its button goes.

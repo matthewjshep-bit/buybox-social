@@ -31,6 +31,7 @@ import {
 import { getPublicIdentity } from "@/lib/public";
 import { readStory, refreshStory, shownStory, storyOf, storyWriting, type TasteStory } from "@/lib/taste-story";
 import { ANONYMOUS_BUYER } from "@/lib/timeline";
+import { yourClient, type YourClient } from "@/lib/your-client";
 import { button, pill } from "@/lib/ui";
 
 type Props = {
@@ -46,12 +47,22 @@ const viewer = cache(async () => {
   return visitor;
 });
 
+// An agent looking at their own client's page: who they are on the agent's
+// links. Only ever the agent's own, and only to them.
+const clientOf = cache(async (personId: string, isMe: boolean): Promise<YourClient | null> => {
+  if (isMe) return null;
+  const account = await getCurrentUser();
+  return account?.role === "agent" ? yourClient(account.id, personId) : null;
+});
+
 // What their page calls them. Someone who signed in with just an email has no
 // name yet: on their own page it's "You" (the heading says "Your page" and asks
-// for one), with the initial the header shows, from their email; to anyone
-// else they're "A buyer", a plain figure. Never a stand-in like "Someone".
-async function nameOf(person: ProfilePerson, isMe: boolean) {
+// for one), with the initial the header shows, from their email; to their
+// agent, the first name the agent gave them on a link; to anyone else they're
+// "A buyer", a plain figure. Never a stand-in like "Someone".
+async function nameOf(person: ProfilePerson, isMe: boolean, client: YourClient | null = null) {
   if (person.name.trim()) return { name: person.name, face: person.name, unnamed: false };
+  if (!isMe && client?.firstName) return { name: client.firstName, face: client.firstName, unnamed: false };
   if (!isMe) return { name: person.isAgent ? "An agent" : ANONYMOUS_BUYER, face: "", unnamed: true };
   return { name: "You", face: (await getCurrentUser())?.email ?? "", unnamed: true };
 }
@@ -69,7 +80,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const visitor = await viewer();
   const isMe = visitor?.id === person.id;
   const story = await tasteOf(person, isMe);
-  const { name, unnamed } = await nameOf(person, isMe);
+  const { name, unnamed } = await nameOf(person, isMe, await clientOf(person.id, isMe));
   const title = `${unnamed && isMe ? "Your page" : name} · Porchcard`;
   // The headline is from what everyone can see, whoever is looking, and it's
   // what a shared link to the page says under its title.
@@ -105,7 +116,9 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   const before = parseBefore(query.before);
   const visitor = await viewer();
   const isMe = visitor?.id === person.id;
-  const { name, face, unnamed } = await nameOf(person, isMe);
+  // An agent's own client: said so, to that agent, with their homes a tap away.
+  const client = await clientOf(person.id, isMe);
+  const { name, face, unnamed } = await nameOf(person, isMe, client);
   // What they pass on is theirs to keep from everyone else.
   const passes = isMe || !person.hidePasses;
   const show: ProfileShow = isProfileShow(query.show) ? query.show : "all";
@@ -187,6 +200,14 @@ export default async function ProfilePage({ params, searchParams }: Props) {
           people={{ ...people, href: `/people/${person.id}` }}
           photo={person.photo}
           followsYou={followsYou}
+          client={
+            client
+              ? {
+                  homes: `/reel?from=client:${client.participantId}`,
+                  link: `/dashboard/shares/${client.shareId}`,
+                }
+              : undefined
+          }
           follow={
             isMe ? undefined : (
               <FollowButton
@@ -294,6 +315,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                 earlierHref={feed.earlier ? href({ before: feed.earlier }) : null}
                 reelFrom={person.id}
                 photo={person.photo}
+                filters={{ show, about, side }}
               />
             ) : before ? (
               <EmptyState icon={Home} title="That's everything">

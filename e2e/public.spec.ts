@@ -129,10 +129,18 @@ test("public pages show activity, never private words, and private threads share
   const otherMore = await openMore(other, otherPost);
   await otherMore.getByRole("button", { name: "Not for me" }).click();
   await joinAs(other, "Drew");
+  // (Saved before the page is loaded again.)
+  const priceSaved = other.waitForResponse(
+    (res) =>
+      res.request().method() === "POST" &&
+      Boolean(res.request().headers()["next-action"]) &&
+      /price/i.test(res.request().postData() ?? ""),
+  );
   await otherMore.getByRole("group", { name: "What made you pass?" }).getByRole("button", { name: "Price" }).click();
   await expect(
     otherMore.getByRole("group", { name: "What made you pass?" }).getByRole("button", { name: "Price" }),
   ).toHaveAttribute("aria-pressed", "true");
+  await priceSaved;
   await other.reload();
   otherSheet = await openComments(other, otherPost);
   await expect(otherSheet.getByText("You passed, didn't like the price")).toBeVisible();

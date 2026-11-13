@@ -8,13 +8,16 @@ import {
   listRecentShares,
   moveQuickShare,
   nameQuickShare,
+  newestLinkFor,
   releaseQuickShare,
   reserveSendToken,
   type RecentShare,
 } from "@/app/dashboard/actions";
 import { HOME_MESSAGE_TITLE, homeMessage } from "@/app/dashboard/message";
+import { PeoplePicker, typed, type Chosen } from "@/components/people-picker";
 import type { SendHome } from "@/components/reel";
 import { cn, formatPrice, timeAgo } from "@/lib/format";
+import { linkTitle, peopleTitle } from "@/lib/people-picker";
 import { button, field } from "@/lib/ui";
 import { claim, FAILED, type Sent } from "./quick-send";
 
@@ -35,15 +38,28 @@ const secondary = button({ kind: "secondary", size: "lg", block: true });
 // A button that's working on it dims until it's done (it keeps the keyboard).
 const busy = (pending: boolean) => pending && "opacity-60";
 
+// The most people one link from Send can be named for.
+const MAX_PEOPLE = 6;
+
+// Everyone picked, and whatever's typed but not yet added (a missed Enter
+// shouldn't lose a name).
+const withTyped = (people: Chosen[], typing: string) =>
+  typing.trim() && !people.some((person) => person.key === typed(typing).key) ? [...people, typed(typing)] : people;
+
 // Who a link is for, and a note: both optional, both the agent's to change later.
 function WhoFields({
-  name,
-  onName,
+  people,
+  onPeople,
+  onTyping,
+  onPicked,
   note,
   onNote,
 }: {
-  name: string;
-  onName: (name: string) => void;
+  people: Chosen[];
+  onPeople: (people: Chosen[]) => void;
+  onTyping: (text: string) => void;
+  // Someone was just added to it.
+  onPicked?: (person: Chosen) => void;
   note: string;
   onNote: (note: string) => void;
 }) {
@@ -51,23 +67,15 @@ function WhoFields({
   const [noting, setNoting] = useState(false);
   return (
     <div className="flex flex-col gap-3">
-      <div>
-        <label htmlFor={`${id}-name`} className="text-sm font-medium">
-          Their first name (optional)
-        </label>
-        <input
-          id={`${id}-name`}
-          value={name}
-          maxLength={40}
-          autoComplete="off"
-          aria-describedby={`${id}-name-hint`}
-          onChange={(event) => onName(event.target.value)}
-          className={cn(field(), "mt-1")}
-        />
-        <p id={`${id}-name-hint`} className="mt-1 text-meta text-muted">
-          For your dashboard. The link greets them by name.
-        </p>
-      </div>
+      <PeoplePicker
+        label="Who's it for? (optional)"
+        hint="The link is named for them, and greets them by name."
+        chosen={people}
+        onChange={onPeople}
+        onTextChange={onTyping}
+        onCommit={onPicked}
+        max={MAX_PEOPLE}
+      />
       {noting ? (
         <div>
           <label htmlFor={`${id}-note`} className="text-sm font-medium">
@@ -122,10 +130,14 @@ export function SentBody({
   copiedId: string;
   onDone: (message?: string) => void;
 }) {
-  const [name, setName] = useState("");
+  const [people, setPeople] = useState<Chosen[]>([]);
+  const [typing, setTyping] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // A client picked who already has a link from the agent: this home might
+  // belong on that one instead.
+  const [theirs, setTheirs] = useState<{ person: Chosen; link: RecentShare } | null>(null);
   const [others, setOthers] = useState<RecentShare[] | null>(null);
   const [showOthers, setShowOthers] = useState(false);
   const [undo, setUndo] = useState<"ask" | "opened" | "late" | null>(null);
@@ -166,17 +178,21 @@ export function SentBody({
       setError(null);
       const id = await made();
       if (!id) return;
-      const clientName = name.trim();
-      if (clientName || note.trim()) {
-        const saved = await nameQuickShare(id, { clientName, note }).catch(() => ({ error: "That didn't save. Try again." }));
+      const named = withTyped(people, typing);
+      let title = "";
+      if (named.length > 0 || note.trim()) {
+        const saved = await nameQuickShare(id, { people: named.map((person) => person.pick), note }).catch(
+          (): { error?: string; names?: string[] } => ({ error: "That didn't save. Try again." }),
+        );
         if (saved.error) return setError(saved.error);
+        title = peopleTitle(saved.names ?? []);
       }
       if (notes) {
         onDone();
         router.push(`/s/${sent.token}`);
         return;
       }
-      onDone(clientName ? `Saved. Their link greets ${clientName}.` : undefined);
+      onDone(title ? `Saved. Their link greets ${title}.` : undefined);
     });
   };
 
@@ -193,10 +209,11 @@ export function SentBody({
       if (!id) return;
       const moved = await moveQuickShare(id, target.id).catch(() => ({ error: "That didn't work. Try again." }));
       if ("error" in moved) return setError(moved.error);
+      const whose = moved.clientName ? `${moved.clientName}'s link` : "their link";
       onDone(
         moved.closed
-          ? `Added to ${moved.clientName}'s link.`
-          : `Added to ${moved.clientName}'s link. They'd opened the one you sent, so it still works.`,
+          ? `Added to ${whose}.`
+          : `Added to ${whose}. They'd opened the one you sent, so it still works.`,
       );
     });
   };
@@ -214,6 +231,17 @@ export function SentBody({
     });
   };
 
+  // One of their clients was picked: their newest link, if it isn't this one.
+  const picked = (person: Chosen) => {
+    if (person.group !== "client") return;
+    newestLinkFor(person.pick, shareId ?? undefined).then(
+      (link) => {
+        if (link) setTheirs({ person, link });
+      },
+      () => {},
+    );
+  };
+
   const recent = (others ?? []).filter((share) => share.id !== shareId).slice(0, 5);
   const dashboardLink = "mx-auto flex min-h-11 items-center gap-1 px-3 text-sm font-semibold";
 
@@ -227,7 +255,46 @@ export function SentBody({
           <Check aria-hidden size={16} className="shrink-0" /> Link copied. Paste it into a text or email.
         </p>
       )}
-      <WhoFields name={name} onName={setName} note={note} onNote={setNote} />
+      <WhoFields
+        people={people}
+        onPeople={(next) => {
+          setPeople(next);
+          // Taken off again: no question about their other link.
+          if (theirs && !next.some((person) => person.key === theirs.person.key)) setTheirs(null);
+        }}
+        onTyping={setTyping}
+        onPicked={picked}
+        note={note}
+        onNote={setNote}
+      />
+      {theirs && (
+        <div role="group" aria-label={`${theirs.person.name}'s other link`} className="mt-3 rounded-2xl bg-stone-50 p-3 text-sm">
+          <p>
+            {theirs.person.name} already has a link from you ({theirs.link.homes}{" "}
+            {theirs.link.homes === 1 ? "home" : "homes"}).
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-1">
+            <button
+              type="button"
+              onClick={() => moveTo(theirs.link)}
+              aria-disabled={pending}
+              className={cn(button({ kind: "ghost", flush: true }), "font-semibold text-brand", busy(pending))}
+            >
+              Add this home to it
+            </button>
+            <span aria-hidden className="text-stone-400">
+              ·
+            </span>
+            <button
+              type="button"
+              onClick={() => setTheirs(null)}
+              className={cn(button({ kind: "ghost" }), "text-stone-700")}
+            >
+              Keep a new link
+            </button>
+          </div>
+        </div>
+      )}
       {error && (
         <p role="alert" className="mt-3 text-sm text-red-700">
           {error}
@@ -297,7 +364,8 @@ export function SentBody({
                       >
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-body font-medium">
-                            {share.clientName} · {share.homes} {share.homes === 1 ? "home" : "homes"}
+                            {linkTitle(share.clientName, share.firstAddress)} · {share.homes}{" "}
+                            {share.homes === 1 ? "home" : "homes"}
                           </span>
                           <span className="block truncate text-meta text-muted">{linkLine(share)}</span>
                         </span>
@@ -365,9 +433,11 @@ export function SentBody({
 // The slower way: make the link first, then send it with a fresh tap.
 export function DraftBody({ home, onNextToken }: { home: SendHome; onNextToken: (token: string) => void }) {
   const id = useId();
-  const [name, setName] = useState("");
+  const [people, setPeople] = useState<Chosen[]>([]);
+  const [typing, setTyping] = useState("");
   const [note, setNote] = useState("");
-  const [link, setLink] = useState<{ url: string; shareId: string } | null>(null);
+  // The link, once it's made, and how many people it was named for.
+  const [link, setLink] = useState<{ url: string; shareId: string; people: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -393,11 +463,16 @@ export function DraftBody({ home, onNextToken }: { home: SendHome; onNextToken: 
       const made = await claim({ token: reserved.token, listingKey: home.listingKey });
       if (!("shareId" in made)) return setError(made.error === FAILED ? failed : made.error);
       onNextToken(made.nextToken);
-      if (name.trim() || note.trim()) {
-        const saved = await nameQuickShare(made.shareId, { clientName: name.trim(), note }).catch(() => ({ error: failed }));
+      const named = withTyped(people, typing);
+      let count = 0;
+      if (named.length > 0 || note.trim()) {
+        const saved = await nameQuickShare(made.shareId, { people: named.map((person) => person.pick), note }).catch(
+          (): { error?: string; names?: string[] } => ({ error: failed }),
+        );
         if (saved.error) setError(saved.error);
+        count = saved.names?.length ?? 0;
       }
-      setLink({ url: `${window.location.origin}/s/${reserved.token}`, shareId: made.shareId });
+      setLink({ url: `${window.location.origin}/s/${reserved.token}`, shareId: made.shareId, people: count });
     });
   };
 
@@ -424,6 +499,9 @@ export function DraftBody({ home, onNextToken }: { home: SendHome; onNextToken: 
             onFocus={(event) => event.target.select()}
             className={cn(field({ quiet: true }), "mt-2")}
           />
+          {link.people >= 2 && (
+            <p className="mt-2 text-meta text-muted">Each person also has their own link in your dashboard.</p>
+          )}
           {error && (
             <p role="alert" className="mt-3 text-sm text-red-700">
               {error}
@@ -473,7 +551,7 @@ export function DraftBody({ home, onNextToken }: { home: SendHome; onNextToken: 
       ) : (
         <>
           <div className="mt-4">
-            <WhoFields name={name} onName={setName} note={note} onNote={setNote} />
+            <WhoFields people={people} onPeople={setPeople} onTyping={setTyping} note={note} onNote={setNote} />
           </div>
           {error && (
             <p role="alert" className="mt-3 text-sm text-red-700">

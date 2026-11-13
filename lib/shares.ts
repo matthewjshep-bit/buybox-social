@@ -1,6 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
+import type postgres from "postgres";
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
+import type { PersonPick } from "./people-picker";
 import { isPointTag, tagNameIn } from "./photos";
 import { describeReaction, spotPlace, spotsIn, type Aspect, type ReactionState } from "./reactions";
 
@@ -52,6 +54,10 @@ export type ThreadComment = {
   // A reply: whose comment (or whose likes) it answers.
   replyTo?: { name: string; likes: boolean } | null;
 };
+
+// What a link is called, worked out the way the database does it; and its
+// name wherever it's shown (lib/people-picker.ts, so the browser has them too).
+export { linkTitle, peopleTitle } from "./people-picker";
 
 export const newShareToken = () => randomBytes(24).toString("base64url");
 
@@ -205,21 +211,26 @@ export async function getShareByToken(token: string) {
 // they're on the package already another way, which stays theirs). Otherwise
 // their own place on the package (a browser's from before they signed in
 // became theirs then). Null when they have none yet, or when the link is
-// someone else's own. `claim: false` only looks.
+// someone else's own. `claim: false` only looks. Claiming also links them to
+// the agent, once (linkOnce): someone the agent added from Porchcard is theirs
+// already, and is linked the first time they act there.
 export async function accountParticipant(
   found: { share: Pick<Share, "id">; person: { id: string; first_name: string } | null },
   accountId: string,
   { claim = true } = {},
 ) {
-  const [mine] = await sql<{ id: string; first_name: string }[]>`
-    select id, first_name from participants where share_id = ${found.share.id} and account_id = ${accountId}`;
-  if (!found.person) return mine ?? null;
+  const [mine] = await sql<{ id: string; first_name: string; linked: boolean }[]>`
+    select id, first_name, linked_at is not null as linked
+    from participants where share_id = ${found.share.id} and account_id = ${accountId}`;
+  const own = mine ? { id: mine.id, first_name: mine.first_name } : null;
+  if (mine && claim && !mine.linked) await linkOnce(accountId, mine.id);
+  if (!found.person) return own;
   const [person] = await sql<{ id: string; first_name: string; account_id: string | null }[]>`
     select id, first_name, account_id from participants where id = ${found.person.id}`;
-  if (!person) return mine ?? null;
+  if (!person) return own;
   if (person.account_id === accountId) return { id: person.id, first_name: person.first_name };
   if (person.account_id) return null;
-  if (mine) return mine;
+  if (own) return own;
   if (claim) {
     // (Someone else signed in there a moment ago: then it's theirs.)
     const [claimed] = await sql`
@@ -227,31 +238,61 @@ export async function accountParticipant(
       where id = ${person.id} and account_id is null
       returning id`;
     if (!claimed) return null;
-    await joinedLink(accountId, found.share.id);
+    await linkOnce(accountId, person.id);
   }
   return { id: person.id, first_name: person.first_name };
 }
 
+// The agent's own profile, under their own first name, made the first time
+// it's needed: so their clients can follow them, and so the homes they send
+// someone on Porchcard can say who they're from.
+export async function ensureAgentProfile(agentId: string) {
+  await sql`
+    insert into visitors (device_token, first_name, account_id)
+    select 'account:' || a.id, split_part(regexp_replace(btrim(a.full_name), '[[:space:]]+', ' ', 'g'), ' ', 1), a.id
+    from accounts a where a.id = ${agentId}
+    on conflict do nothing`;
+}
+
 // Someone with an account just became theirs on an agent's link (claimed their
 // own link, joined a package's, or signed in on a browser that was on one):
-// they have a profile, and they and the agent follow each other, once. Either
-// can stop following later; nothing here starts it again.
+// they have a profile, and they and the agent follow each other. Only ever
+// through linkOnce, so it happens once for each agent and client: either can
+// stop following later, and nothing here starts it again.
 export async function joinedLink(accountId: string, shareId: string) {
   await ensureLinkProfile(accountId);
   const [agent] = await sql<{ agent_id: string }[]>`select agent_id from shares where id = ${shareId}`;
   if (!agent || agent.agent_id === accountId) return;
-  // The agent's profile too, under their own first name.
-  await sql`
-    insert into visitors (device_token, first_name, account_id)
-    select 'account:' || a.id, split_part(regexp_replace(btrim(a.full_name), '[[:space:]]+', ' ', 'g'), ' ', 1), a.id
-    from accounts a where a.id = ${agent.agent_id}
-    on conflict do nothing`;
+  await ensureAgentProfile(agent.agent_id);
   await sql`
     insert into follows (follower_id, followed_id)
     select one.id, other.id
     from visitors one, visitors other
     where (one.account_id, other.account_id) in ((${accountId}::uuid, ${agent.agent_id}::uuid), (${agent.agent_id}::uuid, ${accountId}::uuid))
     on conflict do nothing`;
+}
+
+// A place on an agent's link counts as someone's for the first time (they
+// claimed it, joined, signed in, or opened a link the agent added them to):
+// the first time this agent and this client are linked at all, they follow
+// each other (joinedLink). After that, a new link from the same agent never
+// starts it again, so someone who stopped following their agent stays that
+// way. Any other call only makes sure they have a profile.
+export async function linkOnce(accountId: string, participantId: string) {
+  const [linked] = await sql<{ share_id: string; agent_id: string }[]>`
+    update participants p set linked_at = now()
+    from shares s
+    where p.id = ${participantId} and p.account_id = ${accountId} and p.linked_at is null and s.id = p.share_id
+    returning p.share_id, s.agent_id`;
+  if (linked) {
+    const [before] = await sql`
+      select 1 from participants q join shares s on s.id = q.share_id
+      where q.account_id = ${accountId} and s.agent_id = ${linked.agent_id}
+        and q.id <> ${participantId} and q.linked_at is not null
+      limit 1`;
+    if (!before) return joinedLink(accountId, linked.share_id);
+  }
+  await ensureLinkProfile(accountId);
 }
 
 // Someone with an account on an agent's link has a profile, so wherever they
@@ -277,7 +318,7 @@ export async function getInvitees(shareId: string) {
   return sql<{ id: string; first_name: string; token: string }[]>`
     select id, first_name, token from participants
     where share_id = ${shareId} and token is not null
-    order by invited_at, first_name`;
+    order by invited_at, position nulls last, created_at, first_name`;
 }
 
 // Everyone on a link, by first name: the people the agent added, and anyone
@@ -287,7 +328,7 @@ export async function getShareMembers(shareId: string) {
   const rows = await sql<{ first_name: string }[]>`
     select first_name from participants
     where share_id = ${shareId}
-    order by invited_at nulls last, created_at, first_name`;
+    order by invited_at nulls last, position nulls last, created_at, first_name`;
   return rows.map((row) => row.first_name);
 }
 
@@ -321,13 +362,123 @@ export async function confidantOf(shareId: string) {
   return (await isPrivateTo(shareId, people[0].id)) ? people[0] : null;
 }
 
-// Adds someone to a package with their own link. Returns their link token.
-export async function invitePerson(shareId: string, firstName: string, tx: typeof sql = sql) {
+// How the agent came to add someone: a first name they typed, or someone on
+// Porchcard who is already their client, who follows them, or whom they found
+// by name. Only the person's own follow counts: an agent following someone is
+// one click of theirs, so it says nothing about whether that person knows them.
+export type AddedFrom = "name" | "client" | "follow" | "search";
+
+// Someone about to be added to a link, as the server worked them out: never
+// the browser's say-so.
+export type Newcomer = { firstName: string; accountId: string | null; addedFrom: AddedFrom };
+
+type Db = postgres.ISql;
+
+// The people an agent picked, as who they really are: a typed first name, or
+// someone's public profile, which must be a finished sign-up with a first
+// name, and never the agent. The same person (or the same typed name) twice
+// counts once.
+export async function resolvePicks(
+  tx: Db,
+  agentId: string,
+  picks: PersonPick[],
+): Promise<{ people: Newcomer[] } | { error: string }> {
+  const people: Newcomer[] = [];
+  for (const pick of picks) {
+    if ("name" in pick) {
+      const firstName = pick.name.trim().replace(/\s+/g, " ");
+      if (!firstName) continue;
+      const lower = firstName.toLowerCase();
+      if (people.some((p) => !p.accountId && p.firstName.toLowerCase() === lower)) continue;
+      people.push({ firstName, accountId: null, addedFrom: "name" });
+      continue;
+    }
+    const [found] = await tx<
+      { first_name: string; account_id: string; role: string | null; client: boolean; follow: boolean }[]
+    >`
+      select btrim(v.first_name) as first_name, v.account_id, a.role,
+        exists (
+          select 1 from participants p join shares s on s.id = p.share_id
+          where p.account_id = v.account_id and s.agent_id = ${agentId}) as client,
+        exists (
+          select 1 from follows f join visitors me on me.account_id = ${agentId}
+          where f.follower_id = v.id and f.followed_id = me.id) as follow
+      from visitors v join accounts a on a.id = v.account_id
+      where v.id = ${pick.visitorId}`;
+    if (found?.account_id === agentId) return { error: "That's you." };
+    if (!found || !found.role || !found.first_name) return { error: "We couldn't find them on Porchcard." };
+    if (people.some((p) => p.accountId === found.account_id)) continue;
+    people.push({
+      firstName: found.first_name.slice(0, 40),
+      accountId: found.account_id,
+      addedFrom: found.client ? "client" : found.follow ? "follow" : "search",
+    });
+  }
+  return { people };
+}
+
+// Why these people can't join this link, if they can't: someone with an
+// account is on a link only once, and two people who haven't signed up can't
+// share a first name there (the agent couldn't tell them apart). Nobody who
+// hasn't signed up is ever matched to someone who has.
+export async function newcomerProblem(tx: Db, shareId: string, people: Newcomer[]) {
+  const accounts = people.flatMap((p) => (p.accountId ? [p.accountId] : []));
+  const names = people.flatMap((p) => (p.accountId ? [] : [p.firstName.toLowerCase()]));
+  const [taken] = await tx<{ first_name: string }[]>`
+    select first_name from participants
+    where share_id = ${shareId}
+      and ((account_id is not null and account_id in ${tx(accounts.length ? accounts : ["00000000-0000-0000-0000-000000000000"])})
+        or (account_id is null and lower(btrim(first_name)) in ${tx(names.length ? names : [""])}))
+    limit 1`;
+  if (!taken) return null;
+  const name = people.find((p) => p.firstName.toLowerCase() === taken.first_name.trim().toLowerCase())?.firstName;
+  return `${name ?? taken.first_name.trim()} is already on this link.`;
+}
+
+// Someone an agent found on Porchcard but has never met: at most this many a
+// day, so links can't be used to reach strangers in bulk. Counted from
+// agent_reach, which taking someone off a link (or their leaving) never
+// deletes, so removing and re-adding people can't reset it. The same person
+// twice in a day counts once.
+const STRANGERS_PER_DAY = 20;
+export const TOO_MANY_STRANGERS =
+  "You've added a lot of people you haven't met on Porchcard today. Try again tomorrow, or type their first name instead.";
+
+export async function tooManyStrangers(tx: Db, agentId: string, people: Newcomer[]) {
+  const strangers = [...new Set(people.flatMap((p) => (p.addedFrom === "search" && p.accountId ? [p.accountId] : [])))];
+  if (strangers.length === 0) return false;
+  const recent = await tx<{ account_id: string }[]>`
+    select account_id from agent_reach
+    where agent_id = ${agentId} and found_at > now() - interval '24 hours'`;
+  const already = new Set(recent.map((row) => row.account_id));
+  const adding = strangers.filter((id) => !already.has(id)).length;
+  return adding > 0 && recent.length + adding > STRANGERS_PER_DAY;
+}
+
+// Adds someone to a package with their own link, after everyone already on
+// it. Someone on Porchcard is theirs from the start (`accountId`). Returns
+// their place and their link's token.
+export async function invitePerson(
+  shareId: string,
+  { firstName, accountId = null, addedFrom = "name" }: { firstName: string; accountId?: string | null; addedFrom?: AddedFrom },
+  tx: Db = sql,
+) {
   const token = newShareToken();
-  await tx`
-    insert into participants (share_id, device_token, first_name, token, invited_at)
-    values (${shareId}, ${`invite:${token}`}, ${firstName}, ${token}, now())`;
-  return token;
+  const [person] = await tx<{ id: string }[]>`
+    insert into participants (share_id, device_token, first_name, token, invited_at, position, account_id, added_from)
+    values (${shareId}, ${`invite:${token}`}, ${firstName}, ${token}, now(),
+      (select coalesce(max(position), -1) + 1 from participants where share_id = ${shareId}),
+      ${accountId}, ${addedFrom})
+    returning id`;
+  // Someone the agent had never met counts toward their day's strangers,
+  // here rather than on the link, so it outlasts their place on it.
+  if (accountId && addedFrom === "search") {
+    await tx`
+      insert into agent_reach (agent_id, account_id, found_at)
+      select agent_id, ${accountId}, now() from shares where id = ${shareId}
+      on conflict (agent_id, account_id) do update set found_at = excluded.found_at`;
+  }
+  return { id: person.id, token };
 }
 
 // The homes on a share. Clients only ever see the ones still on their link;

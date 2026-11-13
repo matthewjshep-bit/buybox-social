@@ -1,18 +1,20 @@
-import { Globe } from "lucide-react";
+import { Globe, Images, Link2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AddFirstName, PhotoControls, ShareMyPage } from "@/app/people/[id]/client";
-import { Avatar } from "@/components/ui";
+import { Avatar, Badge } from "@/components/ui";
 import { cn } from "@/lib/format";
 import { sinceLabel } from "@/lib/profile";
-import { card } from "@/lib/ui";
+import { button, card } from "@/lib/ui";
 
 // The top of someone's page: a band from the photo they liked most, their
 // initial, name, how long they've been looking and how much. Those counts are
 // plain words, not links: the filters below the header do the filtering. Who
 // follows them and whom they follow are links, to those lists, with Follow
 // beside them. Your own page with no name yet says "Your page" and asks for one.
+// An agent on their own client's page sees that they are, with that client's
+// homes and their link a tap away.
 export function ProfileHeader({
   name,
   face = name,
@@ -28,6 +30,7 @@ export function ProfileHeader({
   followsYou = false,
   follow,
   photo,
+  client,
 }: {
   name: string;
   // What their initial is from, if not their name ("" for a plain figure).
@@ -50,6 +53,9 @@ export function ProfileHeader({
   follow?: ReactNode;
   // Their own photo, where they've added one.
   photo?: string | null;
+  // To an agent, their own client: every home sent them (`homes`), and the
+  // link they're on (`link`).
+  client?: { homes: string; link: string };
 }) {
   return (
     <section aria-labelledby="profile-name" className={cn(card, "overflow-hidden")}>
@@ -73,6 +79,17 @@ export function ProfileHeader({
           <p className="mt-1">
             <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-700">Follows you</span>
           </p>
+        )}
+        {client && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Badge tone="ink">Your client</Badge>
+            <Link href={client.homes} className={button({ kind: "secondary" })}>
+              <Images aria-hidden size={16} /> See their homes
+            </Link>
+            <Link href={client.link} className={button({ kind: "ghost" })}>
+              <Link2 aria-hidden size={16} /> Their link
+            </Link>
+          </div>
         )}
         {isMe && unnamed && <AddFirstName />}
         {isMe && <PhotoControls hasPhoto={Boolean(photo)} />}

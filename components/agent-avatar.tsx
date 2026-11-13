@@ -9,10 +9,14 @@ export function AgentAvatar({
   className,
   decorative = false,
   light = false,
+  sizes,
 }: {
   agent: { full_name: string; photo_data_url: string | null };
   size: number;
   className?: string;
+  // Its size in classes, for one that grows with the screen ("size-14
+  // sm:size-18"), in place of the fixed `size` (still the photo's own size).
+  sizes?: string;
   // Their name is right beside it, so a screen reader needn't hear it twice.
   decorative?: boolean;
   // On a white card, rather than over a photo or the brand colour.
@@ -27,8 +31,8 @@ export function AgentAvatar({
         alt={decorative ? "" : agent.full_name}
         width={size}
         height={size}
-        style={{ width: size, height: size }}
-        className={cn("shrink-0 rounded-full object-cover", className)}
+        style={sizes ? undefined : { width: size, height: size }}
+        className={cn("shrink-0 rounded-full object-cover", sizes, className)}
       />
     );
   }
@@ -41,9 +45,10 @@ export function AgentAvatar({
   return (
     <span
       aria-hidden
-      style={{ width: size, height: size }}
+      style={sizes ? undefined : { width: size, height: size }}
       className={cn(
         "flex shrink-0 items-center justify-center rounded-full font-semibold",
+        sizes,
         light ? avatarColor("agent") : "bg-white/20 text-white",
         className,
       )}

@@ -6,7 +6,8 @@ import { CardMenu, MoreText } from "@/app/people/[id]/client";
 import { Hotspot } from "@/components/spot-highlight";
 import { Avatar, Badge } from "@/components/ui";
 import { cn, formatPrice } from "@/lib/format";
-import { cardTime, dayHeading, dayName, type ProfileCard } from "@/lib/profile";
+import { cardTime, dayHeading, dayName, type FeedFilters, type ProfileCard } from "@/lib/profile";
+import { filterParams } from "@/lib/reel-context";
 import { button, card as cardClass, glass } from "@/lib/ui";
 
 // Everything someone has done, Facebook-style: one card per home per day,
@@ -29,6 +30,7 @@ export function ProfileFeed({
   earlierHref,
   reelFrom,
   photo,
+  filters,
 }: {
   cards: ProfileCard[];
   name: string;
@@ -42,6 +44,9 @@ export function ProfileFeed({
   reelFrom: string;
   // Their own photo, where they've added one.
   photo?: string | null;
+  // The filter the page has on, which the homes full screen keep: only
+  // what's shown here, in the same order.
+  filters?: Partial<FeedFilters>;
 }) {
   const days: { heading: string; cards: ProfileCard[] }[] = [];
   // A home on more than one day here: each card's menu says which day it's for.
@@ -67,7 +72,7 @@ export function ProfileFeed({
                 isMe={isMe}
                 agent={agent}
                 day={seen.get(card.home.key)! > 1 ? dayName(card.day) : undefined}
-                href={reelHref(reelFrom, card)}
+                href={reelHref(reelFrom, card, filters)}
                 avatarPhoto={photo}
               />
             ))}
@@ -83,9 +88,15 @@ export function ProfileFeed({
   );
 }
 
-// The homes of a feed full screen, opened on this card's.
-export const reelHref = (from: string, card: Pick<ProfileCard, "home" | "photo">) =>
-  `/reel?${new URLSearchParams({ from, home: card.home.key, ...(card.photo && { photo: String(card.photo.index) }) })}`;
+// The homes of a feed full screen, opened on this card's (on its photo),
+// with the page's filter, when it has one on, just after `from`.
+export const reelHref = (from: string, card: Pick<ProfileCard, "home" | "photo">, filters?: Partial<FeedFilters>) =>
+  `/reel?${new URLSearchParams([
+    ["from", from],
+    ...filterParams(filters),
+    ["home", card.home.key],
+    ...(card.photo ? [["photo", String(card.photo.index)] as [string, string]] : []),
+  ])}`;
 
 // One card: who, what they did and when; the photo, the home, what they said.
 // The whole card opens `href`; `nameHref`, their page, from their name.

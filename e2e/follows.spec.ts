@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { heartOf, signUpBuyer } from "./helpers";
+import { heartOf, homeIn, openMore, signUpBuyer } from "./helpers";
 
 const saved = (page: Page) =>
   page.waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
@@ -38,19 +38,27 @@ test("following: from someone's page, what they like comes first in your feed, a
   await expect(bo.getByRole("button", { name: "Following Ana" })).toHaveAttribute("aria-pressed", "true");
   await expect(bo.getByRole("link", { name: "1 follower" })).toBeVisible();
 
-  // What she liked is in his feed, by her name, to her page.
+  // What she liked is in his Following stream (one person followed, so his
+  // home opens on homes picked for him: Following is a tap away), by her
+  // name, to her page.
   await bo.goto("/");
-  const card = bo.getByRole("link", { name: `${address}: liked this`, exact: true });
+  await bo.getByRole("group", { name: "Show" }).getByRole("button", { name: "Following" }).click();
+  await expect(bo).toHaveURL(/\?lens=following$/);
+  const card = bo.getByRole("link", { name: `${address}: Ana liked this home`, exact: true });
   await expect(card).toBeVisible();
   const item = bo.getByRole("listitem").filter({ has: card });
   await expect(item.getByRole("link", { name: "Ana", exact: true })).toHaveAttribute("href", anaPage);
-  // Tapped, the feed's homes open full screen on it, and it says it's her.
+  // Tapped, the feed's homes open in a pop-out over it, on that one, saying
+  // it's her; its X closes it, back to the feed.
   await card.click();
   await bo.waitForURL(/\/reel\?from=feed&home=/);
-  const opened = bo.getByRole("article", { name: address });
+  const popout = bo.getByRole("dialog", { name: "Homes" });
+  const opened = popout.getByRole("article", { name: address });
   await expect(opened).toBeInViewport({ ratio: 0.9 });
   await expect(opened).toContainText(/Ana, who you follow, liked/);
-  await expect(bo.getByRole("link", { name: "Back to your feed" }).first()).toBeVisible();
+  await popout.getByRole("button", { name: "Close", exact: true }).first().click();
+  await expect(popout).toHaveCount(0);
+  await bo.waitForURL((u) => u.pathname === "/");
   // And on Browse homes, what she liked comes first.
   await bo.goto("/reel");
   await expect(bo.getByRole("article").first()).toHaveAttribute("aria-label", address);
@@ -85,4 +93,69 @@ test("following: from someone's page, what they like comes first in your feed, a
     "href",
     `/login?next=${encodeURIComponent(anaPage)}`,
   );
+});
+
+test("the Following stream: one card per home however many people liked it, only likes and words, never a pass", async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const TAMSEN = "1880 Tamsen Ridge Pl SE";
+  const LAKEVIEW = "5902 Lakeview Terrace SE";
+  // Cy likes a home; then Bo likes it too, and passes on another.
+  const cy = await signUpBuyer(browser, "cy.stream@example.com", "Cy Stream");
+  const cyPage = await pageOf(cy);
+  await cy.goto("/homes/SAMPLE-1002");
+  await Promise.all([saved(cy), heartOf(homeIn(cy, TAMSEN)).click()]);
+  const bo = await signUpBuyer(browser, "bo.stream@example.com", "Bo Stream");
+  const boPage = await pageOf(bo);
+  await bo.goto("/homes/SAMPLE-1002");
+  await Promise.all([saved(bo), heartOf(homeIn(bo, TAMSEN)).click()]);
+  await bo.goto("/homes/SAMPLE-1013");
+  const more = await openMore(bo, homeIn(bo, LAKEVIEW));
+  await Promise.all([saved(bo), more.getByRole("button", { name: "Not for me" }).click()]);
+  await expect(more.getByRole("button", { name: "Not for me" })).toHaveAttribute("aria-pressed", "true");
+
+  // Dee follows them both.
+  const dee = await signUpBuyer(browser, "dee.stream@example.com", "Dee Stream");
+  for (const [path, name] of [
+    [boPage, "Bo"],
+    [cyPage, "Cy"],
+  ]) {
+    await dee.goto(path);
+    await Promise.all([saved(dee), dee.getByRole("button", { name: `Follow ${name}` }).click()]);
+    await expect(dee.getByRole("button", { name: `Following ${name}` })).toBeVisible();
+  }
+
+  // One card for the home they both liked, newest first, each name to their
+  // page; nothing at all about the home Bo passed on.
+  await dee.goto("/?lens=following");
+  const stream = dee.getByRole("region", { name: "What's new" });
+  const card = stream.getByRole("link", { name: `${TAMSEN}: Bo and Cy liked this home`, exact: true });
+  await expect(card).toBeVisible();
+  await expect(stream.getByRole("link", { name: new RegExp(TAMSEN) })).toHaveCount(1);
+  const item = stream
+    .getByRole("listitem")
+    .filter({ has: dee.getByRole("link", { name: `${TAMSEN}: Bo and Cy liked this home`, exact: true }) });
+  await expect(item).toContainText("Bo and Cy liked this home");
+  await expect(item.getByRole("link", { name: "Bo", exact: true })).toHaveAttribute("href", boPage);
+  await expect(item.getByRole("link", { name: "Cy", exact: true })).toHaveAttribute("href", cyPage);
+  await expect(stream.getByText(LAKEVIEW)).toHaveCount(0);
+  await expect(stream.getByText(/passed/i)).toHaveCount(0);
+  // Where what's new ends, it says so.
+  await expect(stream.getByRole("note")).toBeVisible();
+
+  // Its heart likes it right there, and the page stays where it is.
+  const heart = item.getByRole("button", { name: `Like ${TAMSEN}` });
+  await expect(heart).toHaveAttribute("aria-pressed", "false");
+  await Promise.all([saved(dee), heart.click()]);
+  await expect(heart).toHaveAttribute("aria-pressed", "true");
+  await dee.reload();
+  await expect(heart).toHaveAttribute("aria-pressed", "true");
+
+  // The card opens the stream's homes in the pop-out, on that one.
+  await card.click();
+  await dee.waitForURL(/\/reel\?from=feed&home=SAMPLE-1002/);
+  await expect(dee.getByRole("dialog", { name: "Homes" }).getByRole("article", { name: TAMSEN })).toBeInViewport({
+    ratio: 0.9,
+  });
 });

@@ -34,7 +34,7 @@ import {
   type Ref,
   type RefObject,
 } from "react";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { loadReel, recordView, reloadReelHome } from "@/app/homes/actions";
 import { ActivityTicker, useTicker } from "@/components/activity-ticker";
 import { AspectChips, useReactions } from "@/components/like-pass";
@@ -59,6 +59,7 @@ import {
   type SpotLight,
 } from "@/components/photo-spots";
 import { photoFoot, photoPlace, ReelPhotos, STAGE_BAND, stageBlock, stageFoot } from "@/components/reel-photos";
+import { TakeCard, type TakeEyebrow } from "@/components/reel-take";
 import { ScorecardBody } from "@/components/scorecard";
 import { Sheet } from "@/components/sheet";
 import { NudgeHint, useNudges, type Nudge } from "@/components/walkthrough";
@@ -80,6 +81,7 @@ import {
   type FactTag,
   type SpotReaction,
 } from "@/lib/photos";
+import { placeIn, type HomeContext, type ReelContext } from "@/lib/reel-context";
 import { eventsFromHeadline, eventsFromTimeline, onFact, onPhoto, type TickerEvent, type TickerTap } from "@/lib/ticker";
 import type { TimelineComment, TimelineItem } from "@/lib/timeline";
 import { NO_REACTION, publicSideOf, type Aspect, type ReactionState } from "@/lib/reactions";
@@ -148,6 +150,11 @@ const agentFirstName = (agentName?: string) =>
 const stageArrow =
   "absolute left-1/2 z-30 hidden h-8 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-white/40 transition-colors hover:bg-white/10 hover:text-white split:flex";
 
+// In the pop-out, wide: the homes before and after, in the gutter beside the
+// stage, round and plain to see.
+const gutterButton =
+  "flex size-12 items-center justify-center rounded-full bg-white/10 text-white/85 ring-1 ring-white/15 transition-colors hover:bg-white/20 hover:text-white disabled:cursor-default disabled:opacity-30 disabled:hover:bg-white/10";
+
 // The first of these that's showing: of two copies of a button (the rail's
 // on a phone, the panel's side by side), the one on screen.
 const visibleIn = (root: ParentNode | null | undefined, selector: string) =>
@@ -168,6 +175,7 @@ export function ReelFeed({
   end,
   infinite = false,
   embedded = false,
+  contained = false,
   agentName,
   canInvite = true,
   alone = false,
@@ -178,10 +186,13 @@ export function ReelFeed({
   onSend,
   sendBusy = false,
   initialPhoto,
+  initialComment,
   onPhotoSeen,
   suggestedName,
   nameHint,
   tour,
+  context,
+  stageBar,
 }: {
   initial: FeedPost[];
   // Public pages, or an agent's private link.
@@ -197,8 +208,11 @@ export function ReelFeed({
   end?: ReactNode;
   // Loads more homes as you near the end.
   infinite?: boolean;
-  // Inside a pop-out rather than filling the screen.
+  // One home inside a pop-out rather than filling the screen.
   embedded?: boolean;
+  // A whole feed of homes inside a pop-out: everything the full-screen feed
+  // does (on to the next home, the keys, more as you go, the end), in its box.
+  contained?: boolean;
   agentName?: string;
   // On an agent's link: whether its share button invites others onto it.
   canInvite?: boolean;
@@ -224,6 +238,10 @@ export function ReelFeed({
   sendBusy?: boolean;
   // The photo (from 0) the home it opens on opens on: the first, or `focus`'s.
   initialPhoto?: number;
+  // A comment to open the comments on, once the feed is at the home it opens
+  // on (the first, or `focus`'s): a link to what someone said. Ignored unless
+  // it's a comment on that home that's yours to see.
+  initialComment?: string;
   // A photo has settled on screen.
   onPhotoSeen?: (listingKey: string, index: number) => void;
   // Fills in the name prompt (selected, to type over).
@@ -232,6 +250,12 @@ export function ReelFeed({
   nameHint?: string;
   // A quick look at how it works, the first time (see tour.tsx).
   tour?: TourKind;
+  // What these homes are (someone's highlights, your feed, a client's) and
+  // the take on each: said on every home, which opens on its own photo.
+  context?: ReelContext | null;
+  // In the pop-out, wide: across the top of the photo's column, whose homes
+  // these are and the way to the full page.
+  stageBar?: ReactNode;
 }) {
   // The order is fixed when the page opens, so a background refresh never
   // reshuffles the homes under your thumb. Agent links follow the page, which
@@ -332,10 +356,14 @@ export function ReelFeed({
         intro={intro}
         end={end}
         embedded={embedded}
+        contained={contained}
         onOpen={onOpen}
         onSend={onSend}
         sendBusy={sendBusy}
         initialPhoto={initialPhoto}
+        initialComment={initialComment}
+        context={context}
+        stageBar={stageBar}
         onPhotoSeen={onPhotoSeen}
         agentName={agentName}
         canInvite={canInvite}
@@ -366,10 +394,14 @@ function Feed({
   intro,
   end,
   embedded,
+  contained,
   onOpen,
   onSend,
   sendBusy,
   initialPhoto,
+  initialComment,
+  context,
+  stageBar,
   onPhotoSeen,
   agentName,
   canInvite,
@@ -389,10 +421,14 @@ function Feed({
   intro?: ReactNode;
   end?: ReactNode;
   embedded: boolean;
+  contained: boolean;
   onOpen?: (listingKey: string) => void;
   onSend?: (home: SendHome, panel?: HTMLElement | null) => void;
   sendBusy: boolean;
   initialPhoto?: number;
+  initialComment?: string;
+  context?: ReelContext | null;
+  stageBar?: ReactNode;
   onPhotoSeen?: (listingKey: string, index: number) => void;
   agentName?: string;
   canInvite: boolean;
@@ -506,9 +542,15 @@ function Feed({
     return () => clearTimeout(timer);
   }, [activePost]);
 
-  const goTo = (index: number, instant = false) => {
+  const goTo = (index: number, instant = false, tries = 0) => {
     const root = scroller.current;
     if (!root) return;
+    // Not laid out yet (a pop-out still opening, with no size): again on the
+    // next frame, a few times, rather than staying on the first home.
+    if (root.clientHeight === 0) {
+      if (tries < 10) requestAnimationFrame(() => goTo(index, instant, tries + 1));
+      return;
+    }
     const target = Math.max(0, Math.min(panelCount - 1, index));
     root.scrollTo({ top: target * root.clientHeight, behavior: instant || reducedMotion() ? "auto" : "smooth" });
   };
@@ -556,6 +598,21 @@ function Feed({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus]);
 
+  // In a pop-out, the keyboard starts on the homes themselves, so ↑ ↓ (and
+  // J, K, ← →) work straight away. (After the pop-out has opened: its own
+  // effect, which knows what opened it, runs first.)
+  useEffect(() => {
+    if (contained) scroller.current?.focus({ preventScroll: true });
+  }, [contained]);
+
+  // In the pop-out, wide: the gutter beside the stage, for the buttons to the
+  // homes before and after (outside this box, which nothing in it can leave).
+  const [gutter, setGutter] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!contained) return;
+    setGutter(frame.current?.closest("dialog")?.querySelector<HTMLElement>("[data-stage-nav]") ?? null);
+  }, [contained]);
+
   // ↑ and ↓ move between homes, unless you're typing, or in a sheet (beside
   // the photo, only while you're in it: from the photo they move on, which
   // puts it away). J and K too, but only while the feed itself has the
@@ -567,7 +624,10 @@ function Feed({
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (target.closest("input, textarea, select, [contenteditable], dialog") || document.querySelector("dialog[open]:modal")) {
+      // In a pop-out, the pop-out it's in doesn't count as something open over it.
+      const own = contained ? (scroller.current?.closest("dialog") ?? null) : null;
+      const over = [...document.querySelectorAll("dialog[open]:modal")].some((dialog) => dialog !== own);
+      if (target.closest("input, textarea, select, [contenteditable]") || (target.closest("dialog") ?? own) !== own || over) {
         return;
       }
       const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
@@ -575,7 +635,17 @@ function Feed({
         Boolean(scroller.current?.contains(target)) && !target.closest("button, a, summary, [role=button], [role=link]");
       if (key === "ArrowDown" || key === "PageDown" || (key === "j" && letters)) goTo(active + 1);
       else if (key === "ArrowUp" || key === "PageUp" || (key === "k" && letters)) goTo(active - 1);
-      else return;
+      // In the pop-out, ← and → turn the photos of the home on screen (not
+      // while something that takes arrows of its own has the keyboard).
+      else if (contained && (key === "ArrowLeft" || key === "ArrowRight")) {
+        if (target.closest("[data-spot-card], [role=slider], [role=tablist], [role=radiogroup], [role=menu], [role=listbox]")) return;
+        const home = scroller.current?.querySelector<HTMLElement>(`[data-panel="${active}"]`);
+        const turn = home?.querySelector<HTMLButtonElement>(
+          `button[aria-label="${key === "ArrowLeft" ? "Previous photo" : "Next photo"}"]`,
+        );
+        if (!turn || turn.disabled) return;
+        turn.click();
+      } else return;
       event.preventDefault();
     };
     window.addEventListener("keydown", onKey);
@@ -650,6 +720,20 @@ function Feed({
       setTimeout(() => delete said.dataset.flash, 2000);
     }
   };
+
+  // Opened on one comment (a link to what someone said): once the feed is at
+  // the home it opens on, its comments open there, on that comment, if it's
+  // on that home and this viewer may see it. Otherwise, nothing.
+  const commentHome = focus?.key ?? posts[0]?.listing.ListingKey ?? null;
+  const commentDone = useRef(false);
+  useEffect(() => {
+    if (!initialComment || commentDone.current || !activeKey || activeKey !== commentHome) return;
+    commentDone.current = true;
+    const post = posts.find((p) => p.listing.ListingKey === activeKey);
+    if (!post?.timeline.some((item) => item.kind === "comment" && item.id === initialComment)) return;
+    // (Once the frame it arrived in is drawn; a render meanwhile mustn't stop it.)
+    requestAnimationFrame(() => openComments(activeKey, false, undefined, initialComment));
+  });
 
   // The Porchcard: up from the bottom like the comments (wide, beside the
   // photo, in the white panel's place), or turned to from them in place.
@@ -754,7 +838,7 @@ function Feed({
         header
           ? "[--chrome-top:4rem] [--photo-top:calc(56px+env(safe-area-inset-top)+4px)] [--stage-top:72px]"
           : "[--chrome-top:0.75rem] [--photo-top:0.5rem] [--stage-top:64px]",
-        embedded ? "relative h-full w-full" : "fixed inset-0 z-30",
+        embedded || contained ? "relative h-full w-full" : "fixed inset-0 z-30",
       )}
     >
       {mode === "public" && !embedded && !intro && <h1 className="sr-only">Homes for you</h1>}
@@ -780,6 +864,46 @@ function Feed({
           {header}
         </div>
       )}
+      {stageBar && (
+        // In the pop-out, wide: across the top of the photo's column, never
+        // over the panel beside it. Out of the way while a photo is seen alone.
+        <div
+          data-split={SPLIT_WIDE || undefined}
+          data-stage-bar
+          className={cn(
+            "absolute inset-x-0 top-0 z-30 hidden h-16 items-center gap-3 pl-16 pr-3 transition-[opacity,visibility] duration-300 split:flex split:right-[384px] split-xl:right-[424px]",
+            (clear === active || bare === active) && "invisible opacity-0",
+          )}
+        >
+          {stageBar}
+        </div>
+      )}
+      {gutter &&
+        createPortal(
+          <>
+            <button
+              type="button"
+              aria-label="Previous home"
+              title="Previous home"
+              disabled={active <= 0}
+              onClick={() => goTo(active - 1)}
+              className={gutterButton}
+            >
+              <ChevronUp aria-hidden size={24} />
+            </button>
+            <button
+              type="button"
+              aria-label="Next home"
+              title="Next home"
+              disabled={active >= panelCount - 1}
+              onClick={() => goTo(active + 1)}
+              className={gutterButton}
+            >
+              <ChevronDown aria-hidden size={24} />
+            </button>
+          </>,
+          gutter,
+        )}
       <div
         ref={scroller}
         data-reel
@@ -805,16 +929,24 @@ function Feed({
               mode={mode}
               agentName={agentName}
               myName={myName}
-              // (On the home it opens on: the first, or the one it goes to.)
-              start={(focus ? key === focus.key : i === 0) ? initialPhoto : undefined}
+              // (On the home it opens on, the first or the one it goes to, the
+              // photo asked for; on every home, the photo its take is about.)
+              start={((focus ? key === focus.key : i === 0) ? initialPhoto : undefined) ?? context?.homes[key]?.photo ?? undefined}
+              take={context?.homes[key]}
+              eyebrow={context ? { title: context.title, place: placeIn(context, key) } : null}
+              whose={context?.who?.profileId ?? null}
+              // (Full screen, the page's Back sits where the band's take would.)
+              low={!contained && Boolean(header)}
+              onGoToSpot={(spot) => setGoToSpot((current) => ({ key, spot, n: (current?.n ?? 0) + 1 }))}
               onPhotoSeen={onPhotoSeen}
               counter={mode === "share" && posts.length > 1 ? `Home ${i + 1} of ${posts.length}` : undefined}
               active={active === offset + i}
               wide={wide}
               narrow={narrow}
               near={Math.abs(active - (offset + i)) <= 1}
-              onPrevious={!embedded && offset + i > 0 ? () => goTo(offset + i - 1) : undefined}
-              onNext={embedded ? undefined : () => goTo(offset + i + 1)}
+              // (In the pop-out, the gutter beside it has these.)
+              onPrevious={!embedded && !contained && offset + i > 0 ? () => goTo(offset + i - 1) : undefined}
+              onNext={embedded || contained ? undefined : () => goTo(offset + i + 1)}
               nudge={active === offset + i ? nudges.showing : null}
               onSwipe={active === offset + i ? nudges.onSwipe : undefined}
               state={state}
@@ -1091,6 +1223,11 @@ function Panel({
   onMore,
   shareAs,
   onShare,
+  take,
+  eyebrow,
+  whose,
+  low = false,
+  onGoToSpot,
 }: {
   index: number;
   post: FeedPost;
@@ -1158,6 +1295,16 @@ function Panel({
   onMore: () => void;
   shareAs: ShareKind | null;
   onShare?: () => void;
+  // Why it's here: whose take on it, what they picked out and said.
+  take?: HomeContext;
+  // Whose homes these are, and which of them this is ("Maya's highlights · 2 of 7").
+  eyebrow?: TakeEyebrow | null;
+  // Their page's id: what they did leads the line at the photo's foot.
+  whose?: string | null;
+  // On a phone, the take sits lower in the band (full screen, under Back).
+  low?: boolean;
+  // To a spot they picked out, from the take: its photo, with its card open.
+  onGoToSpot?: (spot: SpotRef) => void;
 }) {
   const { listing } = post;
   const [first] = useState(() => Math.max(0, Math.min(listing.Media.length - 1, start ?? 0)));
@@ -1320,10 +1467,13 @@ function Panel({
 
   // What people did lately, for the line above the price: the page's, or on
   // an agent's link, from the home's own thread (already only the link's).
-  const told = useMemo(
-    () => post.events ?? (mode === "share" ? eventsFromTimeline(post.timeline) : eventsFromHeadline(post.headline)),
-    [post.events, post.timeline, post.headline, mode],
-  );
+  // Whose homes these are (someone's page): what they did comes first, in
+  // its own order, then everyone else's; the line still goes round as ever.
+  const told = useMemo(() => {
+    const all = post.events ?? (mode === "share" ? eventsFromTimeline(post.timeline) : eventsFromHeadline(post.headline));
+    if (!whose) return all;
+    return [...all.filter((event) => event.who.profileId === whose), ...all.filter((event) => event.who.profileId !== whose)];
+  }, [post.events, post.timeline, post.headline, mode, whose]);
   // On public pages, what you just did shows there at once, as it will once
   // the page hears it back (keyed the same, so nothing jumps when it does).
   const { unheard } = photos;
@@ -1807,8 +1957,20 @@ function Panel({
                 ? "pr-[max(1rem,env(safe-area-inset-right))]"
                 : "pr-[calc(76px+env(safe-area-inset-right))] short:pr-[calc(140px+env(safe-area-inset-right))]",
               "split:min-h-0 split:flex-1 split:overflow-y-auto split:overscroll-contain split:pb-5 split:pl-5 split:pr-5 split:pt-3 split:[text-shadow:none]",
+              // What runs on below fades out, so it reads as more to scroll to.
+              "split:[mask-image:linear-gradient(to_bottom,black_calc(100%-24px),transparent)]",
             )}
           >
+            {/* Side by side, why it's here, above the price. */}
+            {split && wide && !onOpen && (
+              <TakeCard
+                look="panel"
+                home={take}
+                onSpot={(spot) => onGoToSpot?.(spot)}
+                onComment={onCommentAt}
+                onAll={onComments}
+              />
+            )}
             <Facts
               listing={listing}
               items={post.timeline}
@@ -1987,6 +2149,22 @@ function Panel({
             setLightPlace((now) => (now?.tag === tag && now.clear === clear ? now : { tag, clear }))
           }
         />
+      )}
+      {/* On a phone, why it's here, in the band over the photo: one line
+          until it's tapped open. (Side by side, it's in the panel.) */}
+      {!onOpen && (take || eyebrow) && (
+        <div className="split:hidden">
+          <TakeCard
+            look="band"
+            home={take}
+            eyebrow={eyebrow}
+            low={low}
+            hidden={hidden || sheetOver || !active}
+            onSpot={(spot) => onGoToSpot?.(spot)}
+            onComment={onCommentAt}
+            onAll={onComments}
+          />
+        </div>
       )}
       {/* Side by side, the homes before and after: a small arrow centred in
           the band above the block, and one in the band below it, each

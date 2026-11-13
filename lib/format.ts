@@ -8,7 +8,11 @@ export const appUrl = () =>
     ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
     : "http://localhost:3000");
 
-export const formatPrice = (price: number) =>
+// Text to look for with `like`, taken as it is: its own % and _ match only
+// themselves.
+export const escapeLike = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
+
+export const formatPrice =(price: number) =>
   new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",

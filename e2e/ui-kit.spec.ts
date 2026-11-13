@@ -89,7 +89,6 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
 }) => {
   const agent = await signInAgent(browser, "una-kit@example.com", "Una Kit");
   await expectKitButtons(agent, "dashboard");
-  const ink = await colourOf(agent, "var(--ink)");
 
   // Their own page: their face as it is in the header beside it, the photo
   // they added on signing up (without one, their initial in ink).
@@ -130,14 +129,14 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   await expect(agent.getByRole("dialog", { name: "Porchcard" })).toBeHidden();
   if (wide) await agent.setViewportSize(wide);
 
-  // The agent's own words in the thread, under their face in ink, as everywhere.
+  // The agent's own words in the thread, under their face: the photo they
+  // added, as on the link (without one, their initial in ink).
   await expectFieldFocus(agent, "Reply to your client");
   await home.getByLabel("Reply to your client").fill("I can show you this one on Saturday.");
   await home.getByRole("button", { name: "Reply", exact: true }).click();
   const said = home.getByRole("listitem").filter({ hasText: "I can show you this one on Saturday." });
   await expect(said).toBeVisible();
-  const face = said.locator("span[aria-hidden]").filter({ hasText: /^U$/ }).first();
-  expect(await face.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(ink);
+  await expect(said.locator('img[src^="/people/"]')).toBeVisible();
   // ...and in the header, the photo they added.
   await expect(agent.getByRole("button", { name: "Your profile" }).locator("img")).toBeVisible();
 

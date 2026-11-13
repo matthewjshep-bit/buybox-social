@@ -1,17 +1,15 @@
 import { expect, test } from "@playwright/test";
 import { signedIn, createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, openMore, signInAgent } from "./helpers";
 
-test("an agent's client page: rename, what they want, remove and restore, add homes, private only", async ({
+test("an agent's client page: what they want, remove and restore, add homes, private only", async ({
   browser,
 }) => {
   const agent = await signInAgent(browser, "gwen@example.com", "Gwen Agent");
   const { url, dashboardUrl } = await createShare(agent, ["10421 Halvard", "1204 Quillan"], ["Joe"]);
 
-  // The package can be renamed in place.
-  await agent.getByRole("button", { name: "Rename" }).click();
-  await agent.getByLabel("Client's name").fill("Joe & Ana");
-  await agent.getByRole("button", { name: "Save" }).click();
-  await expect(agent.getByRole("heading", { level: 1, name: "Joe & Ana" })).toBeVisible();
+  // Named for the one person on it; nobody types a title.
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Joe");
+  await expect(agent.getByRole("button", { name: /Rename/ })).toHaveCount(0);
 
   // Joe likes one home's kitchen and passes on the other's exterior.
   const joe = await signedIn(browser);
@@ -97,7 +95,7 @@ test("an agent's client page: rename, what they want, remove and restore, add ho
   await expect(agent.getByRole("heading", { name: "Add homes for Joe" })).toBeVisible();
   await expect(agent.getByRole("button", { name: /10421 Halvard/ })).toHaveCount(0);
   await agent.getByRole("button", { name: /812 N Corbel/ }).click();
-  await agent.getByRole("button", { name: "Add 1 home to Joe & Ana's link" }).click();
+  await agent.getByRole("button", { name: "Add 1 home to Joe's link" }).click();
   await agent.waitForURL("**/dashboard/shares/*");
   await expect(agent.getByRole("region", { name: "812 N Corbel St" })).toBeVisible();
   await joe.reload();

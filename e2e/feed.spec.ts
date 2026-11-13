@@ -16,7 +16,7 @@ import { signedIn, enterCode,
 } from "./helpers";
 
 async function expectLogoGoesHome(page: Page) {
-  const logo = page.getByRole("link", { name: "Porchcard" });
+  const logo = page.getByRole("link", { name: "Porchcard", exact: true });
   await expect(logo).toHaveAttribute("href", "/");
 }
 
@@ -181,7 +181,7 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await expectLogoGoesHome(client);
   await agent.goto("/dashboard");
   await expectLogoGoesHome(agent);
-  await client.getByRole("link", { name: "Porchcard" }).click();
+  await client.getByRole("link", { name: "Porchcard", exact: true }).click();
   await expect(client).toHaveURL(/localhost:\d+\/$/);
 
   expect(pageErrors).toEqual([]);

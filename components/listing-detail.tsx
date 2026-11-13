@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import type { ComponentProps } from "react";
+import { z } from "zod";
 import {
   commentInReel,
   joinPublic,
@@ -37,17 +38,24 @@ export const photoParam = (value: string | string[] | undefined) => {
   return Number.isInteger(n) ? n : undefined;
 };
 
+// `?comment=` in a home's address: a comment to open its comments on. Only
+// ever an id; the reel opens it only if it's on that home and theirs to see.
+export const commentParam = (value: string | string[] | undefined) =>
+  typeof value === "string" && z.uuid().safeParse(value).success ? value : undefined;
+
 // One home, full screen, as the first of the feed: a shared link opens on it
 // and keeps going. In the map's pop-out, just that home. `photo`: the photo
-// it opens on.
+// it opens on. `comment`: a comment on it to open its comments on.
 export async function ListingDetail({
   listingKey,
   embedded = false,
   photo,
+  comment,
 }: {
   listingKey: string;
   embedded?: boolean;
   photo?: number;
+  comment?: string;
 }) {
   if (listingKey.length > 100) notFound();
   const [account, device] = await Promise.all([getCurrentUser(), readDevice()]);
@@ -69,6 +77,7 @@ export async function ListingDetail({
     header: embedded ? undefined : <SiteHeader overlay />,
     end: embedded ? undefined : <FeedEnd taste={taste} account={viewer} visitorId={visitor?.id ?? null} />,
     initialPhoto: photo,
+    initialComment: comment,
   };
   // An agent's share button sends the home to a client.
   return viewer?.role === "agent" ? (

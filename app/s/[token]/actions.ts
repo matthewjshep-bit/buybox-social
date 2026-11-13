@@ -19,7 +19,7 @@ import {
 import { notifyAgent } from "@/lib/notify";
 import {
   deviceHashFor,
-  joinedLink,
+  linkOnce,
   getParticipant,
   accountParticipant,
   getShareByToken,
@@ -62,15 +62,28 @@ export async function joinThread(token: string, firstName: string): Promise<Acti
     return { ok: true };
   }
   if (!(await accountParticipant(found, account.id))) {
-    const [{ count }] = await sql<{ count: number }[]>`
-      select count(*)::int as count from participants where share_id = ${found.share.id}`;
-    if (count >= MAX_PARTICIPANTS) return fail("This conversation is full.");
-    const [joined] = await sql<{ id: string }[]>`
-      insert into participants (share_id, device_token, first_name, account_id)
-      values (${found.share.id}, ${`account:${account.id}`}, ${name}, ${account.id})
-      on conflict do nothing
-      returning id`;
-    if (joined) await joinedLink(account.id, found.share.id);
+    // A quick Send the agent named for one person, opened through the link
+    // they sent: someone joining by that name is that person, so the agent
+    // sees one of them, not two. Anyone else joins as themselves.
+    const [named] = await sql<{ id: string }[]>`
+      update participants p set account_id = ${account.id}, device_token = ${`account:${account.id}`}
+      where p.share_id = ${found.share.id} and p.account_id is null and p.invited_at is not null
+        and lower(btrim(p.first_name)) = ${name.trim().toLowerCase()}
+        and (select count(*) from participants q where q.share_id = p.share_id and q.invited_at is not null) = 1
+        and exists (select 1 from shares s where s.id = p.share_id and s.quick)
+      returning p.id`;
+    let joined = named;
+    if (!joined) {
+      const [{ count }] = await sql<{ count: number }[]>`
+        select count(*)::int as count from participants where share_id = ${found.share.id}`;
+      if (count >= MAX_PARTICIPANTS) return fail("This conversation is full.");
+      [joined] = await sql<{ id: string }[]>`
+        insert into participants (share_id, device_token, first_name, account_id)
+        values (${found.share.id}, ${`account:${account.id}`}, ${name}, ${account.id})
+        on conflict do nothing
+        returning id`;
+    }
+    if (joined) await linkOnce(account.id, joined.id);
     // The agent's "opened it" line can now say who.
     const device = await readDevice();
     if (joined && device) {
@@ -103,6 +116,9 @@ export async function recordOpen(token: string, photosSeen?: unknown): Promise<v
     found.person ??
     (account ? await accountParticipant(found, account.id, { claim: false }) : null) ??
     (await getParticipant(found.share.id, device));
+  // Someone the agent added from Porchcard, opening their link signed in:
+  // the first time, they and the agent follow each other (once, ever).
+  if (account && participant) await linkOnce(account.id, participant.id);
   const hash = deviceHashFor(device, found.share.id);
   // Past MAX_OPEN_DEVICES, only devices already counted are updated, so a link
   // that gets passed around (or a script without cookies) can't grow forever.
@@ -326,10 +342,9 @@ export async function setReaction(
         disliked = excluded.disliked, updated_at = now()`;
     after(async () => {
       const address = await listingLabel(listingKey);
-      await notifyAgent(
-        actor.share.id,
-        `${actor.participant.first_name} ${describeReaction(state)} at ${address}`,
-      );
+      await notifyAgent(actor.share.id, `${actor.participant.first_name} ${describeReaction(state)} at ${address}`, {
+        anchor: `home-${listingKey}`,
+      });
     });
   }
   refresh();
@@ -369,14 +384,17 @@ export async function addComment(
       and created_at > now() - interval '1 minute'`;
   if (count >= MAX_COMMENTS_PER_MINUTE) return fail("Slow down a little, then try again.");
 
-  await sql`
+  const [comment] = await sql<{ id: string }[]>`
     insert into comments (share_id, listing_key, participant_id, body, shared_publicly, media_key, spot,
       parent_id, reply_to_participant)
     values (${actor.share.id}, ${listingKey}, ${actor.participant.id}, ${parsed.data}, ${shared},
-      ${anchor?.mediaKey ?? null}, ${anchor?.tag ?? null}, ${parent}::uuid, ${replyTo}::uuid)`;
+      ${anchor?.mediaKey ?? null}, ${anchor?.tag ?? null}, ${parent}::uuid, ${replyTo}::uuid)
+    returning id`;
   after(async () => {
     const address = await listingLabel(listingKey);
-    await notifyAgent(actor.share.id, `${actor.participant.first_name} ${reply ? "replied" : "commented"} on ${address}`);
+    await notifyAgent(actor.share.id, `${actor.participant.first_name} ${reply ? "replied" : "commented"} on ${address}`, {
+      anchor: `comment-${comment.id}`,
+    });
   });
   refresh();
   return { ok: true };
@@ -403,23 +421,27 @@ export async function askToSee(token: string, listingKey: string): Promise<AskRe
   if (!participant) return { ok: false, error: "Please sign up or sign in first." };
   // The ask's own record says whether they've asked today, not the words of a
   // comment. Claiming it is a single step, so two taps at once ask only once.
-  const asked = await sql.begin(async (tx) => {
+  const asked = await sql.begin(async (tx): Promise<string | null> => {
     const [fresh] = await tx`
       insert into share_asks (participant_id, listing_key, share_id)
       values (${participant.id}, ${listingKey}, ${found.share.id})
       on conflict (participant_id, listing_key) do update set asked_at = now(), share_id = excluded.share_id
       where share_asks.asked_at < now() - interval '24 hours'
       returning asked_at`;
-    if (!fresh) return false;
-    await tx`
+    if (!fresh) return null;
+    const [comment] = await tx<{ id: string }[]>`
       insert into comments (share_id, listing_key, participant_id, body)
-      values (${found.share.id}, ${listingKey}, ${participant.id}, ${ASK_TO_SEE})`;
-    return true;
+      values (${found.share.id}, ${listingKey}, ${participant.id}, ${ASK_TO_SEE})
+      returning id`;
+    return comment.id;
   });
   if (!asked) return { ok: true, already: true };
   after(async () => {
     const address = await listingLabel(listingKey);
-    await notifyAgent(found.share.id, `${participant.first_name} asked to see ${address}`, { now: true });
+    await notifyAgent(found.share.id, `${participant.first_name} asked to see ${address}`, {
+      now: true,
+      anchor: `comment-${asked}`,
+    });
   });
   refresh();
   return { ok: true, already: false };

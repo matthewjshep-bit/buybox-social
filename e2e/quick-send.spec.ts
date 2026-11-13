@@ -115,7 +115,10 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
   await expect(client.getByRole("banner").getByText("Sam Sender", { exact: true })).toBeVisible();
 
   // Saying who it was for greets them on the link they already have.
-  await sheet.getByLabel("Their first name (optional)").fill("Toby");
+  const forWhom = sheet.getByRole("combobox", { name: "Who's it for? (optional)" });
+  await forWhom.fill("Toby");
+  await forWhom.press("Enter");
+  await expect(sheet.getByRole("list", { name: "Who it's for" })).toContainText("Toby");
   await sheet.getByRole("button", { name: "Add a note (optional)" }).click();
   await sheet.getByLabel("Add a note (optional)").fill("The one with the porch.");
   await sheet.getByRole("button", { name: "Save" }).click();
@@ -126,6 +129,8 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
   });
   // Whoever opens it first is most likely Toby: signing up to like it starts
   // with his name, ready to type over. Not now leaves nothing behind.
+  // (Toby is on the link now, not yet signed up: the link page's "expected
+  // name" reads him from there, which is track E's page.)
   await heartOf(homeIn(client, "96 Fernhollow Ln")).click();
   const prompt = client.getByRole("dialog", { name: "Sign up to like and comment" });
   const name = prompt.getByRole("textbox", { name: "First name" });
@@ -412,7 +417,9 @@ test("a link held for a day is never handed out: Send this home makes a new one 
   await expect(draft.getByText("96 Fernhollow Ln")).toBeVisible();
 
   // Made here, with a fresh tap to send it; the cursor goes to the new link.
-  await draft.getByLabel("Their first name (optional)").fill("Ivy");
+  const forWhom = draft.getByRole("combobox", { name: "Who's it for? (optional)" });
+  await forWhom.fill("Ivy");
+  await forWhom.press("Enter");
   await draft.getByRole("button", { name: "Create link" }).click();
   const link = draft.getByLabel("Your link is ready");
   await expect(link).toBeFocused();
@@ -459,7 +466,10 @@ test("the longer way to send one home starts with it picked, and keeps it in vie
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send this home");
   await expect(tray.getByRole("listitem")).toHaveCount(1);
 
-  await agent.getByLabel("Person 1's first name").fill("Pat");
+  const who = agent.getByRole("combobox", { name: "Who's it for?" });
+  await who.fill("Pat");
+  await who.press("Enter");
+  await expect(agent.getByText("This link will be called Pat.")).toBeVisible();
   await agent.getByRole("button", { name: "Create link for 1 home" }).click();
   await agent.waitForURL("**/dashboard/shares/*");
   await expect(agent.getByLabel("Pat's link")).toHaveValue(/\/s\/[\w-]{32}$/);

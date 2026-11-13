@@ -1,36 +1,56 @@
-import { connection } from "next/server";
-import { HomeFeed } from "@/components/home-feed";
+import { after, connection } from "next/server";
+import { AgentHome } from "@/components/home/agent-home";
+import { BuyerHome } from "@/components/home/buyer-home";
 import { JoinGate, JoinIntro } from "@/components/join";
 import { PUBLIC_PROMPT, publicReelActions } from "@/components/listing-detail";
 import { ReelFeed } from "@/components/reel";
 import { SiteHeader } from "@/components/site-header";
-import { devLoginEnabled, firstName, getCurrentUser } from "@/lib/auth";
+import { getClientDays } from "@/lib/agent-feed";
+import { devLoginEnabled, firstName, getCurrentUser, getViewAs } from "@/lib/auth";
+import { getClients } from "@/lib/clients";
 import { readDevice } from "@/lib/engagement";
 import { getReel } from "@/lib/feed";
-import { getFollowCounts } from "@/lib/follows";
-import { getHomeFeed, suggestPeople } from "@/lib/home-feed";
+import {
+  brandColorsOf,
+  feedKeys,
+  getFollowedFaces,
+  getHomeFeed,
+  getHomeSeen,
+  getPicks,
+  markHomeSeen,
+  myReactions,
+  suggestPeople,
+} from "@/lib/home-feed";
+import { getMyLinks } from "@/lib/my-links";
+import { getNeedsYou } from "@/lib/needs-you";
+import { photoUrl, photoVersion } from "@/lib/person-photo";
 import { getPublicIdentity } from "@/lib/public";
 import { getTaste } from "@/lib/taste";
 
 // How many homes someone sees before they're asked to sign up.
 const FREE_HOMES = 3;
-// While someone follows fewer than this, the feed suggests people to follow.
-const SUGGEST_UNDER = 5;
-// Homes picked for them, on a feed with little in it yet.
-const PICKS = 4;
+// Needs-you rows the page brings: five show, the rest fill in after a Done.
+const NEEDS_READ = 15;
+// People worth following: four along the top for someone with nobody yet,
+// and three beside the stream.
+const SUGGESTIONS = 7;
 
 // The home page. Signed out: homes full screen, one after another, opening on
 // what this is and a short sign-up form, then asking them to sign up to see
-// the rest. Signed in: their feed (see HomeFeed), each home in it opening them
-// all full screen; every home is one tap away, under Browse homes.
-export default async function Home() {
+// the rest. Signed in, an agent's "Today" (what clients are waiting on them
+// for, then what their clients did: AgentHome), or anyone else's home (their
+// agent's homes, the people they follow, homes picked for them: BuyerHome).
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   await connection();
-  const [user, device] = await Promise.all([getCurrentUser(), readDevice()]);
+  const [user, device, viewAs, params] = await Promise.all([getCurrentUser(), readDevice(), getViewAs(), searchParams]);
   const { visitor, name } = await getPublicIdentity(user, device);
-  const taste = await getTaste(visitor?.id);
 
   if (!user) {
-    const posts = await getReel(user, device, taste);
+    const posts = await getReel(user, device, await getTaste(visitor?.id));
     const free = posts.slice(0, FREE_HOMES);
     // The next home waits, blurred, behind the sign-up.
     const next = (posts[FREE_HOMES] ?? free.at(-1))?.listing.Media[0];
@@ -52,25 +72,73 @@ export default async function Home() {
     );
   }
 
-  const [entries, counts] = await Promise.all([
-    getHomeFeed(user, visitor?.id ?? null),
-    visitor ? getFollowCounts(visitor.id) : { followers: 0, following: 0 },
+  const visitorId = visitor?.id ?? null;
+  const lensParam = typeof params.lens === "string" ? params.lens : null;
+  const lens = { initial: lensParam ?? "", fromUrl: lensParam !== null };
+  const profileHref = visitorId ? `/people/${visitorId}` : "/people/me";
+  // Once this page is on its way, it's been seen: next time, "new" starts
+  // here. (Not while an admin is looking as them: that's not them looking.)
+  if (visitorId && !viewAs) {
+    after(async () => {
+      await markHomeSeen(visitorId);
+    });
+  }
+
+  if (user.role === "agent") {
+    // (No homes picked for an agent, nor people to follow: their home is
+    // their clients, and it loads without the scan those take.)
+    const [clients, needs, days, feed, seenAt] = await Promise.all([
+      getClients(user.id),
+      getNeedsYou(user.id, NEEDS_READ),
+      getClientDays(user.id),
+      getHomeFeed(user, visitorId),
+      getHomeSeen(visitorId),
+    ]);
+    const mine = await myReactions(visitorId, feedKeys(feed));
+    return (
+      <AgentHome
+        firstName={firstName(user)}
+        me={{
+          name: user.full_name.trim() || user.email,
+          photo: visitorId ? photoUrl(visitorId, photoVersion(user.photo_data_url)) : user.photo_data_url,
+        }}
+        profileHref={profileHref}
+        clients={clients}
+        needs={needs}
+        days={days}
+        feed={feed}
+        mine={mine}
+        seenAt={seenAt}
+        lens={lens}
+      />
+    );
+  }
+
+  const [feed, links, followed, seenAt, picks, suggestions] = await Promise.all([
+    getHomeFeed(user, visitorId),
+    getMyLinks(user.id),
+    getFollowedFaces(visitorId),
+    getHomeSeen(visitorId),
+    getPicks(user, device, visitorId),
+    suggestPeople(visitorId, SUGGESTIONS),
   ]);
-  const [suggestions, picks] = await Promise.all([
-    counts.following < SUGGEST_UNDER ? suggestPeople(visitor?.id ?? null) : [],
-    entries.length < PICKS ? getReel(user, device, taste, { limit: PICKS }) : [],
+  const [mine, brands] = await Promise.all([
+    myReactions(visitorId, feedKeys(feed)),
+    brandColorsOf(links.flatMap((link) => (link.agent.profileId ? [link.agent.profileId] : []))),
   ]);
   return (
-    <HomeFeed
-      entries={entries}
-      suggestions={suggestions}
+    <BuyerHome
       firstName={firstName(user)}
-      picks={picks.map((post) => ({
-        key: post.listing.ListingKey,
-        address: post.listing.UnparsedAddress,
-        price: post.listing.ListPrice,
-        photo: post.listing.Media[0]?.MediaURL ?? null,
-      }))}
+      profileHref={profileHref}
+      links={links}
+      brands={brands}
+      followed={followed}
+      suggestions={suggestions}
+      feed={feed}
+      mine={mine}
+      seenAt={seenAt}
+      picks={picks}
+      lens={lens}
     />
   );
 }

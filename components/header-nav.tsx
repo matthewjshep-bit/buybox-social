@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, LayoutDashboard, LogOut, Shield, UserRound } from "lucide-react";
+import { Bell, House, LayoutDashboard, LogOut, Shield, UserRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
@@ -81,6 +81,7 @@ export function AccountMenu({
   unread,
   overlay,
   photo,
+  links = [],
 }: {
   // Your own page: straight to it once you have one (so it's marked when you're there).
   profile: string;
@@ -94,6 +95,8 @@ export function AccountMenu({
   admin?: boolean;
   unread: number;
   overlay: boolean;
+  // Someone on an agent's link: the way back to it ("Homes from Dana").
+  links?: { href: string; label: string }[];
 }) {
   const menu = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -239,6 +242,11 @@ export function AccountMenu({
             Activity
             {unread > 0 && <span className="sr-only">{`, ${unread} new`}</span>}
           </MenuLink>
+          {links.map((link) => (
+            <MenuLink key={link.href} href={link.href} icon={<House aria-hidden size={18} />} onGo={close}>
+              {link.label}
+            </MenuLink>
+          ))}
           {agent && (
             <MenuLink href="/dashboard" section icon={<LayoutDashboard aria-hidden size={18} />} onGo={close}>
               Dashboard

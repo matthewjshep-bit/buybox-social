@@ -9,6 +9,7 @@ import { Avatar, HomeThumb } from "@/components/ui";
 import { getPerson } from "@/lib/admin";
 import { requireAdmin } from "@/lib/auth";
 import { cn, timeAgo } from "@/lib/format";
+import { linkTitle } from "@/lib/people-picker";
 import { button } from "@/lib/ui";
 
 type Props = { params: Promise<{ id: string }> };
@@ -75,7 +76,7 @@ export default async function AdminPerson({ params }: Props) {
                   {person.links.map((link) => (
                     <li key={link.id} className="py-3">
                       <p className="font-medium">
-                        {link.people.length > 0 ? link.people.join(", ") : link.client_name || "Unnamed client"}
+                        {linkTitle(link.client_name, link.addresses[0])}
                         <span className="font-normal text-stone-500"> · {timeAgo(link.created_at.toISOString())}</span>
                       </p>
                       <p className="truncate text-sm text-muted">{link.addresses.join(" · ") || "No homes left on it"}</p>

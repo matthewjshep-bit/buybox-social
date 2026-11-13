@@ -9,14 +9,18 @@ import { cn } from "@/lib/format";
 import { getProfilePerson } from "@/lib/profile";
 import { getPublicIdentity } from "@/lib/public";
 import { ANONYMOUS_BUYER } from "@/lib/timeline";
+import { yourClientNames } from "@/lib/your-client";
 import { button, card } from "@/lib/ui";
 import { FollowButton } from "./client";
 
 type Which = "followers" | "following";
 
-// What a list calls someone with no name yet: as their page does, to others.
-const called = (person: { name: string; isAgent: boolean }) =>
-  person.name.trim() || (person.isAgent ? "An agent" : ANONYMOUS_BUYER);
+// What a list calls someone with no name yet: as their page does, to others
+// (to an agent, their own client by the first name the agent gave them).
+const calledBy =
+  (clients: Map<string, string>) =>
+  (person: { id: string; name: string; isAgent: boolean }) =>
+    person.name.trim() || clients.get(person.id) || (person.isAgent ? "An agent" : ANONYMOUS_BUYER);
 
 // Someone's followers, or the people they follow, newest first: each to their
 // page, with Follow beside them for whoever's looking (never beside themselves).
@@ -32,6 +36,12 @@ export async function FollowListPage({ id, which }: { id: string; which: Which }
     getFollowCounts(person.id),
     getFollowedIds(visitor?.id),
   ]);
+  // An agent's own clients, among them (or whose page this is), by name.
+  const called = calledBy(
+    account?.role === "agent"
+      ? await yourClientNames(account.id, [person.id, ...list.map((someone) => someone.id)])
+      : new Map(),
+  );
   const name = called(person);
   const title =
     which === "followers"

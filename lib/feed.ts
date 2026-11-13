@@ -1,6 +1,7 @@
 import type { Account } from "./auth";
 import { sql } from "./db";
 import { getFollowedIds } from "./follows";
+import { photosFor } from "./person-photo";
 import type { Listing } from "./listings/types";
 import {
   getPublicIdentity,
@@ -320,6 +321,9 @@ export async function getReel(
       order by listing_key, at desc, id`,
   ]);
 
+  // The faces of the people on the line, where they've added a photo.
+  const faces = await photosFor(events.flatMap((event) => (event.source === "public" && event.profile_id ? [event.profile_id] : [])));
+
   const toPost = ({ row, totals, match }: (typeof scored)[number]): FeedPost => {
     const key = row.data.ListingKey;
     return {
@@ -339,6 +343,7 @@ export async function getReel(
       events: toEvents(
         events.filter((event) => event.listing_key === key),
         new Set(followed),
+        faces,
       ),
     };
   };
@@ -380,7 +385,9 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 // "You" (your likes keyed so the one you just made matches what comes back),
 // and a home an agent sent is "You" to them, with their face in ink. Several
 // strangers' plain likes this week fold into one: "4 buyers liked this home".
-function toEvents(rows: EventRow[], followed: Set<string>): TickerEvent[] {
+// `faces`: people's own photos by page id, so a face on the line is the one
+// their page shows.
+function toEvents(rows: EventRow[], followed: Set<string>, faces: Map<string, string> = new Map()): TickerEvent[] {
   const events: TickerEvent[] = [];
   const folded: TickerEvent[] = [];
   for (const row of rows) {
@@ -395,6 +402,7 @@ function toEvents(rows: EventRow[], followed: Set<string>): TickerEvent[] {
               name: row.name,
               ...(row.source === "public" && row.profile_id && { profileId: row.profile_id }),
               ...(row.source === "public" && row.profile_id && followed.has(row.profile_id) && { following: true }),
+              ...(row.source === "public" && row.profile_id && faces.has(row.profile_id) && { photo: faces.get(row.profile_id) }),
             }
           : { tone: "anonymous", name: null };
     if (row.kind === "reaction") {

@@ -31,18 +31,20 @@ import {
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
+import { PeoplePicker, type Chosen } from "@/components/people-picker";
 import { ScorecardBody } from "@/components/scorecard";
 import { Sheet } from "@/components/sheet";
 import { PorchcardIcon } from "@/components/porchcard-logo";
 import type { FeedPost } from "@/lib/feed";
 import { cn } from "@/lib/format";
+import { firstNameSchema } from "@/lib/people-picker";
 import { button, card, field } from "@/lib/ui";
 import {
   addPerson,
   markShareSeen,
   removeComment,
   removePerson,
-  renameClient,
+  renamePerson,
   replyAsAgent,
   setHomeRemoved,
   updateWelcome,
@@ -86,69 +88,6 @@ export function ShowTarget() {
     };
   }, []);
   return null;
-}
-
-// The client's name as the page title, editable in place.
-export function ClientNameEditor({ shareId, name }: { shareId: string; name: string }) {
-  const [editing, setEditing] = useState(false);
-  const [state, action, pending] = useActionState<FormState, FormData>(
-    async (previous, form) => {
-      const result = await renameClient(shareId, previous, form);
-      if (!result.error) setEditing(false);
-      return result;
-    },
-    {},
-  );
-
-  if (!editing) {
-    return (
-      <div className="mt-1 flex flex-wrap items-center gap-2">
-        <h1 className="font-display text-3xl">{name || "Unnamed client"}</h1>
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className={cn(button({ kind: "ghost" }), "text-stone-700")}
-        >
-          <Pencil aria-hidden size={15} />
-          {name ? "Rename" : "Add their name"}
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    // On a phone the name gets the whole line, and Save and Cancel go under it.
-    <form action={action} className="mt-1 flex flex-wrap items-start gap-2">
-      <div className="min-w-0 basis-full sm:flex-1 sm:max-w-sm">
-        <label htmlFor="clientName" className="sr-only">
-          Client&apos;s name
-        </label>
-        <input
-          id="clientName"
-          name="clientName"
-          defaultValue={name}
-          required
-          maxLength={60}
-          autoFocus
-          autoComplete="off"
-          placeholder="Client's name"
-          aria-describedby={state.error ? "clientName-error" : undefined}
-          className={field({ big: true })}
-        />
-        {state.error && (
-          <p id="clientName-error" role="alert" className="mt-1 text-sm text-red-700">
-            {state.error}
-          </p>
-        )}
-      </div>
-      <button type="submit" disabled={pending} className={cn(button({ kind: "primary", size: "lg" }), "sm:mt-1")}>
-        {pending ? "Saving…" : "Save"}
-      </button>
-      <button type="button" onClick={() => setEditing(false)} className={cn(button({ kind: "ghost", size: "lg" }), "sm:mt-1")}>
-        Cancel
-      </button>
-    </form>
-  );
 }
 
 // What the link opens on, before the homes: the headline (the standard line
@@ -406,12 +345,25 @@ export function ReplyForm({ shareId, listingKey }: { shareId: string; listingKey
   );
 }
 
-// Someone else to send the package to, with a link of their own. When the one
-// person on it was told that only they and the agent see what they say
+// Someone else to send the package to, with a link of their own: a first
+// name typed in, or someone picked from the agent's clients, the people they
+// follow, or anyone on Porchcard (who then hears about it from us). When the
+// one person on it was told that only they and the agent see what they say
 // (`confidant`), the agent hears what adding someone means, and is asked,
 // before anyone is added. The server asks too, if this page is out of date.
-export function AddPersonForm({ shareId, confidant }: { shareId: string; confidant: string | null }) {
-  const [name, setName] = useState("");
+export function AddPersonForm({
+  shareId,
+  confidant,
+  taken,
+}: {
+  shareId: string;
+  confidant: string | null;
+  // The first names typed for people on it already (lowercase): one of those
+  // typed again is refused, which the server says before asking anything.
+  taken: string[];
+}) {
+  // Who's in the field: as typed, or as picked.
+  const [person, setPerson] = useState<Chosen[]>([]);
   // Who the agent is being asked about, until they say yes or no.
   const [asking, setAsking] = useState<AddPersonState["confirm"] | null>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -421,7 +373,7 @@ export function AddPersonForm({ shareId, confidant }: { shareId: string; confida
     const result = await addPerson(shareId, previous, form);
     if (result.confirm) setAsking(result.confirm);
     else if (!result.error) {
-      setName("");
+      setPerson([]);
       setAsking(null);
       // The button that was pressed has gone; the cursor goes back to the name.
       input.current?.focus();
@@ -432,6 +384,7 @@ export function AddPersonForm({ shareId, confidant }: { shareId: string; confida
   useEffect(() => {
     if (asking) warning.current?.focus();
   }, [asking]);
+  const name = person[0]?.name.trim() ?? "";
 
   return (
     <form
@@ -439,51 +392,49 @@ export function AddPersonForm({ shareId, confidant }: { shareId: string; confida
       onSubmit={(event) => {
         // Asked here, before anything is sent, unless this is the answer.
         const submitter = (event.nativeEvent as SubmitEvent).submitter;
-        if (confidant && name.trim() && submitter?.getAttribute("value") !== "yes") {
+        // A name the server will refuse (one on it already, an email) is
+        // refused first, before anything is asked.
+        const typed = person[0]?.group === "new";
+        const refused = typed && (taken.includes(name.toLowerCase()) || !firstNameSchema.safeParse(name).success);
+        if (confidant && name && !refused && submitter?.getAttribute("value") !== "yes") {
           event.preventDefault();
-          setAsking({ confidant, newcomer: name.trim() });
+          setAsking({ confidant, newcomer: name });
         }
       }}
-      className="flex flex-wrap items-start gap-2"
     >
-      <div className="min-w-0 flex-1">
-        <label htmlFor="new-person" className="sr-only">
-          Their first name
-        </label>
-        <input
-          ref={input}
-          id="new-person"
-          name="firstName"
-          required
-          maxLength={40}
-          autoComplete="off"
-          placeholder="Their first name"
-          value={name}
-          onChange={(event) => {
-            setName(event.target.value);
-            setAsking(null);
-          }}
-          className={field()}
-        />
-        {state.error && (
-          <p role="alert" className="mt-1 text-sm text-red-700">
-            {state.error}
-          </p>
-        )}
-      </div>
-      {/* Out of the way while the agent is asked, and off, so Enter in the
-          name can't answer for them. */}
-      <button
-        type="submit"
-        hidden={Boolean(asking)}
-        disabled={pending || Boolean(asking)}
-        className={button({ kind: "secondary", size: "lg" })}
-      >
-        <UserPlus aria-hidden size={16} />
-        {pending ? "Adding…" : "Add a person"}
-      </button>
+      <PeoplePicker
+        mode="single"
+        label="Add a person"
+        chosen={person}
+        onChange={(next) => {
+          setPerson(next);
+          setAsking(null);
+        }}
+        max={1}
+        shareId={shareId}
+        inputRef={input}
+        notify
+        beside={
+          // Out of the way while the agent is asked, and off, so Enter in the
+          // name can't answer for them.
+          <button
+            type="submit"
+            hidden={Boolean(asking)}
+            disabled={pending || Boolean(asking)}
+            className={cn(button({ kind: "secondary", size: "lg" }), "shrink-0")}
+          >
+            <UserPlus aria-hidden size={16} />
+            {pending ? "Adding…" : "Add"}
+          </button>
+        }
+      />
+      {state.error && (
+        <p role="alert" className="mt-1 text-sm text-red-700">
+          {state.error}
+        </p>
+      )}
       {asking && (
-        <div role="group" aria-labelledby={warningId} className="basis-full rounded-2xl bg-stone-100 p-4 text-sm">
+        <div role="group" aria-labelledby={warningId} className="mt-2 rounded-2xl bg-stone-100 p-4 text-sm">
           <p ref={warning} id={warningId} tabIndex={-1} className="flex items-start gap-2 outline-none">
             <Lock aria-hidden size={15} className="mt-0.5 shrink-0 text-stone-600" />
             <span>
@@ -517,6 +468,80 @@ export function AddPersonForm({ shareId, confidant }: { shareId: string; confida
           </div>
         </div>
       )}
+    </form>
+  );
+}
+
+// Fixes the first name of someone on the link who hasn't signed up yet (a
+// typo, say), right where it's shown; the link's name follows. Someone who
+// has signed up goes by their own. Escape or Cancel puts it back as it was,
+// and the keyboard goes back to Edit name.
+export function EditPersonName({ shareId, personId, name }: { shareId: string; personId: string; name: string }) {
+  const [editing, setEditing] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  const stop = () => {
+    setEditing(false);
+    requestAnimationFrame(() => opener.current?.focus());
+  };
+  const [state, action, pending] = useActionState<FormState, FormData>(async (previous, form) => {
+    const result = await renamePerson(shareId, personId, previous, form);
+    if (!result.error) stop();
+    return result;
+  }, {});
+  if (!editing) {
+    return (
+      <button
+        ref={opener}
+        type="button"
+        onClick={() => setEditing(true)}
+        className={cn(button({ kind: "ghost" }), "shrink-0 text-stone-700")}
+      >
+        <Pencil aria-hidden size={15} /> Edit name<span className="sr-only"> for {name}</span>
+      </button>
+    );
+  }
+  return (
+    <form
+      action={action}
+      onKeyDown={(event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        stop();
+      }}
+      className="mt-3 flex w-full flex-wrap items-start gap-2"
+    >
+      <div className="min-w-0 basis-full sm:max-w-xs sm:flex-1">
+        <label htmlFor={`${id}-name`} className="text-sm font-medium">
+          {name}&apos;s first name
+        </label>
+        <input
+          id={`${id}-name`}
+          name="firstName"
+          defaultValue={name}
+          required
+          maxLength={40}
+          autoFocus
+          autoComplete="off"
+          autoCapitalize="words"
+          aria-describedby={state.error ? `${id}-error` : undefined}
+          aria-invalid={state.error ? true : undefined}
+          className={cn(field(), "mt-1")}
+        />
+        {state.error && (
+          <p id={`${id}-error`} role="alert" className="mt-1 text-sm text-red-700">
+            {state.error}
+          </p>
+        )}
+      </div>
+      <div className="flex gap-2 sm:mt-6">
+        <button type="submit" disabled={pending} className={button({ kind: "primary" })}>
+          {pending ? "Saving…" : "Save"}
+        </button>
+        <button type="button" onClick={stop} className={cn(button({ kind: "ghost" }), "text-stone-700")}>
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }

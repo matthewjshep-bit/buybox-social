@@ -274,7 +274,7 @@ export async function getPerson(id: string): Promise<Person | null> {
             (select coalesce(array_agg(l.data->>'UnparsedAddress' order by sl.position), '{}')
                from share_listings sl join listings l on l.listing_key = sl.listing_key
                where sl.share_id = s.id and sl.removed_at is null) as addresses,
-            (select coalesce(array_agg(p.first_name order by p.created_at), '{}')
+            (select coalesce(array_agg(p.first_name order by p.invited_at nulls last, p.position nulls last, p.created_at), '{}')
                from participants p where p.share_id = s.id) as people,
             (select count(*)::int from reactions r where r.share_id = s.id) as reactions,
             (select count(*)::int from comments c where c.share_id = s.id and c.participant_id is not null) as comments
@@ -383,6 +383,8 @@ export async function getHome(listingKey: string) {
         agent_id: string;
         agent_name: string;
         client_name: string;
+        // The first home on it, for a link nobody is on yet.
+        first_address: string | null;
         created_at: Date;
         removed: boolean;
         likes: number;
@@ -392,6 +394,9 @@ export async function getHome(listingKey: string) {
     >`
       select s.id, a.id as agent_id, coalesce(nullif(a.full_name, ''), a.email) as agent_name,
         s.client_name, s.created_at, sl.removed_at is not null as removed,
+        (select l2.data->>'UnparsedAddress'
+           from share_listings sl2 join listings l2 on l2.listing_key = sl2.listing_key
+           where sl2.share_id = s.id and sl2.removed_at is null order by sl2.position limit 1) as first_address,
         (select count(*)::int from reactions r
           where r.share_id = s.id and r.listing_key = ${listingKey} and r.reaction = 'like') as likes,
         (select count(*)::int from reactions r

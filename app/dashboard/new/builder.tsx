@@ -3,9 +3,11 @@
 import { ArrowDown, Check, Plus, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { PeoplePicker, typed, type Chosen } from "@/components/people-picker";
 import { HomeThumb } from "@/components/ui";
 import { cn, formatPrice } from "@/lib/format";
 import type { Listing } from "@/lib/listings/types";
+import { peopleTitle } from "@/lib/people-picker";
 import { button, card as cardClass, field } from "@/lib/ui";
 import { addHomesToShare, createShare } from "../actions";
 
@@ -19,6 +21,7 @@ export function ShareBuilder({
   initialQuery,
   addTo,
   start,
+  whoFirst = false,
 }: {
   heading: string;
   intro: string;
@@ -29,14 +32,20 @@ export function ShareBuilder({
   // A home already picked (sent from the home itself): just who it's for, and
   // a note, until they ask for another home.
   start?: Listing;
+  // Who it's for comes first, ready to type ("Send homes to…").
+  whoFirst?: boolean;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
   // Kept here rather than in the URL, so picks survive a new search.
   const [picked, setPicked] = useState<Listing[]>(start ? [start] : []);
   const [searching, setSearching] = useState(!start);
-  // Everyone the homes are for. Each gets their own link.
-  const [people, setPeople] = useState([""]);
+  // Everyone the homes are for. Each gets their own link. Whatever's typed
+  // in and not yet added counts too, so nobody is lost to a missed Enter.
+  const [people, setPeople] = useState<Chosen[]>([]);
+  const [typing, setTyping] = useState("");
+  const everyone = typing.trim() && !typing.includes("@") ? [...people, typed(typing)] : people;
+  const title = peopleTitle(everyone.map((person) => person.name));
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -71,7 +80,7 @@ export function ShareBuilder({
     const el = details.current;
     if (!el) return;
     // The first thing to fill in, or the button itself when adding homes.
-    el.querySelector<HTMLElement>("input, button[data-make-link]")?.focus({ preventScroll: true });
+    el.querySelector<HTMLElement>("[role=combobox], textarea, button[data-make-link]")?.focus({ preventScroll: true });
     const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
     el.scrollIntoView({ block: "start", behavior: still ? "auto" : "smooth" });
   };
@@ -83,6 +92,7 @@ export function ShareBuilder({
       const params = new URLSearchParams();
       if (addTo) params.set("share", addTo.shareId);
       if (start) params.set("home", start.ListingKey);
+      if (whoFirst) params.set("focus", "to");
       if (value.trim()) params.set("q", value.trim());
       const search = params.toString();
       router.replace(`/dashboard/new${search ? `?${search}` : ""}`, { scroll: false });
@@ -105,7 +115,11 @@ export function ShareBuilder({
       const listingKeys = picked.map((l) => l.ListingKey);
       const result = addTo
         ? await addHomesToShare(addTo.shareId, listingKeys)
-        : await createShare({ listingKeys, people, note });
+        : await createShare({
+            listingKeys,
+            people: [...people, ...(typing.trim() ? [typed(typing)] : [])].map((person) => person.pick),
+            note,
+          });
       if (result?.error) setError(result.error);
     });
   };
@@ -144,12 +158,38 @@ export function ShareBuilder({
     );
   };
 
+  // Who it's for, and what the link will be called: their names, as they're added.
+  const who = (
+    <div>
+      <PeoplePicker
+        label="Who's it for?"
+        hint="Each person gets their own link, so you can see what each of them likes."
+        chosen={people}
+        onChange={setPeople}
+        onTextChange={setTyping}
+        max={MAX_PEOPLE}
+        autoFocus={whoFirst}
+        notify
+      />
+      <p className="mt-2 text-sm text-stone-700" aria-live="polite">
+        {title ? (
+          <>
+            This link will be called <b className="font-semibold text-ink">{title}</b>.
+          </>
+        ) : (
+          "Nobody added: anyone with the link can join, and it's named for whoever joins first."
+        )}
+      </p>
+    </div>
+  );
+
   return (
     <>
       <h1 className="font-display text-3xl">
         {start ? (picked.length > 1 ? "Send these homes" : "Send this home") : heading}
       </h1>
       <p className="mt-1 text-stone-700">{intro}</p>
+      {whoFirst && !addTo && <div className={cn(cardClass, "mt-5 p-4")}>{who}</div>}
       <div className="mt-5 pb-4">
         {searching ? (
           <>
@@ -234,48 +274,7 @@ export function ShareBuilder({
         <div ref={details} className={cn(cardClass, "mt-6 flex scroll-mt-4 flex-col gap-4 p-4")}>
           {!addTo && (
             <>
-              <fieldset>
-                <legend className="text-sm font-medium">Who&apos;s it for?</legend>
-                <p className="text-sm text-muted">
-                  Each person gets their own link, so you can see what each of them likes.
-                </p>
-                <div className="mt-2 flex flex-col gap-2">
-                  {people.map((person, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <input
-                        aria-label={`Person ${i + 1}'s first name`}
-                        maxLength={40}
-                        value={person}
-                        autoComplete="off"
-                        placeholder={i === 0 ? "First name" : "Another person's first name"}
-                        onChange={(event) =>
-                          setPeople((current) => current.map((p, j) => (j === i ? event.target.value : p)))
-                        }
-                        className={field()}
-                      />
-                      {people.length > 1 && (
-                        <button
-                          type="button"
-                          aria-label={`Remove person ${i + 1}`}
-                          onClick={() => setPeople((current) => current.filter((_, j) => j !== i))}
-                          className={cn(button({ kind: "ghost", icon: true }), "shrink-0 text-muted")}
-                        >
-                          <X aria-hidden size={18} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                {people.length < MAX_PEOPLE && (
-                  <button
-                    type="button"
-                    onClick={() => setPeople((current) => [...current, ""])}
-                    className={cn(button({ kind: "ghost", flush: true }), "mt-2 text-brand")}
-                  >
-                    <Plus aria-hidden size={16} /> Add another person
-                  </button>
-                )}
-              </fieldset>
+              {!whoFirst && who}
               <div>
                 <label htmlFor="note" className="text-sm font-medium">
                   Personal note (optional)
@@ -309,7 +308,7 @@ export function ShareBuilder({
               : picked.length === 0
                 ? "Pick at least 1 home"
                 : addTo
-                  ? `Add ${picked.length} ${picked.length === 1 ? "home" : "homes"} to ${addTo.clientName ? `${addTo.clientName}'s` : "their"} link`
+                  ? `Add ${picked.length} ${picked.length === 1 ? "home" : "homes"} to ${addTo.clientName ? `${addTo.clientName}'s` : "the"} link`
                   : `Create link for ${picked.length} ${picked.length === 1 ? "home" : "homes"}`}
           </button>
           {!addTo && (

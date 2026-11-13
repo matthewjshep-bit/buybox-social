@@ -2,30 +2,36 @@ import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { requireAgent } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { escapeLike } from "@/lib/format";
 import type { Listing } from "@/lib/listings/types";
+import { linkTitle } from "@/lib/people-picker";
 import { ShareBuilder } from "./builder";
-
-const escapeLike = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 // Picks homes for a new client link, or (with ?share=) adds homes to an existing one.
 // With ?home=, that home is already picked: the longer way to send one home.
+// With ?focus=to (from "Send homes to…" on the home page), who it's for comes
+// first, ready to type.
 export default async function NewSharePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; share?: string; home?: string }>;
+  searchParams: Promise<{ q?: string; share?: string; home?: string; focus?: string }>;
 }) {
   const agent = await requireAgent();
   if (!agent.full_name) redirect("/dashboard/profile");
 
-  const { q, share: shareId, home: homeKey } = await searchParams;
-  let addTo: { shareId: string; clientName: string } | undefined;
+  const { q, share: shareId, home: homeKey, focus } = await searchParams;
+  let addTo: { shareId: string; clientName: string; title: string } | undefined;
   let onLink: string[] = [];
   if (shareId) {
     if (!z.uuid().safeParse(shareId).success) notFound();
-    const [share] = await sql<{ id: string; client_name: string }[]>`
-      select id, client_name from shares where id = ${shareId} and agent_id = ${agent.id}`;
+    const [share] = await sql<{ id: string; client_name: string; first_address: string | null }[]>`
+      select s.id, s.client_name,
+        (select l.data->>'UnparsedAddress'
+           from share_listings sl join listings l on l.listing_key = sl.listing_key
+           where sl.share_id = s.id and sl.removed_at is null order by sl.position limit 1) as first_address
+      from shares s where s.id = ${shareId} and s.agent_id = ${agent.id}`;
     if (!share) notFound();
-    addTo = { shareId: share.id, clientName: share.client_name };
+    addTo = { shareId: share.id, clientName: share.client_name, title: linkTitle(share.client_name, share.first_address) };
     onLink = (
       await sql<{ listing_key: string }[]>`
         select listing_key from share_listings where share_id = ${share.id} and removed_at is null`
@@ -55,18 +61,27 @@ export default async function NewSharePage({
   return (
     <ShareBuilder
       // With a home already picked, the builder words its own heading as homes are added.
-      heading={addTo ? `Add homes for ${addTo.clientName || "this client"}` : "New link"}
+      heading={
+        addTo
+          ? addTo.clientName
+            ? `Add homes for ${addTo.title}`
+            : `Add homes to the ${addTo.title[0].toLowerCase()}${addTo.title.slice(1)}`
+          : "New link"
+      }
       intro={
         addTo
           ? "Pick up to 3 more homes for their link."
           : start
-            ? "Add their name so they open it as themselves."
-            : "Pick up to 3 homes to send."
+            ? "Add who it's for. Pick someone on Porchcard, or type a first name."
+            : focus === "to"
+              ? "Add who it's for. Pick someone on Porchcard, or type a first name. Then pick up to 3 homes."
+              : "Pick up to 3 homes to send, then add who it's for."
       }
       results={rows.map((row) => row.data)}
       initialQuery={query}
       addTo={addTo}
       start={start?.data}
+      whoFirst={!addTo && focus === "to"}
     />
   );
 }

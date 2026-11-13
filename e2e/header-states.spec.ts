@@ -50,6 +50,8 @@ test("signed in, you're one button: your places and Sign out are behind your ini
   const header = page.getByRole("banner");
   const me = header.getByRole("button", { name: "Your profile" });
   await expect(me).toHaveText("H");
+  // Clients are an agent's: not in a buyer's header.
+  await expect(header.getByRole("link", { name: "Clients" })).toHaveCount(0);
   expect(await size(page, "Your profile", "button")).toEqual({ width: 44, height: 44 });
   // No Sign out beside it.
   await expect(header.getByRole("button", { name: "Sign out" })).toBeHidden();
@@ -141,7 +143,7 @@ test("signed in, you're one button: your places and Sign out are behind your ini
   await expect(header.getByRole("button", { name: "Your profile" })).toHaveCount(0);
 });
 
-test("an agent's dashboard is in their colour, and the header is just Search, the bell and their initial, the Dashboard under it", async ({
+test("an agent's dashboard is in their colour, and the header is just Search, Clients, the bell and their initial, the Dashboard under it too", async ({
   browser,
 }) => {
   // Merlot.
@@ -154,6 +156,14 @@ test("an agent's dashboard is in their colour, and the header is just Search, th
     await expect(header.getByRole("link", { name, exact: true })).toHaveCount(0);
   }
   await expect(header.getByRole("link", { name: "Search", exact: true })).toHaveAttribute("href", "/search");
+  // Their clients, a tap from anywhere, a fingertip wide even as just an
+  // icon, and marked as where they are anywhere in the dashboard.
+  const clients = header.getByRole("link", { name: "Clients", exact: true });
+  await expect(clients).toHaveAttribute("href", "/dashboard");
+  await expect(clients).toHaveAttribute("aria-current", "page");
+  const clientsBox = await size(agent, "Clients", "link");
+  expect(clientsBox.width).toBeGreaterThanOrEqual(44);
+  expect(clientsBox.height).toBeGreaterThanOrEqual(44);
   expect(await background(agent)).toBe("rgb(122, 46, 59)");
   await expect(header.getByRole("button", { name: "Sign out" })).toBeHidden();
   expect(await agent.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
@@ -169,11 +179,13 @@ test("an agent's dashboard is in their colour, and the header is just Search, th
   await header.getByRole("button", { name: "Your profile" }).click();
   await expect(dashboard).toHaveAttribute("aria-current", "true");
   await agent.keyboard.press("Escape");
+  await expect(clients).toHaveAttribute("aria-current", "true");
 
   // Anywhere else, the site's own colour, and Search is where you are on the map.
   await agent.goto("/search");
   expect(await background(agent)).toBe("rgb(36, 115, 188)");
   await expect(header.getByRole("link", { name: "Search", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(clients).not.toHaveAttribute("aria-current");
 
   // A new colour, saved: the logo has it at once, with no reload.
   await agent.goto("/dashboard/profile");

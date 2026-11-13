@@ -1,231 +1,208 @@
 import { cache } from "react";
-import { describeActivity, getActivityRows, quoteOf } from "./activity";
 import type { Account } from "./auth";
 import { sql } from "./db";
+import { getReel, type FeedPost } from "./feed";
 import { getFollowedIds } from "./follows";
-import { photosFor, photoUrl } from "./person-photo";
-import type { Listing } from "./listings/types";
-import { dayOf, getProfileFeed, getProfilePerson, type ProfileCard } from "./profile";
+import { photoUrl } from "./person-photo";
+import { buildCards, getProfilePerson, getProfileRows, withoutPasses, type ProfileCard } from "./profile";
 import type { ReactionState } from "./reactions";
-import { describeTake } from "./shares";
+import { getTaste } from "./taste";
 
-// The home page, signed in: a feed, newest first, Facebook-style. What people
-// you follow did in public (each as their own page shows it), what's happened
-// around what you posted (replies, likes on your comments), and for an agent
-// what their clients did on links they sent (theirs alone to see). Any home in
-// it opens the homes full screen, in the feed's order (`feedKeys`).
+// The home page's Following stream, signed in: what the people you follow
+// liked and said in public, one entry per home per day however many of them
+// it was ("Matthew, Eva and 2 others liked this home"). Built only from what
+// each of their pages shows a stranger, and only the good parts: likes, spot
+// likes and comments. Never a pass, a dislike or a "but not", whatever they
+// keep public, because a feed puts it in front of people who didn't go
+// looking. An agent's clients and what's happened around your own comments
+// live elsewhere (the agent home, the bell). Any home in it opens the homes
+// full screen, in the feed's order (`feedKeys`).
 
 // `photo`: their own, where they've added one, in place of their initial.
 export type FeedWho = { name: string; face: string; profileId: string | null; agent: boolean; photo: string | null };
 
-export type HomeFeedEntry =
-  | {
-      kind: "card";
-      id: string;
-      at: string;
-      day: string;
-      who: FeedWho;
-      card: ProfileCard;
-    }
-  | {
-      kind: "note";
-      id: string;
-      at: string;
-      day: string;
-      // Who did it: one person, or (for replies and likes on what you said) several.
-      who: FeedWho[];
-      // "your client": an agent's own client, on a link they sent.
-      client: boolean;
-      // What happened, after who: "liked this home, the porch".
-      sentence: string;
-      quote: string | null;
-      home: { key: string; address: string; photo: string | null; photoIndex: number | null };
-      // Where to see all of it: an agent's page about that client.
-      more?: { href: string; label: string };
-    };
+// A home as a card shows it: the facts, and the photo it's about (the one
+// with the newest thing they liked, else the first), large.
+export type FeedHome = {
+  key: string;
+  address: string;
+  city: string;
+  price: number;
+  beds: number;
+  baths: number;
+  sqft: number;
+  active: boolean;
+  photo: { url: string; index: number; alt: string; width?: number; height?: number } | null;
+};
 
-// How far back each part reads, and how much the page shows.
+// Why a home is in your feed, for the card and for the reel's take on it:
+// who (likers first), what they did without their names ("liked this home"),
+// what they said (newest first, as they wrote it), and the photo it's about.
+export type FeedWhy = { key: string; who: FeedWho[]; sentence: string; quotes: string[]; photo: number | null };
+
+export type HomeFeedEntry = {
+  // The home and the day: one entry each.
+  id: string;
+  at: string;
+  day: string;
+  home: FeedHome;
+  why: FeedWhy;
+  // What was said, with who said it, newest first: the card's quote bubbles.
+  said: { who: FeedWho; body: string }[];
+  // Whether anyone liked it, rather than only saying something about it.
+  liked: boolean;
+};
+
+// How far the feed reads, and how much it holds.
 const FOLLOWED_MOST = 100;
+const CARDS_PER_PERSON = 20;
 const FEED_MOST = 60;
+const QUOTES = 2;
+// Homes picked for someone, after the feed.
+const PICKS = 12;
 
 const nameOr = (name: string, agent: boolean) => name.trim() || (agent ? "An agent" : "A buyer");
 
-// What people you follow did in public: their own pages' newest cards.
-async function followedCards(visitorId: string): Promise<HomeFeedEntry[]> {
-  const ids = [...(await getFollowedIds(visitorId))].slice(0, FOLLOWED_MOST);
-  const pages = await Promise.all(
-    ids.map(async (id) => {
-      const person = await getProfilePerson(id);
-      if (!person) return [];
-      const { cards } = await getProfileFeed(id, { passes: !person.hidePasses });
-      const who: FeedWho = {
-        name: nameOr(person.name, person.isAgent),
-        face: person.name,
-        profileId: person.id,
-        agent: person.isAgent,
-        photo: person.photo,
-      };
-      // (A day when all they did was like someone's comment says little here.)
-      return cards
-        .filter((card) => !card.quiet)
-        .map((card): HomeFeedEntry => ({ kind: "card", id: `p:${id}:${card.id}`, at: card.at, day: card.day, who, card }));
-    }),
-  );
-  return pages.flat();
+// One person's good day on a home, as their page would show a stranger.
+type Take = { who: FeedWho; card: ProfileCard };
+
+const likedIt = (take: Take) => take.card.liked || take.card.loves.length > 0;
+
+// What one person you follow did lately, as anyone visiting their page would
+// see it, with their passes taken out whatever they keep public: and nothing
+// at all on a home they passed on (a comment there could give the pass away).
+async function takesOf(id: string): Promise<Take[]> {
+  const person = await getProfilePerson(id);
+  if (!person) return [];
+  const rows = await getProfileRows(id, false);
+  const passed = new Set([...rows.standing].flatMap(([key, sentiment]) => (sentiment === "dislike" ? [key] : [])));
+  const who: FeedWho = {
+    name: nameOr(person.name, person.isAgent),
+    face: person.name,
+    profileId: person.id,
+    agent: person.isAgent,
+    photo: person.photo,
+  };
+  return buildCards(withoutPasses(rows))
+    .filter((card) => !card.quiet && !passed.has(card.home.key))
+    .map((card) => ({ who, card }))
+    .filter((take) => likedIt(take) || take.card.commented)
+    .slice(0, CARDS_PER_PERSON);
 }
 
-// What's happened around what you posted: as the bell's Activity page says it.
-async function aroundYou(visitorId: string): Promise<HomeFeedEntry[]> {
-  const rows = await getActivityRows(visitorId);
-  const photos = await photosFor(rows.flatMap((row) => row.people.map((person) => person.id)));
-  return rows.map(
-    (row): HomeFeedEntry => ({
-      kind: "note",
-      id: `a:${row.id}`,
-      at: row.at,
-      day: dayOf(row.at),
-      who: row.people.map((person) => ({
-        name: person.name,
-        face: person.name,
-        profileId: person.id,
-        agent: false,
-        photo: photos.get(person.id) ?? null,
-      })),
-      client: false,
-      sentence: describeActivity(row),
-      quote: quoteOf(row),
-      home: { key: row.listingKey, address: row.address, photo: row.photo?.url ?? null, photoIndex: row.photo?.index ?? null },
-    }),
-  );
+// "liked this home", for one person: their own page's words, with the home
+// named as a home. For several, what they did together.
+function sentenceOf(takes: Take[]) {
+  if (takes.length === 1) return takes[0].card.sentence.replace(/^liked this(?=,|$)/, "liked this home");
+  const liked = takes.filter(likedIt).length;
+  if (liked === takes.length) return "liked this home";
+  return liked === 0 ? "commented on this home" : "liked or commented on this home";
 }
 
-type Mark = { media: string; tag: string };
-
-// An agent's clients, on the links they sent: each person's take on a home (as
-// one), and each thing they said. For the agent only.
-async function fromClients(agentId: string): Promise<HomeFeedEntry[]> {
-  const [takes, comments] = await Promise.all([
-    sql<
-      ({
-        share_id: string;
-        first_name: string;
-        profile: string | null;
-        photo_v: string | null;
-        data: Listing;
-        at: Date;
-        photo_likes: Mark[];
-        photo_dislikes: Mark[];
-      } & ReactionState)[]
-    >`
-      select t.share_id, p.first_name, v.id as profile, left(md5(acc.photo_data_url), 10) as photo_v, l.data, t.at,
-        r.reaction, coalesce(r.liked, '{}') as liked, coalesce(r.disliked, '{}') as disliked,
-        (select coalesce(json_agg(json_build_object('media', pl.media_key, 'tag', pl.tag) order by pl.created_at), '[]')
-           from photo_likes pl where pl.participant_id = t.participant_id and pl.listing_key = t.listing_key) as photo_likes,
-        (select coalesce(json_agg(json_build_object('media', pd.media_key, 'tag', pd.tag) order by pd.created_at), '[]')
-           from photo_dislikes pd where pd.participant_id = t.participant_id and pd.listing_key = t.listing_key) as photo_dislikes
-      from (
-        select a.share_id, a.listing_key, a.participant_id, max(a.at) as at
-        from (
-          select share_id, listing_key, participant_id, updated_at as at from reactions
-          union all
-          select share_id, listing_key, participant_id, created_at from photo_likes
-          union all
-          select share_id, listing_key, participant_id, created_at from photo_dislikes
-        ) a
-        join shares s on s.id = a.share_id
-        where s.agent_id = ${agentId}
-        group by a.share_id, a.listing_key, a.participant_id
-        order by at desc
-        limit ${FEED_MOST}
-      ) t
-      join participants p on p.id = t.participant_id
-      left join visitors v on v.account_id = p.account_id
-      left join accounts acc on acc.id = p.account_id
-      join listings l on l.listing_key = t.listing_key
-      left join reactions r
-        on r.share_id = t.share_id and r.listing_key = t.listing_key and r.participant_id = t.participant_id`,
-    sql<
-      { id: string; share_id: string; first_name: string; profile: string | null; photo_v: string | null; body: string; data: Listing; at: Date }[]
-    >`
-      select c.id, c.share_id, p.first_name, v.id as profile, left(md5(acc.photo_data_url), 10) as photo_v, c.body, l.data,
-        c.created_at as at
-      from comments c
-      join shares s on s.id = c.share_id
-      join participants p on p.id = c.participant_id
-      left join visitors v on v.account_id = p.account_id
-      left join accounts acc on acc.id = p.account_id
-      join listings l on l.listing_key = c.listing_key
-      where s.agent_id = ${agentId}
-      order by c.created_at desc
-      limit ${FEED_MOST}`,
-  ]);
-  const client = (name: string, profile: string | null, photo: string | null): FeedWho => ({
-    name,
-    face: name,
-    profileId: profile,
-    agent: false,
-    photo: profile ? photoUrl(profile, photo) : null,
-  });
-  const home = (data: Listing) => ({
-    key: data.ListingKey,
-    address: data.UnparsedAddress,
-    photo: data.Media?.[0]?.MediaURL ?? null,
-    photoIndex: data.Media?.length ? 0 : null,
-  });
-  const more = (shareId: string, name: string) => ({ href: `/dashboard/shares/${shareId}?tab=homes`, label: `Everything from ${name}` });
-  return [
-    ...takes.map((t): HomeFeedEntry => {
-      const likes = t.photo_likes.map((m) => ({ mediaKey: m.media, tag: m.tag }));
-      const dislikes = t.photo_dislikes.map((m) => ({ mediaKey: m.media, tag: m.tag }));
+// Many people's takes on homes, one entry per home per day, newest first.
+function entriesOf(takes: Take[]): HomeFeedEntry[] {
+  const byHomeDay = new Map<string, Take[]>();
+  for (const take of takes) {
+    const id = `${take.card.home.key}|${take.card.day}`;
+    byHomeDay.set(id, [...(byHomeDay.get(id) ?? []), take]);
+  }
+  return [...byHomeDay]
+    .map(([id, group]): HomeFeedEntry => {
+      // Newest first; the people who liked it named ahead of those who only spoke.
+      const newest = [...group].sort((a, b) => b.card.at.localeCompare(a.card.at));
+      const who = [...newest.filter(likedIt), ...newest.filter((take) => !likedIt(take))].map((take) => take.who);
+      const top = newest[0].card;
+      const said = newest
+        .flatMap((take) => take.card.comments.map((comment) => ({ who: take.who, body: comment.body, at: comment.at })))
+        .sort((a, b) => b.at.localeCompare(a.at))
+        .slice(0, QUOTES)
+        .map(({ who, body }) => ({ who, body }));
+      // The photo with the newest thing anyone liked or said something about
+      // in it, else the newest card's (the home's first photo).
+      const photo = newest.find((take) => take.card.pins.length > 0)?.card.photo ?? top.photo;
       return {
-        kind: "note",
-        id: `t:${t.share_id}:${t.data.ListingKey}:${t.first_name}`,
-        at: t.at.toISOString(),
-        day: dayOf(t.at),
-        who: [client(t.first_name, t.profile, t.photo_v)],
-        client: true,
-        sentence: describeTake(t.data, { reaction: t.reaction, liked: t.liked, disliked: t.disliked }, likes, dislikes)
-          .replace(/^liked this(?=,|$)/, "liked this home")
-          .replace(/^passed on this$/, "passed on this home"),
-        quote: null,
-        home: home(t.data),
-        more: more(t.share_id, t.first_name),
+        id,
+        at: top.at,
+        day: top.day,
+        home: { ...top.home, photo },
+        why: {
+          key: top.home.key,
+          who,
+          sentence: sentenceOf(newest),
+          quotes: said.map((quote) => quote.body),
+          photo: photo?.index ?? null,
+        },
+        said,
+        liked: newest.some(likedIt),
       };
-    }),
-    ...comments.map(
-      (c): HomeFeedEntry => ({
-        kind: "note",
-        id: `c:${c.id}`,
-        at: c.at.toISOString(),
-        day: dayOf(c.at),
-        who: [client(c.first_name, c.profile, c.photo_v)],
-        client: true,
-        sentence: "commented",
-        quote: `“${c.body}”`,
-        home: home(c.data),
-        more: more(c.share_id, c.first_name),
-      }),
-    ),
-  ];
+    })
+    .sort((a, b) => b.at.localeCompare(a.at) || a.id.localeCompare(b.id));
 }
 
-// Someone's home feed, newest first.
+// Someone's Following stream, newest first. (`account` is who's asking: the
+// signature stays as the reel's `from=feed` calls it. What's in it depends
+// only on whom their page follows.)
 export const getHomeFeed = cache(async (account: Account, visitorId: string | null): Promise<HomeFeedEntry[]> => {
-  const parts = await Promise.all([
-    visitorId ? followedCards(visitorId) : [],
-    visitorId ? aroundYou(visitorId) : [],
-    account.role === "agent" ? fromClients(account.id) : [],
-  ]);
-  return parts
-    .flat()
-    .sort((a, b) => b.at.localeCompare(a.at))
-    .slice(0, FEED_MOST);
+  if (!account || !visitorId) return [];
+  const ids = [...(await getFollowedIds(visitorId))].slice(0, FOLLOWED_MOST);
+  const takes = (await Promise.all(ids.map(takesOf))).flat();
+  return entriesOf(takes).slice(0, FEED_MOST);
 });
 
 // The homes in a feed, in its order, each once: what opens full screen.
-export const feedKeys = (entries: HomeFeedEntry[]) => [
-  ...new Set(entries.map((entry) => (entry.kind === "card" ? entry.card.home.key : entry.home.key))),
-];
+export const feedKeys = (entries: HomeFeedEntry[]) => [...new Set(entries.map((entry) => entry.home.key))];
+
+// Homes picked for someone by their taste, none of them already in their
+// feed: the masonry under it, and the reel's `from=picks`, in the same order.
+export const getPicks = cache(
+  async (viewer: Account, device: string | undefined, visitorId: string | null): Promise<FeedPost[]> => {
+    const [taste, entries] = await Promise.all([getTaste(visitorId), getHomeFeed(viewer, visitorId)]);
+    return getReel(viewer, device, taste, { limit: PICKS, exclude: feedKeys(entries) });
+  },
+);
+
+// Their own take on each of these homes, so a heart in the feed starts out
+// right and changes only the like (whatever else they said stays).
+export async function myReactions(visitorId: string | null, keys: string[]): Promise<Record<string, ReactionState>> {
+  if (!visitorId || keys.length === 0) return {};
+  const rows = await sql<({ listing_key: string } & ReactionState)[]>`
+    select listing_key, reaction, liked, disliked from public_reactions
+    where visitor_id = ${visitorId} and listing_key in ${sql(keys)}`;
+  return Object.fromEntries(
+    rows.map((row) => [row.listing_key, { reaction: row.reaction, liked: row.liked, disliked: row.disliked }]),
+  );
+}
+
+// The faces along the top of a buyer's home: the people they follow, those
+// with something new in public lately first. Only likes and comments count
+// as news, so a ring never gives away a pass.
+export type FollowedFace = FeedWho & { profileId: string; lastAt: string | null };
+export async function getFollowedFaces(visitorId: string | null, most = 15): Promise<FollowedFace[]> {
+  if (!visitorId) return [];
+  const rows = await sql<{ id: string; name: string; is_agent: boolean; photo_v: string | null; last_at: Date | null }[]>`
+    select v.id,
+      case when a.id is not null and btrim(a.full_name) = '' then '' else v.first_name end as name,
+      coalesce(a.role = 'agent', false) as is_agent, left(md5(a.photo_data_url), 10) as photo_v,
+      greatest(
+        (select max(r.updated_at) from public_reactions r where r.visitor_id = v.id and r.reaction = 'like'),
+        (select max(pl.created_at) from public_photo_likes pl where pl.visitor_id = v.id),
+        (select max(c.created_at) from public_comments c where c.visitor_id = v.id)
+      ) as last_at
+    from follows f
+    join visitors v on v.id = f.followed_id
+    left join accounts a on a.id = v.account_id
+    where f.follower_id = ${visitorId}
+    order by last_at desc nulls last, f.created_at desc
+    limit ${most}`;
+  return rows.map((row) => ({
+    name: nameOr(row.name, row.is_agent),
+    face: row.name,
+    profileId: row.id,
+    agent: row.is_agent,
+    photo: photoUrl(row.id, row.photo_v),
+    lastAt: row.last_at?.toISOString() ?? null,
+  }));
+}
 
 // Who's worth following: people busy in public lately, most first, never
 // yourself or anyone you follow already, and only people with a name.
@@ -251,4 +228,49 @@ export async function suggestPeople(visitorId: string | null, most = 5): Promise
     .filter((row) => !followed.has(row.id))
     .slice(0, most)
     .map((row) => ({ name: row.name, face: row.name, profileId: row.id, agent: row.is_agent, photo: photoUrl(row.id, row.photo_v) }));
+}
+
+// Agents' own colours, by their page's id: their face on a client's home is
+// ringed in it, as their links are.
+export async function brandColorsOf(profileIds: string[]): Promise<Record<string, string>> {
+  const ids = [...new Set(profileIds)].filter((id) => /^[0-9a-f-]{36}$/.test(id));
+  if (ids.length === 0) return {};
+  const rows = await sql<{ id: string; brand_color: string | null }[]>`
+    select v.id, a.brand_color from visitors v join accounts a on a.id = v.account_id
+    where v.id in ${sql(ids)} and a.role = 'agent'`;
+  return Object.fromEntries(rows.flatMap((row) => (row.brand_color ? [[row.id, row.brand_color]] : [])));
+}
+
+// Where "new" starts on their home page: the last time they had it open
+// before this visit, or null (never, or not since this was kept). Read before
+// the page marks it seen. Half an hour without the home page ends a visit.
+// Within one the page renders again and again (an inline reply or a comment
+// from the pop-out calls refresh(), which re-renders it), and "new" mustn't
+// move under them mid-visit, so it's fixed when the visit starts.
+// home_seen_at is the last time the page rendered for them; home_seen_prev is
+// the boundary kept for the visit under way.
+export async function getHomeSeen(visitorId: string | null): Promise<string | null> {
+  if (!visitorId) return null;
+  const [row] = await sql<{ seen: Date | null }[]>`
+    select case
+      when home_seen_at is null or home_seen_at < now() - interval '30 minutes' then home_seen_at
+      else home_seen_prev
+    end as seen
+    from visitors where id = ${visitorId}`;
+  return row?.seen?.toISOString() ?? null;
+}
+
+// Marks their home seen now. A new visit (the page hasn't rendered for them in
+// half an hour) moves the boundary up to the last time it did; a render
+// within the visit only keeps the visit going. (The right-hand sides read the
+// row as it was, so the case sees the old home_seen_at.)
+export async function markHomeSeen(visitorId: string) {
+  await sql`
+    update visitors set
+      home_seen_prev = case
+        when home_seen_at is null or home_seen_at < now() - interval '30 minutes' then home_seen_at
+        else home_seen_prev
+      end,
+      home_seen_at = now()
+    where id = ${visitorId}`;
 }

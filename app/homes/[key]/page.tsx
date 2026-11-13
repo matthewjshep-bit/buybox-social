@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ListingDetail, photoParam } from "@/components/listing-detail";
+import { commentParam, ListingDetail, photoParam } from "@/components/listing-detail";
 import { formatPrice } from "@/lib/format";
 import { getPublicListing } from "@/lib/public";
 import { homeFacts } from "./preview";
@@ -24,8 +24,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 // A home's own link: that home full screen, then the feed carries on from it.
 // From the map, the same home opens in a pop-out instead: see app/@modal/(.)homes.
-// `?photo=2` opens it on its third photo.
+// `?photo=2` opens it on its third photo; `?comment=<id>`, with its comments
+// open on that one (from the bell, a link to what someone said).
 export default async function HomePage({ params, searchParams }: Props) {
   const [{ key }, query] = await Promise.all([params, searchParams]);
-  return <ListingDetail listingKey={decodeURIComponent(key)} photo={photoParam(query.photo)} />;
+  return (
+    <ListingDetail listingKey={decodeURIComponent(key)} photo={photoParam(query.photo)} comment={commentParam(query.comment)} />
+  );
 }

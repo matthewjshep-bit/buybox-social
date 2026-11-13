@@ -1,8 +1,12 @@
 import { User, type LucideIcon } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/format";
 import { avatarColor, card, type AvatarTone } from "@/lib/ui";
+
+// A face's colours, for a face drawn by hand (on the reel's dark ground).
+export { avatarColor };
 
 // The few pieces every light page is made of: a card, a face, a home's photo
 // in small, a badge, and what to say when there's nothing to show. The class
@@ -62,22 +66,28 @@ const MARK: Record<AvatarSize, string> = {
 // ground, MarkFace.) `badge`: a small mark on its corner for what they did.
 // `photo`: their own photo, where they've added one, in place of the initial.
 // `className`: its place and any edge (a ring, a margin), never its size or
-// colour.
+// colour. `href`: their page, for a pointer or a finger (the name beside it
+// is the link for everyone else, so this one is skipped by the keyboard and
+// screen readers); it sits above a card's own cover link.
 export function Avatar({
   name,
   tone = "person",
   size = 9,
   badge,
   photo,
-  className,
+  href,
+  className: edge,
 }: {
   name: string | null;
   tone?: AvatarTone;
   size?: AvatarSize;
   badge?: ReactNode;
   photo?: string | null;
+  href?: string;
   className?: string;
 }) {
+  // A link around it takes its place and edge instead.
+  const className = href ? undefined : edge;
   const initial = tone === "anonymous" ? undefined : name?.trim()[0]?.toUpperCase();
   const face = FACE[size];
   const shown = photo ? (
@@ -102,8 +112,9 @@ export function Avatar({
       {initial ?? <User size={face.icon} />}
     </span>
   );
-  if (!badge) return shown;
-  return (
+  const marked = !badge ? (
+    shown
+  ) : (
     // Round, as the face is, so an edge given to it is round too.
     <span aria-hidden className={cn("relative flex shrink-0 rounded-full", className)}>
       {shown}
@@ -113,6 +124,12 @@ export function Avatar({
         {badge}
       </span>
     </span>
+  );
+  if (!href) return marked;
+  return (
+    <Link href={href} tabIndex={-1} aria-hidden className={cn("relative z-20 flex shrink-0 rounded-full", edge)}>
+      {marked}
+    </Link>
   );
 }
 
@@ -140,7 +157,7 @@ export function HomeThumb({
   );
 }
 
-export type BadgeTone = "neutral" | "ink" | "like" | "pass" | "success" | "info";
+export type BadgeTone = "neutral" | "ink" | "like" | "pass" | "success" | "info" | "attention";
 
 const BADGE: Record<BadgeTone, string> = {
   neutral: "bg-stone-100 text-stone-700 ring-1 ring-stone-200",
@@ -151,6 +168,8 @@ const BADGE: Record<BadgeTone, string> = {
   // For sale, done.
   success: "bg-emerald-100 text-emerald-900",
   info: "bg-sky-100 text-sky-900",
+  // Waiting on you: someone asked to see a home.
+  attention: "bg-amber-100 text-amber-950 ring-1 ring-amber-300",
 };
 
 // A word or two about something, in a pill. `small`: in capitals, beside a

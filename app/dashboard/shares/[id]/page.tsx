@@ -24,6 +24,7 @@ import {
   spotsWhere,
   getShareOpens,
   getThread,
+  linkTitle,
   photosSeenLine,
   type HomeView,
   type Share,
@@ -36,7 +37,7 @@ import { addSuggestedHome } from "../../actions";
 import { Opened } from "../../opened";
 import {
   AddPersonForm,
-  ClientNameEditor,
+  EditPersonName,
   WelcomeEditor,
   CommentLike,
   CommentMenu,
@@ -84,23 +85,37 @@ export default async function ShareDetailPage({
   const { tab: asked } = await searchParams;
   if (!z.uuid().safeParse(id).success) notFound();
 
-  const [share] = await sql<Share[]>`
-    select id, token, agent_id, client_name, note, headline from shares
+  const [share] = await sql<(Share & { quick: boolean })[]>`
+    select id, token, agent_id, client_name, note, headline, quick from shares
     where id = ${id} and agent_id = ${agent.id}`;
   if (!share) notFound();
 
-  const [listings, thread, people, opens, [{ latest }], confidant, [take], views, others] = await Promise.all([
+  const [listings, thread, people, opens, [{ latest }], confidant, [take], views, others, [me]] = await Promise.all([
     getShareListings(share.id, { includeRemoved: true }),
     getThread(share.id),
-    // Everyone on the package: people the agent added, and anyone who joined
-    // through the package's own link; with their profile, once they've signed up.
-    sql<{ id: string; first_name: string; token: string | null; profile: string | null; photo_v: string | null }[]>`
-      select p.id, p.first_name, p.token, v.id as profile, left(md5(acc.photo_data_url), 10) as photo_v
+    // Everyone on the package: people the agent added, in the order they did,
+    // and anyone who joined through the package's own link; with their
+    // profile, once they're on Porchcard.
+    sql<
+      {
+        id: string;
+        first_name: string;
+        token: string | null;
+        profile: string | null;
+        photo_v: string | null;
+        bound: boolean;
+        found: boolean;
+      }[]
+    >`
+      select p.id, p.first_name, p.token, v.id as profile, left(md5(acc.photo_data_url), 10) as photo_v,
+        p.account_id is not null as bound,
+        -- Picked from Porchcard rather than typed in.
+        coalesce(p.added_from in ('client', 'follow', 'search'), false) as found
       from participants p
       left join visitors v on v.account_id = p.account_id
       left join accounts acc on acc.id = p.account_id
       where p.share_id = ${id}
-      order by p.invited_at nulls last, p.created_at, p.first_name`,
+      order by p.invited_at nulls last, p.position nulls last, p.created_at, p.first_name`,
     getShareOpens(share.id),
     // The newest thing a client did here, to the microsecond, so seeing this
     // page clears exactly that much from the dashboard's "new".
@@ -128,7 +143,13 @@ export default async function ShareDetailPage({
             and lower(trim(s.client_name)) = ${share.client_name.trim().toLowerCase()}
           order by s.created_at desc`
       : [],
+    // The agent's own face, for their comments in the thread.
+    sql<{ visitor_id: string | null; photo_v: string | null }[]>`
+      select v.id as visitor_id, left(md5(a.photo_data_url), 10) as photo_v
+      from accounts a left join visitors v on v.account_id = a.id
+      where a.id = ${agent.id}`,
   ]);
+  const agentPhoto = me?.visitor_id ? photoUrl(me.visitor_id, me.photo_v) : null;
   const lastOpen = opens.reduce<string | null>((at, open) => (!at || open.lastAt > at ? open.lastAt : at), null);
   const tab = TABS.find((t) => t.key === asked)?.key;
   const tabHref = (key: Tab) => `/dashboard/shares/${share.id}?tab=${key}`;
@@ -137,7 +158,9 @@ export default async function ShareDetailPage({
   if (!tab) redirect(tabHref(lastOpen ? "homes" : "people"));
   const active = listings.filter((l) => !l.removedAt);
   const removed = listings.filter((l) => l.removedAt);
-  const clientName = share.client_name || "Unnamed client";
+  // Who it's for: the people on it, by first name, kept up to date by the
+  // database; with nobody on it yet, the first home on it.
+  const clientName = linkTitle(share.client_name, active[0]?.UnparsedAddress ?? listings[0]?.UnparsedAddress);
   const invitees = people.filter((p) => p.token);
   const joined = people.filter((p) => !p.token);
   const packageOpens = opens.filter((open) => !invitees.some((person) => person.id === open.participantId));
@@ -210,9 +233,7 @@ export default async function ShareDetailPage({
 
         {/* Who it's for, and the one thing to do next: send them more. */}
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-          <div className="min-w-0">
-            <ClientNameEditor shareId={share.id} name={share.client_name} />
-          </div>
+          <h1 className="mt-1 min-w-0 break-words font-display text-3xl">{clientName}</h1>
           <Link
             href={`/dashboard/new?share=${share.id}`}
             className={cn(button({ kind: "primary" }), "mt-1 shrink-0 whitespace-nowrap")}
@@ -307,6 +328,7 @@ export default async function ShareDetailPage({
                     liked={liked}
                     view={viewOf(listing.ListingKey)}
                     profiles={profiles}
+                    agentPhoto={agentPhoto}
                   />
                 ))}
               </div>
@@ -317,7 +339,7 @@ export default async function ShareDetailPage({
                   Removed from their link
                 </h2>
                 <p className="text-sm text-stone-700">
-                  {clientName} can&apos;t see these anymore. What they said about them still counts.
+                  {share.client_name || "Your client"} can&apos;t see these anymore. What they said about them still counts.
                 </p>
                 <div className="mt-3 flex flex-col gap-4">
                   {removed.map((listing) => (
@@ -328,6 +350,7 @@ export default async function ShareDetailPage({
                       thread={thread}
                       liked={liked}
                       profiles={profiles}
+                      agentPhoto={agentPhoto}
                     />
                   ))}
                 </div>
@@ -374,12 +397,19 @@ export default async function ShareDetailPage({
                       profile={profiles.get(person.id)}
                       photo={person.profile ? photoUrl(person.profile, person.photo_v) : null}
                       removable={people.length > 1}
+                      editable={!person.bound}
                       status={
-                        <OpenedBy
-                          opens={opens.filter((o) => o.participantId === person.id)}
-                          name={person.first_name}
-                          photos={photos}
-                        />
+                        // Picked from Porchcard: theirs from the start, and told
+                        // about it (never for a quick Send, which the agent sent).
+                        person.bound && opens.every((o) => o.participantId !== person.id) ? (
+                          share.quick || !person.found ? "On Porchcard" : "On Porchcard · we let them know"
+                        ) : (
+                          <OpenedBy
+                            opens={opens.filter((o) => o.participantId === person.id)}
+                            name={person.first_name}
+                            photos={photos}
+                          />
+                        )
                       }
                     />
                     <SendLink
@@ -402,6 +432,7 @@ export default async function ShareDetailPage({
                       profile={profiles.get(person.id)}
                       photo={person.profile ? photoUrl(person.profile, person.photo_v) : null}
                       removable={people.length > 1}
+                      editable={!person.bound}
                       status="Joined through the link you sent first"
                     />
                   </li>
@@ -429,7 +460,11 @@ export default async function ShareDetailPage({
                 )}
               </ul>
               <div className="mt-3">
-                <AddPersonForm shareId={share.id} confidant={confidant?.first_name ?? null} />
+                <AddPersonForm
+                  shareId={share.id}
+                  confidant={confidant?.first_name ?? null}
+                  taken={people.filter((p) => !p.bound).map((p) => p.first_name.trim().toLowerCase())}
+                />
               </div>
             </section>
 
@@ -488,6 +523,7 @@ function PersonHeader({
   profile,
   photo,
   removable,
+  editable,
   status,
 }: {
   shareId: string;
@@ -495,6 +531,8 @@ function PersonHeader({
   profile?: string;
   photo?: string | null;
   removable: boolean;
+  // Not signed up, so the agent can fix how their name is spelled.
+  editable: boolean;
   status: React.ReactNode;
 }) {
   return (
@@ -513,6 +551,7 @@ function PersonHeader({
         </p>
         <p className="text-sm text-muted">{status}</p>
       </div>
+      {editable && <EditPersonName shareId={shareId} personId={person.id} name={person.first_name} />}
       {removable && <RemovePersonButton shareId={shareId} personId={person.id} name={person.first_name} />}
     </div>
   );
@@ -1091,10 +1130,13 @@ function HomePanel({
   liked,
   view,
   profiles,
+  agentPhoto = null,
 }: {
   shareId: string;
   listing: Listing;
   thread: Thread;
+  // The agent's own photo, on their comments.
+  agentPhoto?: string | null;
   // The comments the agent has hearted.
   liked: Set<string>;
   // Each person who has signed up, to their profile.
@@ -1129,6 +1171,7 @@ function HomePanel({
   const reactions = [...lines].map(([participantId, line]) => ({ participantId, ...line }));
   const comments = thread.comments.filter((c) => c.listingKey === listing.ListingKey);
   const isRemoved = Boolean(listing.removedAt);
+  const reelHref = `/reel?from=share:${shareId}&home=${encodeURIComponent(listing.ListingKey)}`;
   return (
     <section
       id={`home-${listing.ListingKey}`}
@@ -1142,15 +1185,26 @@ function HomePanel({
           in a row of their own underneath, so the words keep the width: the
           address on one line, the price and city on the next. */}
       <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 @md:grid-cols-[auto_minmax(0,1fr)_auto]">
-        <HomeThumb
-          src={listing.Media[0]?.MediaURL}
-          sizes="72px"
-          className={cn("size-16 @md:size-18", isRemoved && "opacity-60 grayscale")}
-        />
+        {/* The home, full screen, with everyone on the link's take on it, and
+            the link's other homes either side (once it's off the link, it's
+            in none). One link, so the keyboard meets it once, at the address. */}
+        {isRemoved ? (
+          <HomeThumb src={listing.Media[0]?.MediaURL} sizes="72px" className="size-16 opacity-60 grayscale @md:size-18" />
+        ) : (
+          <Link href={reelHref} tabIndex={-1} aria-hidden className="rounded-xl">
+            <HomeThumb src={listing.Media[0]?.MediaURL} sizes="72px" className="size-16 @md:size-18" />
+          </Link>
+        )}
         <div className="min-w-0">
           {/* Focus lands here when the last comment on a removed home goes. */}
           <h3 tabIndex={-1} className="font-semibold leading-snug outline-none">
-            {listing.UnparsedAddress}
+            {isRemoved ? (
+              listing.UnparsedAddress
+            ) : (
+              <Link href={reelHref} className="underline-offset-2 hover:underline">
+                {listing.UnparsedAddress}
+              </Link>
+            )}
           </h3>
           <p className="text-sm text-stone-700">
             <span className="font-display text-lg text-ink">{formatPrice(listing.ListPrice)}</span>{" "}
@@ -1204,7 +1258,11 @@ function HomePanel({
               id={`comment-${comment.id}`}
               className="-mx-2 -my-1 flex scroll-mt-4 gap-3 rounded-xl px-2 py-1 transition-[background-color,box-shadow] duration-1000 data-target:bg-amber-50 data-target:ring-2 data-target:ring-amber-200"
             >
-              <Avatar name={comment.name} tone={comment.isAgent ? "agent" : "person"} />
+              <Avatar
+                name={comment.name}
+                tone={comment.isAgent ? "agent" : "person"}
+                photo={comment.isAgent ? agentPhoto : undefined}
+              />
               <div className="min-w-0 flex-1">
                 <p className="flex flex-wrap items-center gap-x-1.5 text-meta leading-snug text-muted">
                   <PersonName

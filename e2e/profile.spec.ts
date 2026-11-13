@@ -32,6 +32,7 @@ import {
   type StoredStory,
   type TasteStory,
 } from "../lib/taste-story";
+import { takeFromCards } from "../lib/reel-context";
 import { enterCode,
   commentIn,
   createShare,
@@ -214,22 +215,27 @@ test("a card opens its home over the page, on the photo it's about with the spot
   await noor.waitForURL(/\/people\/[0-9a-f-]{36}$/);
   const link = noor.getByRole("link", { name: `${CORBEL}: liked the subway backsplash`, exact: true });
   await expect(link).toHaveAttribute("href", /^\/reel\?from=[\w-]+&home=SAMPLE-1003&photo=2$/);
-  // It opens her page's homes full screen, on this one, on the photo it was about.
-  const page = noor.url();
+  // It opens her page's homes in a pop-out over it, on this one, on the photo it was about.
   await link.click();
   await noor.waitForURL(/\/reel\?from=/);
-  const home = homeIn(noor, CORBEL);
+  const popout = noor.getByRole("dialog", { name: "Homes" });
+  const home = homeIn(popout, CORBEL);
   await expect(home.getByText("Kitchen · 3 of 3", { exact: true })).toBeVisible();
   await expect(home.getByRole("img", { name: "White kitchen with an island and pendant lights" })).toBeInViewport();
   // What she did there leads the line at the photo's foot, with a hotspot on it.
   await expect(home.getByRole("group", { name: "Recent activity" })).toContainText("subway backsplash");
   await expect(home.locator("[data-spot-highlight]")).toHaveCount(1);
+  // Over the photo, whose homes these are and her take on this one (nothing
+  // more drawn on the photo for it).
+  const why = home.getByRole("region", { name: "Why it's here" });
+  await expect(why).toContainText("Your highlights · 1 of 1");
+  await expect(why).toContainText("You liked the subway backsplash");
 
-  // Back (or Escape) goes back to her page.
-  await expect(noor.getByRole("link", { name: "Back to your page" }).first()).toBeVisible();
+  // Closed, back on her page, with the keyboard on the card that opened it.
   await noor.keyboard.press("Escape");
-  await noor.waitForURL(page);
-  await expect(link).toBeVisible();
+  await expect(popout).toHaveCount(0);
+  await noor.waitForURL(/\/people\/[0-9a-f-]{36}$/);
+  await expect(link).toBeFocused();
 });
 
 test("an empty page says what will show up there", async ({ browser }) => {
@@ -510,7 +516,23 @@ test("cards group by home and Seattle day, under Today, Yesterday and dates", ()
   expect(today.pins).toHaveLength(2);
   expect(today.pins[0]).toEqual({ x: 0.62, y: 0.68, kind: "comment" });
   expect(today.pins[1].kind).toBe("dislike");
-  expect(today.facts).toEqual([{ kind: "like", phrase: "the price" }]);
+  expect(today.facts).toEqual([{ kind: "like", phrase: "the price", tag: "Price" }]);
+  // What they picked out in the photos, newest first, each by name, to go to.
+  expect(today.spots).toEqual([
+    { mediaKey: "SAMPLE-1001-1", tag: "Front door", kind: "comment", name: "the front door" },
+    { mediaKey: "SAMPLE-1001-1", tag: "Front door", kind: "like", name: "the front door" },
+    { mediaKey: "SAMPLE-1001-1", tag: "Dormer windows", kind: "dislike", name: "the dormer windows" },
+  ]);
+  // As anyone else may see it on a new surface: only what they liked.
+  expect(today.likeSentence).toBe("liked the vibe and front door");
+  expect(cards.map((card) => card.likeSentence)).toEqual([
+    "liked the vibe and front door",
+    "liked the built-in shelves",
+    "commented on this home",
+    "",
+    "",
+    "commented on the red front door",
+  ]);
   expect(today.comments).toMatchObject([
     { spot: { name: "the front door", fact: false }, likes: 2, replies: 1, replyTo: null },
   ]);
@@ -538,6 +560,63 @@ test("cards group by home and Seattle day, under Today, Yesterday and dates", ()
   expect(cardTime("2026-11-05T05:22:00Z", now)).toBe("Wed 9:22 pm");
   expect(cardTime("2026-10-28T19:00:00Z", now)).toBe("12:00 pm");
   expect(cardTime("2026-09-14T19:00:00Z", now)).toBe("Sep 14");
+});
+
+test("a home's take in the pop-out: everything for its owner, only the good news for anyone else", () => {
+  const rows = empty();
+  const at = (day: number, hour: number) => new Date(Date.UTC(2026, 10, day, hour));
+  rows.reactions.push({ listing_key: "SAMPLE-1001", reaction: "like", liked: [], disliked: [], at: at(6, 18) });
+  rows.standing.set("SAMPLE-1001", "like");
+  rows.likes.push({ listing_key: "SAMPLE-1001", media_key: "SAMPLE-1001-1", tag: "Front door", at: at(5, 18) });
+  rows.dislikes.push(
+    { listing_key: "SAMPLE-1001", media_key: "SAMPLE-1001-1", tag: "Dormer windows", at: at(6, 17) },
+    { listing_key: "SAMPLE-1001", media_key: "facts", tag: "Price", at: at(6, 17) },
+  );
+  rows.comments.push(
+    comment("c1", "SAMPLE-1001", "2026-11-04T18:00:00Z"),
+    comment("c2", "SAMPLE-1001", "2026-11-05T18:00:00Z", { body: "word ".repeat(80) }),
+    comment("c3", "SAMPLE-1001", "2026-11-06T18:30:00Z"),
+    comment("c4", "SAMPLE-1001", "2026-11-06T18:40:00Z"),
+  );
+  // Comments by others they liked: only ever on their own page.
+  rows.commentLikes.push({ listing_key: "SAMPLE-1001", author: "Sam", body: "Love the door", at: at(6, 19) });
+  const cards = buildCards(rows);
+  // Three days of cards for one home make one take.
+  expect(cards.map((card) => card.day)).toEqual(["2026-11-06", "2026-11-05", "2026-11-04"]);
+  const who = { name: "Maya", profileId: "maya", photo: null, agent: false };
+
+  const own = takeFromCards(cards, { ...who, name: "You" }, { owner: true })!;
+  expect(own.sentence).toBe(cards[0].sentence);
+  expect(own.verdict).toBe("like");
+  expect(own.spots.map((spot) => `${spot.kind} ${spot.tag}`)).toEqual(["dislike Dormer windows", "like Front door"]);
+  expect(own.facts).toEqual([{ kind: "dislike", phrase: "the price", tag: "Price" }]);
+  // The newest three of what they said, oldest first, each cut at a word.
+  expect(own.comments.map((c) => c.id)).toEqual(["c2", "c3", "c4"]);
+  expect(own.comments[0].body.length).toBeLessThanOrEqual(280);
+  expect(own.comments[0].body.endsWith("…")).toBe(true);
+  expect(own.moreComments).toBe(1);
+  expect(JSON.stringify(own)).not.toContain("Love the door");
+
+  // Anyone else: no dislikes, no pass, nothing liked of others'.
+  const theirs = takeFromCards(cards, who)!;
+  expect(theirs.sentence).toBe("liked this");
+  expect(theirs.spots.map((spot) => spot.kind)).toEqual(["like"]);
+  expect(theirs.facts).toEqual([]);
+  expect(theirs.private).toBe(false);
+  expect(JSON.stringify(theirs)).not.toMatch(/dormer|Love the door/i);
+
+  // A home they only passed on: nothing, unless the page lists passes, where it says just that.
+  const pass = empty();
+  pass.reactions.push({ listing_key: "SAMPLE-1003", reaction: "dislike", liked: [], disliked: ["price"], at: at(6, 18) });
+  pass.standing.set("SAMPLE-1003", "dislike");
+  const passCards = buildCards(pass);
+  expect(takeFromCards(passCards, who)).toMatchObject({ sentence: "", verdict: null, spots: [], facts: [] });
+  expect(takeFromCards(passCards, who, { passList: true })).toMatchObject({
+    sentence: "Passed on this home",
+    verdict: "pass",
+    comments: [],
+  });
+  expect(takeFromCards(passCards, who, { owner: true })).toMatchObject({ verdict: "pass", sentence: "passed, didn't like the price" });
 });
 
 test("a card's sentence names a few things and counts the rest", () => {
@@ -914,8 +993,11 @@ test("the taste story is written from the data, and what someone switches off st
   await expect(sheet.getByRole("switch", { name: "Show Vibe in my taste" })).toHaveAttribute("aria-checked", "true");
   await expect(own.getByRole("link", { name: "Loves Vibe, 2 homes" })).toBeVisible();
   await nadia.keyboard.press("Escape");
-  await visitor.goto(profileUrl);
-  await expect(theirs.getByRole("group", { name: "Loves" }).getByRole("link")).toHaveText(["Vibe 2"]);
+  // (Once it's saved: the switch shows the change before it is.)
+  await expect(async () => {
+    await visitor.goto(profileUrl);
+    await expect(theirs.getByRole("group", { name: "Loves" }).getByRole("link")).toHaveText(["Vibe 2"], { timeout: 1000 });
+  }).toPass({ timeout: 20_000 });
   await expect(theirs.getByRole("group", { name: "Passes on" })).toHaveCount(0);
   await expect(theirs).not.toContainText(/tends to like|usually|From Nadia|Like a few more/);
   expect(pageErrors).toEqual([]);

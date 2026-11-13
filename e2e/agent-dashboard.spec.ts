@@ -102,7 +102,9 @@ test("a home that has sold can't go on a new link, and nothing is made", async (
   const agent = await signInAgent(browser, "gone-agent@example.com", "Gale Agent");
   await agent.goto("/dashboard/new");
   await agent.getByRole("button", { name: /812 N Corbel/ }).click();
-  await agent.getByLabel("Person 1's first name").fill("Zuri");
+  const who = agent.getByRole("combobox", { name: "Who's it for?" });
+  await who.fill("Zuri");
+  await who.press("Enter");
   // The home sells between picking it and creating the link: the tests' sold
   // home (in the listings, but not for sale) stands in for it.
   await agent.route("**/dashboard/new", async (route) => {
@@ -827,13 +829,15 @@ test("adding someone to a link whose one person was told it's private asks first
   await expect(chat.getByText("Only you and Alex Alpha see this.")).toBeVisible();
 
   // Adding Newbie says what that means, and adds nobody until Alex says so.
-  await agent.getByLabel("Their first name").fill("Newbie");
-  await agent.getByRole("button", { name: "Add a person" }).click();
+  const person = agent.getByRole("combobox", { name: "Add a person" });
+  const add = agent.getByRole("button", { name: "Add", exact: true });
+  await person.fill("Newbie");
+  await add.click();
   const ask = agent.getByRole("group", { name: /^Solo was told only you two see their comments\./ });
   await expect(ask).toContainText("Newbie will see everything said so far.");
   await expect(agent.locator("p[tabindex='-1']").filter({ hasText: "Solo was told" })).toBeFocused();
   await expect(agent.getByLabel("Newbie's link")).toHaveCount(0);
-  await expect(agent.getByRole("button", { name: "Add a person" })).toBeHidden();
+  await expect(add).toBeHidden();
 
   // The server asks too: an answer that isn't yes adds nobody.
   await agent.route("**/dashboard/shares/*", async (route) => {
@@ -854,8 +858,8 @@ test("adding someone to a link whose one person was told it's private asks first
   await ask.getByRole("button", { name: "Add Newbie anyway" }).click();
   await expect(agent.getByLabel("Newbie's link")).toBeVisible();
   await expect(ask).toHaveCount(0);
-  await expect(agent.getByLabel("Their first name")).toBeFocused();
-  await expect(agent.getByLabel("Their first name")).toHaveValue("");
+  await expect(person).toBeFocused();
+  await expect(person).toHaveValue("");
 
   // Solo's link no longer says it's just the two of them.
   await solo.reload();
@@ -863,19 +867,19 @@ test("adding someone to a link whose one person was told it's private asks first
   await expect(chat.getByText("Only Alex Alpha and people on this link see this.")).toBeVisible();
 
   // Nobody on it now was told that, so the next person is added straight away.
-  await agent.getByLabel("Their first name").fill("Third");
-  await agent.getByRole("button", { name: "Add a person" }).click();
+  await person.fill("Third");
+  await add.click();
   await expect(agent.getByLabel("Third's link")).toBeVisible();
 
   // Cancel leaves the link as it was, the name still there to change.
   const { url: unoUrl } = await createShare(agent, ["88 Heron Bluff"], ["Uno"]);
   expect(unoUrl).toBeTruthy();
-  await agent.getByLabel("Their first name").fill("Dos");
-  await agent.getByRole("button", { name: "Add a person" }).click();
+  await person.fill("Dos");
+  await add.click();
   await agent.getByRole("group", { name: /^Uno was told/ }).getByRole("button", { name: "Cancel" }).click();
   await expect(agent.getByRole("group", { name: /^Uno was told/ })).toHaveCount(0);
-  await expect(agent.getByLabel("Their first name")).toBeFocused();
-  await expect(agent.getByLabel("Their first name")).toHaveValue("Dos");
+  await expect(person).toBeFocused();
+  await expect(person).toHaveValue("Dos");
   await expect(agent.getByLabel("Dos's link")).toHaveCount(0);
 });
 
@@ -915,7 +919,7 @@ test("on a phone, picked homes stay in view whatever the search, and a bar leads
   await expect(tray.getByRole("listitem")).toHaveCount(3);
   expect(await pageWidth()).toBeLessThanOrEqual(393);
   await next.click();
-  const name = agent.getByLabel("Person 1's first name");
+  const name = agent.getByRole("combobox", { name: "Who's it for?" });
   await expect(name).toBeFocused();
   await expect(name).toBeInViewport();
   await expect(next).toHaveCount(0);

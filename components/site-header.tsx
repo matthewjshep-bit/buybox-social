@@ -1,18 +1,20 @@
-import { Bell, Search as SearchIcon } from "lucide-react";
+import { Bell, Search as SearchIcon, Users } from "lucide-react";
 import { signOut } from "@/app/login/actions";
 import { AccountMenu, NavLink, SignInLink, SiteLogo } from "@/components/header-nav";
 import { countUnreadActivity } from "@/lib/activity";
 import { getCurrentUser, isAdmin } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
-import { cn } from "@/lib/format";
+import { agentFirstName, cn } from "@/lib/format";
+import { getMyLinks, type MyLink } from "@/lib/my-links";
 import { photoUrl, photoVersion } from "@/lib/person-photo";
 import { getPublicIdentity } from "@/lib/public";
 import { button } from "@/lib/ui";
 
-// On every page, one header: the logo always goes home; then the map, the
-// bell, your dashboard if you send homes, and you (your initial, opening your
-// places and Sign out), or Sign in and Sign up. On phones the map and the
-// bell are icons, keeping their names for screen readers. The page you're on
+// On every page, one header: the logo always goes home; then the map, your
+// clients if you send homes, the bell, and you (your initial, opening your
+// places, the homes your agent sent, and Sign out), or Sign in and Sign up.
+// On phones the map, clients and the bell are icons, keeping their names for
+// screen readers. The page you're on
 // is marked. Over the full-screen feed it floats on the dark ground, white;
 // only on a phone on its side, where the photo runs under it, does it bring
 // its own shade, dark enough behind its words for a bright sky, and gone
@@ -20,9 +22,11 @@ import { button } from "@/lib/ui";
 export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
   const [user, device] = await Promise.all([getCurrentUser(), readDevice()]);
   const { visitor } = await getPublicIdentity(user?.role ? user : null, device);
-  const [unread, admin] = await Promise.all([
+  const [unread, admin, links] = await Promise.all([
     visitor ? countUnreadActivity(visitor.id) : 0,
     isAdmin(user),
+    // Someone on an agent's link: the way back to it, under their initial.
+    user?.role && user.role !== "agent" ? getMyLinks(user.id) : [],
   ]);
   const navItem = cn(
     "flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-full px-2.5",
@@ -57,13 +61,21 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
         <div className="flex min-w-0 items-center gap-0.5 text-sm font-medium">
           {/* Signed out, just two things: the page for agents, and Sign in
               (which signs up too). The logo is the way home. */}
-          {/* Signed in: Search, the bell, and you (where everything else is:
-              your profile, Activity, the Dashboard, Admin). The logo is the
-              way home. */}
+          {/* Signed in: Search, an agent's Clients, the bell, and you (where
+              everything else is: your profile, Activity, the Dashboard, Admin,
+              your agent's homes). The logo is the way home. */}
           {user && (
             <NavLink href="/search" className={navItem}>
               <SearchIcon aria-hidden size={18} />
               <span className="sr-only md:not-sr-only">Search</span>
+            </NavLink>
+          )}
+          {/* An agent's clients, one tap from anywhere (and marked anywhere
+              in the dashboard). */}
+          {user?.role === "agent" && (
+            <NavLink href="/dashboard" section className={navItem}>
+              <Users aria-hidden size={18} />
+              <span className="sr-only md:not-sr-only">Clients</span>
             </NavLink>
           )}
           {!user && (
@@ -98,6 +110,7 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
               admin={admin}
               unread={unread}
               overlay={overlay}
+              links={menuLinks(links)}
             />
           ) : user ? (
             <form action={signOut}>
@@ -113,4 +126,14 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
       </nav>
     </header>
   );
+}
+
+// The links someone is on, as the menu offers them: one per agent (their
+// newest), two at most.
+function menuLinks(links: MyLink[]) {
+  const seen = new Set<string>();
+  return links
+    .map((link) => ({ href: `/s/${link.token}`, label: `Homes from ${agentFirstName(link.agent.firstName || link.agent.name)}` }))
+    .filter((link) => !seen.has(link.label) && Boolean(seen.add(link.label)))
+    .slice(0, 2);
 }
