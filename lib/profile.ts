@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { sql } from "./db";
 import { photoUrl } from "./person-photo";
+import { clientActivity } from "./shares";
 import type { Listing, ListingMedia } from "./listings/types";
 import type { ContextSpot } from "./reel-context";
 import {
@@ -287,16 +288,17 @@ const agentMarks = (account: string | null, reaction: "like" | "dislike") => sql
   where s.agent_id = ${account} and al.reaction = ${reaction}`;
 
 // An agent's own notes on the homes on their links: what they wrote on a
-// spot or a fact, or about a home before any client had said anything there.
-// Never a reply: that's the client's conversation, and stays on the link.
+// spot or a fact, or about a home before any client had done anything with
+// it there (liked, passed on, said something). Never a reply: that's the
+// client's conversation, and stays on the link.
 const agentNotes = (account: string | null) => sql`
   from comments c join shares s on s.id = c.share_id
   where s.agent_id = ${account} and c.agent_id = ${account}
     and c.parent_id is null and c.reply_to_participant is null
     and (c.spot is not null or not exists (
-      select 1 from comments x
+      select 1 from (${clientActivity()}) x
       where x.share_id = c.share_id and x.listing_key = c.listing_key
-        and x.participant_id is not null and x.created_at < c.created_at))`;
+        and x.participant_id is not null and x.at < c.created_at))`;
 
 // Each thing once: the first of each in `rows` (the public one, before the
 // same from a link), newest first.
@@ -512,9 +514,11 @@ export const getProfilePerson = cache(async (visitorId: string) => {
       bio: string | null;
       profile_links: unknown;
       brokerage: string | null;
+      brand_color: string | null;
     }[]
   >`
     select v.id, v.created_at, v.hide_passes, v.taste_hidden, a.id as account_id, a.bio, a.profile_links, a.brokerage,
+      a.brand_color,
       -- An account with no name yet has none here either, even where an
       -- older visitor row stood in with "Someone".
       case when a.id is not null and btrim(a.full_name) = '' then '' else v.first_name end as first_name,
@@ -539,6 +543,8 @@ export const getProfilePerson = cache(async (visitorId: string) => {
     bio: visitor.bio?.trim() ?? "",
     links: visitor.is_agent ? profileLinksOf(visitor.profile_links) : [],
     brokerage: visitor.is_agent ? (visitor.brokerage?.trim() ?? "") : "",
+    // An agent's own colour, for the band at the top of their page (only ever a plain hex colour).
+    brandColor: visitor.is_agent && /^#[0-9a-f]{6}$/i.test(visitor.brand_color ?? "") ? visitor.brand_color : null,
   };
 });
 

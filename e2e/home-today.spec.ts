@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createShare, heartOf, homeIn, joinAs, openComments, signInAgent, signUpBuyer } from "./helpers";
 
-test("an agent's home is calm: their clients as people, what each did as big cards, Reply right on the card, and nothing to tick off", async ({
+test("an agent's home is calm: their clients as people, what each did as big cards, Reply right on every card, and nothing else", async ({
   browser,
 }) => {
   test.setTimeout(120_000);
@@ -41,7 +41,7 @@ test("an agent's home is calm: their clients as people, what each did as big car
   expect((await card.getByRole("img").first().boundingBox())!.width).toBeGreaterThan(300);
 
   // On a desktop: them down the left, their clients down the right, and none
-  // of a buyer's home: nothing picked for them.
+  // of a buyer's home: nothing picked for them, nobody they follow, no browsing.
   await agent.setViewportSize({ width: 1440, height: 900 });
   await agent.reload();
   const you = agent.getByRole("complementary", { name: "Your profile" });
@@ -49,27 +49,23 @@ test("an agent's home is calm: their clients as people, what each did as big car
   await expect(you.getByRole("link", { name: /^Clients/ }).first()).toHaveAttribute("href", "/dashboard");
   await expect(you.getByRole("link", { name: "Your brand" })).toHaveAttribute("href", "/dashboard/profile");
   await expect(agent.getByRole("region", { name: "More homes for you" })).toHaveCount(0);
+  await expect(you.getByRole("link", { name: "Browse homes" })).toHaveCount(0);
+  await expect(agent.getByRole("button", { name: "Following" })).toHaveCount(0);
   await expect(clients.getByRole("link", { name: "See all clients" })).toHaveAttribute("href", "/dashboard");
   // Kit's day ends the Clients stream, and then it stops.
   await expect(agent.getByRole("note", { name: "You're all caught up" })).toBeVisible();
 
-  // Following, a tap away, kept in the address and remembered on this device.
-  const lenses = agent.getByRole("group", { name: "Show" });
-  await expect(lenses.getByRole("button", { name: "Clients" })).toHaveAttribute("aria-pressed", "true");
-  await lenses.getByRole("button", { name: "Following" }).click();
-  await expect(lenses.getByRole("button", { name: "Following" })).toHaveAttribute("aria-pressed", "true");
-  await expect(agent).toHaveURL(/\?lens=following$/);
-  await agent.goto("/");
-  await expect(lenses.getByRole("button", { name: "Following" })).toHaveAttribute("aria-pressed", "true");
-  await lenses.getByRole("button", { name: "Clients" }).click();
-
-  // Reply, right on the card: once answered, Kit isn't waiting any more.
-  await card.getByRole("button", { name: "Reply to Kit" }).click();
+  // Reply, right on the card, filled while she's waiting: once answered,
+  // the answer is under what she said, and she isn't waiting any more.
+  const reply = card.getByRole("button", { name: "Reply to Kit" });
+  await expect(reply).toHaveClass(/bg-brand/);
+  await reply.click();
   await card.getByRole("textbox", { name: "Reply to Kit" }).fill("Plenty: it faces west.");
   await card.getByRole("button", { name: "Send", exact: true }).click();
   await expect(card.getByRole("status")).toContainText("Sent to Kit");
   await agent.reload();
-  await expect(card.getByRole("button", { name: "Reply to Kit" })).toHaveCount(0);
+  await expect(card.getByRole("list", { name: "Your replies" })).toContainText("You Plenty: it faces west.");
+  await expect(card.getByRole("button", { name: "Reply to Kit" })).not.toHaveClass(/bg-brand/);
   await expect(kitThere).toContainText("Liked 1 of 2 homes");
 });
 

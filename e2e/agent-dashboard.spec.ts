@@ -131,17 +131,16 @@ test("the dashboard leads with what's new, and says when each link was opened, n
   const agent = await signInAgent(browser, "olive-opens@example.com", "Olive Opens");
   const { url } = await createShare(agent, ["1204 Quillan", "719 Saltmarsh"], ["Owen"]);
   const row = clientRow(agent, "Owen");
-  const counts = agent.getByRole("navigation", { name: "Show clients" });
+  const group = (name: string) => agent.getByRole("region", { name: new RegExp(`^${name}`) });
 
-  // Sent, and nothing since: who it went to, the homes, and that it isn't opened.
+  // Sent, and nothing since: who it went to, the homes, that it isn't opened,
+  // and his link, to send again.
   await agent.goto("/dashboard");
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Clients");
-  await expect(row).toContainText("Hasn't opened");
-  await expect(row).toContainText(/2\s*homes sent/);
-  await expect(row).toContainText("not opened");
-  await expect(row).not.toContainText("since you last looked");
-  await expect(counts.getByRole("link", { name: /Not opened/ })).toContainText("1");
-  await expect(counts.getByRole("link", { name: /New activity/ })).toHaveCount(0);
+  await expect(group("Haven't opened yet")).toContainText("Owen");
+  await expect(row).toContainText("Hasn't opened your link yet");
+  await expect(row).toContainText("2 homes sent · Sent today");
+  await expect(row.getByRole("button", { name: "Copy link for Owen" })).toBeVisible();
 
   // The agent looking at their own link doesn't count as it being opened.
   await Promise.all([actionAnswered(agent), agent.goto(url)]);
@@ -152,9 +151,9 @@ test("the dashboard leads with what's new, and says when each link was opened, n
   const owen = await signedIn(browser);
   await Promise.all([actionAnswered(owen), owen.goto(url)]);
   await agent.reload();
-  await expect(row).toContainText("Opened · no reactions yet");
-  await expect(row).toContainText(/opened (just now|\d+m ago)/);
-  await expect(row).not.toContainText("Hasn't opened");
+  await expect(row).toContainText("Opened your link. No likes yet.");
+  await expect(row).toContainText("Last active today");
+  await expect(group("Haven't opened yet")).toHaveCount(0);
   await expect.poll(() => emailsTo("olive-opens@example.com").length).toBe(1);
   expect(emailsTo("olive-opens@example.com")[0]).toContain("Owen opened your link to 2 homes");
 
@@ -180,34 +179,26 @@ test("the dashboard leads with what's new, and says when each link was opened, n
   await expect.poll(() => emailsTo("olive-opens@example.com").length).toBe(2);
   expect(emailsTo("olive-opens@example.com")[1]).toContain("Owen liked this at 1204 Quillan St SE");
 
-  // One load of the Clients page has all of it: what he said that's waiting
-  // on the agent, his numbers, when he was last on, and a mark that there's
-  // something new.
+  // He's waiting for the agent now, first on the page, with what he said and
+  // Reply; his own page has the rest of how it's gone.
   await agent.goto("/dashboard");
-  await expect(row).toContainText("“Love the porch.”");
-  await expect(row).toContainText(/1\s*liked/);
-  await expect(row).toContainText(/1\s*passed/);
-  await expect(row).toContainText(/1\s*comment/);
-  await expect(row).toContainText(/(just now|\d+m ago)\s*last on/);
-  await expect(row).toContainText("New since you last looked");
-  await expect(counts.getByRole("link", { name: /New activity/ })).toContainText("1");
-  // The filters are the way to see just some clients.
-  await agent.goto("/dashboard?show=unopened");
-  await expect(row).toHaveCount(0);
-  await counts.getByRole("link", { name: /New activity/ }).click();
-  await expect(agent).toHaveURL(/show=new$/);
-  await expect(row).toBeVisible();
+  await expect(group("Waiting for you")).toContainText("Owen");
+  await expect(row).toContainText("Said: “Love the porch.”");
+  await row.getByRole("link", { name: "Owen", exact: true }).click();
+  await agent.waitForURL(/\/dashboard\/clients\//);
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Owen");
+  await expect(agent.getByRole("main")).toContainText("Liked 1 of 2 · Passed on 1 · 1 comment");
+  await agent.goto("/dashboard");
 
-  // His link opens its page, and seeing it there clears the mark.
-  await Promise.all([actionAnswered(agent), row.getByRole("link", { name: /^1204 Quillan St SE/ }).click()]);
-  await expect(agent).toHaveURL(/\/dashboard\/shares\/[\w-]+\?tab=homes$/);
+  // Reply opens his link's page at that home.
+  await Promise.all([actionAnswered(agent), row.getByRole("link", { name: "Reply to Owen" }).click()]);
+  await expect(agent).toHaveURL(/\/dashboard\/shares\/[\w-]+\?tab=homes#home-/);
   await expect(agent.getByText("Love the porch.")).toBeVisible();
   await expect(agent.getByLabel("At a glance")).toContainText(/Last opened(Today|Yesterday), \d/);
   await agent.getByRole("navigation", { name: "Parts of this page" }).getByRole("link", { name: /People & link/ }).click();
   await expect(agent.getByText(/^Owen opened it (at |yesterday, )\d/)).toBeVisible();
   await agent.goto("/dashboard");
   await expect(row).toBeVisible();
-  await expect(row).not.toContainText("since you last looked");
 
   // Opening it again soon after, or doing more, sends no more email.
   await Promise.all([actionAnswered(owen), owen.reload()]);
@@ -241,8 +232,10 @@ test("the agent sees how much of a link was looked at, and the link never says s
     await expect(agent.locator("main")).toContainText(/Owen opened it .+ · saw 3 of 4 photos/, { timeout: 1000 });
   }).toPass({ timeout: 20_000 });
   await agent.goto("/dashboard");
-  const row = clientRow(agent, "Owen");
-  await expect(row).toContainText(/opened .+ · saw 3 of 4 photos/);
+  await clientRow(agent, "Owen").getByRole("link", { name: "Owen", exact: true }).click();
+  await agent.waitForURL(/\/dashboard\/clients\//);
+  const ownPage = agent.url();
+  await expect(agent.getByRole("main")).toContainText(/Opened today · saw 3 of 4 photos/);
 
   // And how long he spent on it: said when he puts the page away (and every
   // half-minute while it's open), on the home and at the top of his page.
@@ -259,8 +252,8 @@ test("the agent sees how much of a link was looked at, and the link never says s
   const halvard = agent.getByRole("region", { name: "10421 Halvard Way NE" });
   await expect(halvard).toContainText(/Spent \d+ sec on it · saw 3 of 4 photos/);
   await expect(agent.getByRole("definition").filter({ hasText: /^\d+ sec$/ })).toBeVisible();
-  await agent.goto("/dashboard");
-  await expect(row).toContainText(/\d+ sec\s*time looking/);
+  await agent.goto(ownPage);
+  await expect(agent.getByRole("main")).toContainText(/Spent \d+ sec looking/);
 
   // [P] Only the agent: the link itself never says what was looked at, or for how long.
   await expect(owen.getByText(/saw \d|spent \d/i)).toHaveCount(0);

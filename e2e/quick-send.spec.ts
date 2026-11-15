@@ -145,8 +145,9 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
   // It's on the dashboard like any other link.
   await agent.goto("/dashboard");
   const toby = clientRow(agent, "Toby");
-  await expect(toby).toContainText(/1\s*home sent/);
-  await expect(toby.getByRole("link", { name: /^96 Fernhollow Ln/ })).toBeVisible();
+  await expect(toby).toContainText("1 home sent");
+  // (He's had it open, to be greeted by name.)
+  await expect(toby).toContainText("Opened your link. No likes yet.");
 
   // The agent looking at their own link isn't taken for Toby: it's their
   // notes for him, with no name asked, and the heart on the home is his.

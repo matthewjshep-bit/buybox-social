@@ -4,7 +4,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { after } from "next/server";
 import { cache, type CSSProperties } from "react";
-import { EditAbout } from "@/app/people/[id]/about";
 import { FollowButton, Toast } from "@/app/people/[id]/client";
 import { BetweenCard } from "@/components/between-card";
 import { ProfileFeed } from "@/components/profile-feed";
@@ -181,87 +180,87 @@ export default async function ProfilePage({ params, searchParams }: Props) {
     isMe && (!story.enough || (!story.headline && !story.template && loves.length === 0 && passChips.length === 0));
   // Anything to switch: a chip, or passes (kept private or not) even when no chip shows them.
   const controllable = isMe && (loves.length > 0 || passChips.length > 0 || story.hasPasses || person.hidePasses);
-  const filters = (Object.keys(PROFILE_FILTERS) as ProfileShow[]).filter((key) => key !== "passed" || passes);
 
   return (
     <main
-      className="mx-auto max-w-xl px-4 pb-16 pt-4 lg:grid lg:max-w-6xl lg:grid-cols-[360px_minmax(0,600px)] lg:items-start lg:justify-center lg:gap-8 lg:px-6 lg:pt-6"
+      className="mx-auto max-w-xl px-4 pb-16 pt-4 lg:grid lg:max-w-6xl lg:grid-cols-[360px_minmax(0,600px)] lg:items-start lg:justify-center lg:gap-8 lg:px-6 lg:pt-6 xl:max-w-[1360px] xl:grid-cols-[340px_minmax(0,600px)_320px]"
       // Whatever is focused in the feed scrolls clear of the filters stuck above it.
       style={{ "--filters": about ? "8rem" : "5rem" } as CSSProperties}
     >
       {/* It stays put beside the feed only on screens tall enough to hold it (and then scrolls on
           its own if it still runs long); on shorter ones it scrolls away with the page, so nothing
-          in it ever sits below the fold out of reach. */}
-      <div className="flex flex-col gap-3 *:shrink-0 lg:-m-1 lg:p-1 [@media(min-width:64rem)_and_(min-height:860px)]:sticky [@media(min-width:64rem)_and_(min-height:860px)]:top-2 [@media(min-width:64rem)_and_(min-height:860px)]:max-h-[calc(100dvh-1rem)] [@media(min-width:64rem)_and_(min-height:860px)]:overflow-y-auto [@media(min-width:64rem)_and_(min-height:860px)]:overscroll-contain">
-        <ProfileHeader
-          name={name}
-          face={face}
-          isMe={isMe}
-          unnamed={unnamed}
-          agent={person.isAgent}
-          since={person.since}
-          homes={summary.counts.homes}
-          counts={summary.counts}
-          cover={summary.cover}
-          showPassed={passes}
-          people={{ ...people, href: `/people/${person.id}` }}
-          photo={person.photo}
-          followsYou={followsYou}
-          client={
-            client
-              ? {
-                  homes: `/reel?from=client:${client.participantId}`,
-                  link: `/dashboard/shares/${client.shareId}`,
-                }
-              : undefined
-          }
-          bio={person.bio}
-          links={person.links}
-          brokerage={person.brokerage}
-          editAbout={
-            isMe && account?.role ? <EditAbout bio={person.bio} links={person.links} agent={person.isAgent} /> : undefined
-          }
-          follow={
-            isMe ? undefined : (
-              <FollowButton
-                personId={person.id}
-                name={name}
-                following={following}
-                signIn={account?.role ? undefined : `/login?next=${encodeURIComponent(`/people/${person.id}`)}`}
-              />
-            )
-          }
-        />
-        {between.length > 0 && <BetweenCard id="between-phone" links={between} name={name} className="lg:hidden" />}
-        {showTaste && (
-          <TasteStoryCard
+          in it ever sits below the fold out of reach. On the widest screens it steps aside: who
+          they are down the left, their taste down the right, each staying put the same way. */}
+      <div className="flex flex-col gap-3 *:shrink-0 lg:-m-1 lg:p-1 xl:contents [@media(min-width:64rem)_and_(min-height:860px)]:sticky [@media(min-width:64rem)_and_(min-height:860px)]:top-2 [@media(min-width:64rem)_and_(min-height:860px)]:max-h-[calc(100dvh-1rem)] [@media(min-width:64rem)_and_(min-height:860px)]:overflow-y-auto [@media(min-width:64rem)_and_(min-height:860px)]:overscroll-contain">
+        <div className="xl:col-start-1 xl:row-start-1 [@media(min-width:80rem)_and_(min-height:860px)]:sticky [@media(min-width:80rem)_and_(min-height:860px)]:top-2 [@media(min-width:80rem)_and_(min-height:860px)]:max-h-[calc(100dvh-1rem)] [@media(min-width:80rem)_and_(min-height:860px)]:overflow-y-auto [@media(min-width:80rem)_and_(min-height:860px)]:overscroll-contain xl:-m-1 xl:self-start xl:p-1">
+          <ProfileHeader
             name={name}
+            face={face}
             isMe={isMe}
-            headline={story.headline}
-            prompt={prompt}
-            loves={loves}
-            passes={passChips}
-            passesPrivate={isMe && person.hidePasses}
-            shown={storyWriting() && story.template ? storyNow(person.id, story) : shownStory(null, story, false)}
-            template={shownStory(null, story, false)}
-            updated={story.updated}
-            counts={{
-              likes: summary.counts.liked,
-              passes: person.hidePasses ? 0 : summary.counts.passed,
-              comments: summary.counts.comments,
-            }}
-            current={current}
-            chipHref={chipHref}
-            controls={
-              controllable ? (
-                <TasteControls loves={story.own.loves} passes={story.own.passes} hidePasses={person.hidePasses} />
-              ) : undefined
+            unnamed={unnamed}
+            agent={person.isAgent}
+            since={person.since}
+            homes={summary.counts.homes}
+            people={{ ...people, href: `/people/${person.id}` }}
+            photo={person.photo}
+            followsYou={followsYou}
+            client={
+              client
+                ? {
+                    homes: `/reel?from=client:${client.participantId}`,
+                    link: `/dashboard/shares/${client.shareId}`,
+                  }
+                : undefined
+            }
+            bio={person.bio}
+            links={person.links}
+            brokerage={person.brokerage}
+            personId={person.id}
+            brandColor={person.brandColor}
+            follow={
+              isMe ? undefined : (
+                <FollowButton
+                  personId={person.id}
+                  name={name}
+                  following={following}
+                  signIn={account?.role ? undefined : `/login?next=${encodeURIComponent(`/people/${person.id}`)}`}
+                />
+              )
             }
           />
+        </div>
+        {between.length > 0 && <BetweenCard id="between-phone" links={between} name={name} className="lg:hidden" />}
+        {showTaste && (
+          <div className="xl:col-start-3 xl:row-start-1 [@media(min-width:80rem)_and_(min-height:860px)]:sticky [@media(min-width:80rem)_and_(min-height:860px)]:top-2 [@media(min-width:80rem)_and_(min-height:860px)]:max-h-[calc(100dvh-1rem)] [@media(min-width:80rem)_and_(min-height:860px)]:overflow-y-auto [@media(min-width:80rem)_and_(min-height:860px)]:overscroll-contain xl:-m-1 xl:self-start xl:p-1">
+            <TasteStoryCard
+              name={name}
+              isMe={isMe}
+              headline={story.headline}
+              prompt={prompt}
+              loves={loves}
+              passes={passChips}
+              passesPrivate={isMe && person.hidePasses}
+              shown={storyWriting() && story.template ? storyNow(person.id, story) : shownStory(null, story, false)}
+              template={shownStory(null, story, false)}
+              updated={story.updated}
+              counts={{
+                likes: summary.counts.liked,
+                passes: person.hidePasses ? 0 : summary.counts.passed,
+                comments: summary.counts.comments,
+              }}
+              current={current}
+              chipHref={chipHref}
+              controls={
+                controllable ? (
+                  <TasteControls loves={story.own.loves} passes={story.own.passes} hidePasses={person.hidePasses} />
+                ) : undefined
+              }
+            />
+          </div>
         )}
       </div>
 
-      <div className="mt-3 min-w-0 lg:mt-0">
+      <div className="mt-3 min-w-0 lg:mt-0 xl:col-start-2 xl:row-start-1">
         {between.length > 0 && (
           <BetweenCard id="between-wide" links={between} name={name} className="mb-4 hidden lg:block" />
         )}
@@ -285,28 +284,26 @@ export default async function ProfilePage({ params, searchParams }: Props) {
           )
         ) : (
           <>
-            {/* Its own edge and background reach past the cards' rings, so nothing shows round it once it sticks. */}
-            <nav
-              aria-label="Show"
-              className="sticky top-0 z-30 -mx-4 bg-surface px-4 py-3 shadow-[0_1px_0_var(--color-stone-200)] lg:-mx-2 lg:-mt-3 lg:px-2"
-            >
-              {/* One row, even on the narrowest phones. */}
-              <ul className="-m-1 flex gap-1.5 overflow-x-auto p-1 [scrollbar-width:none] min-[400px]:gap-2">
-                {filters.map((key) => (
-                  <li key={key} className="shrink-0">
-                    <Link
-                      href={href({ show: key })}
-                      aria-current={show === key ? "page" : undefined}
-                      className={button({ kind: show === key ? "neutral" : "secondary" })}
-                    >
-                      {PROFILE_FILTERS[key]}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-              {/* A topic from a chip gets a line of its own, so it's never cut off. */}
-              {about && label && (
-                <div className="mt-2 flex">
+            {/* No filters to choose from: the page is everything they've done. A taste chip
+                (or an address) can narrow it; then it says so, with the way back to all of it.
+                Its own edge and background reach past the cards' rings, so nothing shows round
+                it once it sticks. */}
+            {(show !== "all" || (about && label)) && (
+              <nav
+                aria-label="Showing"
+                className="sticky top-0 z-30 -mx-4 flex flex-wrap gap-2 bg-surface px-4 py-3 shadow-[0_1px_0_var(--color-stone-200)] lg:-mx-2 lg:-mt-3 lg:px-2"
+              >
+                {show !== "all" && (
+                  <Link
+                    href={href({ show: "all", about: null })}
+                    aria-label={`Remove ${PROFILE_FILTERS[show]}`}
+                    className={cn(pill(), "min-w-0 bg-white text-ink ring-2 ring-ink hover:bg-stone-50")}
+                  >
+                    <span className="truncate">{PROFILE_FILTERS[show]}</span>
+                    <X aria-hidden size={16} className="shrink-0" />
+                  </Link>
+                )}
+                {about && label && (
                   <Link
                     href={href({ about: null })}
                     aria-label={`Remove ${label}`}
@@ -317,9 +314,9 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                     <span className="truncate">{label}</span>
                     <X aria-hidden size={16} className="shrink-0" />
                   </Link>
-                </div>
-              )}
-            </nav>
+                )}
+              </nav>
+            )}
             {keptPrivate ? (
               <EmptyState icon={Lock} title={`${name} keeps passes private.`} />
             ) : feed.cards.length > 0 || feed.earlier ? (

@@ -105,6 +105,7 @@ test("activity shows people and homes, with repeats on one comment on one line",
   await grace.goto("/people/me");
   await grace.waitForURL(/\/people\/[0-9a-f-]{36}$/);
   const graceId = new URL(grace.url()).pathname.split("/").at(-1);
+  await grace.goto("/people/me/edit");
   await grace.getByLabel("Add a photo").setInputFiles({
     name: "me.png",
     mimeType: "image/png",
@@ -184,6 +185,7 @@ test("activity shows people and homes, with repeats on one comment on one line",
 
   // Once Grace takes her reply back, Ana can delete it, and everything from here is gone.
   await deleteMine(grace);
+  await grace.goto("/people/me/edit");
   await grace.getByRole("button", { name: "Remove photo" }).click();
   await expect(grace.getByLabel("Add a photo")).toBeAttached();
   await deleteMine(ana);

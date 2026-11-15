@@ -20,10 +20,11 @@ test("an agent's home: their client as a person, what she said on her card with 
   // The agent's home: Jo among their clients, as a person, to her page;
   // and the way to send homes to anyone.
   await agent.goto("/");
-  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Hi, Fern");
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Agent dashboard");
+  await expect(agent.getByRole("main")).toContainText("Hi Fern. Your clients, and what they think of the homes you send.");
   await expect(agent.getByRole("link", { name: "Send homes to a client" })).toHaveAttribute("href", "/dashboard/new?focus=to");
   const clients = agent.getByRole("region", { name: "Your clients" });
-  await expect(clients.getByRole("link", { name: /^Jo\b/ })).toHaveAttribute("href", /^\/people\/[\w-]+$/);
+  await expect(clients.getByRole("link", { name: /^Jo\b/ })).toHaveAttribute("href", /^\/dashboard\/clients\/acct%3A[\w-]+$/);
   // None of a buyer's home: nothing picked for them, nobody to follow.
   await expect(agent.getByText("Picked for you")).toHaveCount(0);
   await expect(agent.getByText("People to follow")).toHaveCount(0);
@@ -53,10 +54,12 @@ test("an agent's home: their client as a person, what she said on her card with 
   await agent.waitForURL(/\/dashboard\/shares\/[\w-]+\?tab=homes/);
   await expect(agent.getByText("Yes, it was finished in 2019.")).toBeVisible();
 
-  // Answered, there's nothing to reply to. Her card opens her homes in a
-  // pop-out over the page, on that one; Escape closes it, back where it was.
+  // Answered, the answer is on her card, and Reply is there for more. Her card
+  // opens her homes in a pop-out over the page, on that one; Escape closes it,
+  // back where it was.
   await agent.goto("/");
-  await expect(card.getByRole("button", { name: "Reply to Jo" })).toHaveCount(0);
+  await expect(card.getByRole("list", { name: "Your replies" })).toContainText("Yes, it was finished in 2019.");
+  await expect(card.getByRole("button", { name: "Reply to Jo" })).toBeVisible();
   const open = card.getByRole("link", { name: /^1204 Quillan St SE: / });
   await expect(open).toHaveAttribute("href", /^\/reel\?from=client%3A[\w-]+&home=SAMPLE-\d+/);
   await open.click();

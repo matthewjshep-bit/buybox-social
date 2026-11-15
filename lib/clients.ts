@@ -48,8 +48,10 @@ export type Client = {
   photo: string | null;
   // Their public page, once they've signed up.
   profileId: string | null;
-  // Where their name goes: their page, or else their newest link.
+  // Their page on the Clients page.
   href: string;
+  // Their own link, newest: to copy and send again ("/s/…").
+  linkPath: string;
   participantIds: string[];
   // Newest first.
   links: ClientLink[];
@@ -78,6 +80,7 @@ export type Client = {
 
 type ShareRow = {
   id: string;
+  token: string;
   client_name: string;
   created_at: Date;
   homes: { key: string; address: string; photo: string | null }[];
@@ -91,6 +94,7 @@ type ShareRow = {
 type PersonRow = {
   id: string;
   share_id: string;
+  token: string | null;
   first_name: string;
   account_id: string | null;
   profile: string | null;
@@ -116,7 +120,7 @@ const newest = (a: Date | null, b: Date | null) => (!a ? b : !b ? a : a > b ? a 
 
 // Every link the agent has sent, newest first, with its homes in order.
 const loadShares = (agentId: string) => sql<ShareRow[]>`
-  select s.id, s.client_name, s.created_at,
+  select s.id, s.token, s.client_name, s.created_at,
     (select coalesce(json_agg(json_build_object(
           'key', sl.listing_key, 'address', l.data->>'UnparsedAddress',
           'photo', l.data->'Media'->0->>'MediaURL'
@@ -147,7 +151,7 @@ const loadShares = (agentId: string) => sql<ShareRow[]>`
 // dislikes), what they said, whether they've opened it, and when they were
 // last on it.
 const loadPeople = (agentId: string) => sql<PersonRow[]>`
-  select p.id, p.share_id, p.first_name, p.account_id, v.id as profile,
+  select p.id, p.share_id, p.token, p.first_name, p.account_id, v.id as profile,
     left(md5(acc.photo_data_url), 10) as photo_v,
     coalesce(verdicts.liked, '{}') as liked_keys,
     coalesce(verdicts.passed, '{}') as passed_keys,
@@ -250,6 +254,9 @@ function statusOf(c: Omit<Client, "status">, ask: AskRow | undefined, waiting: P
 
 export type ClientBook = { clients: Client[]; unclaimed: ClientLink[] };
 
+// A client's own page on the Clients page.
+export const clientHref = (key: string) => `/dashboard/clients/${encodeURIComponent(key)}`;
+
 // Every client of this agent, once per request however many parts of the page ask.
 export const getClientBook = cache(async (agentId: string): Promise<ClientBook> => {
   const [shares, people, asks] = await Promise.all([loadShares(agentId), loadPeople(agentId), loadAsks(agentId)]);
@@ -320,7 +327,8 @@ export const getClientBook = cache(async (agentId: string): Promise<ClientBook> 
       name: named?.first_name.trim() || ANONYMOUS_BUYER,
       photo: signedUp?.profile ? photoUrl(signedUp.profile, signedUp.photo_v) : null,
       profileId: signedUp?.profile ?? null,
-      href: signedUp?.profile ? `/people/${signedUp.profile}` : links[0].href,
+      href: clientHref(key),
+      linkPath: `/s/${rows.find((row) => row.share_id === linkIds[0].id)?.token ?? linkIds[0].token}`,
       participantIds: rows.map((row) => row.id),
       links,
       homes: homeKeys.size,

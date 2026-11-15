@@ -500,20 +500,25 @@ export async function addHomesToShare(shareId: string, listingKeys: string[]): P
   redirect(`/dashboard/shares/${shareId}`);
 }
 
+// The agent's word in a home's conversation on their link. `to`: the client
+// it answers (their likes or what they said), so on a link with several people
+// it sits under that person's line; only ever someone on that link.
 export async function replyAsAgent(
   shareId: string,
   listingKey: string,
   body: string,
+  to: string | null = null,
 ): Promise<FormState> {
   const agent = await requireAgent();
   const text = z.string().trim().min(1).max(1000).safeParse(body);
-  if (!text.success || !uuid.safeParse(shareId).success) {
+  if (!text.success || !uuid.safeParse(shareId).success || (to !== null && !uuid.safeParse(to).success)) {
     return { error: "Replies can be up to 1,000 characters." };
   }
   // The join limits this to the signed-in agent's own shares.
   const inserted = await sql`
-    insert into comments (share_id, listing_key, agent_id, body)
-    select sl.share_id, sl.listing_key, ${agent.id}, ${text.data}
+    insert into comments (share_id, listing_key, agent_id, body, reply_to_participant)
+    select sl.share_id, sl.listing_key, ${agent.id}, ${text.data},
+      (select p.id from participants p where p.id = ${to}::uuid and p.share_id = sl.share_id)
     from share_listings sl join shares s on s.id = sl.share_id
     where sl.share_id = ${shareId} and sl.listing_key = ${listingKey} and s.agent_id = ${agent.id}
     returning id`;

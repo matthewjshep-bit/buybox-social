@@ -54,34 +54,29 @@ export default async function Home({
   }
 
   const me = {
+    // Their page's id where they have one: what picks the scene at the top of their card.
+    id: visitorId ?? user.id,
     name: user.full_name.trim() || user.email,
     photo: visitorId ? photoUrl(visitorId, photoVersion(user.photo_data_url)) : user.photo_data_url,
   };
   const noFollows = { followers: 0, following: 0 };
 
   if (user.role === "agent") {
-    // (No homes picked for an agent, nor people to follow: their home is
-    // their clients, and it loads without the scan those take.)
-    const [book, cards, feed, seenAt, follows] = await Promise.all([
+    // (No homes picked for an agent, and no one they follow: their home is
+    // their clients, and it loads without the reads those take.)
+    const [book, cards, follows] = await Promise.all([
       getClientBook(user.id),
       getClientCards(user.id),
-      getHomeFeed(user, visitorId),
-      getHomeSeen(visitorId),
       visitorId ? getFollowCounts(visitorId) : noFollows,
     ]);
-    const mine = await myReactions(visitorId, feedKeys(feed));
     return (
       <AgentHome
         firstName={firstName(user)}
-        me={{ ...me, brokerage: user.brokerage }}
+        me={{ ...me, brokerage: user.brokerage, brandColor: user.brand_color }}
         profileHref={profileHref}
         book={book}
         cards={cards}
         follows={follows}
-        feed={feed}
-        mine={mine}
-        seenAt={seenAt}
-        lens={lens}
       />
     );
   }

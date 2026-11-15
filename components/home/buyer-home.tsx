@@ -123,7 +123,7 @@ export function BuyerHome({
   lens,
 }: {
   firstName: string;
-  me: { name: string; photo: string | null };
+  me: { id: string; name: string; photo: string | null };
   follows: FollowCounts;
   profileHref: string;
   // The links they're on, newest first.
@@ -158,6 +158,7 @@ export function BuyerHome({
         <ProfileRail
           name={me.name}
           photo={me.photo}
+          seed={me.id}
           agent={false}
           line={agentName ? `Looking with ${links[0].agent.name}` : "Finding a home"}
           href={profileHref}

@@ -31,7 +31,7 @@ test("an admin sees the site as one of its people, a bar saying so, until Stop; 
   await admin.waitForURL((url) => url.pathname === "/");
   const bar = admin.getByRole("region", { name: "Viewing as someone else" });
   await expect(bar).toContainText("Viewing as Vera Viewed (agent). Anything you do is done as them.");
-  await expect(admin.getByRole("heading", { level: 1 })).toHaveText("Hi, Vera");
+  await expect(admin.getByRole("heading", { level: 1 })).toHaveText("Agent dashboard");
   // Her dashboard too.
   await admin.goto("/dashboard");
   await expect(admin.getByRole("heading", { level: 1 })).toHaveText("Clients");
@@ -46,7 +46,7 @@ test("an admin sees the site as one of its people, a bar saying so, until Stop; 
   await admin.waitForURL(personPage);
   await expect(bar).toHaveCount(0);
   await admin.goto("/");
-  await expect(admin.getByRole("heading", { level: 1 })).not.toHaveText("Hi, Vera");
+  await expect(admin.getByRole("main")).not.toContainText("Hi Vera");
 
   // Anyone else's cookie does nothing.
   const nosy = await signUpBuyer(browser, "nosy-viewer@example.com", "Nosy Viewer");
@@ -65,11 +65,17 @@ test("anyone can add a photo of themselves, shown in place of their initial, and
   await expect(me).toHaveText("P");
   await expect(header.locator("img[src*='/photo?v=']")).toHaveCount(0);
 
+  // Their photo is edited on a page of its own, from the pencil on theirs.
+  await page.getByRole("link", { name: "Edit profile" }).click();
+  await page.waitForURL(/\/people\/me\/edit$/);
   await page.getByLabel("Add a photo").setInputFiles({
     name: "me.png",
     mimeType: "image/png",
     buffer: Buffer.from(PNG_1PX, "base64"),
   });
+  await expect(page.getByRole("region", { name: "Photo" }).locator("img[src*='/photo?v=']")).toBeVisible();
+  await page.getByRole("link", { name: "Your page" }).click();
+  await page.waitForURL(/\/people\/[\w-]+$/);
   const photo = header.locator("img[src*='/photo?v=']");
   await expect(photo).toBeVisible();
   await expect(me.locator("img")).toBeVisible();
@@ -77,11 +83,13 @@ test("anyone can add a photo of themselves, shown in place of their initial, and
   const res = await page.request.get((await photo.getAttribute("src"))!);
   expect(res.status()).toBe(200);
   expect(res.headers()["content-type"]).toBe("image/jpeg");
-  await expect(page.getByLabel("Change photo")).toBeAttached();
 
   // Taken off: their initial again.
+  await page.goto("/people/me/edit");
+  await expect(page.getByLabel("Change photo")).toBeAttached();
   await page.getByRole("button", { name: "Remove photo" }).click();
+  await expect(page.getByLabel("Add a photo")).toBeAttached();
+  await page.goto("/people/me");
   await expect(photo).toHaveCount(0);
   await expect(me).toHaveText("P");
-  await expect(page.getByLabel("Add a photo")).toBeAttached();
 });

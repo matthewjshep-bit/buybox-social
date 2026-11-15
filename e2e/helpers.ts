@@ -97,11 +97,11 @@ export async function enterCode(where: Page | Locator) {
 }
 
 // The feed: one home per screen.
-// A person on the agent's Clients page (/dashboard): their row, found by
-// the heading that's their name.
+// A person on the agent's Clients page (/dashboard), in whichever group
+// they're in: their row, found by the heading that's their name.
 export const clientRow = (page: Page, name: string) =>
   page
-    .getByRole("region", { name: "Clients" })
+    .getByRole("main")
     .getByRole("listitem")
     .filter({ has: page.getByRole("heading", { name, exact: true }) });
 

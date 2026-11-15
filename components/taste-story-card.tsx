@@ -249,7 +249,7 @@ export function TasteRow({
           <Link
             key={chip.key}
             href={href(chip.key, side)}
-            aria-label={`${title} ${chip.label}, ${chip.homes} ${chip.homes === 1 ? "home" : "homes"}${hidden ? ", only you see this" : ""}`}
+            aria-label={`${title} ${chip.label}${hidden ? ", only you see this" : ""}`}
             aria-current={current?.key === chip.key.toLowerCase() && current.side === side ? "true" : undefined}
             className={cn(
               "relative inline-flex min-h-9 items-center gap-1 rounded-full px-3 text-meta font-semibold leading-5 before:absolute before:inset-x-0 before:-inset-y-1",
@@ -261,7 +261,7 @@ export function TasteRow({
             )}
           >
             {hidden && <EyeOff aria-hidden size={12} className="shrink-0" />}
-            {chip.label} <span className="tabular-nums">{chip.homes}</span>
+            {chip.label}
           </Link>
         );
       })}

@@ -1,26 +1,22 @@
-import { House, Palette, Plus, Send, UserRound, Users } from "lucide-react";
+import { Palette, Plus, Send, UserRound, Users } from "lucide-react";
 import Link from "next/link";
 import { ClientFeed } from "@/components/home/client-feed";
 import { ClientsRail } from "@/components/home/clients-rail";
 import { HomeShell, ProfileRail } from "@/components/home/home-shell";
-import { Lenses } from "@/components/home/lens-pills";
-import { FollowingFeed } from "@/components/home-feed";
 import { Avatar } from "@/components/ui";
 import type { ClientCard } from "@/lib/client-feed";
 import type { ClientBook } from "@/lib/clients";
 import type { FollowCounts } from "@/lib/follows";
 import { cn } from "@/lib/format";
-import type { HomeFeedEntry } from "@/lib/home-feed";
-import type { ReactionState } from "@/lib/reactions";
 import { button, card } from "@/lib/ui";
 
-// An agent's home. Down the left, them: their card (clients, links sent,
-// followers) and their places. In the middle, a box to send homes, then what
-// their clients did on the homes they sent, photo by photo, as anyone's own
-// page shows it (or, a tap away, the people they follow). Down the right,
-// their clients as people, whoever wants something first. Nothing to tick
-// off: what a client is waiting for is said beside their name, and Reply is
-// on the card where they said it.
+// An agent's home is them and their clients, nothing else. Down the left,
+// them: their card (clients, links sent, followers) and their places. In the
+// middle, a box to send homes, then what their clients did on the homes they
+// sent, photo by photo, as anyone's own page shows it, each with Reply to
+// answer them right there. Down the right, their clients as people, whoever
+// wants something first. Nothing to tick off: what a client is waiting for is
+// said beside their name, and its card's Reply is the filled button.
 
 export type HomeLens = { initial: string; fromUrl: boolean };
 
@@ -66,35 +62,29 @@ export function AgentHome({
   book,
   cards,
   follows,
-  feed,
-  mine,
-  seenAt,
-  lens,
 }: {
   firstName: string;
-  me: { name: string; photo: string | null; brokerage: string };
+  me: { id: string; name: string; photo: string | null; brokerage: string; brandColor: string };
   // Their own public page.
   profileHref: string;
   book: ClientBook;
   cards: ClientCard[];
   follows: FollowCounts;
-  // The people they follow, for the Following lens.
-  feed: HomeFeedEntry[];
-  mine: Record<string, ReactionState>;
-  seenAt: string | null;
-  lens: HomeLens;
 }) {
   const { clients, unclaimed } = book;
   const sent = new Set([...clients.flatMap((c) => c.links.map((link) => link.shareId)), ...unclaimed.map((l) => l.shareId)]);
-  const initial = lens.initial === "following" ? "following" : "clients";
   return (
     <HomeShell
-      title={firstName ? `Hi, ${firstName}` : "Your home"}
+      // Said plainly, so it's clear whose page this is: the agent's own.
+      title="Agent dashboard"
+      subtitle={`${firstName ? `Hi ${firstName}. ` : ""}Your clients, and what they think of the homes you send.`}
       left={
         <ProfileRail
           name={me.name}
           photo={me.photo}
+          seed={me.id}
           agent
+          bandColor={me.brandColor}
           line={me.brokerage.trim() || "Real estate agent"}
           href={profileHref}
           stats={[
@@ -107,7 +97,6 @@ export function AgentHome({
             { href: "/dashboard", label: "Clients", icon: <Users size={18} /> },
             { href: profileHref, label: "Your page", icon: <UserRound size={18} /> },
             { href: "/dashboard/profile", label: "Your brand", icon: <Palette size={18} /> },
-            { href: "/reel", label: "Browse homes", icon: <House size={18} /> },
           ]}
         />
       }
@@ -132,29 +121,12 @@ export function AgentHome({
         <FirstSend />
       ) : (
         <section aria-labelledby="stream-title">
-          <h2 id="stream-title" className="sr-only">
-            What&apos;s happening
+          <h2 id="stream-title" className="px-1 text-lg font-semibold">
+            Client activity
           </h2>
-          <Lenses
-            label="Show"
-            lenses={[
-              { key: "clients", label: "Clients" },
-              { key: "following", label: "Following" },
-            ]}
-            initial={initial}
-            fromUrl={lens.fromUrl}
-            panels={{
-              clients: <ClientFeed cards={cards} />,
-              following: (
-                <FollowingFeed
-                  entries={feed}
-                  mine={mine}
-                  seenAt={seenAt}
-                  empty="Follow people to see what they like here. Tap anyone's name on a home to see their page."
-                />
-              ),
-            }}
-          />
+          <div className="mt-3">
+            <ClientFeed cards={cards} />
+          </div>
         </section>
       )}
     </HomeShell>

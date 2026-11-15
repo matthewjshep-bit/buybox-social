@@ -1,7 +1,7 @@
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
 import { photoUrl } from "./person-photo";
-import { buildCards, type CommentRow, type ProfileCard, type ReactionRow, type SpotRow } from "./profile";
+import { buildCards, dayOf, type CommentRow, type ProfileCard, type ReactionRow, type SpotRow } from "./profile";
 import type { Sentiment } from "./reactions";
 import { getHomeViews, homeViewKey } from "./shares";
 import { ANONYMOUS_BUYER } from "./timeline";
@@ -14,8 +14,10 @@ import { ANONYMOUS_BUYER } from "./timeline";
 
 export type ClientCard = ProfileCard & {
   who: { participantId: string; shareId: string; name: string; photo: string | null; profileId: string | null };
-  // What they said on it that the agent hasn't answered yet.
-  reply: { shareId: string; listingKey: string } | null;
+  // Something they said on it that the agent hasn't answered yet.
+  waiting: boolean;
+  // What the agent has said in that home's conversation since, oldest first.
+  replies: { body: string; at: string }[];
   // Time spent on the home, on that link, every visit together (a minute or more).
   seconds: number | null;
 };
@@ -30,7 +32,7 @@ type Who = { participant_id: string; share_id: string };
 
 export async function getClientCards(agentId: string): Promise<ClientCard[]> {
   const since = `${DAYS} days`;
-  const [reactions, likes, dislikes, comments] = await Promise.all([
+  const [reactions, likes, dislikes, comments, agentSaid] = await Promise.all([
     sql<(ReactionRow & Who)[]>`
       select r.participant_id, r.share_id, r.listing_key, r.reaction,
         coalesce(r.liked, '{}') as liked, coalesce(r.disliked, '{}') as disliked, r.updated_at as at
@@ -62,6 +64,14 @@ export async function getClientCards(agentId: string): Promise<ClientCard[]> {
       where s.agent_id = ${agentId} and c.participant_id is not null
         and c.created_at > now() - ${since}::interval
       order by c.created_at desc limit ${READ_MOST}`,
+    // The agent's own words in their links' conversations, for under each card.
+    sql<{ share_id: string; listing_key: string; body: string; at: Date; to: string | null }[]>`
+      select c.share_id, c.listing_key, c.body, c.created_at as at, c.reply_to_participant as to
+      from comments c join shares s on s.id = c.share_id
+      where s.agent_id = ${agentId} and c.agent_id is not null
+        and c.created_at > now() - ${since}::interval
+      order by c.created_at
+      limit ${READ_MOST}`,
   ]);
 
   const all = [...reactions, ...likes, ...dislikes, ...comments];
@@ -99,6 +109,13 @@ export async function getClientCards(agentId: string): Promise<ClientCard[]> {
     if (person.agent) continue;
     const theirs = <T extends Who>(rows: T[]) => rows.filter((row) => row.participant_id === person.id);
     const said = theirs(comments);
+    // When each of their cards (a home, a day) started: the agent's words since are its replies.
+    const startOf = new Map<string, Date>();
+    for (const row of [...theirs(reactions), ...theirs(likes), ...theirs(dislikes), ...said]) {
+      const key = `${row.listing_key}|${dayOf(row.at)}`;
+      const was = startOf.get(key);
+      if (!was || row.at < was) startOf.set(key, row.at);
+    }
     const built = buildCards({
       reactions: theirs(reactions),
       likes: theirs(likes),
@@ -122,13 +139,25 @@ export async function getClientCards(agentId: string): Promise<ClientCard[]> {
       profileId: person.profile,
     };
     for (const card of built) {
-      const waiting = card.comments.find((comment) => answered.get(comment.id) === false);
       const seconds = views.get(homeViewKey(person.share_id, card.home.key))?.seconds ?? 0;
+      const start = startOf.get(`${card.home.key}|${card.day}`) ?? new Date(card.at);
+      // On their link, about this home, since this card began: to them, or to nobody in particular.
+      const replies = agentSaid
+        .filter(
+          (c) =>
+            c.share_id === person.share_id &&
+            c.listing_key === card.home.key &&
+            c.at >= start &&
+            (c.to === null || c.to === person.id),
+        )
+        .slice(-3)
+        .map((c) => ({ body: c.body, at: c.at.toISOString() }));
       cards.push({
         ...card,
         id: `${person.id}|${card.id}`,
         who,
-        reply: waiting ? { shareId: person.share_id, listingKey: card.home.key } : null,
+        waiting: card.comments.some((comment) => answered.get(comment.id) === false),
+        replies,
         seconds: seconds >= 60 ? seconds : null,
       });
     }

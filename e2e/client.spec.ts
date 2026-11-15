@@ -105,10 +105,14 @@ test("an agent's client page: what they want, remove and restore, add homes, pri
   await agent.goto("/dashboard");
   const row = clientRow(agent, "Joe");
   await expect(row).toBeVisible();
-  await expect(row).toContainText(/3\s*homes sent/);
-  await expect(row).toContainText(/1\s*liked/);
-  await expect(row).toContainText(/1\s*passed/);
+  await expect(row).toContainText("3 homes sent");
   // ...and only what Joe did, never the public's.
   await expect(row).not.toContainText("Stella");
   await expect(row).not.toContainText("that staircase!");
+  // His page says how it's gone.
+  await row.getByRole("link", { name: "Joe", exact: true }).click();
+  await agent.waitForURL(/\/dashboard\/clients\//);
+  await expect(agent.getByRole("main")).toContainText(/Liked 1 of 3/);
+  await expect(agent.getByRole("main")).toContainText("Passed on 1");
+  await expect(agent.getByRole("main")).not.toContainText("Stella");
 });

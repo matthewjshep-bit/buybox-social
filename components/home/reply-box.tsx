@@ -6,8 +6,8 @@ import { replyAsAgent } from "@/app/dashboard/actions";
 import { cn } from "@/lib/format";
 import { button, field } from "@/lib/ui";
 
-// An agent's answer, typed right where the question is (a row in Needs you, a
-// client's card), into that home's conversation on the client's link. It grows
+// An agent's answer, typed right on a client's card, into that home's
+// conversation on the client's link. It grows
 // with what's typed, takes focus when it opens, and Escape puts it away.
 // Nothing on the page moves while it's open; once sent it says so and steps
 // aside (`onSent`), and the row it came from leaves the list on the next load.
@@ -15,6 +15,7 @@ export function ReplyBox({
   shareId,
   listingKey,
   name,
+  to = null,
   prefill = "",
   onSent,
   onClose,
@@ -24,6 +25,8 @@ export function ReplyBox({
   listingKey: string;
   // Who it's to, by first name: "Reply to Jenny".
   name: string;
+  // The client it answers, by their place on the link.
+  to?: string | null;
   prefill?: string;
   onSent: () => void;
   onClose: () => void;
@@ -48,7 +51,7 @@ export function ReplyBox({
     if (!text || pending) return;
     setError(null);
     startTransition(async () => {
-      const result = await replyAsAgent(shareId, listingKey, text);
+      const result = await replyAsAgent(shareId, listingKey, text, to);
       if (result.error) setError(result.error);
       else onSent();
     });

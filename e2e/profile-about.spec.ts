@@ -17,7 +17,8 @@ test("an agent's page leads with what's between them and their client, and says 
   await agent.goto("/people/me");
   await agent.waitForURL(/\/people\/[\w-]+$/);
   const taraPage = new URL(agent.url()).pathname;
-  await agent.getByRole("button", { name: "Add a description and links" }).click();
+  await agent.getByRole("link", { name: "Edit profile" }).click();
+  await agent.waitForURL(/\/people\/me\/edit$/);
   const form = agent.getByRole("form", { name: "Edit about you" });
   await form.getByRole("textbox", { name: "About you", exact: true }).fill("Eastside homes, first-time buyers.");
   await form.getByLabel("Link 1 name").fill("Our office");
@@ -26,7 +27,8 @@ test("an agent's page leads with what's between them and their client, and says 
   await expect(form.getByRole("alert")).toContainText("doesn't look like a web address");
   await form.getByLabel("Link 1 address").fill("tara-homes.example.com");
   await form.getByRole("button", { name: "Save" }).click();
-  await expect(form).toHaveCount(0);
+  // Saved, back to her page, which says it.
+  await agent.waitForURL(new RegExp(`${taraPage}$`));
   const header = agent.getByRole("region", { name: "Tara (you)" });
   await expect(header).toContainText("Eastside homes, first-time buyers.");
   await expect(header.getByRole("link", { name: "Our office" })).toHaveAttribute("href", "https://tara-homes.example.com/");
@@ -52,9 +54,10 @@ test("an agent's page leads with what's between them and their client, and says 
   await expect(between).toContainText("1 home Tara sent you");
   await expect(between).toContainText("Tara: “Glad you like it. Want to see it Friday?”");
   await expect(between.getByRole("link")).toHaveAttribute("href", new URL(urls.Juno).pathname);
-  // Above everything else Tara has done.
-  const filters = juno.getByRole("navigation", { name: "Show" });
-  expect((await between.boundingBox())!.y).toBeLessThan((await filters.boundingBox())!.y);
+  // First, right there as the page opens.
+  await expect(between).toBeInViewport();
+  // Her answer to Juno stays on the link: never on Tara's page.
+  await expect(juno.locator("[data-card-link]")).toHaveCount(0);
   // And what Tara wrote about herself.
   await expect(juno.getByRole("main")).toContainText("Eastside homes, first-time buyers.");
 
@@ -77,12 +80,12 @@ test("a buyer writes a few words about themselves, and has no links to add", asy
   const page = await signUpBuyer(browser, "bea.about@example.com", "Bea About");
   await page.goto("/people/me");
   await page.waitForURL(/\/people\/[\w-]+$/);
-  await page.getByRole("button", { name: "Add a few words about yourself" }).click();
+  await page.getByRole("link", { name: "Edit profile" }).click();
+  await page.waitForURL(/\/people\/me\/edit$/);
   const form = page.getByRole("form", { name: "Edit about you" });
   await expect(form.getByRole("group", { name: "Links" })).toHaveCount(0);
   await form.getByRole("textbox", { name: "About you", exact: true }).fill("Looking for a craftsman near a park.");
   await form.getByRole("button", { name: "Save" }).click();
-  await expect(form).toHaveCount(0);
+  await page.waitForURL(/\/people\/[\w-]+$/);
   await expect(page.getByRole("main")).toContainText("Looking for a craftsman near a park.");
-  await expect(page.getByRole("button", { name: "Edit" })).toBeVisible();
 });

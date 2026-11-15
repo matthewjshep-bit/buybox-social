@@ -57,7 +57,7 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
   await scrollToEnd(pia);
   const taste = pia.getByRole("region", { name: "Your taste" });
   await expect(taste).toContainText("From 4 reactions: liked 3, passed 1.");
-  await expect(taste.getByRole("group", { name: "Loves" }).getByRole("link", { name: "Loves Vibe, 2 homes" })).toBeVisible();
+  await expect(taste.getByRole("group", { name: "Loves" }).getByRole("link", { name: "Loves Vibe" })).toBeVisible();
   const story = (region: typeof taste) =>
     region.evaluate((el) =>
       [...el.querySelectorAll("p")].slice(0, 2).map((p) => p.textContent?.replace(/\s+/g, " ").trim()),
@@ -67,7 +67,7 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
   const own = await pia.context().newPage();
   await own.goto("/people/me");
   const ownTaste = own.getByRole("region", { name: "Your taste" });
-  await expect(ownTaste.getByRole("group", { name: "Loves" }).getByRole("link", { name: "Loves Vibe, 2 homes" })).toBeVisible();
+  await expect(ownTaste.getByRole("group", { name: "Loves" }).getByRole("link", { name: "Loves Vibe" })).toBeVisible();
   expect(await story(ownTaste)).toEqual(told);
   await own.close();
   // Homes that match it say why, in the Porchcard, under your take.
@@ -240,11 +240,12 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   await devSheet.getByRole("link", { name: "Cleo" }).first().click();
   await dev.waitForURL("**/people/**");
   await expect(dev.getByRole("heading", { level: 1 })).toHaveText("Cleo");
-  await expect(dev.getByText("Three-car garage 1")).toBeVisible();
+  await expect(dev.getByRole("link", { name: "Loves Three-car garage" })).toBeVisible();
   await expect(dev.getByRole("link", { name: `${FOXGLOVE}: liked the three-car garage` })).toBeVisible();
-  await dev.getByRole("link", { name: "Comments" }).click();
+  const cleoPage = dev.url();
+  await dev.goto(`${cleoPage}?show=comments`);
   await expect(dev.getByText("Love the cul-de-sac.")).toBeVisible();
-  await dev.getByRole("link", { name: "Passed" }).click();
+  await dev.goto(`${cleoPage}?show=passed`);
   await expect(dev.getByText("Nothing passed on yet.")).toBeVisible();
   // Your own, from the header: you, then Your profile.
   await dev.getByRole("button", { name: "Your profile" }).click();

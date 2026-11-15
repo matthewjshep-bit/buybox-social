@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { BannerArt } from "@/components/banner-art";
 import { Avatar } from "@/components/ui";
 import { cn } from "@/lib/format";
 import { card } from "@/lib/ui";
@@ -22,6 +23,8 @@ export function ProfileRail({
   href,
   stats,
   links,
+  bandColor = null,
+  seed,
 }: {
   name: string;
   photo: string | null;
@@ -31,11 +34,17 @@ export function ProfileRail({
   href: string;
   stats: RailStat[];
   links: RailLink[];
+  // The band at the top is their own little scene, picked by `seed` (their
+  // page's id), as on their page; an agent's in their colour (`bandColor`).
+  bandColor?: string | null;
+  seed: string;
 }) {
   return (
     <div className="flex flex-col gap-3">
       <section aria-label="You" className={cn(card, "overflow-hidden")}>
-        <div aria-hidden className="h-14 bg-brand" />
+        <div aria-hidden className="h-14 overflow-hidden">
+          <BannerArt seed={seed} brand={agent ? bandColor : null} />
+        </div>
         <div className="-mt-9 flex flex-col items-center px-4 pb-4 text-center">
           <Avatar name={name} tone={agent ? "agent" : "person"} photo={photo} size={18} className="ring-4 ring-white" />
           <Link href={href} className="mt-2 text-lg font-semibold leading-tight underline-offset-2 hover:underline">
@@ -82,23 +91,34 @@ export function ProfileRail({
 
 export function HomeShell({
   title,
+  subtitle,
   left,
   right,
   children,
 }: {
-  // For a screen reader: the page's heading.
+  // The page's heading: for a screen reader only, unless there's a line under
+  // it (`subtitle`), when both show at the top of the feed.
   title: string;
+  subtitle?: string;
   left: ReactNode;
   right: ReactNode;
   children: ReactNode;
 }) {
   return (
     <main className="mx-auto grid max-w-[1140px] grid-cols-1 gap-6 px-4 pb-16 pt-3 md:grid-cols-[220px_minmax(0,1fr)] lg:grid-cols-[220px_minmax(0,560px)_300px] lg:justify-center lg:pt-5">
-      <h1 className="sr-only">{title}</h1>
+      {!subtitle && <h1 className="sr-only">{title}</h1>}
       <aside aria-label="Your profile" className="hidden md:sticky md:top-5 md:block md:self-start">
         {left}
       </aside>
-      <div className="flex min-w-0 flex-col gap-5">{children}</div>
+      <div className="flex min-w-0 flex-col gap-5">
+        {subtitle && (
+          <div className="px-1">
+            <h1 className="font-display text-3xl leading-tight">{title}</h1>
+            <p className="mt-1 text-body text-stone-600">{subtitle}</p>
+          </div>
+        )}
+        {children}
+      </div>
       <aside aria-label="Beside your feed" className="hidden flex-col gap-4 lg:sticky lg:top-5 lg:flex lg:self-start">
         {right}
       </aside>

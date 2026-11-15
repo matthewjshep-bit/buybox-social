@@ -5,15 +5,16 @@ import { DayFooter } from "@/components/home/day-reply";
 import { ActivityCard } from "@/components/profile-feed";
 import type { ClientCard } from "@/lib/client-feed";
 import { cn } from "@/lib/format";
-import { dayHeading } from "@/lib/profile";
+import { cardTime, dayHeading } from "@/lib/profile";
 import { duration } from "@/lib/shares";
 import { card as cardClass } from "@/lib/ui";
 
 // The agent's Clients stream: what their clients did on the homes they sent,
 // as anyone's own page shows it (one card per home per day, the photo large,
 // the spots they picked out, what they said), under day headings. Under each,
-// what only the agent sees, and Reply when what the client said is waiting on
-// them. It ends, with the way to older activity, rather than scrolling on.
+// the agent's own replies on that home, what only the agent sees, and Reply,
+// right there, to answer them on their link. It ends, with the way to older
+// activity, rather than scrolling on.
 
 const reelOf = (card: ClientCard) =>
   `/reel?${new URLSearchParams({
@@ -54,21 +55,41 @@ export function ClientFeed({ cards }: { cards: ClientCard[] }) {
                 nameHref={card.who.profileId ? `/people/${card.who.profileId}` : `/dashboard/shares/${card.who.shareId}`}
                 avatarPhoto={card.who.photo}
                 footer={
-                  <DayFooter
-                    info={
-                      <p className="flex flex-wrap items-center gap-x-1.5 text-[12px] leading-4 text-stone-500">
-                        <span className="inline-flex items-center gap-1">
-                          <Lock aria-hidden size={12} /> Only you see this
-                        </span>
-                        {card.seconds && <span>· Spent {duration(card.seconds)}</span>}
-                      </p>
-                    }
-                    reply={card.reply && { ...card.reply, name: card.who.name }}
-                    action={{
-                      href: `/dashboard/shares/${card.who.shareId}?tab=homes#home-${encodeURIComponent(card.home.key)}`,
-                      label: "Open their link",
-                    }}
-                  />
+                  <>
+                    {card.replies.length > 0 && (
+                      <ul aria-label="Your replies" className="mt-2 flex flex-col gap-2">
+                        {card.replies.map((reply, i) => (
+                          <li key={i} className="ml-6 rounded-2xl bg-brand/5 p-3 ring-1 ring-brand/15">
+                            <p className="line-clamp-4 break-words text-body leading-snug">
+                              <strong className="font-semibold">You</strong> {reply.body}
+                              <span className="whitespace-nowrap text-meta text-muted">
+                                {" "}
+                                · <time dateTime={reply.at}>{cardTime(reply.at)}</time>
+                              </span>
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <DayFooter
+                      info={
+                        <p className="flex flex-wrap items-center gap-x-1.5 text-[12px] leading-4 text-stone-500">
+                          <span className="inline-flex items-center gap-1">
+                            <Lock aria-hidden size={12} /> Only you see this
+                          </span>
+                          {card.seconds && <span>· Spent {duration(card.seconds)}</span>}
+                        </p>
+                      }
+                      reply={{
+                        shareId: card.who.shareId,
+                        listingKey: card.home.key,
+                        name: card.who.name,
+                        to: card.who.participantId,
+                      }}
+                      waiting={card.waiting}
+                      link={`/dashboard/shares/${card.who.shareId}?tab=homes#home-${encodeURIComponent(card.home.key)}`}
+                    />
+                  </>
                 }
               />
             ))}

@@ -105,7 +105,10 @@ test("a profile is one card per home per day, with the photo and the spots picke
   await expect(lena.getByRole("heading", { level: 1 })).toHaveText("Lena (you)");
   const main = lena.locator("main");
   await expect(main).toContainText(/Looking since \w+ · 2 homes/);
-  await expect(main).toContainText("2 liked · 0 passed · 1 comment");
+  // No counts and no filters to choose from: just what they've done.
+  await expect(main).not.toContainText("2 liked");
+  await expect(lena.getByRole("link", { name: "Comments", exact: true })).toHaveCount(0);
+  await expect(lena.getByRole("link", { name: "Edit profile" })).toHaveAttribute("href", "/people/me/edit");
   await expect(lena.getByText("Everyone can see this page. What you do on an agent's link never shows here.")).toBeVisible();
   await expect(lena.getByRole("button", { name: "Share my page" })).toBeVisible();
 
@@ -132,8 +135,7 @@ test("a profile is one card per home per day, with the photo and the spots picke
   await expect(card.locator("[data-pin=comment]")).toHaveAttribute("style", /left: ?55%; ?top: ?60%/);
 
   // A card shows its focus ring inside its rounded edge, where nothing cuts it off.
-  await lena.getByRole("link", { name: "Comments", exact: true }).focus();
-  await lena.keyboard.press("Tab");
+  await cardLinks(lena).first().focus();
   await expect(cardLinks(lena).first()).toBeFocused();
   expect(
     await cardLinks(lena)
@@ -141,19 +143,19 @@ test("a profile is one card per home per day, with the photo and the spots picke
       .evaluate((el) => [getComputedStyle(el).outlineStyle, parseFloat(getComputedStyle(el).outlineOffset)]),
   ).toEqual(["solid", -3]);
 
-  // Filters are links: what you said, what you passed on, what you liked. A
-  // home they liked isn't one they passed on, whatever they didn't like in it.
-  await lena.getByRole("link", { name: "Comments", exact: true }).click();
-  await expect(lena).toHaveURL(/\?show=comments$/);
-  await expect(lena.getByRole("link", { name: "Comments", exact: true })).toHaveAttribute("aria-current", "page");
+  // An address can still narrow it (what you said, what you passed on, what
+  // you liked), saying so, with the way back to all of it. A home they liked
+  // isn't one they passed on, whatever they didn't like in it.
+  await lena.goto(`${profileUrl}?show=comments`);
   await expect(cardLinks(lena)).toHaveCount(1);
   await expect(link).toBeVisible();
-  await lena.getByRole("link", { name: "Passed", exact: true }).click();
-  await expect(lena).toHaveURL(/\?show=passed$/);
+  await lena.goto(`${profileUrl}?show=passed`);
   await expect(lena.getByText("Nothing passed on yet.")).toBeVisible();
   await expect(cardLinks(lena)).toHaveCount(0);
-  await lena.getByRole("link", { name: "Liked", exact: true }).click();
+  await lena.goto(`${profileUrl}?show=liked`);
   await expect(cardLinks(lena)).toHaveCount(2);
+  await lena.getByRole("link", { name: "Remove Liked" }).click();
+  await expect(lena).toHaveURL(profileUrl);
   expect(pageErrors).toEqual([]);
 
   // Someone else, with scripts off: the same page, not theirs, and everything still works.
@@ -163,16 +165,16 @@ test("a profile is one card per home per day, with the photo and the spots picke
   await expect(visitor.getByRole("button", { name: "Share my page" })).toHaveCount(0);
   await expect(visitor.getByText(/agent's link never shows here/)).toHaveCount(0);
   await expect(cardOf(visitor, `${CORBEL}: ${sentence}`)).toContainText(`Lena ${sentence}`);
-  await visitor.getByRole("link", { name: "Comments", exact: true }).click();
-  await expect(visitor).toHaveURL(/\?show=comments$/);
+  await expect(visitor.getByRole("link", { name: "Edit profile" })).toHaveCount(0);
+  await visitor.goto(`${profileUrl}?show=comments`);
   await expect(cardLinks(visitor)).toHaveCount(1);
-  await visitor.getByRole("link", { name: "All", exact: true }).click();
+  await visitor.getByRole("link", { name: "Remove Comments" }).click();
   await expect(cardLinks(visitor)).toHaveCount(2);
   await expect(visitor.getByRole("link", { name: "Show earlier" })).toHaveCount(0);
 
   // What they love shows just those cards, until it's taken off.
   const loves = visitor.getByRole("group", { name: "Loves" });
-  await loves.getByRole("link", { name: "Loves Wraparound porch, 1 home" }).click();
+  await loves.getByRole("link", { name: "Loves Wraparound porch" }).click();
   await expect(visitor).toHaveURL(/\?about=Wraparound\+porch&side=like$/);
   await expect(cardLinks(visitor)).toHaveCount(1);
   await visitor.getByRole("link", { name: "Remove Wraparound porch" }).click();
@@ -374,14 +376,13 @@ test("what someone does on an agent's link never shows on their page", async ({ 
     const main = page.locator("main");
     await expect(page.getByRole("link", { name: `${LAKEVIEW}: liked this` })).toBeVisible();
     await expect(cardLinks(page)).toHaveCount(1);
-    await expect(main).toContainText("1 liked · 0 passed · 0 comments");
     await expect(main).toContainText("1 home");
     await expect(main).not.toContainText(QUILLAN);
     await expect(main).not.toContainText(SECRET);
     await expect(main).not.toContainText(/red front door|picket fence|Passes on|Yard/i);
-    await page.getByRole("link", { name: "Passed", exact: true }).click();
+    await page.goto(`${profileUrl}?show=passed`);
     await expect(page.getByText("Nothing passed on yet.")).toBeVisible();
-    await page.getByRole("link", { name: "Comments", exact: true }).click();
+    await page.goto(`${profileUrl}?show=comments`);
     await expect(page.getByText("No comments yet.")).toBeVisible();
     expect(await (await page.request.get(profileUrl)).text()).toContain(LAKEVIEW);
     for (const path of [profileUrl, `${profileUrl}?show=passed`, `${profileUrl}?show=comments`, `${profileUrl}?show=liked`]) {
@@ -890,7 +891,7 @@ test("the taste story is written from the data, and what someone switches off st
   const main = nadia.locator("main");
   await expect(async () => {
     await nadia.goto("/people/me");
-    await expect(main).toContainText("2 liked · 2 passed", { timeout: 1000 });
+    await expect(main.getByRole("group", { name: "Passes on" })).toBeVisible({ timeout: 1000 });
   }).toPass({ timeout: 20_000 });
   const profileUrl = nadia.url();
   const own = nadia.getByRole("region", { name: "Your taste" });
@@ -901,8 +902,8 @@ test("the taste story is written from the data, and what someone switches off st
   await expect(own).toContainText("You tend to like the vibe, and usually pass on the price.");
   await expect(own).toContainText("From your 2 likes and 2 passes · updated today");
   await expect(own).not.toContainText("Written by AI");
-  await expect(own.getByRole("group", { name: "Loves" }).getByRole("link")).toHaveText(["Vibe 2"]);
-  await expect(own.getByRole("group", { name: "Passes on" }).getByRole("link")).toHaveText(["Price 2"]);
+  await expect(own.getByRole("group", { name: "Loves" }).getByRole("link")).toHaveText(["Vibe"]);
+  await expect(own.getByRole("group", { name: "Passes on" }).getByRole("link")).toHaveText(["Price"]);
   // Liked twice and passed on twice: neither a love nor a pass.
   await expect(own.getByRole("link", { name: /Layout/ })).toHaveCount(0);
   expect(await own.innerText()).not.toMatch(NEVER_SAID);
@@ -926,7 +927,7 @@ test("the taste story is written from the data, and what someone switches off st
   await expect(vibe).toHaveAccessibleDescription("2 homes");
   await vibe.click();
   await expect(vibe).toHaveAttribute("aria-checked", "false");
-  await expect(own.getByRole("link", { name: "Loves Vibe, 2 homes, only you see this" })).toBeVisible();
+  await expect(own.getByRole("link", { name: "Loves Vibe, only you see this" })).toBeVisible();
   await expect(own).toContainText("You usually pass on the price.");
   await nadia.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
@@ -961,8 +962,7 @@ test("the taste story is written from the data, and what someone switches off st
   await expect(own).not.toContainText("pass on the price");
   await nadia.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
-  await expect(own.getByRole("group", { name: "Passes on" }).getByRole("link")).toHaveText(["Price 2"]);
-  await expect(nadia.getByRole("link", { name: "Passed", exact: true })).toBeVisible();
+  await expect(own.getByRole("group", { name: "Passes on" }).getByRole("link")).toHaveText(["Price"]);
 
   // Everyone else: nothing hints at the passes, not even a headline from the
   // homes they can't see; and with the vibe off there's nothing else to show.
@@ -973,9 +973,7 @@ test("the taste story is written from the data, and what someone switches off st
     "content",
     "What Nadia likes in homes, on Porchcard.",
   );
-  const counts = visitor.locator("main section").first();
-  await expect(counts).toContainText("2 liked · 0 comments");
-  await expect(counts).not.toContainText("passed");
+  await expect(visitor.locator("main section").first()).not.toContainText("passed");
   await expect(cardLinks(visitor)).toHaveCount(2);
   await visitor.goto(`${profileUrl}?show=passed`);
   await expect(visitor.getByText("Nadia keeps passes private.")).toBeVisible();
@@ -991,12 +989,12 @@ test("the taste story is written from the data, and what someone switches off st
   await nadia.getByRole("button", { name: "Not quite right?" }).click();
   await sheet.getByRole("switch", { name: "Show Vibe in my taste" }).click();
   await expect(sheet.getByRole("switch", { name: "Show Vibe in my taste" })).toHaveAttribute("aria-checked", "true");
-  await expect(own.getByRole("link", { name: "Loves Vibe, 2 homes" })).toBeVisible();
+  await expect(own.getByRole("link", { name: "Loves Vibe" })).toBeVisible();
   await nadia.keyboard.press("Escape");
   // (Once it's saved: the switch shows the change before it is.)
   await expect(async () => {
     await visitor.goto(profileUrl);
-    await expect(theirs.getByRole("group", { name: "Loves" }).getByRole("link")).toHaveText(["Vibe 2"], { timeout: 1000 });
+    await expect(theirs.getByRole("group", { name: "Loves" }).getByRole("link")).toHaveText(["Vibe"], { timeout: 1000 });
   }).toPass({ timeout: 20_000 });
   await expect(theirs.getByRole("group", { name: "Passes on" })).toHaveCount(0);
   await expect(theirs).not.toContainText(/tends to like|usually|From Nadia|Like a few more/);
@@ -1201,7 +1199,6 @@ test("on your own page you can take back a like or a comment, and nobody else ca
   await options.click();
   await row("Remove my like").click();
   await expect(card("commented on this home")).toBeVisible();
-  await expect(pia.locator("main")).toContainText("0 liked · 0 passed · 2 comments");
   for (const words of [FIRST, SECOND]) {
     await options.click();
     await expect(deleteOf(words)).not.toHaveAttribute("aria-disabled");
