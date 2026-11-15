@@ -4,13 +4,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { after } from "next/server";
 import { cache, type CSSProperties } from "react";
+import { EditAbout } from "@/app/people/[id]/about";
 import { FollowButton, Toast } from "@/app/people/[id]/client";
+import { BetweenCard } from "@/components/between-card";
 import { ProfileFeed } from "@/components/profile-feed";
 import { ProfileHeader } from "@/components/profile-header";
 import { TasteControls } from "@/components/taste-controls";
 import { TasteStoryCard } from "@/components/taste-story-card";
 import { EmptyState } from "@/components/ui";
 import { getCurrentUser } from "@/lib/auth";
+import { getBetween } from "@/lib/between";
 import { readDevice } from "@/lib/engagement";
 import { follows, getFollowCounts } from "@/lib/follows";
 import { cn } from "@/lib/format";
@@ -142,6 +145,10 @@ export default async function ProfilePage({ params, searchParams }: Props) {
     follows(visitor?.id, person.id),
     visitor ? follows(person.id, visitor.id) : false,
   ]);
+  // What's between whoever's looking and them: the links they're both on.
+  // First on the page, for the one looking only.
+  const between =
+    !isMe && account?.role && person.accountId ? await getBetween(account.id, person.accountId) : [];
 
   // The same page with other filters; paging starts over.
   const href = (next: { show?: ProfileShow; about?: string | null; side?: TopicSide; before?: string | null }) => {
@@ -208,6 +215,12 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                 }
               : undefined
           }
+          bio={person.bio}
+          links={person.links}
+          brokerage={person.brokerage}
+          editAbout={
+            isMe && account?.role ? <EditAbout bio={person.bio} links={person.links} agent={person.isAgent} /> : undefined
+          }
           follow={
             isMe ? undefined : (
               <FollowButton
@@ -219,6 +232,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
             )
           }
         />
+        {between.length > 0 && <BetweenCard id="between-phone" links={between} name={name} className="lg:hidden" />}
         {showTaste && (
           <TasteStoryCard
             name={name}
@@ -248,6 +262,9 @@ export default async function ProfilePage({ params, searchParams }: Props) {
       </div>
 
       <div className="mt-3 min-w-0 lg:mt-0">
+        {between.length > 0 && (
+          <BetweenCard id="between-wide" links={between} name={name} className="mb-4 hidden lg:block" />
+        )}
         {nothingYet ? (
           isMe ? (
             <EmptyState

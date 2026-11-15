@@ -254,7 +254,7 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
 
   // Signed-out visitors are asked to sign up, right there, on their first like.
   const anon = await (await browser.newContext()).newPage();
-  await anon.goto("/");
+  await anon.goto("/reel");
   await heartOf(anon.getByRole("article").first()).click();
   const join = anon.getByRole("dialog", { name: "Sign up to like and comment" });
   await expect(join.getByRole("textbox", { name: "First name" })).toBeVisible();

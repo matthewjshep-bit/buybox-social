@@ -162,12 +162,15 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await buyer.goto("/picks");
   await expect(buyer).toHaveURL(/localhost:\d+\/$/);
 
-  // Signed out, it opens on what this is and a way to sign up, then homes,
-  // and there's a page for agents.
+  // Signed out, the home page says what this is, Browse homes opens on a way
+  // to sign up, then homes, and there's a page for agents.
   const anon = await (await browser.newContext()).newPage();
   await anon.goto("/");
   await expect(anon.getByRole("heading", { level: 1 })).toHaveText("The social way to shop for homes.");
+  await expect(anon.getByRole("main").getByRole("link", { name: "Sign up" })).toHaveAttribute("href", "#start");
+  await anon.goto("/reel");
   await expect(anon.getByRole("article").first()).toBeAttached();
+  await anon.goto("/");
   await expect(anon.getByRole("banner").getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
   await anon.goto("/for-agents");
   await expect(anon.getByRole("heading", { level: 1 })).toHaveText("Know what your clients think of every home.");

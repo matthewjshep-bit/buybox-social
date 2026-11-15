@@ -18,10 +18,24 @@ async function swipeUp(page: Page) {
   await touch("touchEnd");
 }
 
-test("signed out, the home page says what this is, shows three homes, then asks you to sign up", async ({ page }) => {
+test("signed out, the home page says what this is; Browse homes shows three homes, then asks you to sign up", async ({ page }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
+
+  // The home page: what this is, for agents and for buyers, and a way to start.
   await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("The social way to shop for homes.");
+  await expect(page.getByRole("heading", { level: 2, name: "Send a few homes. Learn exactly what they want." })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "Shop for homes together." })).toBeVisible();
+  await expect(page.getByRole("article")).toHaveCount(0);
+  // One thing to do: Sign up, which goes to the form at its foot.
+  const main = page.getByRole("main");
+  await expect(main.getByRole("link")).toHaveText(["Sign up"]);
+  await main.getByRole("link", { name: "Sign up" }).click();
+  await expect(main.getByRole("form", { name: "Sign up" })).toBeInViewport();
+
+  // Browse homes, signed out: what this is again, three homes, then sign up.
+  await page.goto("/reel");
 
   // First: what this is, and a short form.
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("The social way to shop for homes.");
@@ -64,11 +78,12 @@ test("signed out, the home page says what this is, shows three homes, then asks 
   await gate.getByRole("button", { name: "Sign up free" }).click();
   await enterCode(page.getByRole("form", { name: "Sign up" }).last());
   await expect(page.getByRole("button", { name: "Your profile" })).toHaveText("R");
-  await expect(page).toHaveURL(/localhost:\d+\/$/);
+  await expect(page).toHaveURL(/localhost:\d+\/reel$/);
 
   // Signed in, the home page is their feed, with every home one tap away,
   // for as long as they scroll.
   await expect(page.getByRole("form", { name: "Sign up" })).toHaveCount(0);
+  await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Hi, Robin");
   await page.getByRole("link", { name: "Browse homes" }).first().click();
   await page.waitForURL(/\/reel$/);
@@ -82,7 +97,7 @@ test("signed out, the home page says what this is, shows three homes, then asks 
 test("on a phone, the welcome fits under the header, and a swipe on it goes on to the homes", async ({ browser }) => {
   for (const options of [SMALL, ON_ITS_SIDE]) {
     const page = await (await browser.newContext(options)).newPage();
-    await page.goto("/");
+    await page.goto("/reel");
     const name = `${options.viewport.width}x${options.viewport.height}`;
     // All of it on screen, from the headline to the way to the homes, and
     // nothing of it under the header's buttons.

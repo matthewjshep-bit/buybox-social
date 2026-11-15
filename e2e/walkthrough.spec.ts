@@ -74,7 +74,7 @@ test("an agent's link nudges a first-timer: swipe for photos, then on to the nex
   await expect(deskHome.getByText("Swipe up for the next home")).toBeHidden();
 
   // The public feed has no walkthrough.
-  await page.goto("/");
+  await page.goto("/reel");
   await expect(page.getByRole("article").first()).toBeVisible();
   await page.waitForTimeout(2000);
   await expect(nudge(page)).toHaveCount(0);

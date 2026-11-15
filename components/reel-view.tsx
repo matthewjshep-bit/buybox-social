@@ -1,13 +1,13 @@
 import type { ComponentProps } from "react";
-import { redirect } from "next/navigation";
 import { loadOrderedReel } from "@/app/reel/actions";
 import { FeedEnd } from "@/components/feed-end";
+import { JoinGate, JoinIntro } from "@/components/join";
 import { commentParam, photoParam, PUBLIC_PROMPT, publicReelActions } from "@/components/listing-detail";
 import { OrderedReel } from "@/components/ordered-reel";
 import { QuickSendReel } from "@/components/quick-send";
 import { ReelFeed } from "@/components/reel";
 import { SiteHeader } from "@/components/site-header";
-import { getCurrentUser } from "@/lib/auth";
+import { devLoginEnabled, getCurrentUser } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
 import { getReel, REEL_PAGE } from "@/lib/feed";
 import { getPublicIdentity } from "@/lib/public";
@@ -15,6 +15,9 @@ import { filtersOf, homesFrom } from "@/lib/reel-from";
 import { getTaste } from "@/lib/taste";
 
 export type ReelParams = Record<string, string | string[] | undefined>;
+
+// How many homes someone signed out sees before they're asked to sign up.
+const FREE_HOMES = 3;
 
 // Homes one after another, full screen or (opened from a feed or someone's
 // page, `contained`) on a stage over it. From a feed (`?from=feed`, someone's
@@ -35,8 +38,31 @@ export async function ReelView({ params, contained = false }: { params: ReelPara
   const ordered = from ? await homesFrom(from, filtersOf(params)) : null;
 
   if (!ordered) {
-    // Signed out, the home page shows a few, then asks them to sign up.
-    if (!viewer) redirect("/");
+    // Signed out: a few homes, opening on what this is and a short sign-up
+    // form, then asking them to sign up to see the rest.
+    if (!viewer) {
+      const posts = await getReel(viewer, device, taste);
+      const free = posts.slice(0, FREE_HOMES);
+      // The next home waits, blurred, behind the sign-up.
+      const next = (posts[FREE_HOMES] ?? free.at(-1))?.listing.Media[0];
+      return (
+        <ReelFeed
+          // Signing up comes back to this page: their homes, not this one's state.
+          key="guest"
+          initial={free}
+          mode="public"
+          contained={contained}
+          actions={publicReelActions}
+          myName={name}
+          prompt={PUBLIC_PROMPT}
+          header={contained ? undefined : <SiteHeader overlay />}
+          intro={<JoinIntro photo={free[0]?.listing.Media[0]} devMode={devLoginEnabled} />}
+          // How it works, the first time, once they're on the first home.
+          tour="home"
+          end={<JoinGate photo={next} devMode={devLoginEnabled} />}
+        />
+      );
+    }
     // Opened on a home picked for them (from their feed), then the rest.
     const [picked] = start ? await getReel(viewer, device, taste, { only: [start], limit: 1 }) : [];
     const rest = await getReel(viewer, device, taste, picked ? { exclude: [picked.listing.ListingKey] } : {});

@@ -156,3 +156,47 @@ export async function setMyPhoto(photo: string): Promise<ActionResult> {
   refresh();
   return { ok: true };
 }
+
+// What you say about yourself at the top of your page, and (an agent) a few
+// links: each http(s), a bare address taken as https. Only ever your own.
+const BIO_MOST = 300;
+const LINKS_MOST = 5;
+const aboutLink = z.object({
+  label: z.string().trim().max(40),
+  url: z.string().trim().min(1).max(300),
+});
+
+function linkUrl(raw: string): string | null {
+  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
+  try {
+    const url = new URL(withScheme);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    if (!url.hostname.includes(".")) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+export async function saveAbout(bio: string, links: { label: string; url: string }[]): Promise<ActionResult> {
+  if (typeof bio !== "string" || !Array.isArray(links)) return fail("We couldn't save that.");
+  const text = bio.replace(/\r\n/g, "\n").trim();
+  if (text.length > BIO_MOST) return fail(`Keep it to ${BIO_MOST} characters.`);
+  const account = await getCurrentUser();
+  if (!account?.role) return fail("Sign in to edit your page.");
+  const kept: { label: string; url: string }[] = [];
+  if (account.role === "agent") {
+    const parsed = z.array(aboutLink).max(LINKS_MOST).safeParse(links.filter((link) => link?.url?.trim()));
+    if (!parsed.success) return fail(`Up to ${LINKS_MOST} links, each a web address.`);
+    for (const link of parsed.data) {
+      const url = linkUrl(link.url);
+      if (!url) return fail(`“${link.url}” doesn't look like a web address.`);
+      kept.push({ label: link.label, url });
+    }
+  }
+  await sql`
+    update accounts set bio = ${text}, profile_links = ${sql.json(kept)}
+    where id = ${account.id}`;
+  refresh();
+  return { ok: true };
+}

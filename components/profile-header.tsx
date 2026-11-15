@@ -1,11 +1,11 @@
-import { Globe, Images, Link2 } from "lucide-react";
+import { ExternalLink, Globe, Images, Link2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AddFirstName, PhotoControls, ShareMyPage } from "@/app/people/[id]/client";
 import { Avatar, Badge } from "@/components/ui";
 import { cn } from "@/lib/format";
-import { sinceLabel } from "@/lib/profile";
+import { sinceLabel, type ProfileLink } from "@/lib/profile";
 import { button, card } from "@/lib/ui";
 
 // The top of someone's page: a band from the photo they liked most, their
@@ -31,6 +31,10 @@ export function ProfileHeader({
   follow,
   photo,
   client,
+  bio = "",
+  links = [],
+  brokerage = "",
+  editAbout,
 }: {
   name: string;
   // What their initial is from, if not their name ("" for a plain figure).
@@ -56,6 +60,12 @@ export function ProfileHeader({
   // To an agent, their own client: every home sent them (`homes`), and the
   // link they're on (`link`).
   client?: { homes: string; link: string };
+  // What they say about themselves, an agent's links, and their brokerage.
+  bio?: string;
+  links?: ProfileLink[];
+  brokerage?: string;
+  // On your own page: the way to edit the words and links.
+  editAbout?: ReactNode;
 }) {
   return (
     <section aria-labelledby="profile-name" className={cn(card, "overflow-hidden")}>
@@ -94,9 +104,28 @@ export function ProfileHeader({
         {isMe && unnamed && <AddFirstName />}
         {isMe && <PhotoControls hasPhoto={Boolean(photo)} />}
         <p className="mt-1 text-body text-muted">
-          Looking since {sinceLabel(since)}
+          {agent ? `${brokerage || "Real estate agent"} · On Porchcard since` : "Looking since"} {sinceLabel(since)}
           {homes > 0 && ` · ${homes} ${homes === 1 ? "home" : "homes"}`}
         </p>
+        {bio && <p className="mt-3 whitespace-pre-line break-words text-body leading-relaxed text-ink">{bio}</p>}
+        {links.length > 0 && (
+          <ul aria-label={`${isMe ? "Your" : `${name}'s`} links`} className="mt-2 flex flex-col">
+            {links.map((link) => (
+              <li key={link.url}>
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow ugc"
+                  className="-ml-1 inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-lg px-1 text-body font-semibold text-brand hover:underline"
+                >
+                  <ExternalLink aria-hidden size={14} className="shrink-0" />
+                  <span className="truncate">{link.label || hostOf(link.url)}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+        {editAbout}
         {/* Nothing yet says itself below; three zeros here would only repeat it. */}
         {counts.liked + (showPassed ? counts.passed : 0) + counts.comments > 0 && (
           <p className="mt-2 text-body text-stone-700">
@@ -133,7 +162,9 @@ export function ProfileHeader({
           <>
             <p className="mt-3 flex gap-1.5 text-meta leading-snug text-muted">
               <Globe aria-hidden size={14} className="mt-0.5 shrink-0" />
-              Everyone can see this page. What you do on an agent&apos;s link never shows here.
+              {agent
+                ? "Everyone can see this page, with what you like and note on the homes you send."
+                : "Everyone can see this page. What you do on an agent's link never shows here."}
             </p>
             <ShareMyPage title={unnamed ? "My page on Porchcard" : `${name} on Porchcard`} />
           </>
@@ -141,4 +172,13 @@ export function ProfileHeader({
       </div>
     </section>
   );
+}
+
+// "harborandpine.com", for a link with no name of its own.
+function hostOf(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
 }

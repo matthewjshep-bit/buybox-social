@@ -154,10 +154,10 @@ test("the first time, a quick tour shows what to tap, step by step, and then get
   await page.waitForTimeout(2000);
   await expect(page.locator("[data-tour-open]")).toHaveCount(0);
 
-  // The home page, signed out: the same, once they're on the first home, and Skip ends it.
+  // Browse homes, signed out: the same, once they're on the first home, and Skip ends it.
   const guest = await (await browser.newContext()).newPage();
   await withTour(guest);
-  await guest.goto("/");
+  await guest.goto("/reel");
   await guest.waitForTimeout(1500);
   await expect(guest.locator("[data-tour-open]")).toHaveCount(0);
   await guest.locator("[data-reel]").evaluate((reel) => reel.scrollTo({ top: reel.clientHeight }));

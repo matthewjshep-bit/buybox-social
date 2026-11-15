@@ -134,7 +134,7 @@ function SeeHomes() {
   );
 }
 
-function SignUpForm({ devMode, className }: { devMode: boolean; className?: string }) {
+export function SignUpForm({ devMode, className }: { devMode: boolean; className?: string }) {
   const router = useRouter();
   return (
     // Light, over the dark reel: the brand focus ring inside it.

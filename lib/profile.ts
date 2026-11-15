@@ -508,9 +508,13 @@ export const getProfilePerson = cache(async (visitorId: string) => {
       taste_hidden: unknown;
       is_agent: boolean;
       photo_v: string | null;
+      account_id: string | null;
+      bio: string | null;
+      profile_links: unknown;
+      brokerage: string | null;
     }[]
   >`
-    select v.id, v.created_at, v.hide_passes, v.taste_hidden,
+    select v.id, v.created_at, v.hide_passes, v.taste_hidden, a.id as account_id, a.bio, a.profile_links, a.brokerage,
       -- An account with no name yet has none here either, even where an
       -- older visitor row stood in with "Someone".
       case when a.id is not null and btrim(a.full_name) = '' then '' else v.first_name end as first_name,
@@ -529,10 +533,29 @@ export const getProfilePerson = cache(async (visitorId: string) => {
     hidePasses: visitor.hide_passes,
     // Lower-case keys of the things their taste says that they've switched off.
     tasteHidden: hidden.filter((key): key is string => typeof key === "string").map((key) => key.toLowerCase()),
+    // Their account, once they've signed up (whose links they're on).
+    accountId: visitor.account_id,
+    // What they say about themselves, and an agent's links and brokerage.
+    bio: visitor.bio?.trim() ?? "",
+    links: visitor.is_agent ? profileLinksOf(visitor.profile_links) : [],
+    brokerage: visitor.is_agent ? (visitor.brokerage?.trim() ?? "") : "",
   };
 });
 
 export type ProfilePerson = NonNullable<Awaited<ReturnType<typeof getProfilePerson>>>;
+
+export type ProfileLink = { label: string; url: string };
+
+// An agent's links as stored, kept to what's safe to show: http(s) only.
+export function profileLinksOf(value: unknown): ProfileLink[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): ProfileLink[] => {
+    if (!item || typeof item !== "object") return [];
+    const { label, url } = item as Record<string, unknown>;
+    if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return [];
+    return [{ label: typeof label === "string" ? label : "", url }];
+  });
+}
 
 export const photoOf = (listing: Listing, mediaKey: string) => listing.Media.find((m) => mediaKeyOf(m) === mediaKey);
 

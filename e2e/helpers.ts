@@ -52,8 +52,8 @@ export async function createShare(page: Page, addresses: string[], people: strin
   return { url: urls[people[0]], urls, dashboardUrl: page.url().split("?")[0] };
 }
 
-// A buyer signs up the way buyers do: the form on the home page, a first name
-// and an email, then the code (locally, always DEV_CODE, shown on the page).
+// A buyer signs up the way buyers do: the form at the foot of the home page,
+// a first name and an email, then the code (locally, always DEV_CODE, shown on the page).
 // They're signed in right there: the home page is their feed now. Then on to
 // every home full screen (Browse homes), where most tests carry on. The phone
 // is optional.
