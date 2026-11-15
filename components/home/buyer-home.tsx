@@ -189,6 +189,7 @@ export function BuyerHome({
               <FollowingFeed
                 entries={feed}
                 mine={mine}
+                me={me}
                 seenAt={seenAt}
                 suggestions={suggestions}
                 empty={

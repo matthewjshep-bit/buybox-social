@@ -33,7 +33,6 @@ test("whoever wants a showing leads the Clients page, with Reply, until the agen
   // opened yet, with his link to copy; the link with nobody on it last.
   await fern.goto("/dashboard");
   await expect(fern.getByRole("heading", { level: 1 })).toHaveText("Clients");
-  await expect(fern.getByRole("main")).toContainText("2 clients");
   await expect(fern.getByRole("heading", { level: 2 })).toHaveText([
     /^Waiting for you\s*1$/,
     /^Haven't opened yet\s*1$/,

@@ -92,7 +92,7 @@ export async function ReelView({ params, contained = false }: { params: ReelPara
   if (start && !keys.includes(start)) keys.unshift(start);
   // Everything up to the one tapped, and a few after; the rest as you go.
   const first = keys.slice(0, (start ? keys.indexOf(start) : 0) + REEL_PAGE);
-  const posts = first.length ? await getReel(viewer, device, taste, { only: first, limit: first.length }) : [];
+  const posts = first.length ? await getReel(viewer, device, taste, { only: first, limit: first.length, people: ordered.people }) : [];
   return (
     <OrderedReel
       query={ordered.query}

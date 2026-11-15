@@ -50,14 +50,7 @@ export default async function ClientsPage() {
     <>
       <LiveRefresh />
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-        <div>
-          <h1 className="font-display text-4xl">Clients</h1>
-          {clients.length > 0 && (
-            <p className="mt-1 text-lg text-stone-600">
-              {clients.length} {clients.length === 1 ? "client" : "clients"}
-            </p>
-          )}
-        </div>
+        <h1 className="font-display text-4xl">Clients</h1>
         <Link href="/dashboard/new" className={cn(button({ kind: "primary", size: "lg" }), "shrink-0 whitespace-nowrap")}>
           <Plus aria-hidden size={20} /> Send homes
         </Link>
@@ -69,13 +62,8 @@ export default async function ClientsPage() {
         </EmptyState>
       ) : (
         <>
-          <Group
-            title="Waiting for you"
-            note="They asked to see a home or said something. Reply when you can."
-            tone="attention"
-            clients={waiting}
-          />
-          <Group title="Haven't opened yet" note="Copy their link and send it again by text or email." clients={unopened} />
+          <Group title="Waiting for you" tone="attention" clients={waiting} />
+          <Group title="Haven't opened yet" clients={unopened} />
           <Group title={waiting.length + unopened.length > 0 ? "Other clients" : "Your clients"} clients={others} />
           {unclaimed.length > 0 && (
             <section id="links" aria-labelledby="unclaimed-title" className="mt-12 scroll-mt-4">

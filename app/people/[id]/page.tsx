@@ -6,6 +6,7 @@ import { after } from "next/server";
 import { cache, type CSSProperties } from "react";
 import { FollowButton, Toast } from "@/app/people/[id]/client";
 import { BetweenCard } from "@/components/between-card";
+import { PostComposer } from "@/components/post-composer";
 import { ProfileFeed } from "@/components/profile-feed";
 import { ProfileHeader } from "@/components/profile-header";
 import { TasteControls } from "@/components/taste-controls";
@@ -263,6 +264,9 @@ export default async function ProfilePage({ params, searchParams }: Props) {
       <div className="mt-3 min-w-0 lg:mt-0 xl:col-start-2 xl:row-start-1">
         {between.length > 0 && (
           <BetweenCard id="between-wide" links={between} name={name} className="mb-4 hidden lg:block" />
+        )}
+        {isMe && show === "all" && !about && !before && (
+          <PostComposer me={{ name: face || name, photo: person.photo, agent: person.isAgent }} />
         )}
         {nothingYet ? (
           isMe ? (

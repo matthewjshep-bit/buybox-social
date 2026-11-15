@@ -57,15 +57,14 @@ test("an agent's home is calm: their clients as people, what each did as big car
 
   // Reply, right on the card, filled while she's waiting: once answered,
   // the answer is under what she said, and she isn't waiting any more.
-  const reply = card.getByRole("button", { name: "Reply to Kit" });
-  await expect(reply).toHaveClass(/bg-brand/);
-  await reply.click();
-  await card.getByRole("textbox", { name: "Reply to Kit" }).fill("Plenty: it faces west.");
+  const reply = card.getByRole("textbox", { name: "Reply to Kit" });
+  await expect(reply).toHaveClass(/ring-amber/);
+  await reply.fill("Plenty: it faces west.");
   await card.getByRole("button", { name: "Send", exact: true }).click();
   await expect(card.getByRole("status")).toContainText("Sent to Kit");
   await agent.reload();
-  await expect(card.getByRole("list", { name: "Your replies" })).toContainText("You Plenty: it faces west.");
-  await expect(card.getByRole("button", { name: "Reply to Kit" })).not.toHaveClass(/bg-brand/);
+  await expect(card.getByRole("list", { name: "Your replies" })).toContainText("Plenty: it faces west.");
+  await expect(card.getByRole("textbox", { name: "Reply to Kit" })).not.toHaveClass(/ring-amber/);
   await expect(kitThere).toContainText("Liked 1 of 2 homes");
 });
 

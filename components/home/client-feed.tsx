@@ -1,19 +1,18 @@
-import { Lock } from "lucide-react";
 import Link from "next/link";
 import { CaughtUp } from "@/components/home/caught-up";
-import { DayFooter } from "@/components/home/day-reply";
+import { InlineReply } from "@/components/home/day-reply";
+import { CommentBubble } from "@/components/comment-bubble";
 import { ActivityCard } from "@/components/profile-feed";
 import type { ClientCard } from "@/lib/client-feed";
 import { cn } from "@/lib/format";
 import { cardTime, dayHeading } from "@/lib/profile";
-import { duration } from "@/lib/shares";
 import { card as cardClass } from "@/lib/ui";
 
 // The agent's Clients stream: what their clients did on the homes they sent,
 // as anyone's own page shows it (one card per home per day, the photo large,
 // the spots they picked out, what they said), under day headings. Under each,
-// the agent's own replies on that home, what only the agent sees, and Reply,
-// right there, to answer them on their link. It ends, with the way to older
+// the agent's own replies on that home, as Facebook shows comments, and a box
+// right there to answer them on their link. It ends, with the way to older
 // activity, rather than scrolling on.
 
 const reelOf = (card: ClientCard) =>
@@ -23,7 +22,7 @@ const reelOf = (card: ClientCard) =>
     ...(card.photo && { photo: String(card.photo.index) }),
   })}`;
 
-export function ClientFeed({ cards }: { cards: ClientCard[] }) {
+export function ClientFeed({ cards, me }: { cards: ClientCard[]; me: { name: string; photo: string | null } }) {
   if (cards.length === 0) {
     return (
       <p className={cn(cardClass, "px-5 py-6 text-center text-body text-stone-700")}>
@@ -54,32 +53,28 @@ export function ClientFeed({ cards }: { cards: ClientCard[] }) {
                 href={reelOf(card)}
                 nameHref={card.who.profileId ? `/people/${card.who.profileId}` : `/dashboard/shares/${card.who.shareId}`}
                 avatarPhoto={card.who.photo}
+                only
                 footer={
                   <>
                     {card.replies.length > 0 && (
-                      <ul aria-label="Your replies" className="mt-2 flex flex-col gap-2">
+                      <ul aria-label="Your replies" className="mt-2 flex flex-col gap-2 pl-10">
                         {card.replies.map((reply, i) => (
-                          <li key={i} className="ml-6 rounded-2xl bg-brand/5 p-3 ring-1 ring-brand/15">
-                            <p className="line-clamp-4 break-words text-body leading-snug">
-                              <strong className="font-semibold">You</strong> {reply.body}
-                              <span className="whitespace-nowrap text-meta text-muted">
-                                {" "}
-                                · <time dateTime={reply.at}>{cardTime(reply.at)}</time>
-                              </span>
-                            </p>
+                          <li key={i}>
+                            <CommentBubble
+                              name="You"
+                              face={me.name}
+                              photo={me.photo}
+                              agent
+                              meta={<time dateTime={reply.at}>{cardTime(reply.at)}</time>}
+                            >
+                              {reply.body}
+                            </CommentBubble>
                           </li>
                         ))}
                       </ul>
                     )}
-                    <DayFooter
-                      info={
-                        <p className="flex flex-wrap items-center gap-x-1.5 text-[12px] leading-4 text-stone-500">
-                          <span className="inline-flex items-center gap-1">
-                            <Lock aria-hidden size={12} /> Only you see this
-                          </span>
-                          {card.seconds && <span>· Spent {duration(card.seconds)}</span>}
-                        </p>
-                      }
+                    <InlineReply
+                      me={me}
                       reply={{
                         shareId: card.who.shareId,
                         listingKey: card.home.key,
@@ -87,8 +82,8 @@ export function ClientFeed({ cards }: { cards: ClientCard[] }) {
                         to: card.who.participantId,
                       }}
                       waiting={card.waiting}
-                      link={`/dashboard/shares/${card.who.shareId}?tab=homes#home-${encodeURIComponent(card.home.key)}`}
                     />
+                    <div className="h-3" />
                   </>
                 }
               />

@@ -65,6 +65,9 @@ export type ReelScope = {
   // filters that hold.
   query: string;
   filters: CheckedFilters;
+  // One client's homes: the places on the agent's links that are them, so
+  // each home says only what they did on it, not what everyone else did.
+  people?: string[];
 };
 
 const ALL: CheckedFilters = { show: "all", about: null, side: null };
@@ -296,6 +299,7 @@ async function clientScope(agent: Account, participantId: string): Promise<ReelS
     },
     query: new URLSearchParams({ from: `client:${them.id}` }).toString(),
     filters: ALL,
+    people: ids,
   };
 }
 

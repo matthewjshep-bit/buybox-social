@@ -3,6 +3,8 @@
 import { refresh } from "next/cache";
 import { getCurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { escapeLike } from "@/lib/format";
+import type { Listing } from "@/lib/listings/types";
 import {
   commentSchema,
   ensureDevice,
@@ -161,6 +163,8 @@ async function saveComment(
   parentId: string | null,
   // A spot in a photo it's about, if any. Replies are about what they answer.
   spot: unknown = null,
+  // Started from their own page, about a home they picked there.
+  posted = false,
 ): Promise<ActionResult> {
   const parsed = commentSchema.safeParse(body);
   if (!parsed.success) return fail("Comments can be up to 1,000 characters.");
@@ -202,9 +206,9 @@ async function saveComment(
   if (count >= MAX_COMMENTS_PER_MINUTE) return fail("Slow down a little, then try again.");
 
   await sql`
-    insert into public_comments (listing_key, visitor_id, body, parent_id, reply_to_visitor, media_key, spot)
+    insert into public_comments (listing_key, visitor_id, body, parent_id, reply_to_visitor, media_key, spot, posted)
     values (${listingKey}, ${visitor.id}, ${parsed.data}, ${parent}::uuid, ${replyTo}::uuid,
-      ${anchor?.mediaKey ?? null}, ${anchor?.tag ?? null})`;
+      ${anchor?.mediaKey ?? null}, ${anchor?.tag ?? null}, ${posted && parent === null && replyTo === null})`;
   return { ok: true };
 }
 
@@ -255,6 +259,53 @@ export async function commentInReel(
   spot: unknown = null,
 ): Promise<ActionResult> {
   return saveComment(listingKey, body, parentId, spot);
+}
+
+// A post from someone's own page: a few words about a home they picked
+// there, which goes on their page, in their followers' feeds and in the
+// home's conversation.
+export async function postAboutHome(listingKey: string, body: string): Promise<ActionResult> {
+  if (typeof listingKey !== "string" || listingKey.length > 100) return fail("That home isn't for sale anymore.");
+  if (typeof body !== "string" || !body.trim()) return fail("Say something about the home first.");
+  const result = await saveComment(listingKey, body.trim(), null, null, true);
+  if (result.ok) refresh();
+  return result;
+}
+
+export type HomeToPost = {
+  key: string;
+  address: string;
+  city: string;
+  price: number;
+  beds: number;
+  baths: number;
+  photo: string | null;
+};
+
+// Homes for sale to post about, by address, city, zip or MLS number: a few.
+export async function findHomesToPost(query: string): Promise<HomeToPost[]> {
+  if (typeof query !== "string") return [];
+  const text = query.trim().slice(0, 100);
+  if (text.length < 2) return [];
+  const pattern = `%${escapeLike(text)}%`;
+  const rows = await sql<{ data: Listing }[]>`
+    select data from listings
+    where standard_status = 'Active'
+      and (data->>'UnparsedAddress' ilike ${pattern}
+        or data->>'City' ilike ${pattern}
+        or data->>'PostalCode' ilike ${pattern}
+        or data->>'ListingId' ilike ${pattern})
+    order by (data->>'UnparsedAddress' ilike ${`${escapeLike(text)}%`}) desc, updated_at desc, listing_key
+    limit 6`;
+  return rows.map(({ data }) => ({
+    key: data.ListingKey,
+    address: data.UnparsedAddress,
+    city: data.City,
+    price: data.ListPrice,
+    beds: data.BedroomsTotal,
+    baths: data.BathroomsTotalInteger,
+    photo: [...data.Media].sort((a, b) => a.Order - b.Order)[0]?.MediaURL ?? null,
+  }));
 }
 
 export async function likeCommentInReel(commentId: string, liked: boolean): Promise<ActionResult> {

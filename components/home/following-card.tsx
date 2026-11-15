@@ -1,7 +1,9 @@
 import { ArrowRight } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { CommentBubble } from "@/components/comment-bubble";
 import { FeedHeart } from "@/components/home/feed-heart";
+import { InlineComment } from "@/components/home/inline-comment";
 import { Avatar, Badge, HomeThumb } from "@/components/ui";
 import { cn, formatPrice } from "@/lib/format";
 import type { FeedWho, HomeFeedEntry } from "@/lib/home-feed";
@@ -10,7 +12,8 @@ import type { ReactionState } from "@/lib/reactions";
 import { card } from "@/lib/ui";
 
 // One home in the Following stream: who liked it (or said something about
-// it), the home large, its facts, a heart to like it too, and what they said.
+// it), the home large, its facts, a heart to like it too, what they said, and
+// a box to say something too, with your face beside it.
 // The whole card opens the stream's homes in the pop-out, on this one, on the
 // photo it's about; the names go to each person's page.
 
@@ -71,7 +74,16 @@ export function FaceStack({ who }: { who: FeedWho[] }) {
   );
 }
 
-export function FollowingCard({ entry, mine }: { entry: HomeFeedEntry; mine: ReactionState | null }) {
+export function FollowingCard({
+  entry,
+  mine,
+  me = null,
+}: {
+  entry: HomeFeedEntry;
+  mine: ReactionState | null;
+  // Who's looking, for the box to comment in under it.
+  me?: { name: string; photo: string | null } | null;
+}) {
   const { home, why } = entry;
   const label = `${home.address}: ${namesText(why.who)} ${why.sentence}`;
   return (
@@ -120,12 +132,20 @@ export function FollowingCard({ entry, mine }: { entry: HomeFeedEntry; mine: Rea
       {entry.said.length > 0 && (
         <ul className="flex flex-col gap-2 px-3.5 pt-3">
           {entry.said.map((quote, i) => (
-            <li key={i} className="line-clamp-4 break-words rounded-xl bg-stone-50 p-3 text-body leading-snug">
-              <strong className="font-semibold">{quote.who.name}</strong> “{quote.body}”
+            <li key={i}>
+              <CommentBubble
+                name={quote.who.name}
+                face={quote.who.face || quote.who.name}
+                photo={quote.who.photo}
+                agent={quote.who.agent}
+              >
+                {quote.body}
+              </CommentBubble>
             </li>
           ))}
         </ul>
       )}
+      {me && <InlineComment me={me} listingKey={home.key} address={home.address} />}
       <div className="h-3.5" />
     </li>
   );

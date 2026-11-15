@@ -6,7 +6,7 @@ test("an agent's home: their client as a person, what she said on her card with 
 }) => {
   test.setTimeout(120_000);
   const agent = await signInAgent(browser, "fern-feed@example.com", "Fern Feed");
-  const { url } = await createShare(agent, ["1204 Quillan", "719 Saltmarsh"], ["Jo"]);
+  const { url, dashboardUrl } = await createShare(agent, ["1204 Quillan", "719 Saltmarsh"], ["Jo"]);
 
   // Jo signs up right on her link, to like a home.
   const jo = await (await browser.newContext()).newPage();
@@ -20,8 +20,9 @@ test("an agent's home: their client as a person, what she said on her card with 
   // The agent's home: Jo among their clients, as a person, to her page;
   // and the way to send homes to anyone.
   await agent.goto("/");
+  // Plainly the agent's dashboard, in few words: no greeting to read past.
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Agent dashboard");
-  await expect(agent.getByRole("main")).toContainText("Hi Fern. Your clients, and what they think of the homes you send.");
+  await expect(agent.getByRole("main")).not.toContainText("Hi Fern");
   await expect(agent.getByRole("link", { name: "Send homes to a client" })).toHaveAttribute("href", "/dashboard/new?focus=to");
   const clients = agent.getByRole("region", { name: "Your clients" });
   await expect(clients.getByRole("link", { name: /^Jo\b/ })).toHaveAttribute("href", /^\/dashboard\/clients\/acct%3A[\w-]+$/);
@@ -41,17 +42,16 @@ test("an agent's home: their client as a person, what she said on her card with 
   await expect(clients.getByRole("link", { name: /^Jo\b/ })).toContainText("“Is the basement finished?”");
   const card = agent.getByRole("listitem").filter({ hasText: "Only you see this" }).filter({ hasText: "Is the basement finished?" });
   await expect(card).toContainText("1204 Quillan St SE");
-  await card.getByRole("button", { name: "Reply to Jo" }).click();
+  // As Facebook has it: the agent's own face, and a box to reply in, right there.
   const box = card.getByRole("textbox", { name: "Reply to Jo" });
-  await expect(box).toBeFocused();
+  await expect(box).toHaveAttribute("placeholder", "Reply to Jo…");
   await box.fill("Yes, it was finished in 2019.");
-  await card.getByRole("button", { name: "Send", exact: true }).click();
+  await box.press("Enter");
   // Sent from right there: the card says so and stays put.
   await expect(card.getByRole("status")).toContainText("Sent to Jo");
-  await expect(box).toHaveCount(0);
+  await expect(box).toHaveValue("");
   // It's in the conversation on her link: the agent's page for it shows it.
-  await card.getByRole("link", { name: "Open their link" }).click();
-  await agent.waitForURL(/\/dashboard\/shares\/[\w-]+\?tab=homes/);
+  await agent.goto(`${dashboardUrl}?tab=homes`);
   await expect(agent.getByText("Yes, it was finished in 2019.")).toBeVisible();
 
   // Answered, the answer is on her card, and Reply is there for more. Her card
@@ -59,7 +59,7 @@ test("an agent's home: their client as a person, what she said on her card with 
   // back where it was.
   await agent.goto("/");
   await expect(card.getByRole("list", { name: "Your replies" })).toContainText("Yes, it was finished in 2019.");
-  await expect(card.getByRole("button", { name: "Reply to Jo" })).toBeVisible();
+  await expect(card.getByRole("textbox", { name: "Reply to Jo" })).toBeVisible();
   const open = card.getByRole("link", { name: /^1204 Quillan St SE: / });
   await expect(open).toHaveAttribute("href", /^\/reel\?from=client%3A[\w-]+&home=SAMPLE-\d+/);
   await open.click();

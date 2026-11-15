@@ -71,7 +71,6 @@ export default async function Home({
     ]);
     return (
       <AgentHome
-        firstName={firstName(user)}
         me={{ ...me, brokerage: user.brokerage, brandColor: user.brand_color }}
         profileHref={profileHref}
         book={book}

@@ -51,6 +51,7 @@ export function FollowingFeed({
   seenAt,
   suggestions = [],
   empty,
+  me = null,
 }: {
   entries: HomeFeedEntry[];
   // Their own take on each home, by key, for the hearts.
@@ -61,6 +62,8 @@ export function FollowingFeed({
   suggestions?: (FeedWho & { profileId: string })[];
   // What to say when there's nothing at all.
   empty: ReactNode;
+  // Who's looking, for the box to comment in under each card.
+  me?: { name: string; photo: string | null } | null;
 }) {
   if (entries.length === 0) {
     return <div className={cn(card, "px-5 py-6 text-center text-body text-stone-700")}>{empty}</div>;
@@ -75,7 +78,7 @@ export function FollowingFeed({
     items.map((item, i) => (
       <Fragment key={item.kind === "card" ? item.entry.id : `strip:${item.entries[0].id}`}>
         {item.kind === "card" ? (
-          <FollowingCard entry={item.entry} mine={mine[item.entry.home.key] ?? null} />
+          <FollowingCard entry={item.entry} mine={mine[item.entry.home.key] ?? null} me={me} />
         ) : (
           <StripCard entries={item.entries} />
         )}
@@ -91,7 +94,7 @@ export function FollowingFeed({
           {seenAt ? `You've seen everything new ${sinceWords(seenAt)}` : "That's everything new from people you follow"}
         </CaughtUp>
       ) : (
-        <CaughtUp title="Nothing new from people you follow">Here&apos;s what they liked before</CaughtUp>
+        <CaughtUp title="Nothing new from people you follow" />
       )}
       {olderItems.length > 0 && <ul className="flex flex-col gap-4">{render(olderItems, freshItems.length)}</ul>}
     </div>

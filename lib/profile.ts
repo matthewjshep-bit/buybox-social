@@ -246,6 +246,8 @@ export type CommentRow = {
   // Replies from anyone else (unknown: treated as all of them).
   others_replies?: number;
   link?: boolean;
+  // A post: started from their own page, about a home they picked there.
+  posted?: boolean;
 };
 type CommentLikeRow = { listing_key: string; author: string; body: string; at: Date };
 
@@ -349,7 +351,7 @@ const loadRows = cache(async (visitorId: string, before: string | null, mine: bo
     // A reply is about whatever the comment it answers is about, and names
     // who wrote that (unless it was them).
     sql<CommentRow[]>`
-      select c.id, c.listing_key, c.body, c.created_at as at,
+      select c.id, c.listing_key, c.body, c.created_at as at, c.posted,
         coalesce(c.media_key, p.media_key) as media_key, coalesce(c.spot, p.spot) as spot,
         pv.id as reply_to_id, pv.first_name as reply_to_name,
         (select count(*)::int from public_comment_likes cl where cl.comment_id = c.id) as likes,
@@ -699,8 +701,12 @@ export function buildCards(rows: ProfileRows): ProfileCard[] {
         const spots = [...new Set(comments.map((c) => commentSpot(c)?.name ?? null))];
         return spots.length <= 2 && spots.every(Boolean) ? `commented on ${spots.join(" and ")}` : "commented on this home";
       };
+      // A post leads: that's what they came to say.
+      const posted = comments.some((c) => c.posted);
       let sentence: string;
-      if (b.reaction || likes.length || dislikes.length) {
+      if (posted) {
+        sentence = "posted about this home";
+      } else if (b.reaction || likes.length || dislikes.length) {
         sentence = sentenceOf(listing, b.reaction, likes, dislikes);
       } else if (comments.length) {
         sentence = commented();
@@ -716,8 +722,13 @@ export function buildCards(rows: ProfileRows): ProfileCard[] {
         b.reaction && (b.reaction.reaction === "like" || b.reaction.liked.length > 0)
           ? { ...b.reaction, reaction: b.reaction.reaction === "like" ? "like" : null, disliked: [] }
           : null;
-      const likeSentence =
-        kept || likes.length ? sentenceOf(listing, kept, likes, []) : comments.length ? commented() : "";
+      const likeSentence = posted
+        ? sentence
+        : kept || likes.length
+          ? sentenceOf(listing, kept, likes, [])
+          : comments.length
+            ? commented()
+            : "";
 
       // Everything that day on a photo (not a fact), newest first.
       const onPhotos = [

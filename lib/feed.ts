@@ -98,7 +98,14 @@ export async function getReel(
   deviceToken: string | undefined,
   taste: Taste | null,
   // Homes already shown, or (for one home's page) exactly which homes.
-  { exclude = [], only, limit = REEL_PAGE }: { exclude?: string[]; only?: string[]; limit?: number } = {},
+  // `people`: what's on the line above the price is only what these places on
+  // an agent's links did (one client's homes, opened from their card).
+  {
+    exclude = [],
+    only,
+    limit = REEL_PAGE,
+    people,
+  }: { exclude?: string[]; only?: string[]; limit?: number; people?: string[] } = {},
 ): Promise<FeedPost[]> {
   const { visitor } = await getPublicIdentity(viewer, deviceToken);
   const visitorId = visitor?.id ?? null;
@@ -257,13 +264,14 @@ export async function getReel(
           select r.listing_key, 'reaction' as kind, md5('pr:' || r.listing_key || ':' || r.visitor_id) as id,
             vi.first_name as name, 'public' as source, r.updated_at as at, null::text as media_key,
             null::text as tag, null::text as body, null::text as comment_id, r.visitor_id::text as profile_id,
-            r.reaction, r.liked, r.disliked, r.visitor_id = ${visitorId}::uuid as mine
+            r.reaction, r.liked, r.disliked, r.visitor_id = ${visitorId}::uuid as mine,
+            null::text as participant_id
           from public_reactions r join visitors vi on vi.id = r.visitor_id
           where r.listing_key in ${sql(keys)} and (r.reaction = 'like' or cardinality(r.liked) > 0)
           union all
           select c.listing_key, 'comment', 'c:' || c.id, vi.first_name, 'public', c.created_at, c.media_key,
             c.spot, c.body, c.id::text, c.visitor_id::text, null, '{}'::text[], '{}'::text[],
-            c.visitor_id = ${visitorId}::uuid
+            c.visitor_id = ${visitorId}::uuid, null
           from public_comments c join visitors vi on vi.id = c.visitor_id
           -- (Replies read as part of what they answer, in the comments, not on their own.)
           where c.listing_key in ${sql(keys)} and c.parent_id is null and c.reply_to_visitor is null
@@ -271,7 +279,7 @@ export async function getReel(
           select pl.listing_key, 'photo-like',
             md5('pl:' || pl.listing_key || ':' || pl.visitor_id || ':' || pl.media_key || ':' || pl.tag),
             vi.first_name, 'public', pl.created_at, pl.media_key, pl.tag, null, null, pl.visitor_id::text,
-            null, '{}'::text[], '{}'::text[], pl.visitor_id = ${visitorId}::uuid
+            null, '{}'::text[], '{}'::text[], pl.visitor_id = ${visitorId}::uuid, null
           from public_photo_likes pl join visitors vi on vi.id = pl.visitor_id
           where pl.listing_key in ${sql(keys)}
           union all
@@ -279,7 +287,8 @@ export async function getReel(
             md5('xl:' || pl.share_id || ':' || pl.participant_id || ':' || pl.media_key || ':' || pl.tag),
             case when s.agent_id = ${agentId}::uuid then p.first_name end,
             case when s.agent_id = ${agentId}::uuid then 'client' else 'private' end,
-            pl.created_at, pl.media_key, pl.tag, null, null, null, null, '{}'::text[], '{}'::text[], false
+            pl.created_at, pl.media_key, pl.tag, null, null, null, null, '{}'::text[], '{}'::text[], false,
+            pl.participant_id::text
           from photo_likes pl
           join participants p on p.id = pl.participant_id
           join shares s on s.id = pl.share_id
@@ -288,7 +297,7 @@ export async function getReel(
           select r.listing_key, 'reaction', md5('xr:' || r.share_id || ':' || r.participant_id || ':' || r.listing_key),
             case when s.agent_id = ${agentId}::uuid then p.first_name end,
             case when s.agent_id = ${agentId}::uuid then 'client' else 'private' end,
-            r.updated_at, null, null, null, null, null, r.reaction, r.liked, r.disliked, false
+            r.updated_at, null, null, null, null, null, r.reaction, r.liked, r.disliked, false, r.participant_id::text
           from reactions r
           join participants p on p.id = r.participant_id
           join shares s on s.id = r.share_id
@@ -304,7 +313,7 @@ export async function getReel(
             case when s.agent_id = ${agentId}::uuid then c.spot end,
             case when s.agent_id = ${agentId}::uuid or c.shared_publicly then c.body end,
             case when s.agent_id = ${agentId}::uuid or c.shared_publicly then c.id::text end,
-            null, null, '{}'::text[], '{}'::text[], false
+            null, null, '{}'::text[], '{}'::text[], false, c.participant_id::text
           from comments c
           join participants p on p.id = c.participant_id
           join shares s on s.id = c.share_id
@@ -312,10 +321,11 @@ export async function getReel(
           union all
           select sl.listing_key, 'sent', md5('s:' || sl.share_id || ':' || sl.listing_key), null,
             case when s.agent_id = ${agentId}::uuid then 'self' else 'private' end, s.created_at,
-            null, null, null, null, null, null, '{}'::text[], '{}'::text[], false
+            null, null, null, null, null, null, '{}'::text[], '{}'::text[], false, null
           from share_listings sl join shares s on s.id = sl.share_id
           where sl.listing_key in ${sql(keys)}
         ) e
+        where ${people ? sql`e.participant_id in ${sql(people.length ? people : [""])}` : sql`true`}
       ) x
       where n <= ${TICKER_EVENTS}
       order by listing_key, at desc, id`,

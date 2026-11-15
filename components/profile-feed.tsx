@@ -1,8 +1,9 @@
-import { Heart, Lock, MapPin, Tag, ThumbsDown } from "lucide-react";
+import { Heart, Lock, ThumbsDown } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { CardMenu, MoreText } from "@/app/people/[id]/client";
+import { CardMenu } from "@/app/people/[id]/client";
+import { CommentBubble } from "@/components/comment-bubble";
 import { Hotspot } from "@/components/spot-highlight";
 import { Avatar, Badge } from "@/components/ui";
 import { cn, formatPrice } from "@/lib/format";
@@ -110,6 +111,7 @@ export function ActivityCard({
   href,
   nameHref,
   avatarPhoto,
+  only = false,
   footer,
 }: {
   card: ProfileCard;
@@ -122,7 +124,9 @@ export function ActivityCard({
   nameHref?: string;
   // Their own photo, where they've added one, in place of their initial.
   avatarPhoto?: string | null;
-  // Under it all, above the card's own link: what only the agent sees, Reply.
+  // Only the viewer sees it (an agent's client's card): a lock by the time.
+  only?: boolean;
+  // Under it all: the agent's replies, and their own box to reply in.
   footer?: ReactNode;
 }) {
   const { home, photo } = card;
@@ -157,6 +161,13 @@ export function ActivityCard({
           <span className="whitespace-nowrap text-meta text-muted">
             {"· "}
             <time dateTime={card.at}>{cardTime(card.at)}</time>
+            {only && (
+              <>
+                {" · "}
+                <Lock aria-hidden size={12} className="inline align-[-1px]" />
+                <span className="sr-only">Only you see this</span>
+              </>
+            )}
           </span>
         </p>
         {/* Only on your own page: what you can take back from this card. */}
@@ -207,16 +218,17 @@ export function ActivityCard({
       {card.comments.length > 0 && (
         <ul className="flex flex-col gap-2 px-4 pt-3">
           {card.comments.map((comment) => (
-            <li key={comment.id} className="rounded-2xl bg-stone-50 p-3">
-              {comment.spot && (
-                <span className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-meta font-semibold text-stone-700 ring-1 ring-stone-200">
-                  {comment.spot.fact ? <Tag aria-hidden size={12} /> : <MapPin aria-hidden size={12} />}
-                  {comment.spot.name}
-                </span>
-              )}
-              <MoreText className="text-body leading-snug text-ink" meta={commentMeta(comment)}>
+            <li key={comment.id}>
+              <CommentBubble
+                name={isMe ? "You" : name}
+                face={face}
+                photo={avatarPhoto}
+                agent={agent}
+                spot={comment.spot}
+                meta={commentMeta(comment)}
+              >
                 {comment.body}
-              </MoreText>
+              </CommentBubble>
             </li>
           ))}
         </ul>

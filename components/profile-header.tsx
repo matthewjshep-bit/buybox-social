@@ -150,9 +150,7 @@ export function ProfileHeader({
           <>
             <p className="mt-3 flex gap-1.5 text-meta leading-snug text-muted">
               <Globe aria-hidden size={14} className="mt-0.5 shrink-0" />
-              {agent
-                ? "Everyone can see this page, with what you like and note on the homes you send."
-                : "Everyone can see this page. What you do on an agent's link never shows here."}
+              {agent ? "Public page" : "Public page. Agent links stay private."}
             </p>
             <ShareMyPage title={unnamed ? "My page on Porchcard" : `${name} on Porchcard`} />
           </>

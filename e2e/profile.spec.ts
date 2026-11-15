@@ -109,7 +109,7 @@ test("a profile is one card per home per day, with the photo and the spots picke
   await expect(main).not.toContainText("2 liked");
   await expect(lena.getByRole("link", { name: "Comments", exact: true })).toHaveCount(0);
   await expect(lena.getByRole("link", { name: "Edit profile" })).toHaveAttribute("href", "/people/me/edit");
-  await expect(lena.getByText("Everyone can see this page. What you do on an agent's link never shows here.")).toBeVisible();
+  await expect(lena.getByText("Public page. Agent links stay private.")).toBeVisible();
   await expect(lena.getByRole("button", { name: "Share my page" })).toBeVisible();
 
   // One card per home, newest first, under "Today".
@@ -163,7 +163,7 @@ test("a profile is one card per home per day, with the photo and the spots picke
   await visitor.goto(profileUrl);
   await expect(visitor.getByRole("heading", { level: 1 })).toHaveText("Lena");
   await expect(visitor.getByRole("button", { name: "Share my page" })).toHaveCount(0);
-  await expect(visitor.getByText(/agent's link never shows here/)).toHaveCount(0);
+  await expect(visitor.getByText(/Agent links stay private/)).toHaveCount(0);
   await expect(cardOf(visitor, `${CORBEL}: ${sentence}`)).toContainText(`Lena ${sentence}`);
   await expect(visitor.getByRole("link", { name: "Edit profile" })).toHaveCount(0);
   await visitor.goto(`${profileUrl}?show=comments`);

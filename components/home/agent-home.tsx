@@ -31,8 +31,7 @@ function Composer({ me }: { me: { name: string; photo: string | null } }) {
         aria-label="Send homes to a client"
         className="flex h-11 min-w-0 flex-1 items-center rounded-full border border-stone-300 px-4 text-body hover:border-stone-400 hover:bg-stone-50"
       >
-        <span className="shrink-0 font-semibold">Send homes to…</span>
-        <span className="ml-1.5 truncate text-muted max-[480px]:hidden">a client or anyone on Porchcard</span>
+        <span className="text-stone-600">Send homes to…</span>
       </Link>
     </div>
   );
@@ -56,14 +55,12 @@ function FirstSend() {
 }
 
 export function AgentHome({
-  firstName,
   me,
   profileHref,
   book,
   cards,
   follows,
 }: {
-  firstName: string;
   me: { id: string; name: string; photo: string | null; brokerage: string; brandColor: string };
   // Their own public page.
   profileHref: string;
@@ -75,9 +72,8 @@ export function AgentHome({
   const sent = new Set([...clients.flatMap((c) => c.links.map((link) => link.shareId)), ...unclaimed.map((l) => l.shareId)]);
   return (
     <HomeShell
-      // Said plainly, so it's clear whose page this is: the agent's own.
+      // (For a screen reader: on screen, the page is plainly the agent's.)
       title="Agent dashboard"
-      subtitle={`${firstName ? `Hi ${firstName}. ` : ""}Your clients, and what they think of the homes you send.`}
       left={
         <ProfileRail
           name={me.name}
@@ -125,7 +121,7 @@ export function AgentHome({
             Client activity
           </h2>
           <div className="mt-3">
-            <ClientFeed cards={cards} />
+            <ClientFeed cards={cards} me={me} />
           </div>
         </section>
       )}
