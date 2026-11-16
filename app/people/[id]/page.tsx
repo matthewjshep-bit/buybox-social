@@ -260,9 +260,9 @@ export default async function ProfilePage({ params, searchParams }: Props) {
           />
         </div>
         {between.length > 0 && <BetweenCard id="between-phone" links={between} name={name} className="lg:hidden" />}
-        {showTaste && (
-          // On a phone, their listings come straight after who they are; their taste is with Activity.
-          <div className={cn(tab === "listings" && "hidden lg:block", "xl:col-start-3 xl:row-start-1 [@media(min-width:80rem)_and_(min-height:860px)]:sticky [@media(min-width:80rem)_and_(min-height:860px)]:top-2 [@media(min-width:80rem)_and_(min-height:860px)]:max-h-[calc(100dvh-1rem)] [@media(min-width:80rem)_and_(min-height:860px)]:overflow-y-auto [@media(min-width:80rem)_and_(min-height:860px)]:overscroll-contain xl:-m-1 xl:self-start xl:p-1")}>
+        {/* Their taste goes with what they've done: with their listings, it's out of the way. */}
+        {showTaste && tab === "activity" && (
+          <div className={cn("xl:col-start-3 xl:row-start-1 [@media(min-width:80rem)_and_(min-height:860px)]:sticky [@media(min-width:80rem)_and_(min-height:860px)]:top-2 [@media(min-width:80rem)_and_(min-height:860px)]:max-h-[calc(100dvh-1rem)] [@media(min-width:80rem)_and_(min-height:860px)]:overflow-y-auto [@media(min-width:80rem)_and_(min-height:860px)]:overscroll-contain xl:-m-1 xl:self-start xl:p-1")}>
             <TasteStoryCard
               name={name}
               isMe={isMe}
@@ -292,7 +292,8 @@ export default async function ProfilePage({ params, searchParams }: Props) {
         )}
       </div>
 
-      <div className="mt-3 min-w-0 lg:mt-0 xl:col-start-2 xl:row-start-1">
+      {/* With their listings, the grid takes the room their taste would have had. */}
+      <div className={cn("mt-3 min-w-0 lg:mt-0 xl:col-start-2 xl:row-start-1", tab === "listings" && "xl:col-span-2")}>
         {between.length > 0 && (
           <BetweenCard id="between-wide" links={between} name={name} className="mb-4 hidden lg:block" />
         )}
