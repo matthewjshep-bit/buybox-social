@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { sql } from "./db";
+import { namesList } from "./format";
 import { photoUrl } from "./person-photo";
 import { clientActivity } from "./shares";
 import type { Listing, ListingMedia } from "./listings/types";
@@ -30,12 +31,12 @@ import { ASPECTS, aspectLabel, describeReaction, NO_REACTION, type Aspect, type 
 export const PROFILE_TIME_ZONE = "America/Los_Angeles";
 
 // Cards per page, before "Show earlier".
-export const PROFILE_PAGE = 20;
+const PROFILE_PAGE = 20;
 
 // However busy someone is, a page reads at most this many of each kind of thing.
 export const PROFILE_ROW_LIMIT = 500;
 
-export const PROFILE_FILTERS = { all: "All", liked: "Liked", passed: "Passed", comments: "Comments" } as const;
+export const PROFILE_FILTERS = { all: "All", liked: "Liked", passed: "Didn't like", comments: "Comments" } as const;
 export type ProfileShow = keyof typeof PROFILE_FILTERS;
 
 export const isProfileShow = (value: unknown): value is ProfileShow =>
@@ -46,9 +47,9 @@ export type TopicSide = "like" | "pass";
 
 export const isTopicSide = (value: unknown): value is TopicSide => value === "like" || value === "pass";
 
-export type PinKind = "like" | "dislike" | "comment";
+type PinKind = "like" | "dislike" | "comment";
 
-export type ProfileComment = {
+type ProfileComment = {
   id: string;
   body: string;
   at: string;
@@ -218,8 +219,7 @@ export { spotName };
 export const isVideo = (photo: ListingMedia) =>
   photo.MediaCategory === "Video" || /\.(mp4|webm|mov)(\?|$)/i.test(photo.MediaURL);
 
-// "Sam", "Sam and Ana", "Sam, Ana and Lee"
-const names = (list: string[]) => (list.length <= 1 ? (list[0] ?? "") : `${list.slice(0, -1).join(", ")} and ${list.at(-1)}`);
+const names = namesList;
 
 export type ReactionRow = ReactionState & { listing_key: string; at: Date };
 // `link`: an agent's own, from one of their links, rather than in public. It
@@ -274,18 +274,23 @@ export type ProfileRows = {
 // than 25 hours).
 const restOfDay = (before: Date) => new Date(+before + 25 * 3_600_000);
 
+// A page's id, as it is in an address: anything else is nobody's, and is
+// never put to the database as an id.
+const isPageId = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
 // The account behind a page, when it's an agent's: their marks on their own
 // links are theirs on their page too.
 const agentAccountOf = cache(async (visitorId: string): Promise<string | null> => {
+  if (!isPageId(visitorId)) return null;
   const [row] = await sql<{ id: string }[]>`
     select a.id from visitors v join accounts a on a.id = v.account_id
-    where v.id::text = ${visitorId} and a.role = 'agent'`;
+    where v.id = ${visitorId} and a.role = 'agent'`;
   return row?.id ?? null;
 });
 
 // An agent's likes (or dislikes) of things in the homes on their own links.
 // (With no agent, nothing.)
-const agentMarks = (account: string | null, reaction: "like" | "dislike") => sql`
+export const agentMarks = (account: string | null, reaction: "like" | "dislike") => sql`
   from share_agent_likes al join shares s on s.id = al.share_id
   where s.agent_id = ${account} and al.reaction = ${reaction}`;
 
@@ -293,7 +298,7 @@ const agentMarks = (account: string | null, reaction: "like" | "dislike") => sql
 // spot or a fact, or about a home before any client had done anything with
 // it there (liked, passed on, said something). Never a reply: that's the
 // client's conversation, and stays on the link.
-const agentNotes = (account: string | null) => sql`
+export const agentNotes = (account: string | null) => sql`
   from comments c join shares s on s.id = c.share_id
   where s.agent_id = ${account} and c.agent_id = ${account}
     and c.parent_id is null and c.reply_to_participant is null
@@ -503,6 +508,7 @@ export const getProfileRows = (visitorId: string, mine: boolean) => loadRows(vis
 // whether they're an agent (whose face is ink, as everywhere) and what they
 // keep off their page.
 export const getProfilePerson = cache(async (visitorId: string) => {
+  if (!isPageId(visitorId)) return null;
   const [visitor] = await sql<
     {
       id: string;
@@ -517,16 +523,18 @@ export const getProfilePerson = cache(async (visitorId: string) => {
       profile_links: unknown;
       brokerage: string | null;
       brand_color: string | null;
+      mls_agent_id: string | null;
+      full_name: string | null;
     }[]
   >`
     select v.id, v.created_at, v.hide_passes, v.taste_hidden, a.id as account_id, a.bio, a.profile_links, a.brokerage,
-      a.brand_color,
+      a.brand_color, a.mls_agent_id, a.full_name,
       -- An account with no name yet has none here either, even where an
       -- older visitor row stood in with "Someone".
       case when a.id is not null and btrim(a.full_name) = '' then '' else v.first_name end as first_name,
       coalesce(a.role = 'agent', false) as is_agent, left(md5(a.photo_data_url), 10) as photo_v
     from visitors v left join accounts a on a.id = v.account_id
-    where v.id::text = ${visitorId}`;
+    where v.id = ${visitorId}`;
   if (!visitor) return null;
   const hidden = Array.isArray(visitor.taste_hidden) ? visitor.taste_hidden : [];
   return {
@@ -547,6 +555,10 @@ export const getProfilePerson = cache(async (visitorId: string) => {
     brokerage: visitor.is_agent ? (visitor.brokerage?.trim() ?? "") : "",
     // An agent's own colour, for the band at the top of their page (only ever a plain hex colour).
     brandColor: visitor.is_agent && /^#[0-9a-f]{6}$/i.test(visitor.brand_color ?? "") ? visitor.brand_color : null,
+    // An agent's MLS ID: which listings are theirs (lib/agent-listings.ts).
+    mlsAgentId: visitor.is_agent ? visitor.mls_agent_id?.trim() || null : null,
+    // An agent's whole name: the one their listings are listed under.
+    agentName: visitor.is_agent ? (visitor.full_name?.trim() ?? "") : "",
   };
 });
 
@@ -555,7 +567,7 @@ export type ProfilePerson = NonNullable<Awaited<ReturnType<typeof getProfilePers
 export type ProfileLink = { label: string; url: string };
 
 // An agent's links as stored, kept to what's safe to show: http(s) only.
-export function profileLinksOf(value: unknown): ProfileLink[] {
+function profileLinksOf(value: unknown): ProfileLink[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item): ProfileLink[] => {
     if (!item || typeof item !== "object") return [];

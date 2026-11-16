@@ -7,7 +7,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
 import { getReel, REEL_PAGE } from "@/lib/feed";
 import { getPublicIdentity } from "@/lib/public";
-import { searchHomes } from "@/lib/search";
+import { searchHomeKeys } from "@/lib/search";
 import { filtersQuery, parseFilters } from "@/lib/search-options";
 import { getTaste } from "@/lib/taste";
 
@@ -27,9 +27,8 @@ export default async function SearchFeed({ searchParams }: Props) {
   const [account, device] = await Promise.all([getCurrentUser(), readDevice()]);
   const viewer = account?.role ? account : null;
   const { visitor, name } = await getPublicIdentity(viewer, device);
-  const [results, taste] = await Promise.all([searchHomes(filters, visitor?.id ?? null), getTaste(visitor?.id)]);
+  const [keys, taste] = await Promise.all([searchHomeKeys(filters), getTaste(visitor?.id)]);
 
-  const keys = results.map((result) => result.listing.ListingKey);
   if (start && !keys.includes(start)) keys.unshift(start);
   // Everything up to the one picked, and a few after; the rest as you go.
   const first = keys.slice(0, (start ? keys.indexOf(start) : 0) + REEL_PAGE);

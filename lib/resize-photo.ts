@@ -1,7 +1,7 @@
 // Someone's photo, made ready in the browser before it's sent: cropped to the
 // middle square and shrunk to a small JPEG, small enough to keep with their
 // account. (Browser only: it draws on a canvas.)
-export const PHOTO_SIZE = 256;
+const PHOTO_SIZE = 256;
 
 export async function resizePhoto(file: File) {
   const bitmap = await createImageBitmap(file);

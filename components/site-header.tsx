@@ -62,7 +62,7 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
           {/* Signed out, just two things: the page for agents, and Sign in
               (which signs up too). The logo is the way home. */}
           {/* Signed in: Search, an agent's Clients, the bell, and you (where
-              everything else is: your profile, Activity, the Dashboard, Admin,
+              everything else is: your profile, Activity, Admin,
               your agent's homes). The logo is the way home. */}
           {user && (
             <NavLink href="/search" className={navItem}>

@@ -94,9 +94,9 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   // they added on signing up (without one, their initial in ink).
   await agent.goto("/people/me");
   await expect(agent.locator("#profile-name")).toHaveText("Una (you)");
-  const big = agent.locator("#profile-name").locator("xpath=preceding-sibling::*[1]");
+  const big = agent.locator("#profile-name").locator("xpath=preceding-sibling::*[1]/*[1]");
   await expect(big).toHaveAttribute("src", /^\/people\/[\w-]+\/photo\?v=\w+$/);
-  await expect(agent.getByRole("banner").getByRole("button", { name: "Your profile" }).locator("img")).toBeVisible();
+  await expect(agent.getByRole("banner").getByRole("button", { name: "Account menu" }).locator("img")).toBeVisible();
 
   // Picking homes for a link: the search box, and each home's price.
   await agent.goto("/dashboard/new");
@@ -138,7 +138,7 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   await expect(said).toBeVisible();
   await expect(said.locator('img[src^="/people/"]')).toBeVisible();
   // ...and in the header, the photo they added.
-  await expect(agent.getByRole("button", { name: "Your profile" }).locator("img")).toBeVisible();
+  await expect(agent.getByRole("button", { name: "Account menu" }).locator("img")).toBeVisible();
 
   await agent.goto("/dashboard/profile");
   await expectKitButtons(agent, "brand");
@@ -156,14 +156,14 @@ test("a buyer's pages, sign-in and the admin are the same kit, and a buyer's fac
 
   const buyer = await signUpBuyer(browser, "kit-buyer@example.com", "Kira Kit");
   const brand = await colourOf(buyer, "var(--brand)");
-  const mine = buyer.getByRole("button", { name: "Your profile" }).locator("span").first();
+  const mine = buyer.getByRole("button", { name: "Account menu" }).locator("span").first();
   expect(await mine.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(brand);
 
   // Nothing yet on their page or their bell: said the same way, with a way on.
   await buyer.goto("/people/me");
-  await expect(buyer.getByText("Your page fills up as you go")).toBeVisible();
+  await expect(buyer.getByText("Nothing here yet")).toBeVisible();
   await expectKitButtons(buyer, "profile");
-  const big = buyer.locator("#profile-name").locator("xpath=preceding-sibling::span[1]");
+  const big = buyer.locator("#profile-name").locator("xpath=preceding-sibling::*[1]/span[1]");
   expect(await big.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(brand);
   await buyer.goto("/activity");
   await expect(buyer.getByText("Nothing yet")).toBeVisible();

@@ -62,7 +62,7 @@ export const photoLikeSchema = z.object({
 
 // A comment about one spot in one photo, as sent from the page.
 const anchorSchema = z.object({ mediaKey: z.string().min(1).max(500), tag: z.string().min(1).max(60) });
-export type SpotAnchor = z.infer<typeof anchorSchema>;
+type SpotAnchor = z.infer<typeof anchorSchema>;
 
 // The anchor, if it names a real photo of this home and a spot in it, or one of
 // its facts. `false` when one was sent but doesn't hold up; null when there

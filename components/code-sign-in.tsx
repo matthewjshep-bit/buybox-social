@@ -127,7 +127,7 @@ export function CodeSignIn({
           </span>
         </p>
         <label htmlFor={`${id}-code`} className="mt-3 block text-sm font-medium">
-          Code from the email
+          Code
         </label>
         <input
           ref={codeBox}
@@ -255,7 +255,7 @@ export function CodeSignIn({
         disabled={pending}
         className={cn(button({ kind: "primary", size: "lg", block: true }), "mt-4 compact:mt-3")}
       >
-        {pending ? "Sending your code…" : submitLabel}
+        {pending ? "Sending…" : submitLabel}
       </button>
       {note && <p className="mt-3 text-center text-sm text-muted compact:mt-2">{note}</p>}
     </form>

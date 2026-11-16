@@ -21,7 +21,7 @@ test("an agent's home: their client as a person, what she said on her card with 
   // and the way to send homes to anyone.
   await agent.goto("/");
   // Plainly the agent's dashboard, in few words: no greeting to read past.
-  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Agent dashboard");
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Home");
   await expect(agent.getByRole("main")).not.toContainText("Hi Fern");
   await expect(agent.getByRole("link", { name: "Send homes to a client" })).toHaveAttribute("href", "/dashboard/new?focus=to");
   const clients = agent.getByRole("region", { name: "Your clients" });
@@ -89,19 +89,23 @@ test("an agent's home: their client as a person, what she said on her card with 
   const link = new URL(url).pathname;
   const fromAgent = jo.getByRole("region", { name: "1 new home for you" });
   await expect(fromAgent).toContainText("From Fern Feed");
-  await expect(fromAgent).toContainText("you've rated 1 of 2");
+  await expect(fromAgent).toContainText("1 of 2 rated");
   await expect(fromAgent.getByRole("link", { name: /^See them/ })).toHaveAttribute("href", link);
   // Fern's answer is there too.
   await expect(fromAgent).toContainText("Fern: Yes, it was finished in 2019.");
   // And from anywhere, under her initial.
   const banner = jo.getByRole("banner");
-  await banner.getByRole("button", { name: "Your profile" }).click();
+  await banner.getByRole("button", { name: "Account menu" }).click();
   await expect(banner.getByRole("link", { name: "Homes from Fern" })).toHaveAttribute("href", link);
   await jo.keyboard.press("Escape");
 
   // Then more homes picked for her: the first opens them in the same order.
   const more = jo.getByRole("region", { name: "More homes for you" });
   const pin = more.getByRole("listitem").first().getByRole("link");
+  // On a phone, one column: each photo as wide as the page, and nothing runs off its side.
+  const page = jo.viewportSize()!.width;
+  expect((await pin.locator("img").boundingBox())!.width).toBeGreaterThan(page - 40);
+  expect(await jo.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page);
   await expect(pin).toHaveAttribute("href", /^\/reel\?from=picks&home=SAMPLE-\d+$/);
   await pin.click();
   await jo.waitForURL(/\/reel\?from=picks&home=SAMPLE-/);

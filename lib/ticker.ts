@@ -53,14 +53,14 @@ export type TickerEvent = {
 
 // You; someone by name; an agent's own client (to that agent); the agent on
 // their link; or someone who stays unnamed here.
-export type TickerTone = "you" | "person" | "client" | "agent" | "anonymous";
+type TickerTone = "you" | "person" | "client" | "agent" | "anonymous";
 
 // At most this many recent things for each home, newest first.
 export const TICKER_EVENTS = 12;
 // At most this many go round at once.
-export const CYCLE_MOST = 5;
+const CYCLE_MOST = 5;
 // What someone said, cut to this many characters (at a word, with "…").
-export const TICKER_WORDS = 140;
+const TICKER_WORDS = 140;
 
 export const clipWords = (body: string, most = TICKER_WORDS) => {
   const text = body.replace(/\s+/g, " ").trim();
@@ -374,7 +374,7 @@ export function eventText(
       sentence = `${event.count ?? 2} buyers liked this home`;
       break;
     case "sent":
-      sentence = event.who.tone === "you" ? "You sent this to a client" : "An agent sent this to a buyer";
+      sentence = event.who.tone === "you" ? "You sent this to a client" : "An agent sent this";
       break;
   }
   const words = event.body ? `“${event.body}”` : null;

@@ -60,7 +60,7 @@ export async function FollowListPage({ id, which }: { id: string; which: Which }
   return (
     <main className="mx-auto max-w-xl px-4 pb-16 pt-4">
       <Link href={`/people/${person.id}`} className="flex min-h-11 w-fit items-center gap-1.5 text-sm font-medium">
-        <ArrowLeft aria-hidden size={16} /> {isMe ? "Your page" : `${name}'s page`}
+        <ArrowLeft aria-hidden size={16} /> {isMe ? "Your profile" : name}
       </Link>
       <h1 className="font-display text-3xl">{title}</h1>
       <nav aria-label="Followers and following" className="mt-3 flex gap-1 border-b border-stone-200">
@@ -94,20 +94,12 @@ export async function FollowListPage({ id, which }: { id: string; which: Which }
           }
           action={
             isMe && which === "following" ? (
-              <Link href="/" className={button({ kind: "primary" })}>
+              <Link href="/reel" className={button({ kind: "primary" })}>
                 See homes
               </Link>
             ) : undefined
           }
-        >
-          {which === "followers"
-            ? isMe
-              ? "When someone follows you, they show up here."
-              : undefined
-            : isMe
-              ? "Tap anyone's name on a home to see their page, and follow them there. What they like comes to your feed first."
-              : undefined}
-        </EmptyState>
+        />
       ) : (
         <ul aria-label={title} className={cn(card, "mt-4 divide-y divide-stone-100")}>
           {list.map((someone) => (

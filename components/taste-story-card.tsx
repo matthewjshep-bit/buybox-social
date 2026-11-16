@@ -3,17 +3,15 @@ import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 import { cn } from "@/lib/format";
 import type { TopicSide } from "@/lib/profile";
-import { updatedLabel, voiceOf, type ShownStory, type TasteChip } from "@/lib/taste-story";
+import { voiceOf, type ShownStory, type TasteChip } from "@/lib/taste-story";
 import { card } from "@/lib/ui";
 
 type Current = { key: string; side: TopicSide | null } | null;
 
-// Where the words on the card come from: the model or the template, and when.
-type Origin = Pick<ShownStory, "ai" | "at">;
-
-// Someone's taste in a few words: a headline from what they like, a sentence
-// or two (from a template, or written by AI and labelled so), and the things
-// they keep liking and passing on, each a way to see just those homes below.
+// Someone's taste in a few words: a headline from what they like, and the
+// things they keep liking and passing on, each a way to see just those homes
+// below. The chips say it all, so a sentence (from a template, or written by
+// AI and labelled so) shows only when there are no chips to show.
 // The words may wait on the database, never on the model, and the rest of
 // the card never waits on them.
 export function TasteStoryCard({
@@ -26,8 +24,6 @@ export function TasteStoryCard({
   passesPrivate,
   shown,
   template = null,
-  updated,
-  counts,
   current,
   chipHref,
   controls,
@@ -46,17 +42,13 @@ export function TasteStoryCard({
   // for browsers that won't run the script that swaps them in).
   shown: ShownStory | null | Promise<ShownStory | null>;
   template?: ShownStory | null;
-  // When what the headline is from last changed, for a card with no sentence.
-  updated: string | null;
-  counts: { likes: number; passes: number; comments: number };
   current: Current;
   chipHref: (key: string, side: TopicSide) => string;
   // "Not quite right?", on their own page.
   controls?: ReactNode;
 }) {
   const title = isMe ? "Your taste" : `${name}'s taste`;
-  // With no sentence, the headline still says where it's from.
-  const plain: Origin | null = headline ? { ai: false, at: updated } : null;
+  const hasChips = loves.length + passes.length > 0;
   const chips = (
     <>
       <TasteRow side="like" chips={loves} current={current} href={chipHref} isMe={isMe} />
@@ -64,12 +56,11 @@ export function TasteStoryCard({
       {passesPrivate && passes.length > 0 && (
         <p className="mt-2 flex items-center gap-1.5 text-meta text-muted">
           <Lock aria-hidden size={12} className="shrink-0" />
-          Only you see what you pass on
+          Only you see passes
         </p>
       )}
     </>
   );
-  const source = (origin: Origin | null) => <Source origin={origin} name={name} isMe={isMe} counts={counts} />;
   return (
     <section aria-labelledby="taste-story-title" className={cn(card, "p-4")}>
       <h2 id="taste-story-title" className="text-meta font-semibold text-muted">
@@ -78,10 +69,12 @@ export function TasteStoryCard({
       {headline && <Headline text={headline} />}
       {prompt && (
         <p className="mt-1 text-body leading-snug text-stone-700">
-          Like a few more homes and a short description of your taste will appear here.
+          Like a few more homes to see your taste.
         </p>
       )}
-      {shown instanceof Promise ? (
+      {hasChips ? (
+        chips
+      ) : shown instanceof Promise ? (
         // The words and the line saying who wrote them arrive together, so a
         // sentence never shows under another's label, scripts or not.
         <Suspense
@@ -91,9 +84,6 @@ export function TasteStoryCard({
               <noscript>
                 <Sentence shown={template} name={name} isMe={isMe} />
               </noscript>
-              {chips}
-              <SourceSkeleton />
-              <noscript>{source(template ?? plain)}</noscript>
             </>
           }
         >
@@ -101,8 +91,7 @@ export function TasteStoryCard({
             {(story) => (
               <>
                 <Sentence shown={story} name={name} isMe={isMe} />
-                {chips}
-                {source(story ?? plain)}
+                <Source ai={Boolean(story?.ai)} />
               </>
             )}
           </Later>
@@ -110,8 +99,7 @@ export function TasteStoryCard({
       ) : (
         <>
           <Sentence shown={shown} name={name} isMe={isMe} />
-          {chips}
-          {source(shown ?? plain)}
+          <Source ai={Boolean(shown?.ai)} />
         </>
       )}
       {controls}
@@ -159,37 +147,13 @@ function Sentence({ shown, name, isMe }: { shown: ShownStory | null; name: strin
   return <p className="mt-2 text-[17px] leading-[26px] text-stone-800">{voiceOf(shown.text, name, isMe)}</p>;
 }
 
-// Where the words came from: "Written by AI from Maya's 14 likes, 3 passes
-// and 9 comments · updated 2d", or "From your 14 likes and 3 passes · updated today".
-function Source({
-  origin,
-  name,
-  isMe,
-  counts,
-}: {
-  origin: Origin | null;
-  name: string;
-  isMe: boolean;
-  counts: { likes: number; passes: number; comments: number };
-}) {
-  if (!origin) return null;
-  const whose = isMe ? "your" : `${name}'s`;
-  const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
-  const parts = [
-    counts.likes > 0 && n(counts.likes, "like", "likes"),
-    counts.passes > 0 && n(counts.passes, "pass", "passes"),
-    origin.ai && counts.comments > 0 && n(counts.comments, "comment", "comments"),
-  ].filter((part): part is string => Boolean(part));
-  const from =
-    parts.length === 0 ? `${whose} page` : `${whose} ${parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`}`;
-  const when = origin.at ? ` · updated ${updatedLabel(origin.at)}` : "";
+// Words the model wrote say so.
+function Source({ ai }: { ai: boolean }) {
+  if (!ai) return null;
   return (
     <p className="mt-3 flex items-start gap-1.5 text-meta leading-snug text-muted">
-      {origin.ai && <Sparkles aria-hidden size={14} className="mt-px shrink-0 text-brand" />}
-      <span>
-        {origin.ai ? `Written by AI from ${from}` : `From ${from}`}
-        {when}
-      </span>
+      <Sparkles aria-hidden size={14} className="mt-px shrink-0 text-brand" />
+      Written by AI
     </p>
   );
 }
@@ -203,15 +167,6 @@ function SentenceSkeleton() {
       <span className="h-4 w-11/12 rounded-full bg-stone-200" />
       <span className="h-4 w-2/3 rounded-full bg-stone-200" />
     </div>
-  );
-}
-
-function SourceSkeleton() {
-  return (
-    <span
-      aria-hidden
-      className="mt-3 block h-3 w-1/2 animate-pulse rounded-full bg-stone-200 [@media(scripting:none)]:hidden"
-    />
   );
 }
 

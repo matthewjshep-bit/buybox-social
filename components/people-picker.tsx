@@ -13,7 +13,7 @@ import {
 } from "react";
 import { searchPeople } from "@/app/dashboard/actions";
 import { Avatar } from "@/components/ui";
-import { cn } from "@/lib/format";
+import { cn, namesList } from "@/lib/format";
 import { NOT_AN_EMAIL, type PersonOption, type PersonPick } from "@/lib/people-picker";
 import { button, field } from "@/lib/ui";
 
@@ -56,10 +56,6 @@ const fromOption = (option: PersonOption): Chosen => ({
   context: option.context,
 });
 
-// "Jenny", "Jenny and Mike", "Jenny, Mike and Sam".
-const together = (names: string[]) =>
-  names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
-
 export function PeoplePicker({
   label,
   hint,
@@ -70,11 +66,9 @@ export function PeoplePicker({
   mode = "multi",
   onCommit,
   autoFocus = false,
-  name = "firstName",
   inputRef,
   onTextChange,
   notify = false,
-  placeholder,
   beside,
 }: {
   // The field's name, as it's read out and shown.
@@ -91,15 +85,11 @@ export function PeoplePicker({
   // Someone was just picked (or typed and added).
   onCommit?: (person: Chosen) => void;
   autoFocus?: boolean;
-  // Single, in a form: the field that carries a typed first name. Someone
-  // picked from Porchcard goes as `visitorId` too.
-  name?: string;
   inputRef?: Ref<HTMLInputElement>;
   // Multi: what's typed but not yet added, so the page can count it.
   onTextChange?: (text: string) => void;
   // Picking someone on Porchcard here lets them know (the builder, a link's page).
   notify?: boolean;
-  placeholder?: string;
   // Beside the field, on its line: a form's own button.
   beside?: ReactNode;
 }) {
@@ -259,7 +249,7 @@ export function PeoplePicker({
       onCommit?.(person);
       return;
     }
-    if (full) return setProblem(`That's ${max}, as many as one link can have.`);
+    if (full) return setProblem(`${max} is the most for one link.`);
     if (person.group === "new" && chosen.some((c) => c.group === "new" && c.key === person.key)) {
       return setProblem(`${person.name} is already on this link.`);
     }
@@ -455,7 +445,7 @@ export function PeoplePicker({
             autoCapitalize="words"
             spellCheck={false}
             enterKeyHint={single ? "go" : "done"}
-            placeholder={placeholder ?? (full ? "That's everyone this link can have" : "A client, or a first name")}
+            placeholder={full ? "Link is full" : "A client, or a first name"}
             onChange={(event) => setText(event.target.value)}
             onFocus={() => {
               closeAfterPress.current = false;
@@ -541,7 +531,7 @@ export function PeoplePicker({
 
       {sameName && (
         <p className="mt-1.5 text-meta text-stone-700">
-          {sameName.name} (your client) is in the list. Pick them to keep their history together.
+          {sameName.name} is already your client. Pick them from the list.
         </p>
       )}
       {problem && (
@@ -550,12 +540,12 @@ export function PeoplePicker({
         </p>
       )}
       {told.length > 0 && (
-        <p className="mt-1.5 text-meta text-stone-700">We&apos;ll let {together(told)} know on Porchcard.</p>
+        <p className="mt-1.5 text-meta text-stone-700">We&apos;ll let {namesList(told)} know on Porchcard.</p>
       )}
       {/* Single, in a form: who's being added, as the form sends it. */}
       {single && (
         <>
-          <input type="hidden" name={name} value={chosen[0]?.name.trim() ?? ""} />
+          <input type="hidden" name="firstName" value={chosen[0]?.name.trim() ?? ""} />
           <input
             type="hidden"
             name="visitorId"

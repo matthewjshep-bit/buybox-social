@@ -5,7 +5,7 @@ import { sql } from "./db";
 import { createSupabase, supabaseConfigured } from "./supabase/server";
 import { readTestUser } from "./test-sign-in";
 
-export type Role = "agent" | "buyer";
+type Role = "agent" | "buyer";
 
 export type Account = {
   id: string;
@@ -45,7 +45,7 @@ export const firstName = (account: Pick<Account, "full_name">) => account.full_n
 // Who's actually signed in, if anyone. Their account is made on their first
 // sign-in, as whatever they signed up as: an agent if they came in through
 // "For agents", otherwise a buyer, named from the sign-up form if they used it.
-export const getSignedInUser = cache(async (): Promise<Account | null> => {
+const getSignedInUser = cache(async (): Promise<Account | null> => {
   const user = await getAuthUser();
   if (!user) return null;
   return accountFor(user);
@@ -116,7 +116,7 @@ export async function requireUser(): Promise<Account & { role: Role }> {
 // other admins. Signing in proves they own the inbox, so it's safe to name here.
 export const SUPER_ADMIN_EMAIL = "matt@shepflips.com";
 
-export const isSuperAdmin = (account: Pick<Account, "email"> | null) =>
+const isSuperAdmin = (account: Pick<Account, "email"> | null) =>
   account?.email.toLowerCase() === SUPER_ADMIN_EMAIL;
 
 // Who can open /admin: the owner, and anyone the owner has added.

@@ -32,6 +32,7 @@ export function ProfileFeed({
   reelFrom,
   photo,
   filters,
+  control,
 }: {
   cards: ProfileCard[];
   name: string;
@@ -48,6 +49,8 @@ export function ProfileFeed({
   // The filter the page has on, which the homes full screen keep: only
   // what's shown here, in the same order.
   filters?: Partial<FeedFilters>;
+  // What the feed shows, to choose from: on the first day's line.
+  control?: ReactNode;
 }) {
   const days: { heading: string; cards: ProfileCard[] }[] = [];
   // A home on more than one day here: each card's menu says which day it's for.
@@ -60,10 +63,13 @@ export function ProfileFeed({
   }
   return (
     <div className="flex flex-col gap-6">
-      {days.map((day) => (
+      {days.map((day, i) => (
         <section key={day.heading}>
-          <h2 className="px-1 text-body font-semibold text-muted">{day.heading}</h2>
-          <ul className="mt-2 flex flex-col gap-3">
+          <div className={cn("flex items-center justify-between gap-3", i === 0 && control && "min-h-11")}>
+            <h2 className="px-1 text-body font-semibold text-muted">{day.heading}</h2>
+            {i === 0 && control}
+          </div>
+          <ul className={cn("flex flex-col gap-3", i === 0 && control ? "mt-1" : "mt-2")}>
             {day.cards.map((card) => (
               <ActivityCard
                 key={card.id}
@@ -91,7 +97,7 @@ export function ProfileFeed({
 
 // The homes of a feed full screen, opened on this card's (on its photo),
 // with the page's filter, when it has one on, just after `from`.
-export const reelHref = (from: string, card: Pick<ProfileCard, "home" | "photo">, filters?: Partial<FeedFilters>) =>
+const reelHref = (from: string, card: Pick<ProfileCard, "home" | "photo">, filters?: Partial<FeedFilters>) =>
   `/reel?${new URLSearchParams([
     ["from", from],
     ...filterParams(filters),

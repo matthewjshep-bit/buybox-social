@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { cn } from "@/lib/format";
 
 // The band across the top of someone's page (and their card on the home): a
 // little drawn scene of home, never a photo. Four of them (a house on the
@@ -72,14 +71,14 @@ const brandPalette = (brand: string): Palette => ({
   tree: mix(brand, 0.05),
 });
 
-export function BannerArt({ seed, brand, className }: { seed: string; brand?: string | null; className?: string }) {
+export function BannerArt({ seed, brand }: { seed: string; brand?: string | null }) {
   const n = hashOf(seed);
   const own = brand && /^#[0-9a-f]{6}$/i.test(brand) ? brand : null;
   const { motif, palette } = own ? { motif: MOTIFS[n % MOTIFS.length], palette: brandPalette(own) } : SCENES[n % SCENES.length];
   const id = `sky-${n % 9973}`;
   const scene: Record<Motif, (p: Palette) => ReactNode> = { hills: Hills, porch: Porch, street: Street, fence: Fence };
   return (
-    <svg aria-hidden viewBox="0 0 600 160" preserveAspectRatio="xMidYMid slice" className={cn("block size-full", className)}>
+    <svg aria-hidden viewBox="0 0 600 160" preserveAspectRatio="xMidYMid slice" className="block size-full">
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor={palette.sky[0]} />

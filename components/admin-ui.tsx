@@ -35,8 +35,6 @@ const STATUS = {
   agent: { label: "Agent", tone: "ink" },
 } satisfies Record<PersonStatus, { label: string; tone: BadgeTone }>;
 
-export const statusLabel = (status: PersonStatus) => STATUS[status].label;
-
 export function StatusBadge({ status }: { status: PersonStatus }) {
   return <Badge tone={STATUS[status].tone}>{STATUS[status].label}</Badge>;
 }

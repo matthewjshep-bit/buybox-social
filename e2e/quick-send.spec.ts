@@ -137,7 +137,7 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
   await expect(name).toHaveValue("Toby");
   await expect(name).toBeFocused();
   expect(await name.evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd])).toEqual([0, 4]);
-  await expect(name).toHaveAccessibleDescription("Sam sent this to Toby. Not Toby? Type your name.");
+  await expect(name).toHaveAccessibleDescription("Not Toby? Type your name.");
   await prompt.getByRole("button", { name: "Not now" }).click();
   await expect(prompt).toBeHidden();
   await expect(heartOf(homeIn(client, "96 Fernhollow Ln"))).toHaveAttribute("aria-pressed", "false");
@@ -147,7 +147,7 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
   const toby = clientRow(agent, "Toby");
   await expect(toby).toContainText("1 home sent");
   // (He's had it open, to be greeted by name.)
-  await expect(toby).toContainText("Opened your link. No likes yet.");
+  await expect(toby).toContainText("Opened · no likes yet");
 
   // The agent looking at their own link isn't taken for Toby: it's their
   // notes for him, with no name asked, and the heart on the home is his.
@@ -266,9 +266,9 @@ test("Undo send takes back an unopened link, and a home meant for an existing cl
   await sheet.getByRole("button", { name: "Undo send" }).click();
   await expect(sheet.getByText("The link will stop working.")).toBeVisible();
   await sheet.getByRole("button", { name: "Undo send" }).click();
-  await expect(sheet.getByText("They've opened it. You can remove the home from your dashboard.")).toBeVisible();
+  await expect(sheet.getByText("Opened, so it can't be undone. Remove the home in Clients.")).toBeVisible();
   // The buttons went, so the cursor is on the answer rather than lost.
-  await expect(sheet.getByText("They've opened it. You can remove the home from your dashboard.")).toBeFocused();
+  await expect(sheet.getByText("Opened, so it can't be undone. Remove the home in Clients.")).toBeFocused();
   expect((await request.get(kept)).status()).toBe(200);
 });
 
@@ -343,7 +343,7 @@ test("buyers and visitors still share the public page; an agent without a name i
   await fresh.goto("/homes/SAMPLE-1004");
   await sendButton(fresh, "96 Fernhollow Ln").click();
   const first = fresh.getByRole("dialog", { name: "Before you send" });
-  await expect(first.getByText("Add your name and photo first so clients know it's from you.")).toBeVisible();
+
   await expect(first.getByRole("link", { name: "Add your name and photo" })).toHaveAttribute(
     "href",
     "/dashboard/profile",
@@ -477,7 +477,7 @@ test("the longer way to send one home starts with it picked, and keeps it in vie
 
   // A home that isn't for sale: the usual way to start.
   await agent.goto("/dashboard/new?home=SAMPLE-SOLD");
-  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("New link");
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send homes");
   await expect(agent.getByRole("searchbox")).toBeVisible();
   await expect(agent.getByRole("button", { pressed: true })).toHaveCount(0);
 });

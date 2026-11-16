@@ -19,7 +19,8 @@ const BOTTOM = "var(--photo-bottom, 14.5rem)";
 const LEFT = "var(--photo-left, 0px)";
 const RIGHT = "var(--photo-right, 0px)";
 const CLEAR = `(100cqh - ${TOP} - ${BOTTOM})`;
-// Where in that space it sits: 0 at the top, 0.5 in the middle, 1 on the words.
+// Where in that space it sits: 0 at the top (a phone, side by side), 0.5 in
+// the middle, 1 at its foot.
 const ALIGN = "var(--photo-align, 0.5)";
 // 1: the photo stays inside the clear space (a phone, the words below it).
 // 0: it grows on under the words, as far as the whole height (the words over it).
@@ -33,8 +34,8 @@ const ratioOf = (photo: ListingMedia | undefined) =>
   photo?.ImageWidth && photo?.ImageHeight ? photo.ImageWidth / photo.ImageHeight : null;
 
 // Where a photo goes: as big as it can be, whole, never cropped. On a phone it
-// sits in the clear space, right on top of the words, and never under the
-// header. With the words over it (a wide screen, a phone on its side), it
+// sits at the top of the clear space, right under the header, with the words
+// below it. With the words over it (a phone on its side), it
 // grows past the clear space, under the words, when there's room to show more
 // of it. Without a known size (a video, some photos), it takes all that space
 // and shows whole inside it. Measured against the nearest box with
@@ -97,7 +98,7 @@ export function stageFoot(media: ListingMedia[]) {
 // that. At most the window's width; less where the window is wider than the
 // photo (a phone on its side), where it's only as wide as the height allows;
 // beside the words on a wide screen, about two thirds of the window.
-export function sizesFor(photo: ListingMedia, beside = false) {
+function sizesFor(photo: ListingMedia, beside = false) {
   const wide = photo.ImageWidth && photo.ImageHeight ? `${photo.ImageWidth}/${photo.ImageHeight}` : null;
   return [
     beside && "(min-width: 64rem) 65vw",
@@ -110,18 +111,18 @@ export function sizesFor(photo: ListingMedia, beside = false) {
 
 // Its top edge, or the header's foot when the photo runs on under the header:
 // where anything pinned to the top of the photo goes.
-export const photoHead = (photo: ListingMedia | undefined) => `max(${photoPlace(photo).top}, ${TOP})`;
+const photoHead = (photo: ListingMedia | undefined) => `max(${photoPlace(photo).top}, ${TOP})`;
 
 // A box exactly the size and place of the photo as shown (whole, letterboxed
 // over its blurred copy), so anything inside can point at a spot in the photo
 // in fractions of it. Inside the carousel, or in a layer of the same size over
 // it (with `container-type: size`) to draw over the words on top.
-export function PhotoBox({ photo, children, className }: { photo: ListingMedia | undefined; children?: ReactNode; className?: string }) {
+export function PhotoBox({ photo, children }: { photo: ListingMedia | undefined; children?: ReactNode }) {
   const place = photoPlace(photo);
   return (
     <div
       data-photo-frame
-      className={cn("absolute", className)}
+      className="absolute"
       style={{ width: place.width, height: place.height, left: `calc(${place.left})`, top: place.top }}
     >
       {children}
@@ -132,7 +133,7 @@ export function PhotoBox({ photo, children, className }: { photo: ListingMedia |
 // The words and buttons over a photo (marked with this): nothing on the photo
 // shows under them, and a tap on them isn't a tap on the photo. Within this
 // many pixels of them counts, so a heart is drawn whole or not at all.
-export const KEEP_CLEAR = "data-keep-clear";
+const KEEP_CLEAR = "data-keep-clear";
 export const CLEAR_MARGIN = 14;
 
 export type Box = { left: number; top: number; right: number; bottom: number };

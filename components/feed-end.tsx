@@ -19,19 +19,18 @@ export function FeedEnd({
 }) {
   return (
     <div className="w-full max-w-md">
-      <h2 className="font-display text-3xl">You&apos;ve seen every home for now</h2>
-      <p className="mt-2 text-white/80">New listings show up here first. Your likes keep shaping what comes next.</p>
+      <h2 className="font-display text-3xl">That&apos;s all for now</h2>
       {/* The page doesn't wait for your story: it's a long way down. */}
       <Suspense fallback={<TasteCard taste={taste} className="mt-6 text-left text-ink" />}>
         <StoryTasteCard taste={taste} visitorId={visitorId} className="mt-6 text-left text-ink" />
       </Suspense>
       <div className="mt-6 flex flex-wrap justify-center gap-3">
         <Link href="/search" className={button({ kind: "light", size: "lg" })}>
-          <MapIcon aria-hidden size={17} /> Explore the map
+          <MapIcon aria-hidden size={17} /> Map
         </Link>
         {account?.role === "agent" && (
           <Link href="/dashboard/new" className={button({ kind: "primary", size: "lg" })}>
-            <Plus aria-hidden size={17} /> New link
+            <Plus aria-hidden size={17} /> Send homes
           </Link>
         )}
         {!account && (

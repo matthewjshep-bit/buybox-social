@@ -153,7 +153,7 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
       const reel = document.querySelector<HTMLElement>("[data-reel]")!;
       reel.scrollTo({ top: reel.scrollHeight });
     });
-    await expect(page.getByRole("heading", { name: "That's every home in this search" })).toBeVisible({ timeout: 1500 });
+    await expect(page.getByRole("heading", { name: "That's all" })).toBeVisible({ timeout: 1500 });
   }).toPass({ timeout: 20_000 });
   await expect(page.getByRole("article")).toHaveCount(found);
 

@@ -18,7 +18,7 @@ export const HOME_TYPES = {
   house: { label: "Houses", value: "Single Family Residence" },
   townhouse: { label: "Townhouses", value: "Townhouse" },
 } as const;
-export type HomeType = keyof typeof HOME_TYPES;
+type HomeType = keyof typeof HOME_TYPES;
 
 export type SearchFilters = {
   q: string;

@@ -40,7 +40,7 @@ test("comments rise from the comment bar under the description, like a reel", as
   expect(Math.abs(photoAfter.y - photoBefore.y)).toBeLessThan(2);
   expect(Math.abs(photoAfter.height - photoBefore.height)).toBeLessThan(2);
   // Who sees it, under the box.
-  await expect(sheet.getByText("Everyone can see your comment and first name.")).toBeVisible();
+  await expect(sheet.getByText("Public, with your first name.")).toBeVisible();
 
   // A quick emoji, then Enter posts it.
   await sheet.getByRole("button", { name: "🔥" }).click();

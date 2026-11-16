@@ -39,7 +39,7 @@ export type ContactExtras = {
 };
 
 // The home on screen, for "About 4127 Larkmoor Ave NE" and asking to see it.
-export type HomeInView = { listingKey: string; address: string };
+type HomeInView = { listingKey: string; address: string };
 
 // Side by side, the white panel beside the home on screen: Contact rises from
 // its foot, as More and Send do there. Otherwise (a phone's layout, or a
@@ -60,7 +60,6 @@ function panelBeside(listingKey: string | undefined) {
 // agent's greeting and note are the home's caption, under its photo.)
 export function ShareHeader({
   agent,
-  note,
   home,
   homesCount,
   whoCanSee,
@@ -74,7 +73,6 @@ export function ShareHeader({
   extras,
 }: {
   agent: ShareAgent;
-  note: string;
   home: HomeInView | null;
   homesCount: number;
   whoCanSee: string;
@@ -208,7 +206,6 @@ export function ShareHeader({
           <AgentContact
             key={home?.listingKey ?? ""}
             agent={agent}
-            note={note}
             home={home}
             homesCount={homesCount}
             whoCanSee={whoCanSee}
@@ -226,9 +223,8 @@ export function ShareHeader({
 const way = (first: boolean) => button({ kind: first ? "primary" : "secondary", size: "lg", block: true });
 
 // Who the agent is and every way to reach them, only the ways they chose to show.
-export function AgentContact({
+function AgentContact({
   agent,
-  note,
   home,
   homesCount,
   whoCanSee,
@@ -239,7 +235,6 @@ export function AgentContact({
   leave = null,
 }: {
   agent: ShareAgent;
-  note: string;
   home: HomeInView | null;
   homesCount: number;
   whoCanSee: string;
@@ -284,7 +279,7 @@ export function AgentContact({
       const result = await onAsk(home.listingKey);
       if (!result.ok) return setSaid(result.error);
       setAsked(true);
-      setSaid(result.already ? `Already asked. ${first} will be in touch.` : `Sent. ${first} will get back to you.`);
+      setSaid(result.already ? "Already asked." : "Sent.");
     });
   };
 
@@ -314,11 +309,6 @@ export function AgentContact({
         <div className="mt-3">
           <FollowButton small personId={follow.personId} name={first} following={follow.following} />
         </div>
-      )}
-      {note && (
-        <p className="mt-4 whitespace-pre-line rounded-2xl bg-stone-50 p-4 text-body leading-relaxed text-stone-800">
-          {note}
-        </p>
       )}
       <div className="mt-4 flex flex-col gap-2.5">
         {ways.map(({ href, Icon, label }, i) => (
@@ -352,17 +342,13 @@ export function AgentContact({
           {said}
         </p>
       </div>
-      <p className="mt-2 text-meta leading-relaxed text-muted">
-        {homesCount > 0 &&
-          `${ways.length > 0 || canAsk ? "Or add" : "Add"} a comment under ${home ? "the home" : "any home"}. ${first} sees every one. `}
-        {whoCanSee}
-      </p>
+      <p className="mt-2 text-meta leading-relaxed text-muted">{whoCanSee}</p>
       {leave && <LeaveLink first={first} leave={leave} className="mt-2" />}
     </div>
   );
 }
 
-// "Not for you? Leave this link": for someone the agent added to a link of
+// "Leave this link": for someone the agent added to a link of
 // their own, perhaps by mistake. It asks once more first, in a small dialog
 // that starts on Cancel, so a stray tap or Enter never takes them off.
 // Leaving takes them home.
@@ -416,7 +402,7 @@ export function LeaveLink({
           className,
         )}
       >
-        Not for you? <span className="underline underline-offset-4">Leave this link</span>
+        <span className="underline underline-offset-4">Leave this link</span>
       </button>
       <dialog
         ref={dialog}
@@ -445,7 +431,7 @@ export function LeaveLink({
             Leave this link?
           </h2>
           <p id={`${id}-said`} className="mt-1 text-body text-muted">
-            {first} won&apos;t see your likes and comments on it any more.
+            {first} will stop seeing your likes and comments.
           </p>
           {error && (
             <p role="alert" className="mt-3 text-sm font-medium text-red-700">

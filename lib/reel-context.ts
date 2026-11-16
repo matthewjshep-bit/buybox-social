@@ -42,7 +42,7 @@ export type HomeContext = {
   forYou?: string[];
 };
 
-export type ReelContextKind = "person" | "feed" | "client" | "share" | "pick";
+type ReelContextKind = "person" | "feed" | "client" | "share" | "pick" | "listings";
 
 export type ReelContext = {
   kind: ReelContextKind;
@@ -73,7 +73,7 @@ export type ReelContext = {
 
 export const TAKE_SPOTS = 6;
 export const TAKE_COMMENTS = 3;
-export const TAKE_CHARS = 280;
+const TAKE_CHARS = 280;
 
 // What someone said, cut at a word to `most` characters, with "…".
 export const clipTake = (body: string, most = TAKE_CHARS) => {

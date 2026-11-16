@@ -86,15 +86,16 @@ export function useNudges({
   };
 }
 
-// Drawn over the photo: centred on it for the photos, and just under it for
-// the next home. It never takes a touch, so the gesture it shows still works.
+// Centred on the photo for the photos; for the next home, in the strip just
+// under it (where the activity line, waiting meanwhile, goes). It never takes
+// a touch, so the gesture it shows still works.
 export function NudgeHint({ nudge }: { nudge: Nudge }) {
   return (
     <div
       aria-hidden
       className={cn(
-        "pointer-events-none absolute left-(--photo-left,0px) right-(--photo-right,0px) top-(--photo-top) bottom-(--photo-bottom) z-10 flex justify-center px-4",
-        nudge === "photos" ? "items-center" : "items-end pb-3",
+        "pointer-events-none absolute left-(--photo-left,0px) right-(--photo-right,0px) top-(--photo-top) z-10 flex justify-center px-4",
+        nudge === "photos" ? "bottom-(--photo-bottom) items-center" : "bottom-[calc(var(--photo-bottom)-var(--words-gap,0px))] items-end pb-2.5",
       )}
     >
       <p

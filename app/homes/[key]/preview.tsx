@@ -15,7 +15,10 @@ export const PREVIEW_TYPE = "image/jpeg";
 
 // "3 bd · 2 ba · 1,850 sq ft", then "· Kirkland" when the city isn't shown
 // elsewhere.
-export function homeFacts(listing: Listing, { city = false } = {}) {
+export function homeFacts(
+  listing: Pick<Listing, "BedroomsTotal" | "BathroomsTotalInteger" | "LivingArea" | "City">,
+  { city = false } = {},
+) {
   return [
     Number.isFinite(listing.BedroomsTotal) && `${listing.BedroomsTotal} bd`,
     Number.isFinite(listing.BathroomsTotalInteger) && `${listing.BathroomsTotalInteger} ba`,

@@ -61,8 +61,8 @@ test("activity shows people and homes, with repeats on one comment on one line",
   await ana.goto("/activity");
   await expect(ana.getByRole("heading", { level: 1 })).toHaveText("Activity");
   await expect(ana.getByText("Nothing yet")).toBeVisible();
-  await expect(ana.getByText("When people reply to you or like your comments, it shows up here.")).toBeVisible();
-  await expect(ana.getByRole("link", { name: "See homes" })).toHaveAttribute("href", "/");
+  await expect(ana.getByText("Replies and likes show up here.")).toBeVisible();
+  await expect(ana.getByRole("link", { name: "See homes" })).toHaveAttribute("href", "/reel");
   await expect(ana.getByText("React to today's picks")).toHaveCount(0);
 
   await ana.goto("/homes/SAMPLE-1013");
@@ -189,7 +189,7 @@ test("activity shows people and homes, with repeats on one comment on one line",
   await grace.getByRole("button", { name: "Remove photo" }).click();
   await expect(grace.getByLabel("Add a photo")).toBeAttached();
   await deleteMine(ana);
-  await expect(ana.getByText("Your page fills up as you go")).toBeVisible();
+  await expect(ana.getByText("Nothing here yet")).toBeVisible();
   await ana.goto("/activity");
   await expect(ana.getByText("Nothing yet")).toBeVisible();
   await ana.goto("/homes/SAMPLE-1013");

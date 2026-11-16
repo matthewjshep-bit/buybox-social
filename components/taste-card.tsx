@@ -9,7 +9,7 @@ import { card } from "@/lib/ui";
 
 // Your taste as your own page tells it, for the end of the feed: the same
 // headline, words and chips, so "See your taste" opens a card that agrees.
-export type ReelTaste = {
+type ReelTaste = {
   visitorId: string;
   headline: string | null;
   // In your voice ("You tend to like…"), or none yet.
@@ -69,6 +69,7 @@ export function TasteCard({
   className?: string;
 }) {
   const reacted = taste ? taste.likes + taste.passes : 0;
+  const chips = Boolean(story && story.loves.length + story.passes.length > 0);
   // Each chip shows just those homes on your page, as it does there.
   const chipHref = (key: string, side: TopicSide) =>
     `/people/${story?.visitorId}?${new URLSearchParams({ about: key, side })}`;
@@ -83,13 +84,14 @@ export function TasteCard({
       </h3>
       {!hasTaste(taste) ? (
         <p className="mt-1 text-body leading-snug text-stone-700">
-          Like or pass on {TASTE_MIN_REACTIONS - reacted} more{" "}
-          {TASTE_MIN_REACTIONS - reacted === 1 ? "home" : "homes"} and your picks start matching what you like.
+          Rate {TASTE_MIN_REACTIONS - reacted} more {TASTE_MIN_REACTIONS - reacted === 1 ? "home" : "homes"} to get
+          better picks.
         </p>
       ) : (
         <>
           {story?.headline && <Headline text={story.headline} />}
-          {story?.sentence && <p className="mt-2 text-body leading-6 text-stone-800">{story.sentence}</p>}
+          {/* The chips say it all: words only when there are none. */}
+          {story?.sentence && !chips && <p className="mt-2 text-body leading-6 text-stone-800">{story.sentence}</p>}
           {story && (
             <>
               <TasteRow side="like" chips={story.loves} current={null} href={chipHref} isMe />
@@ -97,23 +99,21 @@ export function TasteCard({
               {story.passesPrivate && story.passes.length > 0 && (
                 <p className="mt-2 flex items-center gap-1.5 text-meta text-muted">
                   <Lock aria-hidden size={12} className="shrink-0" />
-                  Only you see what you pass on
+                  Only you see passes
                 </p>
               )}
             </>
           )}
-          <p className="mt-3 flex items-start gap-1.5 text-meta leading-snug text-muted">
-            {story?.ai && <Sparkles aria-hidden size={14} className="mt-px shrink-0 text-brand" />}
-            <span>
-              {story?.ai && "Written by AI. "}
-              From <span className="tabular-nums">{reacted}</span> reactions: liked{" "}
-              <span className="tabular-nums">{taste.likes}</span>, passed{" "}
-              <span className="tabular-nums">{taste.passes}</span>.
-            </span>
-          </p>
-          {/* The whole story, in words, on their own page. */}
+          {story?.ai && story.sentence && !chips && (
+            <p className="mt-3 flex items-start gap-1.5 text-meta leading-snug text-muted">
+              <Sparkles aria-hidden size={14} className="mt-px shrink-0 text-brand" />
+              Written by AI
+            </p>
+          )}
+          {/* Their own profile, where a chip shows just those homes (an agent's is
+              under Activity, after their listings). */}
           <Link
-            href="/people/me"
+            href="/people/me?tab=activity"
             className="-mb-2 mt-1 inline-flex min-h-11 items-center gap-0.5 text-sm font-semibold text-brand underline-offset-2 hover:underline"
           >
             See your taste

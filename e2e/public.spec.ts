@@ -33,14 +33,14 @@ test("public pages show activity, never private words, and private threads share
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByText(SECRET)).toBeVisible();
   // Sharing publicly is only offered once you like the home.
-  await expect(chat.getByLabel(/share this anonymously/)).toHaveCount(0);
+  await expect(chat.getByLabel(/share publicly/)).toHaveCount(0);
   await client.keyboard.press("Escape");
 
   await heartOf(clientHome).click();
   await expect(heartOf(clientHome)).toHaveAttribute("aria-pressed", "true");
   await likeInPhoto(clientHome, "the brick front");
   chat = await openComments(client, clientHome);
-  await chat.getByLabel(/share this anonymously/).check();
+  await chat.getByLabel(/share publicly/).check();
   await chat.getByLabel("Add a comment").fill(SHARED);
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByText("Shared anonymously on the public page")).toBeVisible();
@@ -104,7 +104,7 @@ test("public pages show activity, never private words, and private threads share
   await post.getByRole("button", { name: "Next photo" }).click();
   await likeInPhoto(post, "the natural light");
   sheet = await openComments(page, post);
-  await expect(sheet.getByLabel(/share this anonymously/)).toHaveCount(0);
+  await expect(sheet.getByLabel(/share publicly/)).toHaveCount(0);
   await sheet.getByLabel("Add a comment").fill("Love the quiet cul-de-sac.");
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(commentIn(thread, "Morgan", "Love the quiet cul-de-sac.")).toBeVisible();

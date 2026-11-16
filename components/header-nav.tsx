@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, House, LayoutDashboard, LogOut, Shield, UserRound } from "lucide-react";
+import { Bell, House, BriefcaseBusiness, LogOut, Shield, UserRound, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
@@ -189,7 +189,7 @@ export function AccountMenu({
         ref={trigger}
         type="button"
         popoverTarget="account-menu"
-        aria-label="Your profile"
+        aria-label="Account menu"
         aria-expanded={open}
         onBlur={leave}
         onKeyDown={arrows}
@@ -247,9 +247,17 @@ export function AccountMenu({
               {link.label}
             </MenuLink>
           ))}
+          {/* An agent's Clients: in the header too, but there it's only an
+              icon on a phone, so here it has its name. A buyer who is an
+              agent sets up their agent's account from here. */}
           {agent && (
-            <MenuLink href="/dashboard" section icon={<LayoutDashboard aria-hidden size={18} />} onGo={close}>
-              Dashboard
+            <MenuLink href="/dashboard" section icon={<Users aria-hidden size={18} />} onGo={close}>
+              Clients
+            </MenuLink>
+          )}
+          {!agent && (
+            <MenuLink href="/for-agents" icon={<BriefcaseBusiness aria-hidden size={18} />} onGo={close}>
+              I&apos;m an agent
             </MenuLink>
           )}
           {admin && (

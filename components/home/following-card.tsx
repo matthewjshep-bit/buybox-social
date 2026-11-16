@@ -1,11 +1,12 @@
 import { ArrowRight } from "lucide-react";
+import type { CSSProperties } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { CommentBubble } from "@/components/comment-bubble";
 import { FeedHeart } from "@/components/home/feed-heart";
 import { InlineComment } from "@/components/home/inline-comment";
 import { Avatar, Badge, HomeThumb } from "@/components/ui";
-import { cn, formatPrice } from "@/lib/format";
+import { cn, formatPrice, namesOrOthers } from "@/lib/format";
 import type { FeedWho, HomeFeedEntry } from "@/lib/home-feed";
 import { cardTime } from "@/lib/profile";
 import type { ReactionState } from "@/lib/reactions";
@@ -17,16 +18,11 @@ import { card } from "@/lib/ui";
 // The whole card opens the stream's homes in the pop-out, on this one, on the
 // photo it's about; the names go to each person's page.
 
-export const feedReel = (key: string, photo?: number | null) =>
+const feedReel = (key: string, photo?: number | null) =>
   `/reel?${new URLSearchParams({ from: "feed", home: key, ...(photo != null && { photo: String(photo) }) })}`;
 
 // "Matthew", "Matthew and Eva", "Matthew, Eva and 2 others", in words alone.
-export function namesText(who: FeedWho[]) {
-  const names = who.map((person) => person.name);
-  if (names.length <= 2) return names.join(" and ");
-  if (names.length === 3) return `${names[0]}, ${names[1]} and ${names[2]}`;
-  return `${names[0]}, ${names[1]} and ${names.length - 2} others`;
-}
+const namesText = (who: FeedWho[]) => namesOrOthers(who.map((person) => person.name));
 
 // The same, each name a link to their page (over the card's own link).
 function Names({ who }: { who: FeedWho[] }) {
@@ -57,7 +53,7 @@ function Names({ who }: { who: FeedWho[] }) {
 }
 
 // Up to three faces, overlapping.
-export function FaceStack({ who }: { who: FeedWho[] }) {
+function FaceStack({ who }: { who: FeedWho[] }) {
   return (
     <span aria-hidden className="flex shrink-0 -space-x-2">
       {who.slice(0, 3).map((person, i) => (
@@ -104,7 +100,18 @@ export function FollowingCard({
         </p>
       </div>
       {home.photo && (
-        <div className="relative h-[min(28rem,112vw)] w-full bg-stone-100">
+        <div
+          // On a phone, the photo whole, at its own shape (between a little
+          // taller than wide and three by two); wider, a fixed height.
+          style={
+            {
+              "--shape": String(
+                Math.min(3 / 2, Math.max(4 / 5, home.photo.width && home.photo.height ? home.photo.width / home.photo.height : 4 / 3)),
+              ),
+            } as CSSProperties
+          }
+          className="relative aspect-(--shape) w-full bg-stone-100 sm:aspect-auto sm:h-[28rem]"
+        >
           <Image
             src={home.photo.url}
             alt={home.photo.alt}

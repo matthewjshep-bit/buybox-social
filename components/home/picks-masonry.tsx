@@ -8,7 +8,8 @@ import { button } from "@/lib/ui";
 // "More homes for you": homes picked by their taste, as a board of photos at
 // their own shapes, two columns, filled left, right, left, right in the order
 // they were picked (so the first is top left, and the reel they open goes in
-// that same order). Each says why it's here, when there's a reason, and opens
+// that same order). On a phone, one column in that order, each photo as wide
+// as the page. Each says why it's here, when there's a reason, and opens
 // them all full screen on that one. Then the way to every home.
 
 // Photos keep their shape, between a little taller than wide and a little wider.
@@ -35,17 +36,17 @@ function Pin({ post, eager }: { post: FeedPost; eager: boolean }) {
               alt=""
               fill
               priority={eager}
-              sizes="(min-width: 1024px) 275px, 50vw"
+              sizes="(min-width: 1024px) 275px, (min-width: 640px) 50vw, 100vw"
               className="object-cover transition-transform duration-300 motion-safe:group-hover:scale-[1.02]"
             />
           )}
         </span>
         <span className="mt-1.5 block px-0.5 font-display text-base leading-tight">{formatPrice(listing.ListPrice)}</span>
-        <span className="block truncate px-0.5 text-[12px] leading-4 text-muted group-hover:underline">
+        <span className="block truncate px-0.5 text-meta leading-[18px] text-muted group-hover:underline">
           {listing.UnparsedAddress}, {listing.City}
         </span>
         {reason && (
-          <span className="mt-1 inline-flex max-w-full rounded-full bg-sky-50 px-2 py-0.5 text-[12px] font-medium leading-4 text-sky-900 ring-1 ring-sky-200">
+          <span className="mt-1 inline-flex max-w-full rounded-full bg-sky-50 px-2 py-0.5 text-meta font-medium leading-[18px] text-sky-900 ring-1 ring-sky-200">
             <span className="sr-only">Why this: </span>
             <span className="truncate">{reason}</span>
           </span>
@@ -55,7 +56,7 @@ function Pin({ post, eager }: { post: FeedPost; eager: boolean }) {
   );
 }
 
-export function PicksMasonry({ picks, intro }: { picks: FeedPost[]; intro?: string }) {
+export function PicksMasonry({ picks }: { picks: FeedPost[] }) {
   const columns = [picks.filter((_, i) => i % 2 === 0), picks.filter((_, i) => i % 2 === 1)];
   return (
     <section aria-labelledby="more-homes-title" className="flex flex-col gap-3">
@@ -63,10 +64,17 @@ export function PicksMasonry({ picks, intro }: { picks: FeedPost[]; intro?: stri
         <h2 id="more-homes-title" className="text-[17px] font-semibold">
           More homes for you
         </h2>
-        {intro && <p className="text-meta text-muted">{intro}</p>}
+
       </div>
       {picks.length > 0 && (
-        <div className="flex items-start gap-2.5">
+        <ul className="flex min-w-0 flex-col gap-5 sm:hidden">
+          {picks.map((post, i) => (
+            <Pin key={post.listing.ListingKey} post={post} eager={i === 0} />
+          ))}
+        </ul>
+      )}
+      {picks.length > 0 && (
+        <div className="hidden items-start gap-2.5 sm:flex">
           {columns.map((column, c) => (
             <ul key={c} className={cn("flex min-w-0 flex-1 flex-col gap-4")}>
               {column.map((post, i) => (

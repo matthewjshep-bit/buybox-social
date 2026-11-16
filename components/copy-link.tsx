@@ -2,12 +2,11 @@
 
 import { Check, Copy } from "lucide-react";
 import { useState } from "react";
-import { cn } from "@/lib/format";
 import { button } from "@/lib/ui";
 
 // Copies a client's link, whole, to paste into a text or an email; says so
 // once it has. `name`: who it's for, for a screen reader.
-export function CopyLink({ path, name, className }: { path: string; name: string; className?: string }) {
+export function CopyLink({ path, name }: { path: string; name: string }) {
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
   return (
@@ -23,7 +22,7 @@ export function CopyLink({ path, name, className }: { path: string; name: string
           setFailed(true);
         }
       }}
-      className={cn(button({ kind: "secondary", size: "lg" }), className)}
+      className={button({ kind: "secondary", size: "lg" })}
     >
       {copied ? <Check aria-hidden size={18} className="text-emerald-700" /> : <Copy aria-hidden size={18} />}
       <span aria-live="polite">{copied ? "Copied" : failed ? "Couldn't copy" : "Copy link"}</span>

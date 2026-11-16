@@ -255,7 +255,7 @@ function statusOf(c: Omit<Client, "status">, ask: AskRow | undefined, waiting: P
 export type ClientBook = { clients: Client[]; unclaimed: ClientLink[] };
 
 // A client's own page on the Clients page.
-export const clientHref = (key: string) => `/dashboard/clients/${encodeURIComponent(key)}`;
+const clientHref = (key: string) => `/dashboard/clients/${encodeURIComponent(key)}`;
 
 // Every client of this agent, once per request however many parts of the page ask.
 export const getClientBook = cache(async (agentId: string): Promise<ClientBook> => {
@@ -360,15 +360,3 @@ export const getClientBook = cache(async (agentId: string): Promise<ClientBook> 
   const unclaimed = shares.filter((share) => !onLink.has(share.id)).map((share) => linkFor(share, []));
   return { clients, unclaimed };
 });
-
-export type ClientFilterKey = "all" | "new" | "asks" | "commented" | "liked" | "unopened";
-
-// The ways to see just some clients, with the count of each.
-export const CLIENT_FILTERS: readonly { key: ClientFilterKey; label: string; test: (c: Client) => boolean }[] = [
-  { key: "all", label: "All", test: () => true },
-  { key: "new", label: "New activity", test: (c) => c.unread },
-  { key: "asks", label: "Wants a showing", test: (c) => c.asks > 0 },
-  { key: "commented", label: "Waiting on a reply", test: (c) => c.unanswered > 0 },
-  { key: "liked", label: "Liked a home", test: (c) => c.liked > 0 },
-  { key: "unopened", label: "Not opened", test: (c) => !c.opened },
-];

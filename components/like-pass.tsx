@@ -17,7 +17,7 @@ import {
 // Your reaction to a home: a like (the heart), or "not for me", plus any
 // specifics. Each change saves as it happens.
 
-export const QUESTIONS: Record<Sentiment, string> = {
+const QUESTIONS: Record<Sentiment, string> = {
   like: "What else do you like?",
   dislike: "What made you pass?",
 };

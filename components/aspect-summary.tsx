@@ -11,48 +11,40 @@ import { aspectLabel, topAspects, type Aspect, type AspectCounts } from "@/lib/r
 export function AspectSummary({
   liked,
   disliked,
-  limit = 5,
-  className,
   likeLabel = "People like",
   dislikeLabel = "People pass on",
-  dislikeNote,
   variant = "chips",
   you,
   detail,
-  passLimit = 3,
 }: {
   liked: AspectCounts;
   disliked: AspectCounts;
-  limit?: number;
-  className?: string;
   likeLabel?: string;
   dislikeLabel?: string;
-  // Rows: one short line under the passes' heading.
-  dislikeNote?: string;
+
   variant?: "chips" | "rows";
   // Rows: the specifics your own reaction includes.
   you?: { liked: Aspect[]; disliked: Aspect[] };
   // Rows: what a row shows when it's opened.
   detail?: (aspect: Aspect, tone: "like" | "dislike") => ReactNode;
-  // Rows: how many passes show before "Show all".
-  passLimit?: number;
 }) {
   if (variant === "rows") {
     const likes = topAspects(liked);
     const dislikes = topAspects(disliked);
     if (likes.length === 0 && dislikes.length === 0) return null;
     return (
-      <div className={cn("flex flex-col gap-5", className)}>
+      <div className="flex flex-col gap-5">
         {likes.length > 0 && (
-          <AspectRows tone="like" label={likeLabel} items={likes} first={limit} you={you?.liked ?? []} detail={detail} />
+          <AspectRows tone="like" label={likeLabel} items={likes} first={5} you={you?.liked ?? []} detail={detail} />
         )}
         {dislikes.length > 0 && (
           <AspectRows
             tone="dislike"
             label={dislikeLabel}
-            note={dislikeNote}
+
             items={dislikes}
-            first={passLimit}
+            // Fewer passes show before "Show all".
+            first={3}
             you={you?.disliked ?? []}
             detail={detail}
           />
@@ -60,11 +52,11 @@ export function AspectSummary({
       </div>
     );
   }
-  const likes = topAspects(liked, limit);
-  const dislikes = topAspects(disliked, limit);
+  const likes = topAspects(liked, 5);
+  const dislikes = topAspects(disliked, 5);
   if (likes.length === 0 && dislikes.length === 0) return null;
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
+    <div className="flex flex-col gap-2">
       {likes.length > 0 && <AspectRow tone="like" label={likeLabel} items={likes} />}
       {dislikes.length > 0 && <AspectRow tone="dislike" label={dislikeLabel} items={dislikes} />}
     </div>

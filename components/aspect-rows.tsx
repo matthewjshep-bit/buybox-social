@@ -13,7 +13,6 @@ import { aspectLabel, type Aspect } from "@/lib/reactions";
 export function AspectRows({
   tone,
   label,
-  note,
   items,
   first,
   you,
@@ -21,8 +20,7 @@ export function AspectRows({
 }: {
   tone: "like" | "dislike";
   label: string;
-  // One short line under the heading.
-  note?: string;
+
   items: [Aspect, number][];
   first: number;
   you: Aspect[];
@@ -40,7 +38,7 @@ export function AspectRows({
         <Icon aria-hidden size={14} />
         {label}
       </h4>
-      {note && <p className="mt-0.5 text-meta text-muted">{note}</p>}
+
       <ul ref={list} className="mt-1 flex flex-col">
         {shown.map(([aspect, count]) => {
           const expanded = open === aspect;

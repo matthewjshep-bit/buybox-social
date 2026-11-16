@@ -12,6 +12,15 @@ export const appUrl = () =>
 // themselves.
 export const escapeLike = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
 
+// Names in a sentence: "Sam", "Sam and Ana", "Sam, Ana and Lee".
+export const namesList = (names: string[]) =>
+  names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+
+// The same with a crowd: up to three are all named, then it's "Sam, Ana and
+// 2 others".
+export const namesOrOthers = (names: string[]) =>
+  namesList(names.length > 3 ? [...names.slice(0, 2), `${names.length - 2} others`] : names);
+
 export const formatPrice =(price: number) =>
   new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -34,15 +43,6 @@ export function timeAgo(iso: string, now = Date.now()) {
 // when they haven't given a name.
 export const agentFirstName = (name: string | null | undefined, fallback = "your agent") =>
   name?.trim().split(/\s+/)[0] || fallback;
-
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-
-// "Active 2h ago" for recent activity; older activity isn't worth calling out.
-export function activeLabel(iso: string | null, now = Date.now()) {
-  if (!iso || now - new Date(iso).getTime() > WEEK_MS) return null;
-  const ago = timeAgo(iso, now);
-  return ago === "just now" ? "Active just now" : `Active ${ago} ago`;
-}
 
 // All pass white text at WCAG AA, so any choice stays readable.
 export const BRAND_COLORS = [

@@ -48,7 +48,7 @@ export function EditAbout({
         className="-ml-2 mt-1 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 text-body font-semibold text-brand hover:bg-black/5"
       >
         <Pencil aria-hidden size={15} />
-        {empty ? (agent ? "Add a description and links" : "Add a few words about yourself") : "Edit"}
+        {empty ? (agent ? "Add a bio and links" : "Add a bio") : "Edit"}
       </button>
     );
   }
@@ -86,8 +86,8 @@ export function EditAbout({
           onChange={(event) => setText(event.target.value)}
           placeholder={
             agent
-              ? "What you do and where: “Helping first-time buyers on the Eastside since 2015.”"
-              : "What you're looking for: “Hunting for a craftsman near a park, with room for a dog.”"
+              ? "Helping first-time buyers on the Eastside since 2015."
+              : "Looking for a craftsman near a park."
           }
           className={cn(field({ lines: true }), "mt-1")}
         />
@@ -98,7 +98,7 @@ export function EditAbout({
       {agent && (
         <fieldset className="flex flex-col gap-2">
           <legend className="text-sm font-semibold">Links</legend>
-          <p className="-mt-1 text-meta text-muted">Your brokerage, your listings, anywhere else clients should find you.</p>
+
           {rows.map((row, i) => (
             <div key={i} className="flex items-center gap-2">
               <span className="w-28 shrink-0 sm:w-36">

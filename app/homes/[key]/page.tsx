@@ -1,16 +1,15 @@
 import type { Metadata } from "next";
 import { commentParam, ListingDetail, photoParam } from "@/components/listing-detail";
 import { formatPrice } from "@/lib/format";
-import { getPublicListing } from "@/lib/public";
+import { getListingFacts } from "@/lib/public";
 import { homeFacts } from "./preview";
 
 type Props = { params: Promise<{ key: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { key } = await params;
-  const data = await getPublicListing(decodeURIComponent(key));
-  if (!data) return { title: "Home not found · Porchcard" };
-  const { listing } = data;
+  const listing = await getListingFacts(decodeURIComponent(key));
+  if (!listing) return { title: "Home not found · Porchcard" };
   const place = `${listing.UnparsedAddress}, ${listing.City}`;
   // The listing alone, like its picture: no names, nothing anyone said.
   const description = `${[formatPrice(listing.ListPrice), homeFacts(listing)].filter(Boolean).join(" · ")}. See what people think.`;

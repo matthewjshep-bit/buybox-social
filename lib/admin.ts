@@ -179,9 +179,9 @@ export async function countPeople() {
   return counts;
 }
 
-export type PersonHome = { listing_key: string; data: Listing; reaction: "like" | "dislike" | null; at: Date };
-export type PersonComment = { id: string; listing_key: string; address: string; body: string; at: Date };
-export type PersonLink = {
+type PersonHome = { listing_key: string; data: Listing; reaction: "like" | "dislike" | null; at: Date };
+type PersonComment = { id: string; listing_key: string; address: string; body: string; at: Date };
+type PersonLink = {
   id: string;
   client_name: string;
   created_at: Date;
@@ -348,7 +348,7 @@ export async function homeStatuses() {
     select standard_status as status, count(*)::int as n from listings group by 1 order by 2 desc`;
 }
 
-export type HomePerson = {
+type HomePerson = {
   name: string;
   accountId: string | null;
   reaction: "like" | "dislike";
@@ -476,7 +476,7 @@ export async function listComments({
 
 // --- Admins -----------------------------------------------------------------
 
-export type AdminRow = { email: string; added_by: string; created_at: Date; accountId: string | null; name: string };
+type AdminRow = { email: string; added_by: string; created_at: Date; accountId: string | null; name: string };
 
 // Everyone the owner has made an admin, and whether they've signed in yet.
 export async function listAdmins() {

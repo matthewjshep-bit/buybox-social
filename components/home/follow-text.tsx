@@ -8,7 +8,7 @@ import { cn } from "@/lib/format";
 // button, and a few suggested people beside the feed shouldn't shout. It stays
 // where it is once tapped (the page isn't reloaded under it), so a mistaken
 // tap can be undone right there.
-export function FollowText({ personId, name, className }: { personId: string; name: string; className?: string }) {
+export function FollowText({ personId, name }: { personId: string; name: string }) {
   const [on, setOn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -34,7 +34,6 @@ export function FollowText({ personId, name, className }: { personId: string; na
         className={cn(
           "inline-flex min-h-11 shrink-0 items-center rounded-full px-2 text-meta font-semibold hover:underline",
           on ? "text-muted" : "text-brand",
-          className,
         )}
       >
         {on ? "Following" : "Follow"}

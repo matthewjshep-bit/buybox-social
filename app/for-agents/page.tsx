@@ -15,12 +15,12 @@ const STEPS = [
   {
     icon: Heart,
     title: "They like or pass",
-    text: "No app and no password. One tap per home, and they can say what stood out.",
+    text: "One tap per home. No app, no password.",
   },
   {
     icon: MessageCircle,
     title: "Talk it through",
-    text: "See what they like and pass on across every home you send, and bring their partner into the thread.",
+    text: "See what they like, and add their partner.",
   },
 ];
 
@@ -36,8 +36,7 @@ export default async function ForAgentsPage() {
             Know what your clients think of every home.
           </h1>
           <p className="mt-4 text-lg leading-relaxed text-stone-700">
-            Send a branded link with a few homes. Your client likes or passes in a tap, says what stood
-            out, and you see it all in one place, across every home you&apos;ve sent.
+            Send a few homes as one link. See what each client likes.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             {!user ? (
@@ -46,7 +45,7 @@ export default async function ForAgentsPage() {
               </Link>
             ) : user.role === "agent" ? (
               <Link href="/dashboard" className={start}>
-                Go to your dashboard
+                Go to Clients
               </Link>
             ) : (
               // Signed in as a buyer: one tap to an agent's account.
@@ -56,7 +55,7 @@ export default async function ForAgentsPage() {
                 </button>
               </form>
             )}
-            <Link href="/" className={button({ kind: "secondary", size: "lg" })}>
+            <Link href="/reel" className={button({ kind: "secondary", size: "lg" })}>
               See it as a buyer
             </Link>
           </div>

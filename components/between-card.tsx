@@ -16,12 +16,12 @@ function headlineOf(link: BetweenLink, first: string) {
   return `You're both on ${link.agentFirst}'s link`;
 }
 
-// "Nov 3 · 2 waiting for you", "Liked 2 of 3", in small words under it.
+// "Nov 3 · 2 new", "Liked 2 of 3", in small words under it.
 function metaOf(link: BetweenLink, first: string) {
   return [
     `Sent ${ago(link.sentAt)}`,
     link.kind === "together" && plural(link.homes, "home"),
-    link.unrated > 0 && `${link.unrated} waiting for you`,
+    link.unrated > 0 && `${link.unrated} new`,
     link.kind !== "from" && link.theyLiked > 0 && `${first} liked ${link.theyLiked}`,
   ]
     .filter(Boolean)

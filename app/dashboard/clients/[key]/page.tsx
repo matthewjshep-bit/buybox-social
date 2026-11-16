@@ -76,9 +76,8 @@ export default async function ClientPage({ params }: { params: Promise<{ key: st
 
       <section aria-labelledby="links-title" className="mt-10">
         <h2 id="links-title" className="text-2xl font-semibold">
-          Homes you&apos;ve sent {client.name}
+          Sent to {client.name}
         </h2>
-        <p className="mt-1 text-lg text-stone-600">Open a link to see what they thought of each home, and to reply.</p>
         <ul className={cn(card, "mt-4 divide-y divide-stone-200")}>
           {client.links.map((link) => (
             <LinkRow key={link.shareId} link={link} />

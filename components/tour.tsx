@@ -46,15 +46,14 @@ function wanted(kind: TourKind) {
 
 // One step: what it points at, in the home on screen, and what it says.
 // `at`: where the finger taps (the price, in the facts), if not the middle.
-export type TourStep = {
+type TourStep = {
   target: string;
   at?: string;
   // Round, the size of a fingertip's reach, in the middle of what it points
   // at (a photo), rather than around all of it.
   spot?: boolean;
   title: string;
-  // (Or worded for a mouse or trackpad, `fine`, or a finger.)
-  body: string | ((fine: boolean) => string);
+  body: string;
 };
 
 // Whether a tour is due, and the way to end it. Waits until `ready` (a home is
@@ -90,8 +89,7 @@ const GUTTER = 16;
 // that's on screen counts).
 export function Tour({ root: rootOf, steps, onDone }: { root: () => HTMLElement | null; steps: TourStep[]; onDone: () => void }) {
   const [root] = useState(rootOf);
-  // A mouse or trackpad scrolls on to the next home; a finger swipes.
-  const [fine] = useState(() => matchMedia("(pointer: fine)").matches);
+
   // Only the steps whose thing is on screen.
   const [shown] = useState(() => steps.filter((step) => root && find(root, step.target)));
   const [index, setIndex] = useState(0);
@@ -210,7 +208,7 @@ export function Tour({ root: rootOf, steps, onDone }: { root: () => HTMLElement 
           {step.title}
         </p>
         <p className="mt-1 text-sm leading-relaxed text-stone-600">
-          {typeof step.body === "function" ? step.body(fine) : step.body}
+          {step.body}
         </p>
         <div className="mt-3 flex items-center gap-2">
           {shown.length > 1 && (
@@ -259,10 +257,9 @@ function visible(el: Element | null) {
 // What each tour says, for the home on screen. `agent`: the agent's first
 // name ("your agent" without one). `notesFor`: on their own link, who the
 // agent's notes are for. `agentTake`: the agent left notes on this home.
-// `more`: there's another home after it.
 export function tourSteps(
   kind: TourKind,
-  { agent, notesFor, agentTake, more }: { agent: string; notesFor?: string; agentTake: boolean; more: boolean },
+  { agent, notesFor, agentTake }: { agent: string; notesFor?: string; agentTake: boolean },
 ): TourStep[] {
   const facts = { target: '[data-tour="facts"]', at: '[data-fact="Price"]' };
   const photo = { target: '[aria-roledescription="carousel"] [data-photo-frame]', spot: true };
@@ -271,12 +268,12 @@ export function tourSteps(
   if (kind === "notes") {
     const who = notesFor ?? "your client";
     return [
-      { ...facts, title: "Add your take", body: `Tap any detail, like the price, to like it or leave ${who} a note.` },
-      { ...photo, title: "Point things out", body: "Tap anything in a photo, the new roof or the yard, to note it." },
+      { ...facts, title: "Add your take", body: "Tap the price, or any detail." },
+      { ...photo, title: "Point things out", body: "Tap anything in a photo." },
       {
         target: '[data-tour="done"]',
         title: `${who.charAt(0).toUpperCase() + who.slice(1)} sees your notes`,
-        body: "Your face marks each one on the link. Tap Done when you're finished.",
+        body: "Tap Done when you're finished.",
       },
     ];
   }
@@ -286,23 +283,20 @@ export function tourSteps(
           {
             target: "[data-photo-caption] > *",
             title: `${Agent} left you notes`,
-            body: `They show here, one at a time, and ${agent}'s face marks each detail they picked out.`,
+            body: "They show here.",
           },
         ]
       : []),
-    { ...facts, title: "Tap any detail", body: "Like the price, the beds or the address, or say something about it." },
+    { ...facts, title: "Tap any detail", body: "Like it, or say something." },
     {
       ...photo,
       title: "Tap anything in a photo",
-      body: kind === "link" ? `The kitchen, the yard: like it, or tell ${agent} what you think.` : "The kitchen, the yard: like it, or say something about it.",
+      body: "Like it, or say something.",
     },
     {
       ...heart,
       title: "Love the home?",
-      body: (fine) =>
-        more
-          ? `Tap the heart. Then ${fine ? "scroll down" : "swipe up"} for the next ${kind === "link" ? "one" : "home"}.`
-          : "Tap the heart.",
+      body: "Tap the heart.",
     },
   ];
 }

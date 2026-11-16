@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { sql } from "./db";
+import { namesList } from "./format";
 import type { Listing } from "./listings/types";
 import { FACTS, isPointTag } from "./photos";
 import { aspectOf, dayOf, isVideo, photoOf, PROFILE_TIME_ZONE, thingAt, withoutPasses, type ProfileRows } from "./profile";
@@ -15,22 +16,22 @@ import { describeBeds, describePriceRange } from "./taste";
 
 // Enough to say something: this many homes they've done anything with, or
 // this many things liked in photos.
-export const STORY_MIN_HOMES = 3;
-export const STORY_MIN_SPOT_LIKES = 5;
+const STORY_MIN_HOMES = 3;
+const STORY_MIN_SPOT_LIKES = 5;
 // Above that, a chip is something they did on at least this many homes.
-export const CHIP_MIN_HOMES = 2;
+const CHIP_MIN_HOMES = 2;
 // Chips a side.
 export const CHIPS = 3;
 // What they did in the last 90 days counts double: taste moves.
-export const RECENT_DAYS = 90;
-export const HEADLINE_MAX = 60;
-export const STORY_MAX = 240;
+const RECENT_DAYS = 90;
+const HEADLINE_MAX = 60;
+const STORY_MAX = 240;
 
 // The model, and what it's asked. Changing either writes everyone's again.
-export const STORY_MODEL = "claude-opus-5-5";
-export const PROMPT_VERSION = 2;
+const STORY_MODEL = "claude-opus-5-5";
+const PROMPT_VERSION = 2;
 // However many people look, the model is asked at most this many times a day.
-export const DAILY_AI_CAP = 500;
+const DAILY_AI_CAP = 500;
 // A page never waits for the model; this is how long the model gets after it.
 const MODEL_TIMEOUT_MS = 10_000;
 
@@ -42,9 +43,9 @@ export type TasteChip = { key: string; label: string; homes: number; hidden: boo
 
 // The words, in both voices: "{name} tends to like…" for everyone else, and
 // "You tend to like…" for them. "{name}" stands for their first name.
-export type StoryText = { named: string; you: string };
+type StoryText = { named: string; you: string };
 
-export type TasteTerm = { term: string; homes: number; weight: number };
+type TasteTerm = { term: string; homes: number; weight: number };
 
 type TasteHome = {
   verdict: "like" | "pass" | null;
@@ -64,7 +65,7 @@ type TasteHome = {
 
 // Everything the model may read, and nothing else. No timestamps (only
 // "recent"), so the same taste always hashes the same.
-export type TasteInput = {
+type TasteInput = {
   v: number;
   counts: { homesLiked: number; homesPassed: number; spotLikes: number; spotDislikes: number; comments: number };
   loves: TasteTerm[];
@@ -173,7 +174,7 @@ function lovedOf(all: Term[], seen: Term[], minHomes: number) {
 }
 
 // Enough to say something about them.
-export function isEnough(rows: ProfileRows) {
+function isEnough(rows: ProfileRows) {
   const homes = new Set(
     [...rows.reactions, ...rows.likes, ...rows.dislikes, ...rows.comments].map((row) => row.listing_key),
   );
@@ -218,7 +219,7 @@ export function headlineOf(topLove: string | null, liked: Listing[]) {
 // "the kitchen, natural light and covered porch"
 const listOf = (labels: string[]) => {
   const words = labels.map(lower);
-  return `the ${words.length <= 1 ? words[0] : `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`}`;
+  return `the ${namesList(words)}`;
 };
 
 // One sentence in each voice, the same every time for the same taste: what
@@ -434,13 +435,13 @@ export function storyOf(rows: ProfileRows, settings: Settings, now = Date.now())
 }
 
 // What the model writes. The SDK checks the shape; `checkStory` checks the words.
-export const StorySchema = z.object({
+const StorySchema = z.object({
   named: z.string().max(STORY_MAX),
   you: z.string().max(STORY_MAX),
   loves: z.array(z.string()).min(1).max(3),
   passes: z.array(z.string()).max(3),
 });
-export type WrittenStory = z.infer<typeof StorySchema>;
+type WrittenStory = z.infer<typeof StorySchema>;
 
 // Words that say something about someone's life, the people around them or a
 // neighbourhood's character: never on a page about their taste in homes.
@@ -639,7 +640,7 @@ type Generated = { ok: true; story: WrittenStory; model: string } | { ok: false;
 
 // Asks the model, once, with a time limit. `final` failures (a refusal, words
 // that fail the check) aren't tried again until their taste changes.
-export async function generateStory(story: Pick<TasteStory, "input" | "withheld">): Promise<Generated> {
+async function generateStory(story: Pick<TasteStory, "input" | "withheld">): Promise<Generated> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return { ok: false, reason: "no key", final: false };
   const [{ default: Anthropic }, { betaZodOutputFormat }] = await Promise.all([

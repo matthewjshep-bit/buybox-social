@@ -35,7 +35,7 @@ test("a link is named for its people, in the order they were added, and follows 
 
   // Nobody yet: anyone with it can join.
   await expect(
-    agent.getByText("Nobody added: anyone with the link can join, and it's named for whoever joins first."),
+    agent.getByText("No name: anyone with the link can join."),
   ).toBeVisible();
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
   for (const name of ["Joe", "Ana", "Sam", "Lee"]) {
@@ -335,7 +335,7 @@ test("a home from Send named for Toby: whoever opens it as Toby is Toby, once; a
   await forWhom.fill("Toby");
   await forWhom.press("Enter");
   // (Where it is on the dashboard, once it's made.)
-  const inDashboard = sheet.getByRole("link", { name: "Open in your dashboard" });
+  const inDashboard = sheet.getByRole("link", { name: "Open in Clients" });
   await expect(inDashboard).toHaveAttribute("href", /^\/dashboard\/shares\/[\w-]+$/);
   const dashboardUrl = (await inDashboard.getAttribute("href"))!;
   await sheet.getByRole("button", { name: "Save" }).click();
@@ -423,7 +423,7 @@ test("the picker works from the keyboard and says what it finds", async ({ brows
   await expect(chips).toHaveCount(0);
   await expect(who).toBeFocused();
   await expect(
-    agent.getByText("Nobody added: anyone with the link can join, and it's named for whoever joins first."),
+    agent.getByText("No name: anyone with the link can join."),
   ).toBeVisible();
 
   // Tab leaves without picking anything.

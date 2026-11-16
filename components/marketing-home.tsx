@@ -1,5 +1,6 @@
 import { DoorOpen, Heart, MessageCircle, Send, Users } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { SignUpForm } from "@/components/join";
 import { Avatar } from "@/components/ui";
@@ -169,18 +170,16 @@ export function MarketingHome({ devMode }: { devMode: boolean }) {
       {/* What it is. */}
       <section aria-labelledby="hero-title" className="mx-auto grid max-w-6xl items-center gap-12 px-5 pb-20 pt-10 sm:px-8 md:grid-cols-[1.05fr_1fr] md:gap-16 md:pt-16 lg:pb-28">
         <div>
-          <Eyebrow>Porchcard</Eyebrow>
-          <h1 id="hero-title" className="mt-3 text-balance font-display text-5xl leading-[1.04] sm:text-6xl lg:text-7xl">
+          <h1 id="hero-title" className="text-balance font-display text-5xl leading-[1.04] sm:text-6xl lg:text-7xl">
             The social way to shop for homes.
           </h1>
           <p className="mt-6 max-w-lg text-pretty text-lg leading-relaxed text-stone-700 sm:text-xl">
-            Agents send a few homes as one personal link. Buyers tap what they love in every photo, say why, and decide
-            together. Everyone sees what matters.
+            Agents send homes as one link. Buyers tap what they love.
           </p>
           <a href="#start" className={cn(button({ kind: "primary", size: "lg" }), "mt-8")}>
             Sign up
           </a>
-          <p className="mt-5 text-meta text-muted">No app to download, no password.</p>
+          <p className="mt-5 text-meta text-muted">No app. No password.</p>
         </div>
         <HeroPicture />
       </section>
@@ -193,19 +192,16 @@ export function MarketingHome({ devMode }: { devMode: boolean }) {
             <h2 id="agents-title" className="mt-3 text-balance font-display text-4xl leading-tight sm:text-5xl">
               Send a few homes. Learn exactly what they want.
             </h2>
-            <p className="mt-5 text-pretty text-lg leading-relaxed text-stone-700">
-              Share one home or several as a link with your name and face on it. Your buyers react room by room, and you
-              see all of it, client by client.
-            </p>
+
             <ul className="mt-8 flex flex-col gap-6">
               <Feature icon={<Send size={18} />} title="One link, your brand">
-                Text it from your own phone. It opens on a note from you, with a map of where every home is.
+                Text it from your own phone.
               </Feature>
               <Feature icon={<Heart size={18} />} title="More than yes or no">
-                See the kitchen they loved and the price that put them off, on every home you send.
+                See what they loved, and what put them off.
               </Feature>
               <Feature icon={<DoorOpen size={18} />} title="Know who’s ready">
-                Who opened it, how long they looked, and who wants a showing, on one page.
+                See who opened it and who wants a showing.
               </Feature>
             </ul>
           </div>
@@ -221,19 +217,16 @@ export function MarketingHome({ devMode }: { devMode: boolean }) {
             <h2 id="buyers-title" className="mt-3 text-balance font-display text-4xl leading-tight sm:text-5xl">
               Shop for homes together.
             </h2>
-            <p className="mt-5 text-pretty text-lg leading-relaxed text-stone-700">
-              Buying a home is a group decision. Porchcard puts your partner, your agent and the homes in one place,
-              and finds people whose taste you share.
-            </p>
+
             <ul className="mt-8 flex flex-col gap-6">
               <Feature icon={<Heart size={18} />} title="Love the details">
-                Tap the porch, the light, the kitchen island. Say what works and what doesn&apos;t.
+                Tap the porch, the light, the kitchen.
               </Feature>
               <Feature icon={<MessageCircle size={18} />} title="Decide together">
-                Talk through every home with your partner and your agent, right where you&apos;re looking.
+                Talk it over with your partner and your agent.
               </Feature>
               <Feature icon={<Users size={18} />} title="Follow your kind of taste">
-                See the homes people like you love, and get homes picked for what you like.
+                See homes that people like you love.
               </Feature>
             </ul>
           </div>
@@ -246,13 +239,19 @@ export function MarketingHome({ devMode }: { devMode: boolean }) {
         <div className="mx-auto grid max-w-5xl items-center gap-10 md:grid-cols-2 md:gap-16">
           <div>
             <h2 id="start-title" className="text-balance font-display text-4xl leading-tight sm:text-5xl">
-              Start free in a minute.
+              Start free.
             </h2>
-            <p className="mt-4 text-pretty text-lg leading-relaxed text-white/85">
-              Your first name and email is all it takes.
-            </p>
           </div>
-          <SignUpForm devMode={devMode} className="w-full md:max-w-sm md:justify-self-end" />
+          <div className="w-full md:max-w-sm md:justify-self-end">
+            <SignUpForm devMode={devMode} />
+            {/* The form above makes a buyer's account; an agent's starts here. */}
+            <Link
+              href="/login?as=agent"
+              className="mt-2 flex min-h-11 items-center justify-center font-semibold text-white underline underline-offset-4"
+            >
+              I&apos;m an agent
+            </Link>
+          </div>
         </div>
       </section>
     </main>

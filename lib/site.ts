@@ -4,7 +4,7 @@ import { appUrl } from "@/lib/format";
 // Porchcard's own addresses. www.porchcard.com is the main one (porchcard.com
 // forwards there), and the old buybox-social.vercel.app forwards there too
 // (next.config.ts).
-export const MAIN_HOST = "www.porchcard.com";
+const MAIN_HOST = "www.porchcard.com";
 const OWN = new Set(["porchcard.com", MAIN_HOST]);
 
 // The address someone is on right now, when it's one of the site's own, for a

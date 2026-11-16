@@ -19,9 +19,7 @@ export function ClientsRail({ clients, show = 6, className }: { clients: Client[
         {clients.length > 0 && <span className="text-meta text-muted">{clients.length}</span>}
       </div>
       {clients.length === 0 ? (
-        <p className="px-4 pt-2 text-meta text-muted">
-          Send homes to someone and they&apos;ll show up here, with what they think of each one.
-        </p>
+        <p className="px-4 pt-2 text-meta text-muted">No clients yet.</p>
       ) : (
         <ul className="mt-1">
           {clients.slice(0, show).map((client) => (
@@ -49,7 +47,7 @@ export function ClientsRail({ clients, show = 6, className }: { clients: Client[
         href="/dashboard"
         className="mx-4 mt-1 flex min-h-11 items-center justify-center gap-1 border-t border-stone-200 pt-1 text-sm font-semibold text-stone-700 hover:text-ink"
       >
-        {clients.length > show ? `See all ${clients.length} clients` : "See all clients"} <ArrowRight aria-hidden size={14} />
+        See all<span className="sr-only"> clients</span> <ArrowRight aria-hidden size={14} />
       </Link>
     </section>
   );

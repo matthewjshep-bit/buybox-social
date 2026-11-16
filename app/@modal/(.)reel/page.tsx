@@ -9,7 +9,7 @@ import { ReelView, type ReelParams } from "@/components/reel-view";
 export default async function ReelModal({ searchParams }: { searchParams: Promise<ReelParams> }) {
   await connection();
   return (
-    <Modal label="Homes" variant="stage">
+    <Modal label="Homes">
       <div className="h-full">
         <ReelView params={await searchParams} contained />
       </div>

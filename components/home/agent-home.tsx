@@ -1,4 +1,4 @@
-import { Palette, Plus, Send, UserRound, Users } from "lucide-react";
+import { Palette, Plus, Send, UserRound } from "lucide-react";
 import Link from "next/link";
 import { ClientFeed } from "@/components/home/client-feed";
 import { ClientsRail } from "@/components/home/clients-rail";
@@ -17,8 +17,6 @@ import { button, card } from "@/lib/ui";
 // answer them right there. Down the right, their clients as people, whoever
 // wants something first. Nothing to tick off: what a client is waiting for is
 // said beside their name, and its card's Reply is the filled button.
-
-export type HomeLens = { initial: string; fromUrl: boolean };
 
 // "Send homes to…": shaped like a box to type in, as a post box is, and opening
 // the builder with the people picker ready.
@@ -45,7 +43,7 @@ function FirstSend() {
         Send your first homes
       </h2>
       <p className="mx-auto mt-1.5 max-w-sm text-balance text-body text-stone-700">
-        Pick a few homes, add your client, and we&apos;ll make them a personal link. You&apos;ll see what they love here.
+        Pick homes and add your client.
       </p>
       <Link href="/dashboard/new" className={cn(button({ kind: "primary" }), "mt-4")}>
         Choose homes
@@ -73,7 +71,7 @@ export function AgentHome({
   return (
     <HomeShell
       // (For a screen reader: on screen, the page is plainly the agent's.)
-      title="Agent dashboard"
+      title="Home"
       left={
         <ProfileRail
           name={me.name}
@@ -85,13 +83,12 @@ export function AgentHome({
           href={profileHref}
           stats={[
             { label: "Clients", value: clients.length, href: "/dashboard" },
-            { label: "Links sent", value: sent.size, href: "/dashboard" },
+
             { label: "Followers", value: follows.followers, href: profileHref.endsWith("/me") ? profileHref : `${profileHref}/followers` },
           ]}
           links={[
             { href: "/dashboard/new", label: "Send homes", icon: <Plus size={18} /> },
-            { href: "/dashboard", label: "Clients", icon: <Users size={18} /> },
-            { href: profileHref, label: "Your page", icon: <UserRound size={18} /> },
+            { href: profileHref, label: "Your profile", icon: <UserRound size={18} /> },
             { href: "/dashboard/profile", label: "Your brand", icon: <Palette size={18} /> },
           ]}
         />
@@ -103,7 +100,7 @@ export function AgentHome({
             <p className="flex items-center gap-1.5 px-1 text-meta text-muted">
               <Send aria-hidden size={13} />
               <Link href="/dashboard#links" className="hover:text-ink hover:underline">
-                {unclaimed.length} {unclaimed.length === 1 ? "link has" : "links have"} no one on {unclaimed.length === 1 ? "it" : "them"} yet
+                {unclaimed.length} {unclaimed.length === 1 ? "link" : "links"} without a name
               </Link>
             </p>
           )}

@@ -34,5 +34,5 @@ export async function loadOrderedReel(from: string, filters: unknown, shown: str
   const [account, device] = await Promise.all([getCurrentUser(), readDevice()]);
   const viewer = account?.role ? account : null;
   const { visitor } = await getPublicIdentity(viewer, device);
-  return getReel(viewer, device, await getTaste(visitor?.id), { only: next, limit: next.length, people: ordered.people });
+  return getReel(viewer, device, await getTaste(visitor?.id), { only: next, limit: next.length, people: ordered.people, profiles: ordered.profiles, mine: ordered.mine, agent: ordered.agent });
 }

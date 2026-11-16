@@ -26,7 +26,7 @@ export function ClientFeed({ cards, me }: { cards: ClientCard[]; me: { name: str
   if (cards.length === 0) {
     return (
       <p className={cn(cardClass, "px-5 py-6 text-center text-body text-stone-700")}>
-        Nothing from clients in the last two weeks. You&apos;ll see the homes they like, and what they say, here.
+        Nothing new from clients.
       </p>
     );
   }
@@ -92,7 +92,7 @@ export function ClientFeed({ cards, me }: { cards: ClientCard[]; me: { name: str
         </section>
       ))}
       <CaughtUp>
-        Older activity is on each client&apos;s page.{" "}
+
         <Link href="/dashboard" className="inline-flex min-h-11 items-center font-semibold text-brand hover:underline">
           All clients
         </Link>

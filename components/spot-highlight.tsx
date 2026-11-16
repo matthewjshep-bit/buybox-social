@@ -1,89 +1,38 @@
 "use client";
 
-import { Heart, MessageCircle, Send, ThumbsDown, User } from "lucide-react";
+import { Send, User } from "lucide-react";
 import { useLinkAgent } from "@/components/agent-notes";
 import { cn } from "@/lib/format";
 import type { TickerEvent } from "@/lib/ticker";
 import { avatarColor } from "@/lib/ui";
 
-// Who did something and what, as a face with a small mark: the same in the
-// line above the price and on the photo where they did it, so the two read as
-// one. A heart for a like, a thumbs-down for a dislike or a pass, a speech
-// bubble for a comment, a paper plane for a home sent.
-
-export type Mark = "like" | "dislike" | "comment" | "sent";
-
-export const markOf = (event: TickerEvent): Mark =>
-  event.kind === "comment" || event.kind === "private-comment"
-    ? "comment"
-    : event.kind === "sent"
-      ? "sent"
-      : event.kind === "spot-dislike" || event.kind === "fact-dislike" || event.state?.reaction === "dislike"
-        ? "dislike"
-        : "like";
-
-// The colour of the dot at a spot, for a mark.
-export const markDot: Record<Mark, string> = {
-  like: "bg-rose-500",
-  dislike: "bg-amber-500",
-  comment: "bg-brand",
-  sent: "bg-stone-400",
-};
-
-function MarkIcon({ mark, size }: { mark: Mark; size: number }) {
-  if (mark === "comment") return <MessageCircle size={size} strokeWidth={3} className="text-brand" />;
-  if (mark === "sent") return <Send size={size - 1} strokeWidth={3} className="text-muted" />;
-  if (mark === "dislike") return <ThumbsDown size={size - 1} strokeWidth={3} className="text-amber-700" />;
-  return <Heart size={size} strokeWidth={0} className="fill-rose-500" />;
-}
-
-// The face: someone's initial on the brand colour (an agent's on ink), or,
-// for someone unnamed, a plain figure on grey, as faces are everywhere
-// (avatarColor); with its mark on the corner. The same on a profile's
-// photos, where someone liked or said something.
+// The face of whoever did something, beside the line that says what, in the
+// caption at a photo's foot: someone's initial on the brand colour (an
+// agent's on ink), or, for someone unnamed, a plain figure on grey, as faces
+// are everywhere (avatarColor), edged on the dark glass.
 export function MarkFace({
   initial,
   agent = false,
-  mark,
   plane = false,
-  pin = false,
-  caption = false,
   ghost = false,
   image = null,
-  className,
 }: {
   // None for someone unnamed.
   initial: string | undefined;
   agent?: boolean;
-  // What they did, on the corner (null: just the face).
-  mark: Mark | null;
   // Unnamed, and it's a home sent: a paper plane rather than a figure.
   plane?: boolean;
-  // On the photo: a little smaller, ringed in white, with a shadow.
-  pin?: boolean;
-  // In the caption at the photo's foot: a little bigger, edged on the dark glass.
-  caption?: boolean;
   // A copy that's on its way out: the initial drawn, not written.
   ghost?: boolean;
   // Their own photo, where there is one (the agent's, on their link).
   image?: string | null;
-  className?: string;
 }) {
-  const icon = pin ? 12 : caption ? 16 : 14;
   return (
     <span
       data-face
       className={cn(
-        "relative flex shrink-0 items-center justify-center rounded-full font-bold [text-shadow:none]",
-        pin
-          ? "size-7 text-[12px] shadow-[0_2px_8px_rgb(0_0_0/0.45)] ring-white"
-          : caption
-            ? "size-8 text-meta ring-1 ring-white/25 split:size-9 split:text-body"
-            : "size-8 text-meta",
+        "relative flex size-8 shrink-0 items-center justify-center rounded-full text-meta font-bold ring-1 ring-white/25 [text-shadow:none] split:size-9 split:text-body",
         avatarColor(agent ? "agent" : initial ? "person" : "anonymous", { dark: true }),
-        // (Ink on the dark ground needs an edge to be seen.)
-        agent && !pin && !caption && "ring-1 ring-white/30 split:ring-0",
-        className,
       )}
     >
       {image ? (
@@ -97,41 +46,25 @@ export function MarkFace({
           initial
         )
       ) : plane ? (
-        <Send size={icon} />
+        <Send size={16} />
       ) : (
-        <User size={icon} />
-      )}
-      {mark && (
-        <span
-          className={cn(
-            "absolute flex items-center justify-center rounded-full bg-white",
-            pin ? "-bottom-1 -right-1 size-3.5" : "-bottom-0.5 -right-0.5 size-4 split:ring-1 split:ring-stone-200",
-          )}
-        >
-          <MarkIcon mark={mark} size={pin ? 8 : 10} />
-        </span>
+        <User size={16} />
       )}
     </span>
   );
 }
 
-// The face of whoever did something on the activity line.
+// The face of whoever did something on the activity line, as a profile
+// picture (the words say what they did).
 export function EventFace({
   event,
   myName,
-  pin = false,
-  caption = false,
   ghost = false,
-  className,
 }: {
   event: TickerEvent;
   // Your name, for your own face.
   myName: string | null;
-  pin?: boolean;
-  // In the caption: just the face, as a profile picture (the words say what they did).
-  caption?: boolean;
   ghost?: boolean;
-  className?: string;
 }) {
   const { tone, name, agent } = event.who;
   // On their link, the agent's face is theirs, as it is in the header and on
@@ -152,12 +85,8 @@ export function EventFace({
       initial={initial}
       image={theAgent?.photo_data_url}
       agent={tone === "agent" || Boolean(agent)}
-      mark={caption ? null : markOf(event)}
       plane={event.kind === "sent" && tone !== "you"}
-      pin={pin}
-      caption={caption}
       ghost={ghost}
-      className={className}
     />
   );
 }
@@ -166,9 +95,9 @@ export function EventFace({
 // centre: it says "here" without saying what they thought of it, so nobody's
 // eye is led before they've looked for themselves. `small`: on a photo in a
 // feed card. `strong`: the line about it is being looked at.
-export function Hotspot({ small = false, strong = false, className }: { small?: boolean; strong?: boolean; className?: string }) {
+export function Hotspot({ small = false, strong = false }: { small?: boolean; strong?: boolean }) {
   return (
-    <span aria-hidden data-hotspot className={cn("pointer-events-none absolute size-0", className)}>
+    <span aria-hidden data-hotspot className="pointer-events-none absolute size-0">
       <span
         className={cn(
           "absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2 rounded-full",

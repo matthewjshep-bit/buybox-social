@@ -97,7 +97,7 @@ test("one home: the link opens on a word from the agent, then the home, in the a
   // No email set: no way to email, anywhere.
   await expect(contact.getByRole("link", { name: "Email Jordan" })).toHaveCount(0);
   await expect(page.locator('a[href^="mailto:"]')).toHaveCount(0);
-  await expect(contact).toContainText("This link is just for you, Owen.");
+  await expect(contact).toContainText("Just for you, Owen.");
   await page.keyboard.press("Escape");
   await expect(contact).toBeHidden();
 
@@ -122,8 +122,8 @@ test("one home: the link opens on a word from the agent, then the home, in the a
 
   // The end of the one home.
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("heading", { name: "That's the home Jordan Rivera picked" })).toBeAttached();
-  await expect(page.getByText("Jordan Rivera sees what you liked and said.")).toBeAttached();
+  await expect(page.getByRole("heading", { name: "That's all" })).toBeAttached();
+  await expect(page.getByText("Jordan Rivera sees your likes and comments.")).toBeAttached();
   // A personal link isn't one to pass on.
   await expect(page.getByRole("button", { name: "Invite someone" })).toHaveCount(0);
 
@@ -173,12 +173,12 @@ test("ask to see it: a first name, then the ask under the home and an email to t
   await expect(homeIn(eli, "812 N Corbel St")).toBeInViewport({ ratio: 0.9 });
   await eli.getByRole("button", { name: "Contact" }).click();
   const contact = eli.getByRole("dialog", { name: "Contact Priya Shah" });
-  await expect(contact).toContainText("Anyone with this link can see and join this conversation.");
+  await expect(contact).toContainText("Anyone with this link can join.");
   // No phone or email set: still a way to reach them.
   await expect(contact.getByRole("link")).toHaveCount(0);
   await contact.getByRole("button", { name: "Ask to see it" }).click();
   await joinAs(eli, "Eli");
-  await expect(contact.getByRole("status")).toHaveText("Sent. Priya will get back to you.");
+  await expect(contact.getByRole("status")).toHaveText("Sent.");
   // Said where the tap was, with the cursor still there.
   await expect(contact.getByRole("status")).toBeInViewport();
   const done = contact.getByRole("button", { name: "Asked to see it" });
@@ -194,7 +194,7 @@ test("ask to see it: a first name, then the ask under the home and an email to t
   await expect(contact).toBeHidden();
   await eli.getByRole("banner").getByRole("button", { name: "Contact" }).click();
   await contact.getByRole("button", { name: "Ask to see it" }).click();
-  await expect(contact.getByRole("status")).toHaveText("Already asked. Priya will be in touch.");
+  await expect(contact.getByRole("status")).toHaveText("Already asked.");
   await eli.keyboard.press("Escape");
 
   // Everyone on the link sees the ask, once, from Eli.
@@ -261,7 +261,7 @@ test("the agent's own Preview is their first pass: what they like and say there 
   await agent.goto(dashboardUrl);
   await expect(agent.getByText("Dana hasn't opened it yet")).toBeVisible();
   await expect(agent.getByText(/Dana liked/)).toHaveCount(0);
-  await expect(agent.getByText("1 note and 1 like, for Dana to see.")).toBeVisible();
+  await expect(agent.getByText("1 note and 1 like", { exact: true })).toBeVisible();
   await preview.waitForTimeout(1000);
   expect(emailsTo("own-preview@example.com")).toEqual([]);
 
@@ -304,7 +304,7 @@ test("several homes open on a word from the agent over the first one's photo, wi
   await expect(welcome.locator('img:not([src^="data:"])')).toHaveCount(1);
   await expect(welcome.locator('img[src*="kirkland"]')).toHaveCount(1);
   // Her own link: just for her.
-  await expect(welcome).toContainText("This link is just for you, Nina. Ask Jordan Rivera if someone else should see these.");
+  await expect(welcome).toContainText("Just for you, Nina.");
   await expect(welcome).not.toContainText("Anyone with this link");
 
   await welcome.getByRole("button", { name: "See the 3 homes" }).click();
@@ -318,7 +318,7 @@ test("several homes open on a word from the agent over the first one's photo, wi
   await nina.getByRole("banner").getByRole("button", { name: "Contact" }).click();
   const contact = nina.getByRole("dialog", { name: "Contact Jordan Rivera" });
   await expect(contact.getByRole("button", { name: "Ask to see it" })).toHaveCount(0);
-  await expect(contact).toContainText("Add a comment under any home. Jordan sees every one.");
+
   await contact.getByRole("button", { name: "See the 3 homes" }).click();
   await expect(contact).toBeHidden();
   await expect(first).toBeInViewport({ ratio: 0.9 });
@@ -341,14 +341,14 @@ test("a link whose homes were all taken off says so, with a way to reach the age
   const page = await (await browser.newContext()).newPage();
   await page.goto(url);
   const heading = page.getByRole("heading", { level: 1 });
-  await expect(heading).toHaveText("There are no homes on this link right now");
+  await expect(heading).toHaveText("No homes here right now");
   await expect(heading).toBeVisible();
-  await expect(page.getByText("Ask Jordan Rivera to send you more.")).toBeVisible();
+
   // Nowhere to go back to.
   await expect(page.getByRole("button", { name: "Back to the top" })).toHaveCount(0);
   await page.getByRole("button", { name: "Contact Jordan" }).click();
   await expect(page.getByRole("dialog", { name: "Contact Jordan Rivera" })).toContainText(
-    "This link is just for you, Ruth. Ask Jordan Rivera if someone else should see it.",
+    "Just for you, Ruth.",
   );
 });
 
@@ -366,7 +366,7 @@ test("the Porchcard says who on the link hasn't weighed in yet, never you", asyn
   await expect(card).toContainText("You liked it");
   await expect(card.getByText("Not yet: Pat", { exact: true })).toBeVisible();
   // Two people on it: never "only you".
-  await expect(card.getByText("From the people on this link · only they and Jordan Rivera see this")).toBeVisible();
+  await expect(card.getByText("Only Jordan Rivera and people on this link see this", { exact: true })).toBeVisible();
 
   // Pat sees Owen's take, and isn't told he hasn't given his own.
   const pat = await (await browser.newContext()).newPage();

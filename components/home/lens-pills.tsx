@@ -3,11 +3,10 @@
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { cn } from "@/lib/format";
 
-// Two ways to look at the feed (Clients or Following for an agent, Following
-// or For you for anyone else), as pills over it. The one picked is kept in
-// the address (`?lens=`), so a link or a reload opens on it, and on this
-// device, so the home opens on it next time. Both are on the page already:
-// switching is instant and never reloads anything.
+// Two ways to look at the feed (Following or For you), as pills over it. The
+// one picked is kept in the address (`?lens=`), so a link or a reload opens
+// on it, and on this device, so the home opens on it next time. Both are on
+// the page already: switching is instant and never reloads anything.
 
 const STORAGE = "pc:home-lens";
 const EVENT = "pc:home-lens";

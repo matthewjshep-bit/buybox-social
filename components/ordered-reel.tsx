@@ -114,13 +114,24 @@ export function OrderedReel({
     header: contained ? undefined : (
       <>
         {siteHeader}
-        {/* As the map's Back: on the photo's stage, at its top right, with
-            whose homes these are beside it (side by side; on a phone, the
-            take over the photo says so). */}
-        <div className="absolute right-3 top-[calc(env(safe-area-inset-top)_+_3.75rem)] flex max-w-[calc(100%-1.5rem)] items-center gap-2 sm:right-6 split:right-[480px] split:top-[calc(var(--stage-top)+12px)] split-xl:right-[520px]">
+        {/* As the map's Back. On a phone, an arrow in a row of its own under
+            the header, where a pop-out's close button is, with the take's
+            bar beside it saying whose homes these are; the photo starts
+            under that row. Side by side, on the photo's stage, at its top
+            right, with whose homes these are beside it. */}
+        <div
+          data-reel-bar
+          className="absolute left-3 top-[calc(env(safe-area-inset-top)_+_3.5rem)] flex items-center gap-2 split:left-auto split:right-[480px] split:top-[calc(var(--stage-top)+12px)] split:max-w-[calc(100%-1.5rem)] split-xl:right-[520px]"
+        >
           {chip && <div className={cn(glass, "hidden min-h-11 min-w-0 items-center rounded-full pl-1.5 pr-4 split:flex")}>{chip}</div>}
-          <Link href={back.href} className={cn(button({ kind: "glass" }), "shrink-0")}>
-            <ArrowLeft aria-hidden size={16} /> {back.label}
+          <Link
+            href={back.href}
+            className={cn(
+              button({ kind: "glass" }),
+              "size-11 shrink-0 bg-white/10 px-0 ring-1 ring-white/15 split:size-auto split:bg-black/60 split:px-4 split:ring-0",
+            )}
+          >
+            <ArrowLeft aria-hidden size={18} /> <span className="sr-only split:not-sr-only">{back.label}</span>
           </Link>
         </div>
       </>
@@ -183,33 +194,26 @@ function EndCard({
 }) {
   const light = button({ kind: "light", size: "lg" });
   const quiet = button({ kind: "glass", size: "lg" });
-  // Back where it came from: in a pop-out, closing it.
-  const backTo = contained ? (
+  // Back where it came from. A pop-out only closes, so it says Close and
+  // never names a page it isn't going to.
+  const close = contained ? (
     <button type="button" onClick={onClose} className={quiet}>
-      <ArrowLeft aria-hidden size={17} /> {back.label}
+      <X aria-hidden size={17} /> Close
     </button>
   ) : (
     <Link href={back.href} className={quiet}>
       <ArrowLeft aria-hidden size={17} /> {back.label}
     </Link>
   );
-  const close = contained ? (
-    <button type="button" onClick={onClose} className={quiet}>
-      <X aria-hidden size={17} /> Close
-    </button>
-  ) : (
-    backTo
-  );
-  const browse = (label = "Browse homes") => (
+  const browse = () => (
     <Link href="/reel" className={light}>
-      <Compass aria-hidden size={17} /> {label}
+      <Compass aria-hidden size={17} /> Browse homes
     </Link>
   );
-  const n = context?.keys.length ?? 0;
   const name = context?.name ?? "";
 
-  let heading = "That's every home here";
-  let line: string | null = "Keep going with homes picked for you, or go back.";
+  // One short heading, then the ways on: nothing between.
+  let heading = "That's all";
   let actions: ReactNode = (
     <>
       {browse()}
@@ -217,21 +221,8 @@ function EndCard({
     </>
   );
   if (context?.kind === "person") {
-    heading = context.me
-      ? "That's everything on your page"
-      : context.show === "comments"
-        ? `That's every home ${name} commented on`
-        : context.show === "liked"
-          ? `That's every home ${name} liked`
-          : context.show === "passed"
-            ? `That's every home ${name} passed on`
-            : context.filter
-              ? `That's everything on ${name}'s page about the ${context.filter.toLowerCase()}`
-              : n <= 1
-                ? `That's ${name}'s only highlight`
-                : `That's all ${n} of ${name}'s highlights`;
+    heading = context.me ? "That's all" : `That's all from ${name}`;
     const follow = !context.me && !context.following && context.who?.profileId;
-    line = follow ? `Follow ${name} and what they like comes to your feed first.` : "Keep going with homes picked for you.";
     actions = (
       <>
         {follow && context.who?.profileId && (
@@ -242,22 +233,36 @@ function EndCard({
             signIn={context.canFollow ? undefined : `/login?next=${encodeURIComponent(`/people/${context.who.profileId}`)}`}
           />
         )}
-        {backTo}
+        {close}
+        {browse()}
+      </>
+    );
+  } else if (context?.kind === "listings") {
+    heading = context.me ? "That's all" : `That's all from ${name}`;
+    const follow = !context.me && !context.following && context.who?.profileId;
+    actions = (
+      <>
+        {follow && context.who?.profileId && (
+          <FollowButton
+            personId={context.who.profileId}
+            name={name}
+            following={false}
+            signIn={context.canFollow ? undefined : `/login?next=${encodeURIComponent(`/people/${context.who.profileId}`)}`}
+          />
+        )}
+        {close}
         {browse()}
       </>
     );
   } else if (context?.kind === "feed") {
     heading = "You're all caught up";
-    line = "That's everything from the people you follow, for now.";
     actions = (
       <>
-        {browse("Browse homes picked for you")}
+        {browse()}
         {close}
       </>
     );
   } else if (context?.kind === "client" || context?.kind === "share") {
-    heading = name ? `That's every home you sent ${name}` : "That's every home on this link";
-    line = null;
     actions = (
       <>
         {context.shareId && (
@@ -270,12 +275,10 @@ function EndCard({
             <Send aria-hidden size={17} /> {name ? `Send ${name} more` : "Send more homes"}
           </Link>
         )}
-        {contained ? close : backTo}
+        {close}
       </>
     );
   } else if (context?.kind === "pick") {
-    heading = "That's today's picks";
-    line = "There's more where those came from.";
     actions = (
       <>
         {browse()}
@@ -286,7 +289,6 @@ function EndCard({
   return (
     <div className="max-w-sm">
       <h2 className="font-display text-2xl">{heading}</h2>
-      {line && <p className="mt-2 text-white/80">{line}</p>}
       <div className="mt-6 flex flex-wrap justify-center gap-3">{actions}</div>
     </div>
   );

@@ -1,7 +1,7 @@
 import { requireAgent } from "@/lib/auth";
 import { DashboardNav } from "./nav";
 
-export const metadata = { title: "Dashboard · Porchcard" };
+export const metadata = { title: "Clients · Porchcard" };
 
 // The agent's own colour is set around this and the header together, so the
 // logo is theirs too (BrandScope, app/layout.tsx).
@@ -14,9 +14,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       // under the header, a short page fits the window without scrolling.)
       className="lg:has-[[data-scorecard-docked]]:pr-[29.5rem]"
     >
-      {/* A page with two columns on a wide screen (a client's page) asks for
-          more room with data-wide. */}
-      <div className="mx-auto max-w-3xl px-4 lg:has-[[data-wide]]:max-w-6xl">
+      <div className="mx-auto max-w-3xl px-4">
         <DashboardNav />
         <main className="pb-6 pt-5">{children}</main>
       </div>

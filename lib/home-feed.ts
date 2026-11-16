@@ -23,7 +23,7 @@ export type FeedWho = { name: string; face: string; profileId: string | null; ag
 
 // A home as a card shows it: the facts, and the photo it's about (the one
 // with the newest thing they liked, else the first), large.
-export type FeedHome = {
+type FeedHome = {
   key: string;
   address: string;
   city: string;
@@ -38,7 +38,7 @@ export type FeedHome = {
 // Why a home is in your feed, for the card and for the reel's take on it:
 // who (likers first), what they did without their names ("liked this home"),
 // what they said (newest first, as they wrote it), and the photo it's about.
-export type FeedWhy = { key: string; who: FeedWho[]; sentence: string; quotes: string[]; photo: number | null };
+type FeedWhy = { key: string; who: FeedWho[]; sentence: string; quotes: string[]; photo: number | null };
 
 export type HomeFeedEntry = {
   // The home and the day: one entry each.
@@ -207,7 +207,6 @@ export async function getFollowedFaces(visitorId: string | null, most = 15): Pro
 // Who's worth following: people busy in public lately, most first, never
 // yourself or anyone you follow already, and only people with a name.
 export async function suggestPeople(visitorId: string | null, most = 5): Promise<(FeedWho & { profileId: string })[]> {
-  const followed = await getFollowedIds(visitorId);
   const rows = await sql<{ id: string; name: string; is_agent: boolean; photo_v: string | null }[]>`
     select v.id, v.first_name as name, coalesce(a.role = 'agent', false) as is_agent,
       left(md5(a.photo_data_url), 10) as photo_v
@@ -220,25 +219,14 @@ export async function suggestPeople(visitorId: string | null, most = 5): Promise
     ) x on x.visitor_id = v.id
     where x.at > now() - interval '60 days'
       and btrim(v.first_name) <> '' and (a.id is null or btrim(a.full_name) <> '')
-      and v.id::text <> ${visitorId ?? ""}
-    group by v.id, v.first_name, a.role, a.photo_data_url
-    order by count(*) desc, max(x.at) desc
-    limit 40`;
+      and v.id is distinct from ${visitorId}::uuid
+      and not exists (
+        select 1 from follows f where f.follower_id = ${visitorId}::uuid and f.followed_id = v.id)
+    group by v.id, a.id
+    order by count(*) desc, max(x.at) desc, v.id
+    limit ${most}`;
   return rows
-    .filter((row) => !followed.has(row.id))
-    .slice(0, most)
     .map((row) => ({ name: row.name, face: row.name, profileId: row.id, agent: row.is_agent, photo: photoUrl(row.id, row.photo_v) }));
-}
-
-// Agents' own colours, by their page's id: their face on a client's home is
-// ringed in it, as their links are.
-export async function brandColorsOf(profileIds: string[]): Promise<Record<string, string>> {
-  const ids = [...new Set(profileIds)].filter((id) => /^[0-9a-f-]{36}$/.test(id));
-  if (ids.length === 0) return {};
-  const rows = await sql<{ id: string; brand_color: string | null }[]>`
-    select v.id, a.brand_color from visitors v join accounts a on a.id = v.account_id
-    where v.id in ${sql(ids)} and a.role = 'agent'`;
-  return Object.fromEntries(rows.flatMap((row) => (row.brand_color ? [[row.id, row.brand_color]] : [])));
 }
 
 // Where "new" starts on their home page: the last time they had it open

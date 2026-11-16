@@ -1,19 +1,15 @@
+import { cache } from "react";
 import { firstName, type Account } from "./auth";
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
-import { aspectOfFact, aspectOfTag, FACTS, isFactTag, isTagIn, mediaKeyOf, NO_PHOTO_LIKES, thingOf } from "./photos";
+import { aspectOfFact, aspectOfTag, FACTS, isFactTag, isTagIn, mediaKeyOf, thingOf } from "./photos";
 import {
-  NO_REACTION,
   TRENDING_MIN_PEOPLE,
   TRENDING_MIN_THIS_WEEK,
   TRENDING_TOP,
   type Aspect,
   type AspectCounts,
-  type ReactionState,
 } from "./reactions";
-import { getPublicPhotoLikes, getPublicTimelines } from "./timeline";
-
-export type Totals = { likes: number; dislikes: number; comments: number };
 
 // Signs of life around a listing, drawn from public pages and private shares.
 // `trending` is real and rare: several reactions or comments in the past week,
@@ -24,14 +20,6 @@ export type Buzz = { sends: number; views: number; lastActivityAt: string | null
 // included; dislikes only from public reactions, since private chats never
 // warn strangers off a home.
 export type AspectTotals = { liked: AspectCounts; disliked: AspectCounts };
-
-export type HomeCard = {
-  listing: Listing;
-  publicTotals: Totals;
-  privateTotals: Totals;
-  buzz: Buzz;
-  aspects: AspectTotals;
-};
 
 export type TotalsRow = {
   pub_like: number;
@@ -173,37 +161,13 @@ export const ORDER_BY = {
   latest: () => sql`t.last_activity desc nulls last`,
 };
 
-export async function getPublicListing(listingKey: string, visitorId: string | null = null) {
+// A home's own facts, for its page's title: the listing without its photos,
+// and nothing anyone did.
+export async function getListingFacts(listingKey: string) {
   if (listingKey.length > 100) return null;
-  const [row] = await sql<({ data: Listing; standard_status: string } & TotalsRow)[]>`
-    select l.data, l.standard_status, t.*
-    from listings l
-    cross join lateral (${totalsForListing()}) t
-    where l.listing_key = ${listingKey}`;
-  if (!row) return null;
-  const listing: Listing = {
-    ...row.data,
-    StandardStatus: row.standard_status,
-    Media: [...row.data.Media].sort((a, b) => a.Order - b.Order),
-  };
-
-  const [[mine], timelines, photoLikes] = await Promise.all([
-    visitorId
-      ? sql<ReactionState[]>`
-          select reaction, liked, disliked from public_reactions
-          where listing_key = ${listingKey} and visitor_id = ${visitorId}`
-      : Promise.resolve([] as ReactionState[]),
-    getPublicTimelines([listing], visitorId),
-    getPublicPhotoLikes([listingKey], visitorId),
-  ]);
-
-  return {
-    listing,
-    ...toTotals(row),
-    mine: mine ? { reaction: mine.reaction, liked: mine.liked, disliked: mine.disliked } : NO_REACTION,
-    timeline: timelines.get(listingKey) ?? [],
-    photoLikes: photoLikes.get(listingKey) ?? NO_PHOTO_LIKES,
-  };
+  const [row] = await sql<{ data: Omit<Listing, "Media"> }[]>`
+    select data - 'Media' as data from listings where listing_key = ${listingKey}`;
+  return row?.data ?? null;
 }
 
 // One photo of a listing, to check a photo like against what's really in it.
@@ -231,7 +195,8 @@ export async function getVisitor(deviceToken: string | undefined) {
 
 // Who a person's public reactions and comments belong to: their account when
 // signed in (so it follows them across devices), otherwise this browser.
-export async function getPublicIdentity(account: Account | null, deviceToken: string | undefined) {
+// Looked up once for a page, however many parts of it ask.
+export const getPublicIdentity = cache(async (account: Account | null, deviceToken: string | undefined) => {
   if (account?.role) {
     const [visitor] = await sql<{ id: string; first_name: string }[]>`
       select id, first_name from visitors where account_id = ${account.id}`;
@@ -241,7 +206,7 @@ export async function getPublicIdentity(account: Account | null, deviceToken: st
   }
   const visitor = await getVisitor(deviceToken);
   return { visitor, name: visitor?.first_name ?? null };
-}
+});
 
 // Their public self, made the first time it's needed. With no name yet it has
 // none either (older ones were stored as "Someone"), until they give one.

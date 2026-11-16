@@ -47,7 +47,7 @@ test("whoever wants a showing leads the Clients page, with Reply, until the agen
     "href",
     new RegExp(`^${sharePath}\\?tab=homes#home-[\\w%-]+$`),
   );
-  await expect(clientRow(fern, "Max")).toContainText("Hasn't opened your link yet");
+  await expect(clientRow(fern, "Max")).toContainText("Not opened yet");
   await expect(clientRow(fern, "Max").getByRole("button", { name: "Copy link for Max" })).toBeVisible();
   // [P] First names only: her email is nowhere on the page.
   expect(await fern.content()).not.toContain(joEmail);
@@ -63,7 +63,7 @@ test("whoever wants a showing leads the Clients page, with Reply, until the agen
   await fern.waitForURL(/\/dashboard\/clients\//);
   await expect(fern.getByRole("heading", { level: 1 })).toHaveText("Jo");
   await expect(fern.getByRole("link", { name: "Reply to Jo" })).toBeVisible();
-  const sent = fern.getByRole("region", { name: "Homes you've sent Jo" });
+  const sent = fern.getByRole("region", { name: "Sent to Jo" });
   await expect(sent).toContainText(`${QUILLAN} and 1 more`);
   await expect(sent.getByRole("link", { name: /^Open the link for/ })).toHaveAttribute("href", sharePath);
   await fern.getByRole("link", { name: "All clients" }).click();

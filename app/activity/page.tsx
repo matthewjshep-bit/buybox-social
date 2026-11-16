@@ -1,5 +1,6 @@
-import { Bell, DoorOpen, Heart, MessageCircle, Reply, Send, UserPlus } from "lucide-react";
+import { Bell, DoorOpen, Heart, Lock, MessageCircle, Reply, Send, UserPlus } from "lucide-react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Fragment, type ReactNode } from "react";
 import {
   ACTIVITY_SECTIONS,
@@ -49,6 +50,8 @@ const OVER_THE_PAGE = new Set<ActivityKind>(["reply", "comment_like", "comment",
 export default async function ActivityPage() {
   const [account, device, viewAs] = await Promise.all([getCurrentUser(), readDevice(), getViewAs()]);
   const { visitor } = await getPublicIdentity(account, device);
+  // Nobody's activity to show: sign in, then back here.
+  if (!account && !visitor) redirect("/login?next=/activity");
   const rows = visitor ? await getActivityRows(visitor.id) : [];
   const sections = ACTIVITY_SECTIONS.map((title) => ({
     title,
@@ -66,12 +69,12 @@ export default async function ActivityPage() {
           title="Nothing yet"
           className="mt-6"
           action={
-            <Link href="/" className={button({ kind: "primary" })}>
+            <Link href="/reel" className={button({ kind: "primary" })}>
               See homes
             </Link>
           }
         >
-          When people reply to you or like your comments, it shows up here.
+          Replies and likes show up here.
         </EmptyState>
       ) : (
         <div className="mt-2 flex flex-col gap-6">
@@ -139,8 +142,8 @@ function Row({ row }: { row: ActivityRow }) {
         {relation && (
           // Between you and your client (or your agent): nobody else sees this line.
           <span className="mb-0.5 block text-xs text-muted">
-            <span className="font-semibold text-stone-700">{relation}</span> · <span aria-hidden>🔒</span> Only you
-            see this
+            <span className="font-semibold text-stone-700">{relation}</span> ·{" "}
+            <Lock aria-hidden size={11} className="-mt-0.5 inline" /> Only you see this
           </span>
         )}
         <span className="block text-body leading-snug text-ink">

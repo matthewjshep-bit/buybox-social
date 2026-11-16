@@ -34,8 +34,10 @@ export async function ReelView({ params, contained = false }: { params: ReelPara
   const [account, device] = await Promise.all([getCurrentUser(), readDevice()]);
   const viewer = account?.role ? account : null;
   const { visitor, name } = await getPublicIdentity(viewer, device);
-  const taste = await getTaste(visitor?.id);
-  const ordered = from ? await homesFrom(from, filtersOf(params)) : null;
+  const [taste, ordered] = await Promise.all([
+    getTaste(visitor?.id),
+    from ? homesFrom(from, filtersOf(params)) : null,
+  ]);
 
   if (!ordered) {
     // Signed out: a few homes, opening on what this is and a short sign-up
@@ -64,8 +66,11 @@ export async function ReelView({ params, contained = false }: { params: ReelPara
       );
     }
     // Opened on a home picked for them (from their feed), then the rest.
-    const [picked] = start ? await getReel(viewer, device, taste, { only: [start], limit: 1 }) : [];
-    const rest = await getReel(viewer, device, taste, picked ? { exclude: [picked.listing.ListingKey] } : {});
+    // (Read together: a home asked for that isn't there leaves nothing out.)
+    const [[picked], rest] = await Promise.all([
+      start ? getReel(viewer, device, taste, { only: [start], limit: 1 }) : [],
+      getReel(viewer, device, taste, start ? { exclude: [start] } : {}),
+    ]);
     const feed: ComponentProps<typeof ReelFeed> = {
       initial: picked ? [picked, ...rest] : rest,
       mode: "public",
@@ -92,7 +97,7 @@ export async function ReelView({ params, contained = false }: { params: ReelPara
   if (start && !keys.includes(start)) keys.unshift(start);
   // Everything up to the one tapped, and a few after; the rest as you go.
   const first = keys.slice(0, (start ? keys.indexOf(start) : 0) + REEL_PAGE);
-  const posts = first.length ? await getReel(viewer, device, taste, { only: first, limit: first.length, people: ordered.people }) : [];
+  const posts = first.length ? await getReel(viewer, device, taste, { only: first, limit: first.length, people: ordered.people, profiles: ordered.profiles, mine: ordered.mine, agent: ordered.agent }) : [];
   return (
     <OrderedReel
       query={ordered.query}

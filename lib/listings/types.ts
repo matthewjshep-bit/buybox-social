@@ -19,6 +19,10 @@ export type ListingMedia = {
   // Not a RESO field: where each feature sits in the photo, as fractions of
   // its width and height, from an object detector (or by hand for samples).
   Spots?: { tag: string; x: number; y: number }[];
+  // Not a RESO field: everything a photo scan found, as boxes (the top left
+  // corner and size, as fractions), so a tap anywhere can be named. `aspect`
+  // is the broad specific it counts toward, when there is one.
+  Regions?: { tag: string; x: number; y: number; w: number; h: number; aspect?: string }[];
 };
 
 export type Listing = {
@@ -37,6 +41,8 @@ export type Listing = {
   PropertySubType?: string;
   PublicRemarks?: string;
   ListAgentFullName?: string;
+  // RESO: the listing agent's MLS member ID. What ties a listing to an agent's page.
+  ListAgentMlsId?: string;
   Latitude?: number;
   Longitude?: number;
   OnMarketDate?: string;

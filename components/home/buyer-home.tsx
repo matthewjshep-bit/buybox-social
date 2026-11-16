@@ -14,7 +14,6 @@ import type { FeedWho, FollowedFace, HomeFeedEntry } from "@/lib/home-feed";
 import type { MyLink } from "@/lib/my-links";
 import type { ReactionState } from "@/lib/reactions";
 import { button, card } from "@/lib/ui";
-import type { HomeLens } from "./agent-home";
 
 // Anyone else's home: discovery. Down the left, them: their card (who they
 // follow, who follows them) and their places. In the middle, the homes their
@@ -23,10 +22,10 @@ import type { HomeLens } from "./agent-home";
 // homes picked by their taste. Down the right on a wide screen, people worth
 // following. One filled button: their agent's homes.
 
-// "Bellevue · Kirkland · you've rated 3 of 9"
+// "Bellevue · Kirkland · 3 of 9 rated"
 function metaOf(link: MyLink) {
   const rated = Math.max(0, link.homes - link.unrated);
-  return [...link.cities.slice(0, 3), `you've rated ${rated} of ${link.homes}`].join(" · ");
+  return [...link.cities.slice(0, 3), `${rated} of ${link.homes} rated`].join(" · ");
 }
 
 // The homes their agent sent, over a photo of one of them: how many are
@@ -35,7 +34,7 @@ function FromYourAgent({ links }: { links: MyLink[] }) {
   const [link, ...others] = links;
   const first = link.agent.firstName || link.agent.name;
   const title =
-    link.unrated > 0 ? `${link.unrated} new ${link.unrated === 1 ? "home" : "homes"} for you` : `Your homes from ${first}`;
+    link.unrated > 0 ? `${link.unrated} new ${link.unrated === 1 ? "home" : "homes"} for you` : `Homes from ${first}`;
   return (
     <section aria-labelledby="from-agent-title" className="flex flex-col gap-1.5">
       <div className="relative h-[184px] overflow-hidden rounded-2xl bg-stone-700 text-white">
@@ -45,9 +44,10 @@ function FromYourAgent({ links }: { links: MyLink[] }) {
         <div aria-hidden className="absolute inset-0 bg-linear-to-t from-black/80 via-black/35 to-black/5" />
         <div className="absolute inset-x-0 bottom-0 flex items-end gap-3 p-4">
           <div className="min-w-0 flex-1 [text-shadow:0_1px_3px_rgb(0_0_0/0.45)]">
+            {/* Who from, unless the title already says so. */}
             <p className="flex items-center gap-2 text-meta font-semibold">
               <Avatar name={link.agent.name} tone="agent" photo={link.agent.photo} size={6} className="ring-1 ring-white/60" />
-              From {link.agent.name}
+              {link.unrated > 0 && `From ${link.agent.name}`}
             </p>
             <h2 id="from-agent-title" className="mt-0.5 font-display text-2xl leading-tight">
               {title}
@@ -66,9 +66,7 @@ function FromYourAgent({ links }: { links: MyLink[] }) {
       </div>
       {others.length > 0 && (
         <p className="flex flex-wrap items-center gap-x-2 px-1 text-meta text-muted">
-          <span>
-            +{others.length} more {others.length === 1 ? "link" : "links"}:
-          </span>
+          <span>More:</span>
           {others.slice(0, 3).map((other) => (
             <Link
               key={other.shareId}
@@ -134,10 +132,10 @@ export function BuyerHome({
   mine: Record<string, ReactionState>;
   seenAt: string | null;
   picks: FeedPost[];
-  lens: HomeLens;
+  lens: { initial: string; fromUrl: boolean };
 }) {
-  // Following first for someone with people to follow along with (or an
-  // agent, whose clients follow them); otherwise homes picked for them.
+  // Following first for someone with people to follow along with, or on an
+  // agent's link; otherwise homes picked for them.
   const fallback = followed.length >= 3 || links.length > 0 ? "following" : "foryou";
   const initial = lens.initial === "following" || lens.initial === "foryou" ? lens.initial : fallback;
   const agentName = links[0] && (links[0].agent.firstName || links[0].agent.name);
@@ -147,7 +145,7 @@ export function BuyerHome({
       : []),
     { href: "/reel", label: "Browse homes", icon: <House size={18} /> },
     { href: "/search", label: "Map", icon: <MapIcon size={18} /> },
-    { href: profileHref, label: "Your page", icon: <UserRound size={18} /> },
+    { href: profileHref, label: "Your profile", icon: <UserRound size={18} /> },
   ];
   const listOf = (which: "following" | "followers") =>
     profileHref.endsWith("/me") ? profileHref : `${profileHref}/${which}`;
@@ -160,7 +158,7 @@ export function BuyerHome({
           photo={me.photo}
           seed={me.id}
           agent={false}
-          line={agentName ? `Looking with ${links[0].agent.name}` : "Finding a home"}
+          line={agentName ? `Looking with ${links[0].agent.name}` : ""}
           href={profileHref}
           stats={[
             { label: "Following", value: follows.following, href: listOf("following") },
@@ -194,8 +192,8 @@ export function BuyerHome({
                 suggestions={suggestions}
                 empty={
                   followed.length === 0
-                    ? "Follow people with your taste, and what they like shows up here."
-                    : "Nothing from the people you follow yet. What they like shows up here."
+                    ? "Follow people to see what they like."
+                    : "Nothing new yet."
                 }
               />
             ),
@@ -203,10 +201,7 @@ export function BuyerHome({
           }}
         />
       </section>
-      <PicksMasonry
-        picks={picks}
-        intro={followed.length === 0 && links.length === 0 ? "Like a few homes and we'll learn your taste." : undefined}
-      />
+      <PicksMasonry picks={picks} />
     </HomeShell>
   );
 }

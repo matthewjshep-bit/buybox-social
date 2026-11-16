@@ -38,7 +38,7 @@ test("the test password signs in as an account already there, or a new one, and 
   await form.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL("**/dashboard");
   // (Robin's face is the photo she added on signing up.)
-  const me = page.getByRole("banner").getByRole("button", { name: "Your profile" });
+  const me = page.getByRole("banner").getByRole("button", { name: "Account menu" });
   await expect(me.locator("img")).toBeVisible();
 
   // Sign out, then in as someone new: a new buyer's account, home.

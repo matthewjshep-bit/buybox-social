@@ -43,8 +43,7 @@ test("a quiet home: the rail's Porchcard says nobody has weighed in, then your t
 
   // Nobody's said or liked anything: one card for it all, then the rest in order.
   const card = await openScorecard(page, home);
-  await expect(card.getByText("No one has weighed in yet.")).toBeVisible();
-  await expect(card.getByText("Tap anything in a photo to like it or say something about it.")).toBeVisible();
+  await expect(card.getByText("Nothing yet", { exact: true })).toBeVisible();
   await expect(card.getByRole("heading", { level: 3 })).toHaveText(["Your take", "The facts", "About this home"]);
   await expect(card.getByText("88 Heron Bluff Rd, Port Townsend")).toBeVisible();
   // Price per square foot: the price over the living area, rounded.
@@ -194,7 +193,7 @@ test("public and private: a link's people, passes and words stay on the link, an
   await expect(umaRail.getByRole("button")).toHaveCount(onLink.length);
   for (const [i, name] of onLink.entries()) await expect(umaRail.getByRole("button").nth(i)).toHaveAccessibleName(name);
   const umaCard = await openScorecard(uma, homeIn(uma, ALDER));
-  await expect(umaCard.getByText("From the people on this link · only they and Sage Agent see this")).toBeVisible();
+  await expect(umaCard.getByText("Only Sage Agent and people on this link see this", { exact: true })).toBeVisible();
   await expect(umaCard).toContainText("You liked it · Vic passed");
   await expect(umaCard.getByRole("heading", { name: "Where you agree" })).toBeVisible();
   await expect(umaCard).toContainText("Both like: Exterior · Front door");
@@ -445,7 +444,6 @@ const linkPost = (timeline: TimelineItem[]): FeedPost => ({
   likers: [],
   dislikes: 0,
   aspects: { liked: {}, disliked: {} },
-  publicComments: 0,
   privateComments: 0,
   timeline,
   photoLikes: {

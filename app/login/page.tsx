@@ -22,10 +22,9 @@ export default async function LoginPage({
     <main className="mx-auto max-w-md px-6 py-16">
       <h1 className="font-display text-3xl">{agent ? "Start free as an agent" : "Sign in or sign up"}</h1>
       <p className="mt-2 text-stone-700">
-        {agent ? "Send clients homes and see what they think of each one." : "For home buyers and agents."}{" "}
         {devLoginEnabled
           ? "Local demo mode: no email is sent, and the code shows on the page."
-          : "We'll email you a code. No password to remember."}
+          : "We'll email you a code."}
       </p>
       {error && (
         <p role="alert" className="mt-4 text-sm text-red-700">

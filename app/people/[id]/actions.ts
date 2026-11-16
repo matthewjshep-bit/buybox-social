@@ -66,7 +66,7 @@ export async function showTasteChip(key: string, shown: boolean): Promise<Action
 }
 
 // Whether everyone else sees what you pass on: the "Passes on" chips, the
-// Passed filter and count, and the passes in your feed.
+// passes in your feed, and your page filtered to passes (`?show=passed`).
 export async function showPasses(shown: boolean): Promise<ActionResult> {
   if (typeof shown !== "boolean") return fail("We couldn't save that.");
   const visitor = await ownVisitor();
@@ -183,7 +183,7 @@ export async function saveAbout(bio: string, links: { label: string; url: string
   const text = bio.replace(/\r\n/g, "\n").trim();
   if (text.length > BIO_MOST) return fail(`Keep it to ${BIO_MOST} characters.`);
   const account = await getCurrentUser();
-  if (!account?.role) return fail("Sign in to edit your page.");
+  if (!account?.role) return fail("Sign in to edit your profile.");
   const kept: { label: string; url: string }[] = [];
   if (account.role === "agent") {
     const parsed = z.array(aboutLink).max(LINKS_MOST).safeParse(links.filter((link) => link?.url?.trim()));

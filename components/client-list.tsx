@@ -1,6 +1,7 @@
 import { DoorOpen, Eye, Heart, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { street } from "@/components/client-status";
 import { CopyLink } from "@/components/copy-link";
 import { Avatar, HomeThumb } from "@/components/ui";
 import type { Client, ClientLink, ClientStatus } from "@/lib/clients";
@@ -12,7 +13,7 @@ import { button } from "@/lib/ui";
 // thing to do next as a big button.
 
 // "today", "yesterday", "4 days ago", "Nov 7": whole words, never "4d".
-export function whenWords(date: Date, now = Date.now()) {
+function whenWords(date: Date, now = Date.now()) {
   const day = (d: Date | number) => new Date(d).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
   const days = Math.round((Date.parse(day(now)) - Date.parse(day(date))) / 86_400_000);
   if (days <= 0) return "today";
@@ -20,9 +21,6 @@ export function whenWords(date: Date, now = Date.now()) {
   if (days < 7) return `${days} days ago`;
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Los_Angeles" });
 }
-
-// "5902 Lakeview Terrace SE", from the whole address.
-const street = (address: string) => address.split(",")[0];
 
 // Where things stand with them, as a sentence.
 export function StatusSentence({ status, className }: { status: ClientStatus; className?: string }) {
@@ -41,12 +39,12 @@ export function StatusSentence({ status, className }: { status: ClientStatus; cl
       return line(
         <MessageCircle size={18} />,
         <>
-          Said: <span className="font-normal">“{status.body}”</span>
+          <span className="font-normal">“{status.body}”</span>
         </>,
         "font-semibold text-amber-900",
       );
     case "active":
-      return line(<span className="mt-1 block size-2.5 rounded-full bg-emerald-600" />, "Looking at your homes right now", "font-semibold text-emerald-800");
+      return line(<span className="mt-1 block size-2.5 rounded-full bg-emerald-600" />, "Looking now", "font-semibold text-emerald-800");
     case "liked":
       return line(
         <Heart size={18} className="fill-rose-600 text-rose-600" />,
@@ -54,9 +52,9 @@ export function StatusSentence({ status, className }: { status: ClientStatus; cl
         "text-ink",
       );
     case "opened":
-      return line(<Eye size={18} />, "Opened your link. No likes yet.", "text-ink");
+      return line(<Eye size={18} />, "Opened · no likes yet", "text-ink");
     case "unopened":
-      return line(<span className="mt-1 block size-2.5 rounded-full bg-amber-500" />, "Hasn't opened your link yet", "text-ink");
+      return line(<span className="mt-1 block size-2.5 rounded-full bg-amber-500" />, "Not opened yet", "text-ink");
   }
 }
 
@@ -110,7 +108,7 @@ export function ClientListRow({ client }: { client: Client }) {
 
 // A link, plainly: its first home's photo, which homes, when it went, and
 // whether anyone has opened it. On a client's page, and for links without a name.
-export function LinkRow({ link, action }: { link: ClientLink; action?: ReactNode }) {
+export function LinkRow({ link }: { link: ClientLink }) {
   const what = link.firstAddress
     ? `${street(link.firstAddress)}${link.homes > 1 ? ` and ${link.homes - 1} more` : ""}`
     : "No homes on it";
@@ -131,11 +129,10 @@ export function LinkRow({ link, action }: { link: ClientLink; action?: ReactNode
               <span className="font-medium text-amber-800">Not opened yet</span>
             )}
           </p>
-          {link.with.length > 0 && <p className="text-base text-stone-600">Also on it: {link.with.join(", ")}</p>}
+          {link.with.length > 0 && <p className="text-base text-stone-600">With {link.with.join(", ")}</p>}
         </div>
       </div>
-      <div className="flex shrink-0 gap-2 sm:justify-end">
-        {action}
+      <div className="flex shrink-0 sm:justify-end">
         <Link href={link.href} className={button({ kind: "secondary", size: "lg" })}>
           Open<span className="sr-only"> the link for {what}</span>
         </Link>

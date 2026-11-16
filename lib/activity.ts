@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { sql } from "./db";
+import { namesOrOthers } from "./format";
 import type { ListingMedia } from "./listings/types";
 import { photosFor } from "./person-photo";
 import { FACTS, mediaKeyOf } from "./photos";
@@ -59,7 +60,7 @@ export type ActivityItem = {
   unread: boolean;
 };
 
-export type ActivityPerson = { id: string; name: string; profileId: string | null; photo: string | null };
+type ActivityPerson = { id: string; name: string; profileId: string | null; photo: string | null };
 
 // One line on the page: the same thing happening more than once on one day
 // (four likes on your comment) reads as one.
@@ -391,11 +392,7 @@ export function whoOf<P extends { name: string }>(people: P[]) {
   };
 }
 
-export const whoText = (people: { name: string }[]) => {
-  const { names, others } = whoOf(people);
-  const all = others ? [...names, others] : names;
-  return all.length <= 1 ? (all[0] ?? "") : `${all.slice(0, -1).join(", ")} and ${all.at(-1)}`;
-};
+export const whoText = (people: { name: string }[]) => namesOrOthers(people.map((person) => person.name));
 
 // What happened, after who: "replied to your comment on 24611 SE Foxglove Pl".
 export function describeActivity(row: Pick<ActivityRow, "kind" | "address"> & { homes?: number | null }) {
@@ -436,7 +433,7 @@ export function quoteOf(row: Pick<ActivityRow, "kind" | "body" | "people">) {
 }
 
 export const ACTIVITY_SECTIONS = ["Today", "This week", "Earlier"] as const;
-export type ActivitySection = (typeof ACTIVITY_SECTIONS)[number];
+type ActivitySection = (typeof ACTIVITY_SECTIONS)[number];
 
 // A section's id, which its heading names it by: no spaces, or "This week"
 // would name nothing. "activity-this-week".
@@ -464,7 +461,7 @@ export async function getActivityRows(visitorId: string): Promise<ActivityRow[]>
 
 // What the bell counts: rows with something new in them, as the page shows
 // them. Only what's new is read, and only counted.
-export async function countUnreadActivity(visitorId: string): Promise<number> {
+export const countUnreadActivity = cache(async (visitorId: string): Promise<number> => {
   const [{ lines }] = await sql<{ lines: number }[]>`
     with events as (${eventsOf(visitorId)})
     select count(*)::int as lines from (
@@ -473,4 +470,4 @@ export async function countUnreadActivity(visitorId: string): Promise<number> {
       where e.at > (select activity_seen_at from visitors where id = ${visitorId})
     ) line`;
   return lines;
-}
+});

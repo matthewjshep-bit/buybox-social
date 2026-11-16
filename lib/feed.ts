@@ -2,6 +2,7 @@ import type { Account } from "./auth";
 import { sql } from "./db";
 import { getFollowedIds } from "./follows";
 import { photosFor } from "./person-photo";
+import { agentMarks, agentNotes } from "./profile";
 import type { Listing } from "./listings/types";
 import {
   getPublicIdentity,
@@ -46,7 +47,6 @@ export type FeedPost = {
   likers: string[];
   dislikes: number;
   aspects: AspectTotals;
-  publicComments: number;
   privateComments: number;
   // Everything said and liked, oldest first.
   timeline: TimelineItem[];
@@ -70,7 +70,8 @@ type EventRow = {
   kind: "reaction" | "comment" | "private-comment" | "photo-like" | "sent";
   id: string;
   name: string | null;
-  source: "public" | "client" | "private" | "self";
+  // ("agent": an agent's own mark or note on one of their links, as their page shows it.)
+  source: "public" | "client" | "private" | "self" | "agent";
   at: Date;
   media_key: string | null;
   tag: string | null;
@@ -100,12 +101,28 @@ export async function getReel(
   // Homes already shown, or (for one home's page) exactly which homes.
   // `people`: what's on the line above the price is only what these places on
   // an agent's links did (one client's homes, opened from their card).
+  // `profiles`: only what these people (page ids) did in public (someone's
+  // page, or your feed), and with `mine`, what the viewer did too, on a link
+  // or not (theirs alone to see).
+  // `agent`: the agent whose page it is, so what they marked and noted on
+  // their own links, which their page shows, is on the line as theirs.
   {
     exclude = [],
     only,
     limit = REEL_PAGE,
     people,
-  }: { exclude?: string[]; only?: string[]; limit?: number; people?: string[] } = {},
+    profiles,
+    mine: withMine = false,
+    agent,
+  }: {
+    exclude?: string[];
+    only?: string[];
+    limit?: number;
+    people?: string[];
+    profiles?: string[];
+    mine?: boolean;
+    agent?: { account: string; profile: string };
+  } = {},
 ): Promise<FeedPost[]> {
   const { visitor } = await getPublicIdentity(viewer, deviceToken);
   const visitorId = visitor?.id ?? null;
@@ -113,10 +130,14 @@ export async function getReel(
   // activity shows anonymously, and only its likes: a private dislike never
   // becomes a headline that could put someone off a home.
   const agentId = viewer?.role === "agent" ? viewer.id : null;
+  // The viewer's own place on an agent's link: their account's, or (a place
+  // no account has) this device's. What they did there reads "You" to them,
+  // words and all, and to nobody else: a place that is someone's account's is
+  // never the next person's to sign in on the same browser.
+  const own = sql`coalesce(p.account_id = ${viewer?.id ?? null}::uuid or (p.account_id is null and p.device_token = ${deviceToken ?? null}::text), false)`;
   const wanted = only ?? [];
 
-  const followed = [...(await getFollowedIds(visitorId))];
-  const [rows, mine, followedLikes] = await Promise.all([
+  const [rows, mine, followedLikes, followedIds] = await Promise.all([
     sql<Row[]>`
       select l.data, t.*, h.kind as h_kind, h.name as h_name, h.source as h_source, h.at as h_at, h.tag as h_tag, h.media as h_media,
         json_build_object('reaction', h.reaction, 'liked', h.liked, 'disliked', h.disliked) as h_state
@@ -180,17 +201,21 @@ export async function getReel(
           where visitor_id = ${visitorId}`
       : Promise.resolve([]),
     // The homes people they follow have liked, in public, and when last.
-    followed.length
+    visitorId
       ? sql<{ listing_key: string; at: Date }[]>`
+          with followed as (select followed_id from follows where follower_id = ${visitorId})
           select listing_key, max(at) as at from (
             select listing_key, updated_at as at from public_reactions
-            where visitor_id in ${sql(followed)} and (reaction = 'like' or cardinality(liked) > 0)
+            where visitor_id in (select followed_id from followed) and (reaction = 'like' or cardinality(liked) > 0)
             union all
-            select listing_key, created_at from public_photo_likes where visitor_id in ${sql(followed)}
+            select listing_key, created_at from public_photo_likes
+            where visitor_id in (select followed_id from followed)
           ) liked
           group by listing_key`
       : Promise.resolve([]),
+    getFollowedIds(visitorId),
   ]);
+  const followed = [...followedIds];
   const followedLiked = new Map(followedLikes.map((row) => [row.listing_key, row.at.getTime()]));
 
   const mineByKey = new Map(
@@ -287,7 +312,7 @@ export async function getReel(
             md5('xl:' || pl.share_id || ':' || pl.participant_id || ':' || pl.media_key || ':' || pl.tag),
             case when s.agent_id = ${agentId}::uuid then p.first_name end,
             case when s.agent_id = ${agentId}::uuid then 'client' else 'private' end,
-            pl.created_at, pl.media_key, pl.tag, null, null, null, null, '{}'::text[], '{}'::text[], false,
+            pl.created_at, pl.media_key, pl.tag, null, null, null, null, '{}'::text[], '{}'::text[], ${own},
             pl.participant_id::text
           from photo_likes pl
           join participants p on p.id = pl.participant_id
@@ -297,23 +322,25 @@ export async function getReel(
           select r.listing_key, 'reaction', md5('xr:' || r.share_id || ':' || r.participant_id || ':' || r.listing_key),
             case when s.agent_id = ${agentId}::uuid then p.first_name end,
             case when s.agent_id = ${agentId}::uuid then 'client' else 'private' end,
-            r.updated_at, null, null, null, null, null, r.reaction, r.liked, r.disliked, false, r.participant_id::text
+            r.updated_at, null, null, null, null, null, r.reaction, r.liked, r.disliked, ${own}, r.participant_id::text
           from reactions r
           join participants p on p.id = r.participant_id
           join shares s on s.id = r.share_id
           where r.listing_key in ${sql(keys)} and (r.reaction = 'like' or cardinality(r.liked) > 0)
           union all
           select c.listing_key,
-            case when s.agent_id = ${agentId}::uuid or c.shared_publicly then 'comment' else 'private-comment' end,
+            case when s.agent_id = ${agentId}::uuid or c.shared_publicly or ${own} then 'comment' else 'private-comment' end,
             md5('xc:' || c.id),
             case when s.agent_id = ${agentId}::uuid then p.first_name end,
             case when s.agent_id = ${agentId}::uuid then 'client' else 'private' end,
             c.created_at,
             case when s.agent_id = ${agentId}::uuid then c.media_key end,
             case when s.agent_id = ${agentId}::uuid then c.spot end,
-            case when s.agent_id = ${agentId}::uuid or c.shared_publicly then c.body end,
+            -- (Their own words, to them. Not its spot or its place in the
+            -- comments: it isn't in the public ones.)
+            case when s.agent_id = ${agentId}::uuid or c.shared_publicly or ${own} then c.body end,
             case when s.agent_id = ${agentId}::uuid or c.shared_publicly then c.id::text end,
-            null, null, '{}'::text[], '{}'::text[], false, c.participant_id::text
+            null, null, '{}'::text[], '{}'::text[], ${own}, c.participant_id::text
           from comments c
           join participants p on p.id = c.participant_id
           join shares s on s.id = c.share_id
@@ -324,15 +351,45 @@ export async function getReel(
             null, null, null, null, null, null, '{}'::text[], '{}'::text[], false, null
           from share_listings sl join shares s on s.id = sl.share_id
           where sl.listing_key in ${sql(keys)}
+          ${
+            agent
+              ? sql`
+          union all
+          -- An agent's page: what they liked on their own links (each thing
+          -- once, and not again when they liked it in public too) …
+          select al.listing_key, 'photo-like', md5('al:' || al.listing_key || ':' || al.media_key || ':' || al.tag),
+            (select first_name from visitors where id = ${agent.profile}::uuid), 'agent', max(al.created_at),
+            al.media_key, al.tag, null, null, ${agent.profile}::text, null, '{}'::text[], '{}'::text[],
+            ${agent.profile}::uuid = ${visitorId}::uuid, null
+          ${agentMarks(agent.account, "like")} and al.listing_key in ${sql(keys)}
+            and not exists (select 1 from public_photo_likes pp
+              where pp.visitor_id = ${agent.profile}::uuid and pp.listing_key = al.listing_key
+                and pp.media_key = al.media_key and pp.tag = al.tag)
+          group by al.listing_key, al.media_key, al.tag
+          union all
+          -- … and their own notes there. Never a reply to a client.
+          select c.listing_key, 'comment', md5('an:' || c.id),
+            (select first_name from visitors where id = ${agent.profile}::uuid), 'agent', c.created_at,
+            c.media_key, c.spot, c.body, null, ${agent.profile}::text, null, '{}'::text[], '{}'::text[],
+            ${agent.profile}::uuid = ${visitorId}::uuid, null
+          ${agentNotes(agent.account)} and c.listing_key in ${sql(keys)}`
+              : sql``
+          }
         ) e
-        where ${people ? sql`e.participant_id in ${sql(people.length ? people : [""])}` : sql`true`}
+        where ${
+          people
+            ? sql`e.participant_id in ${sql(people.length ? people : [""])}`
+            : profiles
+              ? sql`(e.profile_id in ${sql(profiles.length ? profiles : [""])} ${withMine ? sql`or e.mine` : sql``})`
+              : sql`true`
+        }
       ) x
       where n <= ${TICKER_EVENTS}
       order by listing_key, at desc, id`,
   ]);
 
   // The faces of the people on the line, where they've added a photo.
-  const faces = await photosFor(events.flatMap((event) => (event.source === "public" && event.profile_id ? [event.profile_id] : [])));
+  const faces = await photosFor(events.flatMap((event) => (onPage(event) && event.profile_id ? [event.profile_id] : [])));
 
   const toPost = ({ row, totals, match }: (typeof scored)[number]): FeedPost => {
     const key = row.data.ListingKey;
@@ -343,7 +400,6 @@ export async function getReel(
       likers: likers.filter((l) => l.listing_key === key).map((l) => l.first_name),
       dislikes: totals.publicTotals.dislikes,
       aspects: totals.aspects,
-      publicComments: totals.publicTotals.comments,
       privateComments: totals.privateTotals.comments,
       timeline: timelines.get(key) ?? [],
       photoLikes: photoLikes.get(key) ?? NO_PHOTO_LIKES,
@@ -391,8 +447,13 @@ function toHeadline(row: Row): Headline | null {
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
+// Done in public, or an agent's own on their links: under their name, with
+// their page and face.
+const onPage = (row: EventRow) => row.source === "public" || row.source === "agent";
+
 // One home's recent activity as the page gets it. What you did or said is
-// "You" (your likes keyed so the one you just made matches what comes back),
+// "You" (your public likes keyed so the one you just made matches what comes
+// back; what you did on an agent's link keeps its own key),
 // and a home an agent sent is "You" to them, with their face in ink. Several
 // strangers' plain likes this week fold into one: "4 buyers liked this home".
 // `faces`: people's own photos by page id, so a face on the line is the one
@@ -402,7 +463,8 @@ function toEvents(rows: EventRow[], followed: Set<string>, faces: Map<string, st
   const folded: TickerEvent[] = [];
   for (const row of rows) {
     const at = row.at.toISOString();
-    const named = (row.source === "public" || row.source === "client") && row.name;
+    const named = (onPage(row) || row.source === "client") && row.name;
+    const paged = onPage(row) && row.profile_id;
     const who: TickerEvent["who"] =
       row.mine
         ? { tone: "you", name: null }
@@ -410,20 +472,20 @@ function toEvents(rows: EventRow[], followed: Set<string>, faces: Map<string, st
           ? {
               tone: row.source === "client" ? "client" : "person",
               name: row.name,
-              ...(row.source === "public" && row.profile_id && { profileId: row.profile_id }),
-              ...(row.source === "public" && row.profile_id && followed.has(row.profile_id) && { following: true }),
-              ...(row.source === "public" && row.profile_id && faces.has(row.profile_id) && { photo: faces.get(row.profile_id) }),
+              ...(paged && { profileId: paged }),
+              ...(paged && followed.has(paged) && { following: true }),
+              ...(paged && faces.has(paged) && { photo: faces.get(paged) }),
             }
           : { tone: "anonymous", name: null };
     if (row.kind === "reaction") {
       const state = publicSideOf({ reaction: row.reaction, liked: row.liked, disliked: row.disliked });
       if (!state) continue;
-      const event: TickerEvent = { id: row.mine ? "you:reaction" : row.id, kind: "reaction", who, at, state };
+      const event: TickerEvent = { id: row.mine && row.source === "public" ? "you:reaction" : row.id, kind: "reaction", who, at, state };
       if (who.tone === "anonymous" && state.liked.length === 0 && Date.now() - row.at.getTime() < WEEK_MS) folded.push(event);
       else events.push(event);
     } else if (row.kind === "photo-like" && row.media_key && row.tag) {
       events.push({
-        id: row.mine ? `you:like:${row.media_key}\u0000${row.tag}` : row.id,
+        id: row.mine && row.source === "public" ? `you:like:${row.media_key}\u0000${row.tag}` : row.id,
         kind: row.media_key === FACTS ? "fact-like" : "spot-like",
         who,
         at,

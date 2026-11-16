@@ -88,8 +88,7 @@ export function TasteControls({ loves, passes, hidePasses }: { loves: TasteChip[
       </div>
       <Sheet open={open} onClose={close} label="What others see" title="What others see">
         <p className="text-body leading-snug text-stone-700">
-          Turn off anything that isn&apos;t you. Others won&apos;t see it in your taste, and the description leaves it
-          out. You&apos;ll still see it.
+          Turn off anything you&apos;d rather not show.
         </p>
         <ChipSwitches side="like" chips={steady(loves, opened?.loves)} hidden={hidden} onToggle={toggleChip} />
         <div className="mt-5">
@@ -98,8 +97,8 @@ export function TasteControls({ loves, passes, hidePasses }: { loves: TasteChip[
             Passes on
           </h3>
           <SwitchRow
-            label="Show my passes on my page"
-            hint="Hides your passes, what you didn't like and the Passed filter. Each home's own page still shows that you passed."
+            label="Show my passes"
+            hint="Hides your passes and what you didn't like. Each home's own page still shows that you passed."
             on={passesShown}
             onChange={togglePasses}
           />
@@ -108,7 +107,7 @@ export function TasteControls({ loves, passes, hidePasses }: { loves: TasteChip[
             chips={steady(passes, opened?.passes)}
             hidden={hidden}
             onToggle={toggleChip}
-            off={passesShown ? null : "Hidden with your passes"}
+            off={passesShown ? null : "Hidden"}
           />
         </div>
         {error && (

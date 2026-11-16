@@ -48,11 +48,11 @@ test("signed in, you're one button: your places and Sign out are behind your ini
   await page.setViewportSize({ width: 360, height: 640 });
   await page.goto("/search");
   const header = page.getByRole("banner");
-  const me = header.getByRole("button", { name: "Your profile" });
+  const me = header.getByRole("button", { name: "Account menu" });
   await expect(me).toHaveText("H");
   // Clients are an agent's: not in a buyer's header.
   await expect(header.getByRole("link", { name: "Clients" })).toHaveCount(0);
-  expect(await size(page, "Your profile", "button")).toEqual({ width: 44, height: 44 });
+  expect(await size(page, "Account menu", "button")).toEqual({ width: 44, height: 44 });
   // No Sign out beside it.
   await expect(header.getByRole("button", { name: "Sign out" })).toBeHidden();
   await expect(header.getByRole("link", { name: "Your profile" })).toBeHidden();
@@ -140,10 +140,10 @@ test("signed in, you're one button: your places and Sign out are behind your ini
   await header.getByRole("button", { name: "Sign out" }).click();
   await page.waitForURL("**/login");
   await expect(header.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
-  await expect(header.getByRole("button", { name: "Your profile" })).toHaveCount(0);
+  await expect(header.getByRole("button", { name: "Account menu" })).toHaveCount(0);
 });
 
-test("an agent's dashboard is in their colour, and the header is just Search, Clients, the bell and their initial, the Dashboard under it too", async ({
+test("an agent's dashboard is in their colour, and the header is just Search, Clients, the bell and their initial", async ({
   browser,
 }) => {
   // Merlot.
@@ -168,17 +168,14 @@ test("an agent's dashboard is in their colour, and the header is just Search, Cl
   await expect(header.getByRole("button", { name: "Sign out" })).toBeHidden();
   expect(await agent.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
 
-  // The Dashboard is under their initial, marked as where they are, on their
-  // brand page too.
-  await header.getByRole("button", { name: "Your profile" }).click();
-  const dashboard = header.getByRole("link", { name: "Dashboard" });
-  await expect(dashboard).toBeVisible();
-  await expect(dashboard).toHaveAttribute("aria-current", "page");
+  // Clients is marked on their brand page too, and isn't said twice: nothing
+  // under their initial goes there.
+  await header.getByRole("button", { name: "Account menu" }).click();
+  await expect(header.getByRole("link", { name: "Your profile" })).toBeVisible();
+  await expect(header.getByRole("link", { name: "Dashboard" })).toHaveCount(0);
+  await expect(header.getByRole("link", { name: "Clients", exact: true })).toHaveCount(1);
   await agent.keyboard.press("Escape");
   await agent.goto("/dashboard/profile");
-  await header.getByRole("button", { name: "Your profile" }).click();
-  await expect(dashboard).toHaveAttribute("aria-current", "true");
-  await agent.keyboard.press("Escape");
   await expect(clients).toHaveAttribute("aria-current", "true");
 
   // Anywhere else, the site's own colour, and Search is where you are on the map.

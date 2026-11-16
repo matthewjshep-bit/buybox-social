@@ -1,8 +1,10 @@
 import { z } from "zod";
+import { getAgentListings } from "./agent-listings";
 import { getCurrentUser, type Account } from "./auth";
 import { sql } from "./db";
 import { readDevice } from "./engagement";
-import { follows } from "./follows";
+import { follows, getFollowedIds } from "./follows";
+import { namesOrOthers } from "./format";
 import { feedKeys, getHomeFeed, getPicks, type FeedWho } from "./home-feed";
 import type { Listing } from "./listings/types";
 import { photoUrl } from "./person-photo";
@@ -18,6 +20,7 @@ import {
   parseAbout,
   PROFILE_FILTERS,
   withoutPasses,
+  type FeedFilters,
   type ProfileCard,
   type ProfileShow,
   type TopicSide,
@@ -48,29 +51,35 @@ import { yourClient } from "./your-client";
 // - "feed": your home feed's homes (signed in);
 // - "picks": homes picked for you (signed in);
 // - "client:<participant>": every home an agent sent that client (the agent only);
-// - "share:<link>": the homes on one of an agent's links (the agent only).
+// - "share:<link>": the homes on one of an agent's links (the agent only);
+// - "listings:<page id>": an agent's own listings, as their page shows them (anyone).
 // Null for anything else, or anything this viewer may not open.
 
 // The page's filters as an address has them, before they're checked.
-export type ReelFilters = { show?: string | null; about?: string | null; side?: string | null };
+type ReelFilters = { show?: string | null; about?: string | null; side?: string | null };
 
-// The same, checked against the page: only what the page itself would show.
-export type CheckedFilters = { show: ProfileShow; about: string | null; side: TopicSide | null };
-
-export type ReelScope = {
+type ReelScope = {
   keys: string[];
   back: { href: string; label: string };
   context: ReelContext;
   // What the address says after `/reel?`, but for the home: `from` and the
   // filters that hold.
   query: string;
-  filters: CheckedFilters;
+  filters: FeedFilters;
   // One client's homes: the places on the agent's links that are them, so
   // each home says only what they did on it, not what everyone else did.
   people?: string[];
+  // Someone's page, or your feed: the line at each photo's foot says only
+  // what these people (page ids) did in public …
+  profiles?: string[];
+  // … and what you did yourself (your own page, your feed).
+  mine?: boolean;
+  // An agent's page: their account and page id, so what they marked and
+  // noted on their own links (which their page shows) is on the line too.
+  agent?: { account: string; profile: string };
 };
 
-const ALL: CheckedFilters = { show: "all", about: null, side: null };
+const ALL: FeedFilters = { show: "all", about: null, side: null };
 
 const text = (value: unknown) => (typeof value === "string" ? value : null);
 
@@ -93,7 +102,41 @@ export async function homesFrom(from: string, filters: ReelFilters = {}): Promis
   if (from === "picks") return viewer ? picksScope(viewer, device, visitorId) : null;
   if (from.startsWith("client:")) return viewer?.role === "agent" ? clientScope(viewer, from.slice(7)) : null;
   if (from.startsWith("share:")) return viewer?.role === "agent" ? shareScope(viewer, from.slice(6)) : null;
+  if (from.startsWith("listings:")) return listingsScope(from.slice(9), viewer, visitorId);
   return personScope(from, filters ?? {}, viewer, visitorId);
+}
+
+// An agent's own listings, in their page's order. Public: listing data only,
+// with no one's take on any of them.
+async function listingsScope(id: string, viewer: Account | null, visitorId: string | null): Promise<ReelScope | null> {
+  if (!z.uuid().safeParse(id).success) return null;
+  const person = await getProfilePerson(id);
+  if (!person?.isAgent) return null;
+  const listings = await getAgentListings(person.mlsAgentId, person.agentName);
+  if (listings.length === 0) return null;
+  const isMe = visitorId === person.id;
+  const name = person.name.trim() || "An agent";
+  const keys = listings.map((listing) => listing.ListingKey);
+  const href = `/people/${person.id}?tab=listings`;
+  return {
+    keys,
+    back: { href, label: `Back to ${isMe ? "your" : possessive(name)} listings` },
+    context: {
+      kind: "listings",
+      title: `${isMe ? "Your" : possessive(name)} listings`,
+      who: { name: isMe ? "You" : name, profileId: person.id, photo: person.photo, agent: true },
+      filter: null,
+      keys,
+      homes: Object.fromEntries(keys.map((key) => [key, { takes: [], photo: null }])),
+      href,
+      name,
+      me: isMe,
+      following: await follows(visitorId, person.id),
+      canFollow: Boolean(viewer),
+    },
+    query: new URLSearchParams({ from: `listings:${person.id}` }).toString(),
+    filters: ALL,
+  };
 }
 
 // Your feed: what people you follow liked and said, home by home, in its order.
@@ -140,6 +183,8 @@ async function feedScope(viewer: Account, visitorId: string | null): Promise<Ree
     context: { kind: "feed", title: "Your feed", who: null, filter: null, keys, homes, href: "/" },
     query: new URLSearchParams({ from: "feed" }).toString(),
     filters: ALL,
+    profiles: [...(await getFollowedIds(visitorId))],
+    mine: true,
   };
 }
 
@@ -150,13 +195,11 @@ const whoOfFeed = (who: FeedWho): ContextWho => ({
   agent: who.agent,
 });
 
-// "Matthew", "Matthew and Eva", "Matthew, Eva and 2 others"
+// "Matthew", "Matthew and Eva", "Matthew, Eva and Sam", then "Matthew, Eva
+// and 2 others": as the card it was opened from says it.
 function namesOf(people: FeedWho[]) {
-  const names = people.map((person) => person.name.trim() || (person.agent ? "An agent" : ANONYMOUS_BUYER));
-  if (names.length <= 1) return names[0] ?? ANONYMOUS_BUYER;
-  if (names.length === 2) return `${names[0]} and ${names[1]}`;
-  const others = names.length - 2;
-  return `${names[0]}, ${names[1]} and ${others} ${others === 1 ? "other" : "others"}`;
+  if (people.length === 0) return ANONYMOUS_BUYER;
+  return namesOrOthers(people.map((person) => person.name.trim() || (person.agent ? "An agent" : ANONYMOUS_BUYER)));
 }
 
 // Homes picked for you, as your home page shows them, each with why.
@@ -202,7 +245,7 @@ async function personScope(
   const label = topic ? summary.topics.get(topic.toLowerCase()) : undefined;
   const about = label ? topic : null;
   const side: TopicSide | null = about && isTopicSide(raw.side) && (passes || raw.side === "like") ? raw.side : null;
-  const filters: CheckedFilters = { show, about, side };
+  const filters: FeedFilters = { show, about, side };
   // Their passes, asked for by someone they keep them from: the page shows none.
   const keptPrivate = show === "passed" && !passes;
   const cards = keptPrivate ? [] : filterCards(buildCards(passes ? rows : withoutPasses(rows)), show, about, side);
@@ -222,10 +265,13 @@ async function personScope(
   const keys = [...byHome.keys()];
 
   const params = filterParams(filters);
-  const pageHref = `/people/${person.id}${params.length ? `?${new URLSearchParams(params)}` : ""}`;
+  // An agent with listings: their page opens on those, so this says Activity.
+  const hasListings = person.isAgent && (await getAgentListings(person.mlsAgentId, person.agentName)).length > 0;
+  const pageParams = [...(hasListings ? [["tab", "activity"]] : []), ...params];
+  const pageHref = `/people/${person.id}${pageParams.length ? `?${new URLSearchParams(pageParams)}` : ""}`;
   const what = show === "comments" ? "comments" : show === "liked" ? "likes" : show === "passed" ? "passes" : null;
   const title = label ? `${isMe ? "You" : name} · ${label}` : `${isMe ? "Your" : possessive(name)} ${what ?? "highlights"}`;
-  const back = `Back to ${isMe ? "your" : possessive(name)} ${what ?? "page"}`;
+  const back = `Back to ${isMe ? "your" : possessive(name)} ${what ?? (hasListings ? "activity" : "profile")}`;
   return {
     keys,
     back: { href: pageHref, label: back },
@@ -245,6 +291,9 @@ async function personScope(
     },
     query: new URLSearchParams([["from", person.id], ...params]).toString(),
     filters,
+    profiles: [person.id],
+    mine: isMe,
+    ...(person.isAgent && person.accountId && { agent: { account: person.accountId, profile: person.id } }),
   };
 }
 

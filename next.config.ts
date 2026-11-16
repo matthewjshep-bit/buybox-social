@@ -10,6 +10,10 @@ const nextConfig: NextConfig = {
     // live CSS. Every build starts clean instead: slower, but always right.
     turbopackFileSystemCacheForBuild: false,
   },
+  // Photos of homes brought in from Repliers stay on its CDN.
+  images: {
+    remotePatterns: [{ protocol: "https", hostname: "cdn.repliers.io" }],
+  },
   turbopack: {
     rules: {
       "*.css": {
@@ -29,6 +33,8 @@ const nextConfig: NextConfig = {
         destination: "https://www.porchcard.com/:path*",
         permanent: false,
       },
+      // Today's picks lead the home page now: their old address still gets there.
+      { source: "/picks", destination: "/", permanent: false },
     ];
   },
   async headers() {

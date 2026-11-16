@@ -138,20 +138,20 @@ test("the dashboard leads with what's new, and says when each link was opened, n
   await agent.goto("/dashboard");
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Clients");
   await expect(group("Haven't opened yet")).toContainText("Owen");
-  await expect(row).toContainText("Hasn't opened your link yet");
+  await expect(row).toContainText("Not opened yet");
   await expect(row).toContainText("2 homes sent · Sent today");
   await expect(row.getByRole("button", { name: "Copy link for Owen" })).toBeVisible();
 
   // The agent looking at their own link doesn't count as it being opened.
   await Promise.all([actionAnswered(agent), agent.goto(url)]);
   await agent.goto("/dashboard");
-  await expect(row).toContainText("Hasn't opened");
+  await expect(row).toContainText("Not opened yet");
 
   // Owen opens it: the agent sees when, and hears about it.
   const owen = await signedIn(browser);
   await Promise.all([actionAnswered(owen), owen.goto(url)]);
   await agent.reload();
-  await expect(row).toContainText("Opened your link. No likes yet.");
+  await expect(row).toContainText("Opened · no likes yet");
   await expect(row).toContainText("Last active today");
   await expect(group("Haven't opened yet")).toHaveCount(0);
   await expect.poll(() => emailsTo("olive-opens@example.com").length).toBe(1);
@@ -183,7 +183,7 @@ test("the dashboard leads with what's new, and says when each link was opened, n
   // Reply; his own page has the rest of how it's gone.
   await agent.goto("/dashboard");
   await expect(group("Waiting for you")).toContainText("Owen");
-  await expect(row).toContainText("Said: “Love the porch.”");
+  await expect(row).toContainText("“Love the porch.”");
   await row.getByRole("link", { name: "Owen", exact: true }).click();
   await agent.waitForURL(/\/dashboard\/clients\//);
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Owen");
@@ -533,7 +533,7 @@ test("the agent's Porchcard on a home: what each person thinks, the exact spot t
   const card = agent.getByRole("dialog", { name: "Porchcard" });
   await expect(card).toBeVisible();
   expect(await card.evaluate((el) => el.matches(":modal"))).toBe(true);
-  await expect(card).toContainText("From the people on this link · only they and you see this");
+  await expect(card).toContainText("Only people on this link see this");
   await expect(card).toContainText("Bea liked it · Cal passed");
   await expect(card).toContainText("Not yet: Pat");
 
@@ -734,7 +734,7 @@ test("an agent hearts what a client said: their thread says Liked by, in stone, 
   await expect(heartOf(home)).toHaveAttribute("aria-pressed", "true");
   let sheet = await openComments(ivy, home);
   await sheet.getByLabel("Add a comment").fill(IVY_SAYS);
-  await sheet.getByLabel(/share this anonymously/).check();
+  await sheet.getByLabel(/share publicly/).check();
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(commentIn(sheet, "Ivy", IVY_SAYS)).toBeVisible();
   await expect(sheet.getByText(/^Liked by/)).toHaveCount(0);
@@ -905,7 +905,7 @@ test("on a phone, picked homes stay in view whatever the search, and a bar leads
   await tray.getByRole("button", { name: "Remove 1204 Quillan St SE" }).click();
   await expect(tray).toHaveCount(0);
   await expect(next).toHaveCount(0);
-  await expect(agent.getByRole("button", { name: "Pick at least 1 home" })).toBeVisible();
+  await expect(agent.getByRole("button", { name: "Pick a home" })).toBeVisible();
 
   // Three picked: one row of them that slides rather than widening the page,
   // and Next goes to who it's for, ready to type.

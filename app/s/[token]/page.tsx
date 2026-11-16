@@ -176,11 +176,10 @@ export default async function SharePage({ params, searchParams }: Props) {
     !/[&,]| and /i.test(share.client_name)
       ? share.client_name
       : undefined);
-  const agentFirst = agentFirstName(agent.full_name, "Your agent");
   // Who else can open this link. Someone's own link opens as them, so it's theirs alone.
   const whoCanSee = person
-    ? `This link is just for you, ${person.first_name}. Ask ${agentName} if someone else should see ${count > 1 ? "these" : "it"}.`
-    : "Anyone with this link can see and join this conversation.";
+    ? `Just for you, ${person.first_name}.`
+    : "Anyone with this link can join.";
 
   // Each home as a post in the feed, from this link's own conversation only.
   const posts: FeedPost[] = listings.map((listing) => {
@@ -197,7 +196,6 @@ export default async function SharePage({ params, searchParams }: Props) {
       likers: likes.filter((item) => !item.mine).map((item) => item.name),
       dislikes: 0,
       aspects: { liked: {}, disliked: {} },
-      publicComments: 0,
       privateComments: 0,
       timeline,
       photoLikes: photoLikes.get(listing.ListingKey) ?? NO_PHOTO_LIKES,
@@ -218,7 +216,6 @@ export default async function SharePage({ params, searchParams }: Props) {
         token={token}
         initial={posts}
         agent={agent}
-        note={share.note}
         whoCanSee={whoCanSee}
         askToSee={askToSee.bind(null, token)}
         focus={opensOn ? { key: opensOn, n: 0 } : null}
@@ -251,10 +248,10 @@ export default async function SharePage({ params, searchParams }: Props) {
         }}
         // (The agent's own look is never asked a name: nothing there is saved.)
         myName={agentViewing ? agentFirstName(agent.full_name, "You") : (me?.first_name ?? null)}
-        prompt={`So ${agentName} and anyone else on this link know who's talking.`}
+        prompt={`So ${agentName} knows who's talking.`}
         // Their name already, on their own link (or on one sent to just them).
         suggestedName={person?.first_name ?? expected}
-        nameHint={expected && `${agentFirst} sent this to ${expected}. Not ${expected}? Type your name.`}
+        nameHint={expected && `Not ${expected}? Type your name.`}
         // Every link starts with a word from the agent over the first home's
         // photo, then the homes below it.
         intro={

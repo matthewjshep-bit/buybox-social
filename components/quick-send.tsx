@@ -76,7 +76,7 @@ export type Sent = {
   result?: ClaimResult;
 };
 
-export type QuickSend = ReturnType<typeof useQuickSend>;
+type QuickSend = ReturnType<typeof useQuickSend>;
 
 // Everything Send needs on a page: the link waiting for the next tap, and the
 // sheets and messages that follow it. `ui` goes anywhere on the page.
@@ -289,10 +289,7 @@ export function useQuickSend({
         anchor={sheetAnchor}
       >
         <div className="pb-2 text-center">
-          <p className="text-body leading-relaxed text-stone-700">
-            Add your name and photo first so clients know it&apos;s from you.
-          </p>
-          <Link href="/dashboard/profile" className={cn(primary, "mt-4")}>
+          <Link href="/dashboard/profile" className={primary}>
             Add your name and photo
           </Link>
         </div>

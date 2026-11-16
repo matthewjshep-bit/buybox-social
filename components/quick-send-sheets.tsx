@@ -69,7 +69,7 @@ function WhoFields({
     <div className="flex flex-col gap-3">
       <PeoplePicker
         label="Who's it for? (optional)"
-        hint="The link is named for them, and greets them by name."
+        hint="The link greets them by name."
         chosen={people}
         onChange={onPeople}
         onTextChange={onTyping}
@@ -270,8 +270,7 @@ export function SentBody({
       {theirs && (
         <div role="group" aria-label={`${theirs.person.name}'s other link`} className="mt-3 rounded-2xl bg-stone-50 p-3 text-sm">
           <p>
-            {theirs.person.name} already has a link from you ({theirs.link.homes}{" "}
-            {theirs.link.homes === 1 ? "home" : "homes"}).
+            {theirs.person.name} already has a link.
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-x-1">
             <button
@@ -280,7 +279,7 @@ export function SentBody({
               aria-disabled={pending}
               className={cn(button({ kind: "ghost", flush: true }), "font-semibold text-brand", busy(pending))}
             >
-              Add this home to it
+              Add to it
             </button>
             <span aria-hidden className="text-stone-400">
               ·
@@ -290,7 +289,7 @@ export function SentBody({
               onClick={() => setTheirs(null)}
               className={cn(button({ kind: "ghost" }), "text-stone-700")}
             >
-              Keep a new link
+              Keep separate
             </button>
           </div>
         </div>
@@ -316,11 +315,11 @@ export function SentBody({
             is made (on a slow connection that can take a moment). */}
         {shareId ? (
           <Link href={`/dashboard/shares/${shareId}`} className={cn(dashboardLink, "text-brand")}>
-            Open in your dashboard <ChevronRight aria-hidden size={16} />
+            Open in Clients <ChevronRight aria-hidden size={16} />
           </Link>
         ) : (
           <span role="link" aria-disabled="true" className={cn(dashboardLink, "text-stone-400")}>
-            Open in your dashboard <ChevronRight aria-hidden size={16} />
+            Open in Clients <ChevronRight aria-hidden size={16} />
           </span>
         )}
       </div>
@@ -421,8 +420,7 @@ export function SentBody({
         {undo && undo !== "ask" && (
           // The buttons are gone, so the cursor comes to the answer.
           <p ref={focusOnMount} tabIndex={-1} className="py-2 text-sm text-stone-700 outline-none">
-            {undo === "opened" ? "They've opened it." : "It's been too long to undo here."} You can remove the home from
-            your dashboard.
+            {undo === "opened" ? "Opened, so it can't be undone." : "Too late to undo."} Remove the home in Clients.
           </p>
         )}
       </div>
@@ -500,7 +498,7 @@ export function DraftBody({ home, onNextToken }: { home: SendHome; onNextToken: 
             className={cn(field({ quiet: true }), "mt-2")}
           />
           {link.people >= 2 && (
-            <p className="mt-2 text-meta text-muted">Each person also has their own link in your dashboard.</p>
+            <p className="mt-2 text-meta text-muted">Each person also has their own link.</p>
           )}
           {error && (
             <p role="alert" className="mt-3 text-sm text-red-700">
@@ -544,7 +542,7 @@ export function DraftBody({ home, onNextToken }: { home: SendHome; onNextToken: 
               href={`/dashboard/shares/${link.shareId}`}
               className="mx-auto flex min-h-11 items-center gap-1 px-3 text-sm font-semibold text-brand"
             >
-              Open in your dashboard <ChevronRight aria-hidden size={16} />
+              Open in Clients <ChevronRight aria-hidden size={16} />
             </Link>
           </div>
         </div>

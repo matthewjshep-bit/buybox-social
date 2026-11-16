@@ -3,23 +3,14 @@
 import { X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useLayoutEffect, useRef, type ReactNode } from "react";
-import { cn } from "@/lib/format";
 
 // A route shown over the page that opened it. Closing goes back, so the URL and
 // the browser's back button stay in step with what's on screen.
-// `variant`: "sheet", a white box over the page; "stage", the homes on a dark
-// stage that takes nearly all the window (all of it on a phone), with Close
-// at its top left and, on a wide screen, a gutter to its right where the homes
-// before and after are a tap away (`[data-stage-nav]`, which the feed fills).
-export function Modal({
-  label,
-  variant = "sheet",
-  children,
-}: {
-  label: string;
-  variant?: "sheet" | "stage";
-  children: ReactNode;
-}) {
+// The homes are on a dark stage that takes nearly all the window (all of it on
+// a phone), with Close at its top left and, on a wide screen, a gutter to its
+// right where the homes before and after are a tap away (`[data-stage-nav]`,
+// which the feed fills).
+export function Modal({ label, children }: { label: string; children: ReactNode }) {
   const router = useRouter();
   const dialog = useRef<HTMLDialogElement>(null);
 
@@ -56,20 +47,15 @@ export function Modal({
   const closeSpotCard = (card: HTMLElement) =>
     card.querySelector<HTMLButtonElement>('button[aria-label="Close"]')?.click();
 
-  const stage = variant === "stage";
   const close = (
     <button
       type="button"
       aria-label="Close"
       onClick={() => router.back()}
-      className={
-        stage
-          ? // On the dark: glass, at the stage's top left, clear of a notch.
-            "absolute left-3 top-[calc(env(safe-area-inset-top)+0.5rem)] z-40 flex size-11 items-center justify-center rounded-full bg-white/10 text-white ring-1 ring-white/15 backdrop-blur transition-colors hover:bg-white/20 lg:top-3"
-          : "absolute right-3 top-3 z-10 flex size-11 items-center justify-center rounded-full bg-white/95 text-ink shadow"
-      }
+      // On the dark: glass, at the stage's top left, clear of a notch.
+      className="absolute left-3 top-[calc(env(safe-area-inset-top)+0.5rem)] z-40 flex size-11 items-center justify-center rounded-full bg-white/10 text-white ring-1 ring-white/15 backdrop-blur transition-colors hover:bg-white/20 lg:top-3"
     >
-      <X aria-hidden size={stage ? 20 : 22} />
+      <X aria-hidden size={20} />
     </button>
   );
 
@@ -101,32 +87,18 @@ export function Modal({
       onClick={(event) => {
         if (event.target === event.currentTarget) router.back();
       }}
-      className={cn(
-        "m-0 h-dvh max-h-none w-full max-w-none overscroll-contain bg-transparent p-0",
-        stage
-          ? "overflow-hidden backdrop:bg-black/90 motion-safe:backdrop:backdrop-blur-sm"
-          : "overflow-y-auto backdrop:bg-black/60 sm:px-6 sm:py-8",
-      )}
+      className="m-0 h-dvh max-h-none w-full max-w-none overflow-hidden overscroll-contain bg-transparent p-0 backdrop:bg-black/90 motion-safe:backdrop:backdrop-blur-sm"
     >
-      {stage ? (
-        <>
-          {/* The stage: the whole window on a phone; wide, everything but a
-              thin margin and the gutter on the right, rounded. Focus on it
-              is white, as everywhere on the dark. */}
-          <div className="absolute inset-0 overflow-hidden bg-night text-white [--ring:white] lg:inset-y-3 lg:left-3 lg:right-[4.5rem] lg:rounded-2xl lg:shadow-2xl lg:ring-1 lg:ring-white/10">
-            {close}
-            {children}
-          </div>
-          {/* The homes before and after, beside the stage: the feed puts
-              its buttons here (it can't reach outside its own box). */}
-          <div data-stage-nav className="absolute right-3 top-1/2 hidden -translate-y-1/2 flex-col gap-3 [--ring:white] lg:flex" />
-        </>
-      ) : (
-        <div className="relative mx-auto min-h-full max-w-5xl overflow-hidden bg-white shadow-2xl sm:min-h-0 sm:rounded-2xl">
-          {close}
-          {children}
-        </div>
-      )}
+      {/* The stage: the whole window on a phone; wide, everything but a
+          thin margin and the gutter on the right, rounded. Focus on it
+          is white, as everywhere on the dark. */}
+      <div className="absolute inset-0 overflow-hidden bg-night text-white [--ring:white] lg:inset-y-3 lg:left-3 lg:right-[4.5rem] lg:rounded-2xl lg:shadow-2xl lg:ring-1 lg:ring-white/10">
+        {close}
+        {children}
+      </div>
+      {/* The homes before and after, beside the stage: the feed puts
+          its buttons here (it can't reach outside its own box). */}
+      <div data-stage-nav className="absolute right-3 top-1/2 hidden -translate-y-1/2 flex-col gap-3 [--ring:white] lg:flex" />
     </dialog>
   );
 }

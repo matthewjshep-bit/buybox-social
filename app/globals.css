@@ -31,13 +31,15 @@
 }
 
 /* The full-screen reel's own size decides its layout. Short (a phone on its
-   side): the words go back over the photo. Under 700px tall: the buttons down
-   the side get a little smaller. */
+   side): the words go back over the photo. Under 700px tall: a little less
+   room all round (the sign-in pages use it). */
 @custom-variant short (@container reel (height < 520px));
 @custom-variant compact (@container reel (height < 700px));
-/* Wider than a phone held upright (26.25rem, 420px): room for small extras
-   beside a line, such as the activity line's photo in miniature. */
-@custom-variant roomy (@container reel (width >= 26.25rem));
+/* A phone upright with little height (a small phone, or the browser's bars
+   showing): the rows under the photo get a little shorter, so the photo
+   keeps its size. Tiny, shorter still: the description gives way too. */
+@custom-variant squat (@container reel (height >= 520px) and (height < 700px));
+@custom-variant tiny (@container reel (height >= 520px) and (height < 600px));
 
 /* Wide (64rem across and up), a home laid out side by side: the photo on a
    stage of its own, the buttons in a column beside it, the words in a white

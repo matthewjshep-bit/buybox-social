@@ -3,7 +3,7 @@
 // see). Free of server code, so the browser can build it as people tap.
 
 import type { FeedPost } from "./feed";
-import { formatPrice } from "./format";
+import { formatPrice, namesList } from "./format";
 import { isSampleListing, type Listing, type ListingMedia } from "./listings/types";
 import {
   aspectOfFact,
@@ -31,10 +31,10 @@ export type ScorecardMode = "public" | "share" | "agent";
 export type ScorecardViewer = { state: ReactionState; liked: string[]; disliked: string[] };
 
 // A spot in a photo, or one of the facts ("facts", "Price").
-export type ScorecardSpot = { mediaKey: string; tag: string };
+type ScorecardSpot = { mediaKey: string; tag: string };
 
 // One person's take on the home, from their line in its conversation.
-export type ScorecardPerson = {
+type ScorecardPerson = {
   key: string;
   // "You" for you.
   name: string;
@@ -92,13 +92,12 @@ export type FactRow = {
   comments: number;
 };
 
-export type CompareCell = { likes: number; passes: number };
-export type CompareRow = { aspect: Aspect; label: string; cells: CompareCell[] };
+type CompareCell = { likes: number; passes: number };
+type CompareRow = { aspect: Aspect; label: string; cells: CompareCell[] };
 // A home in the comparison: this one first, then the others on the link.
-export type CompareHome = { key: string; address: string; photo: ListingMedia | null };
+type CompareHome = { key: string; address: string; photo: ListingMedia | null };
 
 export type Scorecard = {
-  mode: ScorecardMode;
   header: { address: string; line: string };
   // Nobody has liked, passed on or said anything yet.
   quiet: boolean;
@@ -180,18 +179,14 @@ const thingFrom = (listing: Listing, id: string): PhotoThing => {
 
 // Numbers one to nine as words.
 const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
-export const numberWord = (n: number) => WORDS[n] ?? n.toLocaleString("en-US");
+const numberWord = (n: number) => WORDS[n] ?? n.toLocaleString("en-US");
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
-
-// "Ben", "Ben and Nina", "Ben, Nina and Owen"
-export const namesList = (names: string[]) =>
-  names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 
 // "the kitchen, the covered porch and the natural light"
 const thingsList = (things: string[]) => namesList(things.map((thing) => `the ${thing.toLowerCase()}`));
 
 // What a spot reads as in a list: the thing it's on, or where it is.
-function spotName(listing: Listing, photo: ListingMedia | undefined, index: number, tag: string) {
+function spotName(photo: ListingMedia | undefined, index: number, tag: string) {
   const thing = photo ? thingOf(photo, tag) : tag;
   if (thing) return capital(thing);
   // As the line above the price says it: "A spot outside", not "in the exterior".
@@ -525,7 +520,6 @@ export function buildScorecard(
       : null;
 
   const card: Scorecard = {
-    mode,
     header: {
       address: `${listing.UnparsedAddress}, ${listing.City}`,
       line: [
@@ -687,7 +681,7 @@ function spotRowsOf(
         id,
         ids: [],
         spot,
-        name: spotName(listing, photo, index, spot.tag),
+        name: spotName(photo, index, spot.tag),
         where: [photo.ImageOf, `photo ${index + 1}`].filter(Boolean).join(" · "),
         photo,
         index,

@@ -30,10 +30,7 @@ export function JoinIntro({ photo, devMode }: { photo?: ListingMedia; devMode: b
             <p className="mt-3 text-balance text-lg leading-snug text-white sm:text-xl md:mt-4 max-md:compact:mt-2 max-md:compact:text-base short:mt-2 short:text-base">
               Share listings with your clients and see exactly what they love.
             </p>
-            {/* (The first to go where there's no room for it.) */}
-            <p className="mt-3 leading-relaxed text-white/75 sm:text-base md:mt-4 max-md:compact:hidden short:hidden">
-              React to every room, comment on every detail, and decide together.
-            </p>
+
           </div>
           <SignUpForm devMode={devMode} className="w-full md:max-w-sm short:max-w-sm" />
         </div>
@@ -50,7 +47,7 @@ export function JoinGate({ photo, devMode }: { photo?: ListingMedia; devMode: bo
       <Backdrop photo={photo} blurred />
       <div className="relative w-full max-w-sm">
         <h2 className="text-balance font-display text-3xl leading-tight sm:text-4xl">There&apos;s plenty more to see</h2>
-        <p className="mt-2 text-white/85">Sign up free to keep scrolling every home for sale.</p>
+        <p className="mt-2 text-white/85">Sign up free to keep going.</p>
         <SignUpForm devMode={devMode} className="mt-6 text-left" />
       </div>
     </>
@@ -126,10 +123,7 @@ function SeeHomes() {
         />
         See homes
       </button>
-      <p className="text-meta text-white/80">
-        <span className="pointer-fine:hidden">or swipe up</span>
-        <span className="hidden pointer-fine:inline">or scroll</span>
-      </p>
+
     </div>
   );
 }
@@ -144,7 +138,7 @@ export function SignUpForm({ devMode, className }: { devMode: boolean; className
         withPhone
         label="Sign up"
         submitLabel="Sign up free"
-        note={devMode ? "Local demo, no email sent." : "Free, and no password. Signed up before? Use the same email."}
+        note={devMode ? "Local demo, no email sent." : "Free. No password."}
         // Signed in where they are: the page becomes their feed.
         onDone={() => router.refresh()}
       />

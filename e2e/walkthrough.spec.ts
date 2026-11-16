@@ -51,10 +51,10 @@ test("an agent's link nudges a first-timer: swipe for photos, then on to the nex
   await expect(second).toBeInViewport({ ratio: 0.9 });
   await page.waitForTimeout(2500);
   await expect(nudge(page)).toHaveCount(0);
-  // At the end, with nothing liked yet: what to do, not a count of none.
+  // At the end, with nothing liked yet: no count of none.
   const end = page.getByRole("region", { name: "The end" });
-  await expect(end).toContainText("Tap the heart on the ones you like.");
-  await expect(end).not.toContainText("reacted to");
+  await expect(end).toBeAttached();
+  await expect(end).not.toContainText("rated");
 
   // Learned once, on this device: no nudges next time.
   await page.reload();
@@ -103,8 +103,7 @@ test("a link with one home opens on a word from the agent, then the home, where 
   // With one home, the end has nothing to count.
   const end = page.getByRole("region", { name: "The end" });
   await expect(end).toBeAttached();
-  await expect(end).not.toContainText("reacted to");
-  await expect(end).not.toContainText("Tap the heart");
+  await expect(end).not.toContainText("rated");
 });
 
 test("on a desktop, a sideways trackpad swipe turns the photos and an up-and-down one moves between homes", async ({

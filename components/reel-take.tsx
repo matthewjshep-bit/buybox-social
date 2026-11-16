@@ -13,10 +13,11 @@ import type { ContextTake, ContextWho, HomeContext } from "@/lib/reel-context";
 // on it ("Maya liked the porch and the kitchen"), the spots they picked out
 // (a tap opens that photo, on the spot), what they said (a tap opens the
 // comments on it), or why it was picked for you. Side by side, a small card
-// at the top of the white panel, above the price ("panel"). On a phone, in the
-// blurred band over the photo, one line until it's tapped open ("band"),
-// under whose homes these are and how far through them you are. Nothing is
-// drawn on the photo until a spot is tapped.
+// at the top of the white panel, above the price ("panel"). On a phone, a bar
+// above the photo, beside the way back (or a pop-out's close button), one row
+// tall until it's tapped open ("band"): whose homes these are and how far
+// through them you are, over the take in a line. Nothing is drawn on the
+// photo until it's opened, or a spot is tapped.
 
 // How many people's takes it shows on one home (a link with a few people on it).
 const TAKES_SHOWN = 3;
@@ -37,7 +38,7 @@ export function TakeCard({
   // Whose homes these are, and which of them this is: "Maya's highlights · 2 of 7".
   eyebrow?: TakeEyebrow | null;
   look: "panel" | "band";
-  // On a phone, further down the band: the full page has its Back button up there.
+  // On a phone, under the site's header: the full page has one.
   low?: boolean;
   // The photo's held, shown alone, or a sheet is over the home.
   hidden?: boolean;
@@ -73,8 +74,8 @@ export function TakeCard({
       data-keep-clear
       data-take
       className={cn(
-        "pointer-events-auto absolute left-3 right-16 z-30 max-w-md rounded-2xl bg-black/55 text-white shadow-[0_4px_20px_rgb(0_0_0/0.35)] ring-1 ring-white/10 backdrop-blur-md transition-[opacity,visibility] duration-300 [text-shadow:none] motion-reduce:transition-none",
-        low ? "top-[calc(env(safe-area-inset-top)+7rem)]" : "top-[calc(env(safe-area-inset-top)+3.5rem)]",
+        "pointer-events-auto absolute left-[3.75rem] right-3 z-30 max-w-md rounded-2xl bg-black/55 text-white ring-1 ring-white/10 backdrop-blur-md transition-[opacity,visibility] duration-300 [text-shadow:none] motion-reduce:transition-none",
+        low ? "top-[calc(env(safe-area-inset-top)+3.5rem)]" : "top-[calc(env(safe-area-inset-top)+0.5rem)]",
         hidden && "invisible opacity-0",
       )}
     >
@@ -84,7 +85,7 @@ export function TakeCard({
           aria-expanded={open}
           aria-controls={bodyId}
           onClick={() => setOpen(!open)}
-          className="flex min-h-11 w-full items-center gap-2 rounded-2xl px-3 py-2 text-left"
+          className="flex h-11 w-full items-center gap-2 rounded-2xl px-3 py-1 text-left"
         >
           <span className="min-w-0 flex-1">
             {where && (
@@ -112,7 +113,9 @@ export function TakeCard({
           />
         </button>
       ) : (
-        <p className="truncate px-3 py-2.5 text-[11px] font-semibold uppercase leading-4 tracking-wide text-white/70">{where}</p>
+        <p className="flex h-11 items-center px-3 text-[11px] font-semibold uppercase leading-4 tracking-wide text-white/70">
+          <span className="min-w-0 truncate">{where}</span>
+        </p>
       )}
       {something && (
         <div id={bodyId} hidden={!open} className="max-h-[45dvh] overflow-y-auto overscroll-contain px-3 pb-3">

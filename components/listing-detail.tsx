@@ -19,7 +19,7 @@ import { getPublicIdentity } from "@/lib/public";
 import { getTaste } from "@/lib/taste";
 
 export const PUBLIC_PROMPT =
-  "Your first name shows next to what you like and say, and anyone visiting can see it.";
+  "Your first name shows publicly.";
 
 // The actions behind the public feed. It reloads only the home you're talking
 // about, so these save without reloading the page.
@@ -62,9 +62,11 @@ export async function ListingDetail({
   const viewer = account?.role ? account : null;
   const { visitor, name } = await getPublicIdentity(viewer, device);
   const taste = await getTaste(visitor?.id);
-  const [home] = await getReel(viewer, device, taste, { only: [listingKey], limit: 1 });
+  const [[home], rest] = await Promise.all([
+    getReel(viewer, device, taste, { only: [listingKey], limit: 1 }),
+    embedded ? [] : getReel(viewer, device, taste, { exclude: [listingKey] }),
+  ]);
   if (!home) notFound();
-  const rest = embedded ? [] : await getReel(viewer, device, taste, { exclude: [listingKey] });
 
   const feed: ComponentProps<typeof ReelFeed> = {
     initial: [home, ...rest],

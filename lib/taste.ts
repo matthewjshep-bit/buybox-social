@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { sql } from "./db";
 import { formatPrice } from "./format";
 import type { Listing } from "./listings/types";
@@ -18,11 +19,13 @@ export type Taste = {
 // Below this, there isn't enough to go on and ranking falls back to recency.
 export const TASTE_MIN_REACTIONS = 3;
 
-export async function getTaste(visitorId: string | null | undefined): Promise<Taste | null> {
+// Worked out once for a page, however many parts of it ask.
+export const getTaste = cache(async (visitorId: string | null | undefined): Promise<Taste | null> => {
   if (!visitorId) return null;
   const [rows, photoAspects] = await Promise.all([
-    sql<(ReactionState & { listing_key: string; data: Listing })[]>`
-      select r.listing_key, r.reaction, r.liked, r.disliked, l.data
+    sql<(ReactionState & { listing_key: string; city: string; price: number; beds: number })[]>`
+      select r.listing_key, r.reaction, r.liked, r.disliked, l.data->>'City' as city,
+        (l.data->>'ListPrice')::float8 as price, (l.data->>'BedroomsTotal')::float8 as beds
       from public_reactions r join listings l on l.listing_key = r.listing_key
       where r.visitor_id = ${visitorId}`,
     // What they liked in photos counts too, once per home.
@@ -48,9 +51,9 @@ export async function getTaste(visitorId: string | null | undefined): Promise<Ta
     count(liked, row.liked);
     count(disliked, row.disliked);
     if (row.reaction === "like") {
-      cityCounts.set(row.data.City, (cityCounts.get(row.data.City) ?? 0) + 1);
-      prices.push(row.data.ListPrice);
-      beds.push(row.data.BedroomsTotal);
+      cityCounts.set(row.city, (cityCounts.get(row.city) ?? 0) + 1);
+      prices.push(row.price);
+      beds.push(row.beds);
     }
   }
   return {
@@ -62,7 +65,7 @@ export async function getTaste(visitorId: string | null | undefined): Promise<Ta
     priceRange: prices.length ? [Math.min(...prices), Math.max(...prices)] : null,
     bedsRange: beds.length ? [Math.min(...beds), Math.max(...beds)] : null,
   };
-}
+});
 
 export const hasTaste = (taste: Taste | null): taste is Taste =>
   Boolean(taste && taste.likes + taste.passes >= TASTE_MIN_REACTIONS);

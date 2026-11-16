@@ -6,14 +6,14 @@ import { aspectLabel, type Aspect, type ReactionState } from "./reactions";
 // How the people on one package compare: what each likes, where they agree,
 // and homes they might all like, from what they've said so far.
 
-export type PackagePerson = { id: string; name: string };
+type PackagePerson = { id: string; name: string };
 
 type Thread = {
   reactions: { listingKey: string; participantId: string; state: ReactionState }[];
   photoLikes: { listingKey: string; participantId: string; tag: string; aspect: Aspect | null }[];
 };
 
-export type PersonSummary = {
+type PersonSummary = {
   person: PackagePerson;
   liked: number;
   passed: number;

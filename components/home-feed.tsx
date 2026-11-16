@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Fragment, type ReactNode } from "react";
-import { CaughtUp, sinceWords } from "@/components/home/caught-up";
+import { CaughtUp } from "@/components/home/caught-up";
 import { FollowText } from "@/components/home/follow-text";
 import { FollowingCard, StripCard } from "@/components/home/following-card";
 import { Avatar } from "@/components/ui";
@@ -90,11 +90,9 @@ export function FollowingFeed({
     <div className="flex flex-col gap-4">
       {freshItems.length > 0 && <ul className="flex flex-col gap-4">{render(freshItems, 0)}</ul>}
       {freshItems.length > 0 ? (
-        <CaughtUp>
-          {seenAt ? `You've seen everything new ${sinceWords(seenAt)}` : "That's everything new from people you follow"}
-        </CaughtUp>
+        <CaughtUp />
       ) : (
-        <CaughtUp title="Nothing new from people you follow" />
+        <CaughtUp title="Nothing new" />
       )}
       {olderItems.length > 0 && <ul className="flex flex-col gap-4">{render(olderItems, freshItems.length)}</ul>}
     </div>
@@ -109,7 +107,7 @@ function InlineSuggestions({ people }: { people: (FeedWho & { profileId: string 
       <h2 className="text-meta font-semibold text-muted">People with your taste</h2>
       <ul className="-mx-3.5 mt-2 flex snap-x gap-3 overflow-x-auto px-3.5 [scrollbar-width:none]">
         {people.slice(0, 5).map((person) => (
-          <li key={person.profileId} className="flex w-24 shrink-0 snap-start flex-col items-center gap-1 text-center">
+          <li key={person.profileId} className="relative flex w-24 shrink-0 snap-start flex-col items-center gap-1 text-center">
             <Link
               href={`/people/${person.profileId}`}
               className="flex flex-col items-center gap-1 rounded-xl focus-visible:outline-offset-2"

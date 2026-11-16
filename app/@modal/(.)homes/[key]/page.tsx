@@ -13,7 +13,7 @@ export default async function HomeModal({
 }) {
   const [{ key }, query] = await Promise.all([params, searchParams]);
   return (
-    <Modal label="Home details" variant="stage">
+    <Modal label="Home details">
       <div className="h-full">
         <ListingDetail
           listingKey={decodeURIComponent(key)}

@@ -25,7 +25,7 @@ export default function HomeNotFound() {
           </>
         }
       >
-        It may have sold or been taken off the market.
+        It may have sold.
       </RouteState>
     </>
   );

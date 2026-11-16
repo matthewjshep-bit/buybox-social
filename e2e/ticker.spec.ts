@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import type { Listing } from "../lib/listings/types";
-import { signedIn, toFirstHome, createShare, heartOf, homeIn, joinAs, openComments, openMore, pick, settle, signInAgent, tapPhoto } from "./helpers";
+import { signedIn, toFirstHome, createShare, heartOf, homeIn, joinAs, openComments, openMore, pick, settle, signInAgent, signUpBuyer, tapPhoto } from "./helpers";
 
 // The line at the photo's foot: what people did on the photo on screen, one
 // at a time, each with a hotspot on the spot where they did it. Timers run on
@@ -302,9 +302,9 @@ test("a pointer on the line holds it; a card open on the photo holds it, and onc
   await expect(lineOf(home)).toHaveAttribute("aria-label", shown);
 });
 
-test("opened from someone's profile, it still goes round", async ({ browser }) => {
+test("opened from someone's profile, the line says only what they did", async ({ browser }) => {
   // Bo's page: the front entry Bo liked shares its photo with Al's sconces,
-  // so there's more than one thing to go round.
+  // and those are Al's, not Bo's.
   const look = await (await browser.newContext()).newPage();
   await look.goto("/homes/SAMPLE-1007");
   const comments = await openComments(look, homeIn(look, WEXFORD));
@@ -319,12 +319,15 @@ test("opened from someone's profile, it still goes round", async ({ browser }) =
   await page.waitForURL(/\/reel\?from=/);
   const home = homeIn(page.getByRole("dialog", { name: "Homes" }), WEXFORD);
   await expect(home).toBeVisible();
-  await expect(activityOf(home).getByRole("button", { name: "Pause activity" })).toBeVisible();
-  // Their homes: what Bo did leads the line, then it goes round as ever.
-  const before = (await lineOf(home).getAttribute("aria-label"))!;
-  expect(before).toMatch(/^Bo /);
-  await page.clock.runFor(8000);
-  await expect(lineOf(home)).not.toHaveAttribute("aria-label", before);
+  // Their homes: the one thing Bo did, still (nothing to go round), and
+  // never anyone else's, or who else liked the home.
+  await expect(lineOf(home)).toHaveAccessibleName(/^Bo liked the front entry/);
+  await expect(activityOf(home).getByRole("button", { name: /activity$/ })).toHaveCount(0);
+  for (let i = 0; i < 4; i++) {
+    await page.clock.runFor(5000);
+    await expect(activityOf(home)).not.toContainText(/Al|A buyer|others liked|liked this$/);
+    await expect(lineOf(home)).toHaveAccessibleName(/^Bo liked the front entry/);
+  }
 });
 
 test("beside the map it's only to read: the newest, still, not a button", async ({ browser }) => {
@@ -502,7 +505,7 @@ test("isolation: a comment on a spot shared from a link shows its words in publi
   await card.getByRole("button", { name: /^Comment on/ }).click();
   const about = zoe.getByRole("dialog", { name: "Comments" });
   await expect(about.getByRole("heading", { name: "On a spot in photo 1" })).toBeVisible();
-  await about.getByLabel(/share this anonymously/).check();
+  await about.getByLabel(/share publicly/).check();
   await about.getByRole("textbox").fill(WORDS);
   await about.getByRole("button", { name: "Post", exact: true }).click();
   await expect(about).toBeHidden();
@@ -527,4 +530,81 @@ test("isolation: a comment on a spot shared from a link shows its words in publi
   const html = await (await page.request.get("/homes/SAMPLE-1008")).text();
   expect(html).toContain(WORDS);
   expect(html).not.toContain(spotTag);
+});
+
+test("isolation: what you said on an agent's link reads \"You commented\" to you alone, on your own page, and nobody else gets it there", async ({
+  browser,
+}) => {
+  test.setTimeout(150_000);
+  const SECRET = "Too close to the road for the two of us.";
+  const agent = await signInAgent(browser, "tara.own@example.com", "Tara Agent");
+  const { url } = await createShare(agent, ["719 Saltmarsh"], ["Wren"]);
+  const wren = await signUpBuyer(browser, "wren.own@example.com", "Wren Own");
+  await wren.goto(url);
+  const linkHome = homeIn(wren, SALTMARSH);
+  await linkHome.scrollIntoViewIfNeeded();
+  await settled(linkHome);
+  // A comment on her agent's link: private.
+  const chat = await openComments(wren, linkHome);
+  await chat.getByLabel("Add a comment").fill(SECRET);
+  await chat.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(chat.getByText(SECRET)).toBeVisible();
+  await wren.keyboard.press("Escape");
+  // And a like of the same home in public, so it's on her page.
+  await wren.goto("/homes/SAMPLE-1008");
+  const liked = heartOf(homeIn(wren, SALTMARSH));
+  await liked.click();
+  await expect(liked).toHaveAttribute("aria-pressed", "true");
+  await wren.goto("/people/me");
+  await wren.waitForURL(/\/people\/[0-9a-f-]{36}$/);
+  const address = `/reel?from=${new URL(wren.url()).pathname.split("/").pop()}&home=SAMPLE-1008`;
+
+  // Each thing the line says as it goes round, by its name.
+  const round = async (page: Page, turns: number) => {
+    const home = homeIn(page, SALTMARSH);
+    await settled(home);
+    const said: string[] = [];
+    for (let i = 0; i < turns; i++) {
+      said.push((await lineOf(home).getAttribute("aria-label")) ?? "");
+      said.push((await activityOf(home).textContent()) ?? "");
+      await tick(page, 8000);
+    }
+    return said;
+  };
+
+  // To her, on her own page: "You", with her words. Never "A buyer", and
+  // nothing of the other buyers who commented privately on this home.
+  const own = await wren.context().newPage();
+  await own.clock.install();
+  await own.clock.pauseAt(new Date(Date.now() + 1000));
+  await own.goto(address);
+  const hers = await round(own, 6);
+  expect(hers).toContainEqual(expect.stringMatching(/^You commented: Too close to the road/));
+  expect(hers).toContainEqual(expect.stringMatching(/^You liked this/));
+  for (const line of hers) expect(line).not.toMatch(/A buyer|privately|others liked/);
+  await own.close();
+
+  // Anyone else on her page: only her public like, under her name.
+  const visitor = await stillPage(browser);
+  await visitor.goto(address);
+  const theirs = await round(visitor, 4);
+  expect(theirs[0]).toMatch(/^Wren liked this/);
+  for (const line of theirs) expect(line).not.toMatch(/commented|A buyer|Too close|others liked/);
+  expect(await (await visitor.request.get(address)).text()).not.toContain(SECRET);
+
+  // Her agent, there: the same. What she said on the link stays on the link.
+  expect(await (await agent.request.get(address)).text()).not.toContain(SECRET);
+  const agents = await agent.context().newPage();
+  await agents.clock.install();
+  await agents.clock.pauseAt(new Date(Date.now() + 1000));
+  await agents.goto(address);
+  for (const line of await round(agents, 4)) expect(line).not.toMatch(/commented|Too close/);
+  await agents.close();
+
+  // Her like, taken back, so no later spec counts it.
+  await wren.goto("/homes/SAMPLE-1008");
+  const heart = heartOf(homeIn(wren, SALTMARSH));
+  await expect(heart).toHaveAttribute("aria-pressed", "true");
+  await heart.click();
+  await expect(heart).toHaveAttribute("aria-pressed", "false");
 });

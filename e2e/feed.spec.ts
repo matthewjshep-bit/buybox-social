@@ -76,7 +76,7 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await expect(buyer.getByRole("textbox", { name: "First name" })).toBeHidden();
   // Double-tapping a photo likes what it shows, too.
   await post.scrollIntoViewIfNeeded();
-  await post.getByRole("group", { name: /Photos of/ }).dblclick();
+  await post.locator("[data-photo-frame] img").first().dblclick();
   // Its heart pops in the middle of the photo, not down behind the words.
   const burst = post.locator("[data-photo-frame] [class*='heart-pop']");
   await expect(burst).toHaveCount(1);
@@ -156,10 +156,8 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   expect(heart.x + heart.width).toBeLessThanOrEqual(panel.x + panel.width);
   expect(heart.y).toBeGreaterThan(price.y);
 
-  // Buyers don't get the agent dashboard, and the old picks page goes home.
+  // Buyers don't get the agent dashboard.
   await buyer.goto("/dashboard");
-  await expect(buyer).toHaveURL(/localhost:\d+\/$/);
-  await buyer.goto("/picks");
   await expect(buyer).toHaveURL(/localhost:\d+\/$/);
 
   // Signed out, the home page says what this is, Browse homes opens on a way

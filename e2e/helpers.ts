@@ -43,7 +43,7 @@ export async function createShare(page: Page, addresses: string[], people: strin
     await who.press("Enter");
     await expect(page.getByRole("list", { name: "Who it's for" }).getByText(name, { exact: true })).toBeVisible();
   }
-  await page.getByLabel(/Personal note/).fill("This one has the yard you mentioned.");
+  await page.getByLabel("Note (optional)").fill("This one has the yard you mentioned.");
   await page.getByRole("button", { name: /Create link/ }).click();
   await page.waitForURL("**/dashboard/shares/*");
   const urls: Record<string, string> = {};
@@ -66,7 +66,7 @@ export async function signUpBuyer(browser: Browser, email: string, name: string,
   await form.getByLabel("Email").fill(email);
   await form.getByRole("button", { name: "Sign up free" }).click();
   await enterCode(page.getByRole("form", { name: "Sign up" }).first());
-  await expect(page.getByRole("button", { name: "Your profile" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
   await expect(page.getByRole("form", { name: "Sign up" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Browse homes" }).first()).toBeVisible();
   await page.goto("/reel");
@@ -92,7 +92,7 @@ export async function signedIn(browser: Browser, email = `client.${Date.now()}${
 // email, and it's always this.
 export const DEV_CODE = "123456";
 export async function enterCode(where: Page | Locator) {
-  await where.getByLabel("Code from the email").fill(DEV_CODE);
+  await where.getByLabel("Code", { exact: true }).fill(DEV_CODE);
   await where.getByRole("button", { name: "Continue" }).click();
 }
 
@@ -158,7 +158,7 @@ export async function scrollToEnd(page: Page) {
       const reel = document.querySelector<HTMLElement>("[data-reel]")!;
       reel.scrollTo({ top: reel.scrollHeight });
     });
-    await expect(page.getByRole("heading", { name: "You've seen every home for now" })).toBeVisible({ timeout: 1500 });
+    await expect(page.getByRole("heading", { name: "That's all for now" })).toBeVisible({ timeout: 1500 });
   }).toPass({ timeout: 20_000 });
 }
 

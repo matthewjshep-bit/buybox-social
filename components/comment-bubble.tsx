@@ -1,6 +1,6 @@
 import { MapPin, Tag } from "lucide-react";
 import type { ReactNode } from "react";
-import { MoreText } from "@/app/people/[id]/client";
+import { MoreText } from "@/components/more-text";
 import { Avatar } from "@/components/ui";
 
 // Something said, as Facebook shows a comment: their face on the left, their
@@ -15,7 +15,8 @@ export function CommentBubble({
   meta,
   children,
 }: {
-  name: string;
+  // Who said it: plain, or a link to their page (and a badge beside it).
+  name: ReactNode;
   face: string;
   photo?: string | null;
   agent: boolean;
@@ -28,7 +29,7 @@ export function CommentBubble({
       <Avatar name={face} tone={agent ? "agent" : "person"} size={8} photo={photo} />
       <div className="min-w-0 max-w-full flex-1">
         <div className="w-fit max-w-full rounded-2xl bg-stone-100 px-3 py-2">
-          <p className="text-meta font-semibold leading-5 text-ink">{name}</p>
+          <p className="flex flex-wrap items-center gap-x-1.5 text-meta font-semibold leading-5 text-ink">{name}</p>
           <MoreText className="text-body leading-snug text-ink">{children}</MoreText>
         </div>
         {(spot || meta) && (

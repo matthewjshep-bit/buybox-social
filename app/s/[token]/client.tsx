@@ -137,7 +137,6 @@ function askForMoreHref(agent: ShareAgent, first: string, liked: LikedHome[]) {
 export function ShareReel({
   token,
   agent,
-  note,
   whoCanSee,
   askToSee,
   preview,
@@ -150,7 +149,6 @@ export function ShareReel({
 }: Omit<ReelProps, "mode" | "header" | "onActiveChange" | "onPhotoSeen"> & {
   token: string;
   agent: ShareAgent;
-  note: string;
   whoCanSee: string;
   askToSee: (listingKey: string) => Promise<AskResult>;
   // The agent's own look at their link, said in the header ("Viewing as Dana").
@@ -380,7 +378,6 @@ export function ShareReel({
         header={
           <ShareHeader
             agent={agent}
-            note={note}
             home={home ? { listingKey: home.ListingKey, address: home.UnparsedAddress } : null}
             homesCount={homes.length}
             whoCanSee={whoCanSee}
@@ -492,8 +489,7 @@ export function ShareWelcome({
           )}
           <SeeHomes count={count} />
           <p className="mt-6 text-pretty text-xs leading-relaxed text-white/80 [@media(max-height:44rem)]:mt-4">
-            Tap the heart on anything you like, even something in a photo.{" "}
-            {sample && "Sample listings, fictional and not for sale. "}
+            {sample && "Sample listings, not for sale. "}
             {whoCanSee}
           </p>
           </div>
@@ -526,8 +522,7 @@ export function ShareWelcome({
         onClick={goToFirstHome}
         className="relative mx-auto mb-[max(1rem,env(safe-area-inset-bottom))] flex shrink-0 flex-col items-center gap-0.5 rounded-full px-4 pt-1 text-meta font-medium text-white/80 transition-colors hover:text-white"
       >
-        <span className="pointer-fine:hidden">Swipe up</span>
-        <span className="hidden pointer-fine:inline">Scroll</span>
+
         <ChevronDown size={26} strokeWidth={2.25} className="animate-[nudge-down_1.6s_ease-in-out_infinite]" />
       </button>
     </div>
@@ -550,22 +545,15 @@ export function ShareEnd({
   token: string;
 }) {
   const tools = useContext(ContactAgent);
-  if (count === 0) return <EmptyLink agentName={agentName} />;
+  if (count === 0) return <EmptyLink />;
   return (
     <div className="w-full max-w-md">
-      <h2 className="text-balance font-display text-3xl">
-        {count === 1 ? `That's the home ${agentName} picked` : "That's every home"}
-      </h2>
-      <p className="mt-2 text-white/85">
-        {agentName} sees what you liked and said.{count > 1 && " Change your mind any time."}
-      </p>
+      <h2 className="text-balance font-display text-3xl">That&apos;s all</h2>
+      <p className="mt-2 text-white/85">{agentName} sees your likes and comments.</p>
       {!tools.preview && <WhatsNext />}
       {!personal ? (
         <div data-light className={cn(card, "mt-8 p-5 text-ink")}>
           <h3 className="font-semibold">Deciding with someone?</h3>
-          <p className="mt-1 text-sm text-muted">
-            Send them this link so you can all weigh in here, together with {agentName}.
-          </p>
           <InviteButton token={token} />
         </div>
       ) : (
@@ -573,8 +561,7 @@ export function ShareEnd({
           <div data-light className={cn(card, "mt-8 p-5 text-ink")}>
             <h3 className="font-semibold">Deciding with someone?</h3>
             <p className="mt-1 text-sm text-muted">
-              Ask {agentName} to add them. They&apos;ll get their own link, so you each pick what you like and{" "}
-              {agentName} can see where you agree.
+              Ask {agentName} to add them.
             </p>
           </div>
         )
@@ -593,7 +580,7 @@ function WhatsNext() {
   const ask = (
     <>
       {askHref?.startsWith("mailto:") ? <Mail aria-hidden size={18} /> : <Send aria-hidden size={18} />}
-      Ask {first} for more like these
+      Ask for more like these
     </>
   );
   return (
@@ -603,9 +590,7 @@ function WhatsNext() {
       </h3>
       {liked.length > 0 && (
         <>
-          <p className="mt-1 text-sm text-muted">
-            {liked.length === 1 ? "You liked 1 home" : `You liked ${liked.length} homes`}
-          </p>
+          <p className="mt-1 text-sm text-muted">You liked</p>
           <ul className="mt-2 flex flex-wrap gap-2">
             {liked.map((home) => (
               <li key={home.listingKey} className="min-w-0 max-w-full">
@@ -644,7 +629,7 @@ function WhatsNext() {
         {signedIn && (
           <Link href="/" className={cn(button({ kind: "ghost", block: true }), "text-ink")}>
             <Home aria-hidden size={18} />
-            Back to your Porchcard home
+            Home
           </Link>
         )}
       </div>
@@ -668,12 +653,11 @@ function SeeHomes({ count }: { count: number }) {
 }
 
 // Every home has been taken off the link: says so, and how to reach the agent.
-function EmptyLink({ agentName }: { agentName: string }) {
+function EmptyLink() {
   const contact = useContext(ContactAgent);
   return (
     <div className="relative flex w-full max-w-md flex-col items-center">
-      <h1 className="text-balance font-display text-3xl">There are no homes on this link right now</h1>
-      <p className="mt-2 text-white/85">Ask {agentName} to send you more.</p>
+      <h1 className="text-balance font-display text-3xl">No homes here right now</h1>
       <button
         type="button"
         aria-haspopup="dialog"

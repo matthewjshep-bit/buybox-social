@@ -14,6 +14,12 @@ import {
   signUpBuyer,
 } from "./helpers";
 
+// Today's picks lead the home page: their old address still gets there.
+test("the old picks address goes home", async ({ page }) => {
+  await page.goto("/picks");
+  await expect(page).toHaveURL((url) => url.pathname === "/");
+});
+
 test("the feed learns your taste from what you like and pass on", async ({ browser }) => {
   test.setTimeout(90_000);
   const pia = await signUpBuyer(browser, "pia@example.com", "Pia Lane");
@@ -52,18 +58,20 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
   await pia.keyboard.press("Escape");
 
   // Your taste so far waits at the end of the feed, told as your own page
-  // tells it: the same headline, the same words, the same chips.
+  // tells it: the same headline, the same chips.
   await pia.reload();
   await scrollToEnd(pia);
   const taste = pia.getByRole("region", { name: "Your taste" });
-  await expect(taste).toContainText("From 4 reactions: liked 3, passed 1.");
+  await expect(taste).not.toContainText("reactions");
   await expect(taste.getByRole("group", { name: "Loves" }).getByRole("link", { name: "Loves Vibe" })).toBeVisible();
   const story = (region: typeof taste) =>
     region.evaluate((el) =>
-      [...el.querySelectorAll("p")].slice(0, 2).map((p) => p.textContent?.replace(/\s+/g, " ").trim()),
+      [...el.querySelectorAll("p")].slice(0, 1).map((p) => p.textContent?.replace(/\s+/g, " ").trim()),
     );
   const told = await story(taste);
-  expect(told).toEqual([expect.stringMatching(/^Vibe · /), "You tend to like the vibe."]);
+  // The headline, then the chips: no sentence saying the chips over again.
+  expect(told).toEqual([expect.stringMatching(/^Vibe · /)]);
+  await expect(taste).not.toContainText("You tend to like");
   const own = await pia.context().newPage();
   await own.goto("/people/me");
   const ownTaste = own.getByRole("region", { name: "Your taste" });
@@ -248,7 +256,7 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   await dev.goto(`${cleoPage}?show=passed`);
   await expect(dev.getByText("Nothing passed on yet.")).toBeVisible();
   // Your own, from the header: you, then Your profile.
-  await dev.getByRole("button", { name: "Your profile" }).click();
+  await dev.getByRole("button", { name: "Account menu" }).click();
   await dev.getByRole("link", { name: "Your profile" }).click();
   await expect(dev.getByRole("heading", { level: 1 })).toHaveText("Dev (you)");
   await expect(dev.getByRole("link", { name: `${FOXGLOVE}: liked this` })).toBeVisible();

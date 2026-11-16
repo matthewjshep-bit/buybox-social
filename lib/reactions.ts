@@ -68,7 +68,7 @@ export function toggleAspect(state: ReactionState, sentiment: Sentiment, aspect:
 
 // A spot someone tapped that isn't on any named thing, said by where it is
 // (spotPlace): "outside", "in the kitchen", "in photo 3".
-export type PlacedSpot = { place: string };
+type PlacedSpot = { place: string };
 
 // Where in a home a spot with no name is, as the ticker says it: "outside"
 // for the outside or front of the house, "in the kitchen" for a room, and

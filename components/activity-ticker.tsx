@@ -68,7 +68,7 @@ const subscribeMotion = (onChange: () => void) => {
   query.addEventListener("change", onChange);
   return () => query.removeEventListener("change", onChange);
 };
-export const useReducedMotion = () =>
+const useReducedMotion = () =>
   useSyncExternalStore(
     subscribeMotion,
     () => matchMedia(REDUCE).matches,
@@ -88,7 +88,7 @@ const busy = (line: Element | null) =>
 type Run = { turns: number; limit: number | null; until: number | null };
 const FRESH: Run = { turns: 1, limit: null, until: null };
 
-export type Ticker = ReturnType<typeof useTicker>;
+type Ticker = ReturnType<typeof useTicker>;
 
 export function useTicker({
   events,
@@ -331,12 +331,10 @@ function Face({
         initial={who.name?.trim()[0]?.toUpperCase()}
         image={who.photo}
         agent={who.tone === "agent" || Boolean(who.agent)}
-        mark={null}
-        caption
         ghost={ghost}
       />
     ) : (
-      <EventFace event={shown.event} myName={myName} caption ghost={ghost} />
+      <EventFace event={shown.event} myName={myName} ghost={ghost} />
     );
   const profile = link ? profileOf(shown.event, yours) : null;
   if (!profile) return <span aria-hidden>{face}</span>;
@@ -399,11 +397,11 @@ export function ActivityTicker({
   if (cycle.length === 0) {
     if (!hint) return null;
     return (
-      <div role="group" aria-label="Recent activity" data-keep-clear className={cn(caption, "gap-2.5 py-2 pl-2 pr-3.5 split:gap-3 split:py-2.5 split:pl-2.5 split:pr-4")}>
+      <div role="group" aria-label="Recent activity" data-keep-clear className={cn(caption, "gap-2.5 py-1.5 pl-2 pr-3.5 split:gap-3 split:py-2.5 split:pl-2.5 split:pr-4")}>
         <span aria-hidden className="flex size-8 split:size-9 shrink-0 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/25">
           <Hand size={16} className="text-white/85" />
         </span>
-        <p className="text-meta leading-[18px] text-white/90 split:text-sm split:leading-5">{hint}</p>
+        <p className="line-clamp-2 text-meta leading-[18px] text-white/90 split:text-sm split:leading-5">{hint}</p>
       </div>
     );
   }
@@ -446,7 +444,8 @@ export function ActivityTicker({
   const crossfade = reduced ? { "data-crossfade": true } : {};
   // Each showing: the face, then the words, coming and going together.
   const showing = "col-start-1 row-start-1 flex min-w-0 items-center gap-2.5 split:gap-3";
-  const row = "flex min-w-0 flex-1 flex-col justify-center rounded-xl py-1.5 text-left split:py-2";
+  // (On a phone its strip is one caption tall: two lines in all, never three.)
+  const row = "flex min-w-0 flex-1 flex-col justify-center rounded-xl py-1 text-left short:py-1.5 split:py-2";
   // With reduced motion it only moves by hand, so its step-on button shows.
   const stepper = multi && reduced;
 
@@ -569,7 +568,13 @@ function Lines({ shown, ghost = false }: { shown: Shown; ghost?: boolean }) {
   const when = words.meta ? `${DOT}${words.meta}` : "";
   return (
     <>
-      <span className="line-clamp-2 text-body leading-5 split:text-base split:leading-[22px]" suppressHydrationWarning>
+      <span
+        className={cn(
+          words.words ? "line-clamp-1" : "line-clamp-2",
+          "text-body leading-5 short:line-clamp-2 split:line-clamp-2 split:text-base split:leading-[22px]",
+        )}
+        suppressHydrationWarning
+      >
         {say(who, "font-semibold")}
         {say(words.line1.slice(who.length))}
         {!words.words && say(when, "text-meta text-white/70 split:text-sm")}

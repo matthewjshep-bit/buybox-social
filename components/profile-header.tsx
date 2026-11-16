@@ -23,7 +23,7 @@ function Banner({ personId, brandColor }: { personId: string; brandColor: string
 // themselves (an agent's links too). Who follows them and whom they follow are
 // links, to those lists, with Follow beside them. On your own page, a pencil
 // to edit it (your photo, your words, your links), on a page of its own. Your
-// own page with no name yet says "Your page" and asks for one.
+// own page with no name yet says "Your profile" and asks for one.
 // An agent on their own client's page sees that they are, with that client's
 // homes and their link a tap away.
 export function ProfileHeader({
@@ -88,7 +88,7 @@ export function ProfileHeader({
         </div>
         {/* The keyboard comes here once you've said your name, as it changes. */}
         <h1 id="profile-name" tabIndex={-1} className="mt-2 break-words font-display text-[30px] leading-tight outline-none">
-          {isMe ? (unnamed ? "Your page" : `${name} (you)`) : name}
+          {isMe ? (unnamed ? "Your profile" : `${name} (you)`) : name}
         </h1>
         {followsYou && (
           <p className="mt-1">
@@ -108,7 +108,7 @@ export function ProfileHeader({
         )}
         {isMe && unnamed && <AddFirstName />}
         <p className="mt-1 text-body text-muted">
-          {agent ? `${brokerage || "Real estate agent"} · On Porchcard since` : "Looking since"} {sinceLabel(since)}
+          {agent ? brokerage || "Real estate agent" : `Looking since ${sinceLabel(since)}`}
           {homes > 0 && ` · ${homes} ${homes === 1 ? "home" : "homes"}`}
         </p>
         {bio && <p className="mt-3 whitespace-pre-line break-words text-body leading-relaxed text-ink">{bio}</p>}
@@ -150,9 +150,9 @@ export function ProfileHeader({
           <>
             <p className="mt-3 flex gap-1.5 text-meta leading-snug text-muted">
               <Globe aria-hidden size={14} className="mt-0.5 shrink-0" />
-              {agent ? "Public page" : "Public page. Agent links stay private."}
+              {agent ? "Public" : "Public. Agent links stay private."}
             </p>
-            <ShareMyPage title={unnamed ? "My page on Porchcard" : `${name} on Porchcard`} />
+            <ShareMyPage title={unnamed ? "My profile on Porchcard" : `${name} on Porchcard`} />
           </>
         )}
       </div>

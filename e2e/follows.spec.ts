@@ -56,9 +56,30 @@ test("following: from someone's page, what they like comes first in your feed, a
   const opened = popout.getByRole("article", { name: address });
   await expect(opened).toBeInViewport({ ratio: 0.9 });
   await expect(opened).toContainText(/Ana, who you follow, liked/);
+  const key = new URL(bo.url()).searchParams.get("home")!;
   await popout.getByRole("button", { name: "Close", exact: true }).first().click();
   await expect(popout).toHaveCount(0);
   await bo.waitForURL((u) => u.pathname === "/");
+  // A stranger likes the same home: in his feed's homes the line is still
+  // only whom he follows, never the stranger, nor who else liked it.
+  const cyrus = await signUpBuyer(browser, "cyrus.follows@example.com", "Cyrus Follows");
+  await cyrus.goto(`/homes/${key}`);
+  const theirs = heartOf(cyrus.getByRole("article", { name: address }));
+  await Promise.all([saved(cyrus), theirs.click()]);
+  await expect(theirs).toHaveAttribute("aria-pressed", "true");
+  const still = await bo.context().newPage();
+  await still.clock.install();
+  await still.goto(`/reel?from=feed&home=${key}`);
+  const line = still.getByRole("article", { name: address }).getByRole("group", { name: "Recent activity" });
+  for (let i = 0; i < 5; i++) {
+    await expect(line).toContainText(/Ana, who you follow, liked/);
+    await expect(line).not.toContainText(/Cyrus|A buyer|others liked/);
+    await still.clock.runFor(5000);
+  }
+  await still.close();
+  await Promise.all([saved(cyrus), theirs.click()]);
+  await expect(theirs).toHaveAttribute("aria-pressed", "false");
+  await cyrus.context().close();
   // And on Browse homes, what she liked comes first.
   await bo.goto("/reel");
   await expect(bo.getByRole("article").first()).toHaveAttribute("aria-label", address);

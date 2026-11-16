@@ -24,7 +24,7 @@ export default function ShareError({ error, retry }: { error: unknown; retry: ()
           </button>
         }
       >
-        This link didn&apos;t load. Try again in a moment.
+        This link didn&apos;t load.
       </RouteState>
     </>
   );

@@ -3,11 +3,12 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { LiveRefresh } from "@/components/live-refresh";
+import { CommentBubble } from "@/components/comment-bubble";
 import { Avatar, Badge, HomeThumb } from "@/components/ui";
 import { requireAgent } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { headlineFromTimeline, type FeedPost } from "@/lib/feed";
-import { appUrl, cn, formatPrice, timeAgo } from "@/lib/format";
+import { appUrl, cn, formatPrice, namesList, timeAgo } from "@/lib/format";
 import { aspectOfTag, FACTS, mediaKeyOf, NO_PHOTO_LIKES, photoTags, tagPosition, thingOf } from "@/lib/photos";
 import { aspectLabel, NO_REACTION, type Aspect, type ReactionState } from "@/lib/reactions";
 import { comparePeople, suggestHomes, type Suggestion } from "@/lib/compare";
@@ -91,7 +92,7 @@ export default async function ShareDetailPage({
   if (!share) notFound();
 
   const [listings, thread, people, opens, [{ latest }], confidant, [take], views, others, [me]] = await Promise.all([
-    getShareListings(share.id, { includeRemoved: true }),
+    getShareListings(share.id, true),
     getThread(share.id),
     // Everyone on the package: people the agent added, in the order they did,
     // and anyone who joined through the package's own link; with their
@@ -206,7 +207,6 @@ export default async function ShareDetailPage({
       likers: likes.map((item) => item.name),
       dislikes: 0,
       aspects: { liked: {}, disliked: {} },
-      publicComments: 0,
       privateComments: 0,
       timeline,
       photoLikes: photoLikes.get(listing.ListingKey) ?? NO_PHOTO_LIKES,
@@ -252,13 +252,13 @@ export default async function ShareDetailPage({
             ))}{" "}
             ·{" "}
             <Link href={tabHref("people")} scroll={false} className="font-medium text-brand underline-offset-2 hover:underline">
-              Add or remove people
+              Edit<span className="sr-only"> who is on this link</span>
             </Link>
           </p>
         )}
         {others.length > 0 && (
           <nav aria-label={`Other links to ${clientName}`} className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-stone-700">Also sent to {clientName}:</span>
+            <span className="text-stone-700">Other links:</span>
             {others.map((other) => (
               <Link
                 key={other.id}
@@ -281,8 +281,8 @@ export default async function ShareDetailPage({
               ? "No reactions yet"
               : [likedHomes > 0 && `${likedHomes} liked`, passedHomes > 0 && `${passedHomes} passed`].filter(Boolean).join(" · ")}
           </Glance>
-          <Glance label="Photos looked at">{photos ? `${photosLooked} of ${photos}` : "None yet"}</Glance>
-          <Glance label="Time on the homes">{seconds > 0 ? duration(seconds) : "None yet"}</Glance>
+          <Glance label="Photos seen">{photos ? `${photosLooked} of ${photos}` : "None yet"}</Glance>
+          <Glance label="Time spent">{seconds > 0 ? duration(seconds) : "None yet"}</Glance>
         </dl>
 
         <nav aria-label="Parts of this page" className="mt-6 flex gap-1 overflow-x-auto border-b border-stone-200">
@@ -315,7 +315,7 @@ export default async function ShareDetailPage({
             </h2>
             {active.length === 0 ? (
               <p className={cn(card, "p-6 text-center text-stone-700")}>
-                No homes on this link right now. Send some, or restore one below.
+                No homes on this link.
               </p>
             ) : (
               <div className="flex flex-col gap-4">
@@ -386,7 +386,7 @@ export default async function ShareDetailPage({
                 People on this link
               </h2>
               <p className="text-sm text-stone-700">
-                Everyone gets their own link, so you can see what each person likes, and where they agree.
+                Everyone gets their own link.
               </p>
               <ul className="mt-3 flex flex-col gap-3">
                 {invitees.map((person) => (
@@ -471,7 +471,7 @@ export default async function ShareDetailPage({
             {active.length > 0 && (
               <section aria-labelledby="opens-on-title" className="mt-10">
                 <h2 id="opens-on-title" className="font-display text-2xl">
-                  What their link opens on
+                  Welcome note
                 </h2>
                 <div className="mt-3">
                   <WelcomeEditor
@@ -492,7 +492,6 @@ export default async function ShareDetailPage({
                       notes={take.notes}
                       likes={take.likes}
                       dislikes={take.dislikes}
-                      homes={active.length}
                     />
                   )}
                 </div>
@@ -607,14 +606,12 @@ function YourTake({
   notes,
   likes,
   dislikes,
-  homes,
 }: {
   href: string;
   who: string;
   notes: number;
   likes: number;
   dislikes: number;
-  homes: number;
 }) {
   if (notes + likes + dislikes > 0) {
     // "1 note", "2 notes and 1 like", "1 note, 2 likes and 1 dislike"
@@ -623,15 +620,13 @@ function YourTake({
       likes > 0 && `${likes} ${likes === 1 ? "like" : "likes"}`,
       dislikes > 0 && `${dislikes} ${dislikes === 1 ? "dislike" : "dislikes"}`,
     ].filter((part): part is string => Boolean(part));
-    const said = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0];
+    const said = namesList(parts);
     return (
       <div className={cn(card, "mb-3 flex items-center gap-3 p-3 pl-4")}>
         <Check aria-hidden size={18} className="shrink-0 text-emerald-700" />
         <p className="min-w-0 flex-1 text-sm">
           <span className="font-semibold">Your take is on it.</span>{" "}
-          <span className="text-muted">
-            {said}, for {who} to see.
-          </span>
+          <span className="text-muted">{said}</span>
         </p>
         <Link href={href} className={cn(button({ kind: "secondary" }), "shrink-0")}>
           <PenLine aria-hidden size={16} /> Add more
@@ -646,18 +641,12 @@ function YourTake({
           <PenLine size={18} />
         </span>
         <div className="min-w-0">
-          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-semibold">
-            Add your take before you send
-            <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-600">Recommended</span>
-          </p>
-          <p className="mt-1 text-sm text-muted">
-            Tap the price, a room, anything on {homes === 1 ? "the home" : `the ${homes} homes`}, and like it or leave a
-            quick note. {who.charAt(0).toUpperCase() + who.slice(1)} sees them on the link, with your face on each.
-          </p>
+          <p className="font-semibold">Add your take before you send</p>
+          <p className="mt-1 text-sm text-muted">{who.charAt(0).toUpperCase() + who.slice(1)} sees your notes on the link.</p>
         </div>
       </div>
       <Link href={href} className={cn(button({ kind: "primary", block: true }), "mt-3")}>
-        <PenLine aria-hidden size={16} /> Add your notes
+        <PenLine aria-hidden size={16} /> Add your take
       </Link>
     </div>
   );
@@ -816,7 +805,7 @@ function WhatTheyWant({
       ? likers.length === 2
         ? "Both like"
         : "Everyone likes"
-      : `${names.slice(0, -1).join(", ")} and ${names.at(-1)} ${likers.length === 2 ? "both" : "all"} like`;
+      : `${namesList(names)} ${likers.length === 2 ? "both" : "all"} like`;
   return (
     <section aria-labelledby="profile-title" className={cn(card, "@container mt-6 p-5")}>
       <h2 id="profile-title" className="font-display text-2xl">
@@ -824,8 +813,7 @@ function WhatTheyWant({
       </h2>
       {heard.length === 0 ? (
         <p className="mt-1 text-stone-700">
-          Once they react, you&apos;ll see what {several ? "each person likes and passes on" : "they like and pass on"}{" "}
-          here, across every home you send.
+          Nothing yet.
         </p>
       ) : (
         <>
@@ -1004,9 +992,7 @@ function reasonsLine(reasons: Suggestion["reasons"]) {
         ? people.length === 2
           ? "they both"
           : "they all"
-        : priced.length === 1
-          ? priced[0]
-          : `${priced.slice(0, -1).join(", ")} and ${priced.at(-1)}`;
+        : namesList(priced);
     parts.push(`priced like homes ${who} liked`);
   }
   // The dot stays with the reason before it when the line wraps. One capital,
@@ -1258,42 +1244,51 @@ function HomePanel({
               id={`comment-${comment.id}`}
               className="-mx-2 -my-1 flex scroll-mt-4 gap-3 rounded-xl px-2 py-1 transition-[background-color,box-shadow] duration-1000 data-target:bg-amber-50 data-target:ring-2 data-target:ring-amber-200"
             >
-              <Avatar
-                name={comment.name}
-                tone={comment.isAgent ? "agent" : "person"}
-                photo={comment.isAgent ? agentPhoto : undefined}
-              />
               <div className="min-w-0 flex-1">
-                <p className="flex flex-wrap items-center gap-x-1.5 text-meta leading-snug text-muted">
-                  <PersonName
-                    name={comment.name}
-                    href={comment.participantId ? profiles.get(comment.participantId) : undefined}
-                    className="text-sm text-ink"
-                  />
-                  {comment.isAgent && (
-                    <Badge tone="ink" small>
-                      Agent
-                    </Badge>
+                <CommentBubble
+                  name={
+                    <>
+                      <PersonName
+                        name={comment.name}
+                        href={comment.participantId ? profiles.get(comment.participantId) : undefined}
+                      />
+                      {comment.isAgent && (
+                        <Badge tone="ink" small>
+                          Agent
+                        </Badge>
+                      )}
+                    </>
+                  }
+                  face={comment.name}
+                  photo={comment.isAgent ? agentPhoto : undefined}
+                  agent={comment.isAgent}
+                  meta={
+                    <>
+                      <span>{timeAgo(comment.createdAt)}</span>
+                      {comment.replyTo && (
+                        <span>
+                          · replying to {comment.replyTo.name}
+                          {comment.replyTo.likes && "'s likes"}
+                        </span>
+                      )}
+                      {comment.sharedPublicly && (
+                        <span className="inline-flex items-center gap-1">
+                          · <Globe aria-hidden size={11} /> Shared publicly
+                        </span>
+                      )}
+                    </>
+                  }
+                >
+                  {comment.body}
+                </CommentBubble>
+                {/* Under the bubble, in line with its words. */}
+                <div className="pl-10">
+                  {comment.spot && <CommentSpot listing={listing} spot={comment.spot} />}
+                  {/* A client's words on a home still on their link: they'd see the heart. */}
+                  {!comment.isAgent && !isRemoved && (
+                    <CommentLike commentId={comment.id} name={comment.name} liked={liked.has(comment.id)} />
                   )}
-                  <span>· {timeAgo(comment.createdAt)}</span>
-                  {comment.replyTo && (
-                    <span>
-                      · replying to {comment.replyTo.name}
-                      {comment.replyTo.likes && "'s likes"}
-                    </span>
-                  )}
-                  {comment.sharedPublicly && (
-                    <span className="inline-flex items-center gap-1">
-                      · <Globe aria-hidden size={11} /> Shared publicly
-                    </span>
-                  )}
-                </p>
-                {comment.spot && <CommentSpot listing={listing} spot={comment.spot} />}
-                <p className="mt-0.5 whitespace-pre-line break-words text-body leading-snug">{comment.body}</p>
-                {/* A client's words on a home still on their link: they'd see the heart. */}
-                {!comment.isAgent && !isRemoved && (
-                  <CommentLike commentId={comment.id} name={comment.name} liked={liked.has(comment.id)} />
-                )}
+                </div>
               </div>
               <CommentMenu commentId={comment.id} name={comment.name} />
             </li>

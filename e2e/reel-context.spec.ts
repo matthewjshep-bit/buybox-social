@@ -162,7 +162,7 @@ test("a card on someone's page opens their highlights on a stage that takes the 
   await next.click();
   const end = popout.getByRole("region", { name: "The end" });
   await expect(end).toBeInViewport({ ratio: 0.9 });
-  await expect(end.getByRole("heading", { level: 2 })).toHaveText("That's all 3 of Ines's highlights");
+  await expect(end.getByRole("heading", { level: 2 })).toHaveText("That's all from Ines");
   // (Signed out, Follow is the way to sign in, back to her page.)
   await expect(end.getByRole("link", { name: "Follow Ines" })).toHaveAttribute(
     "href",
@@ -171,10 +171,61 @@ test("a card on someone's page opens their highlights on a stage that takes the 
   await expect(next).toBeDisabled();
 
   // Closed, back on her page, with the keyboard on the card that opened it.
-  await popout.getByRole("button", { name: "Close", exact: true }).click();
+  // (The end says Close too, never "Back to" a page it isn't going to.)
+  await expect(end.getByRole("button", { name: "Close", exact: true })).toBeVisible();
+  await popout.getByRole("button", { name: "Close", exact: true }).first().click();
   await expect(popout).toHaveCount(0);
   await page.waitForURL((url) => url.pathname === inesPage);
   await expect(card).toBeFocused();
+});
+
+test("on someone's page, the line at a home's foot says only what they did: by name to anyone, \"You\" to them", async ({
+  browser,
+}) => {
+  test.setTimeout(90_000);
+  // Someone else likes the same home, in public.
+  const pia = await signUpBuyer(browser, "pia.reel@example.com", "Pia Holt");
+  await pia.goto("/homes/SAMPLE-1003");
+  const heart = heartOf(homeIn(pia, CORBEL));
+  await Promise.all([saved(pia), heart.click()]);
+  await expect(heart).toHaveAttribute("aria-pressed", "true");
+
+  const address = `/reel?from=${inesPage.split("/").pop()}&home=SAMPLE-1003`;
+  // Everything the line says over half a minute.
+  const said = async (page: Page) => {
+    await page.clock.install();
+    await page.goto(address);
+    const activity = homeIn(page, CORBEL).getByRole("group", { name: "Recent activity" });
+    await expect(activity).toBeVisible();
+    const lines: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      lines.push((await activity.textContent()) ?? "");
+      await page.clock.runFor(5000);
+      await page.waitForTimeout(150);
+    }
+    return lines;
+  };
+
+  // A visitor on Ines's homes: Ines, and never Pia, a buyer, or who else liked it.
+  const visitor = await said(await newPage(browser, DESKTOP));
+  expect(visitor[0]).toContain("Ines");
+  for (const line of visitor) {
+    expect(line).toContain("Ines");
+    expect(line).not.toMatch(/Pia|A buyer|others liked|You/);
+  }
+
+  // Ines herself: "You", and still nobody else.
+  const own = await ines.context().newPage();
+  const hers = await said(own);
+  for (const line of hers) {
+    expect(line).toContain("You");
+    expect(line).not.toMatch(/Pia|A buyer|others liked|Ines/);
+  }
+  await own.close();
+
+  await Promise.all([saved(pia), heart.click()]);
+  await expect(heart).toHaveAttribute("aria-pressed", "false");
+  await pia.context().close();
 });
 
 test("under a filter, the pop-out holds only what the page shows, and keeps the filter when it's loaded again", async ({
@@ -196,7 +247,7 @@ test("under a filter, the pop-out holds only what the page shows, and keeps the 
   await expect(popout.getByText("· 1 of 1", { exact: true })).toBeVisible();
   await popout.getByRole("button", { name: "Next home", exact: true }).click();
   await expect(popout.getByRole("region", { name: "The end" }).getByRole("heading", { level: 2 })).toHaveText(
-    "That's every home Ines commented on",
+    "That's all from Ines",
   );
 
   // Loaded again by its address: the full page, with the same filter, and back to it.
@@ -290,7 +341,7 @@ test("privacy: hidden passes stay out, only the owner sees what they didn't like
   const ottoPage = await pageOf(otto);
   await otto.getByRole("button", { name: "Not quite right?" }).click();
   const controls = otto.getByRole("dialog", { name: "What others see" });
-  const passes = controls.getByRole("switch", { name: "Show my passes on my page" });
+  const passes = controls.getByRole("switch", { name: "Show my passes" });
   await Promise.all([saved(otto), passes.click()]);
   await expect(passes).toHaveAttribute("aria-checked", "false");
   await otto.keyboard.press("Escape");

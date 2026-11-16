@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, signInAgent, toFirstHome } from "./helpers";
+import { createShare, heartOf, homeIn, joinAs, openComments, signInAgent, toFirstHome } from "./helpers";
 
 // A client's own link leads on to the rest of Porchcard and never ends in a
 // dead end: signed in, their menu and the bell are in the agent's header; a
@@ -38,7 +38,7 @@ test("signed in on their own link, a client has their menu and the bell, the age
   await page.goto(urls.Jamie);
   const header = page.getByRole("banner");
   // Signed out: the agent's header as it always was, with no menu or bell.
-  await expect(header.getByRole("button", { name: "Your profile" })).toHaveCount(0);
+  await expect(header.getByRole("button", { name: "Account menu" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: /^Activity/ })).toHaveCount(0);
   await toFirstHome(page);
   const larkmoor = homeIn(page, "4127 Larkmoor Ave NE");
@@ -55,7 +55,7 @@ test("signed in on their own link, a client has their menu and the bell, the age
 
   // Back on it later: they're signed in, so the link leads on to the rest of Porchcard.
   await page.reload();
-  await expect(header.getByRole("button", { name: "Your profile" })).toBeVisible();
+  await expect(header.getByRole("button", { name: "Account menu" })).toBeVisible();
   const bell = header.getByRole("link", { name: /^Activity/ });
   await expect(bell).toBeVisible();
   await expect(bell).toHaveAttribute("href", "/activity");
@@ -82,16 +82,16 @@ test("signed in on their own link, a client has their menu and the bell, the age
   await expect(contact).toBeHidden();
 
   // The end of the link: what's next, never a dead end.
-  await toEnd(page, "That's every home");
+  await toEnd(page, "That's all");
   const next = page.getByRole("region", { name: "What's next" });
   await expect(next).toBeVisible();
-  await expect(next).toContainText("You liked 1 home");
+  await expect(next).toContainText("You liked");
   // Ask for more: a text to the agent, about the home they liked.
-  await expect(next.getByRole("link", { name: "Ask Lena for more like these" })).toHaveAttribute(
+  await expect(next.getByRole("link", { name: "Ask for more like these" })).toHaveAttribute(
     "href",
     `sms:2065550177?&body=${encodeURIComponent("Hi Lena, could you send me more homes like 4127 Larkmoor Ave NE?")}`,
   );
-  await expect(next.getByRole("link", { name: "Back to your Porchcard home" })).toHaveAttribute("href", "/");
+  await expect(next.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
   // A word with the agent: Contact.
   await next.getByRole("button", { name: "Message Lena" }).click();
   await expect(contact).toBeVisible();
@@ -114,14 +114,14 @@ test("signed in on their own link, a client has their menu and the bell, the age
   const stranger = await (await browser.newContext()).newPage();
   await saveContact(agent, { phone: "", email: "lena@marsh.example" });
   await stranger.goto(urls.Jamie);
-  await toEnd(stranger, "That's every home");
+  await toEnd(stranger, "That's all");
   const theirs = stranger.getByRole("region", { name: "What's next" });
   // No phone now: an email, the same words.
-  await expect(theirs.getByRole("link", { name: "Ask Lena for more like these" })).toHaveAttribute(
+  await expect(theirs.getByRole("link", { name: "Ask for more like these" })).toHaveAttribute(
     "href",
     /^mailto:lena@marsh\.example\?subject=/,
   );
-  await expect(theirs.getByRole("link", { name: "Back to your Porchcard home" })).toHaveCount(0);
+  await expect(theirs.getByRole("link", { name: "Home" })).toHaveCount(0);
   await expect(stranger.getByRole("button", { name: /Leave this link/ })).toHaveCount(0);
 });
 
@@ -143,11 +143,11 @@ test("someone added to a link they didn't expect can leave it, and the agent no 
   // From Contact: a quiet way off it, asked once more first.
   await jamie.getByRole("banner").getByRole("button", { name: "Contact" }).click();
   const contact = jamie.getByRole("dialog", { name: "Contact Lena Marsh" });
-  const leave = contact.getByRole("button", { name: "Not for you? Leave this link" });
+  const leave = contact.getByRole("button", { name: "Leave this link" });
   await leave.click();
   const confirm = jamie.getByRole("dialog", { name: "Leave this link?" });
   await expect(confirm).toBeVisible();
-  await expect(confirm).toHaveAccessibleDescription("Lena won't see your likes and comments on it any more.");
+  await expect(confirm).toHaveAccessibleDescription("Lena will stop seeing your likes and comments.");
   // It starts on Cancel, and Escape cancels, leaving Contact open.
   await expect(confirm.getByRole("button", { name: "Cancel" })).toBeFocused();
   await jamie.keyboard.press("Escape");
@@ -219,5 +219,63 @@ test("a quick Send named for someone, opened on a new device, starts the name pr
   const prompt = client.getByRole("dialog", { name: "Sign up to like and comment" });
   const name = prompt.getByRole("textbox", { name: "First name" });
   await expect(name).toHaveValue("Toby");
-  await expect(name).toHaveAccessibleDescription("Sam sent this to Toby. Not Toby? Type your name.");
+  await expect(name).toHaveAccessibleDescription("Not Toby? Type your name.");
+});
+
+// What a client says on their agent's link is theirs to see anywhere, "You
+// said", and nobody else's: not the next person to sign in on the same
+// browser, either. (A place that joined before sign-up was asked for still
+// carries that browser's own token once an account has it; lib/feed.ts
+// counts such a place as its account's only, which this can't set up from
+// the outside. It holds the rule for places made today.)
+test("privacy: what a client said on a link never shows to the next person signed in on the same browser", async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const SECRET = "We can stretch a little, between us.";
+  const stamp = Date.now();
+  const agent = await signInAgent(browser, `lena-samebrowser.${stamp}@example.com`, "Lena Marsh");
+  const { urls } = await createShare(agent, ["4127 Larkmoor"], ["Ana"]);
+
+  // Ana signs up on the link, likes the home and says something about it.
+  const page = await (await browser.newContext()).newPage();
+  await page.goto(urls.Ana);
+  await toFirstHome(page);
+  const larkmoor = homeIn(page, "4127 Larkmoor Ave NE");
+  await heartOf(larkmoor).click();
+  await joinAs(page, "Ana");
+  await expect(heartOf(larkmoor)).toHaveAttribute("aria-pressed", "true");
+  const chat = await openComments(page, larkmoor);
+  await chat.getByLabel("Add a comment").fill(SECRET);
+  await chat.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(chat.getByLabel("Add a comment")).toHaveValue("");
+  await expect(chat.getByText(SECRET)).toBeVisible();
+
+  // Her own words are hers on the home's public page too.
+  const paths = ["/homes/SAMPLE-1001", "/reel?home=SAMPLE-1001"];
+  await expect(async () => {
+    expect(await (await page.request.get(paths[0])).text()).toContain(SECRET);
+  }).toPass({ timeout: 20_000 });
+
+  // She signs out; Ben signs in to his own account on the same browser.
+  await page.goto("/");
+  const header = page.getByRole("banner");
+  await header.getByRole("button", { name: "Account menu" }).click();
+  await header.getByRole("button", { name: "Sign out" }).click();
+  await page.waitForURL("**/login");
+  await page.getByRole("button", { name: "Testing? Sign in with the test password" }).click();
+  const form = page.getByRole("form", { name: "Test sign-in" });
+  await form.getByLabel("Email").fill(`ben-samebrowser.${stamp}@example.com`);
+  await form.getByLabel("Test password").fill("e2e-test-password");
+  await form.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL((url) => url.pathname === "/");
+
+  // None of what Ana said reaches him, on the home or full screen.
+  for (const path of paths) {
+    const html = await (await page.request.get(path)).text();
+    expect(html).toContain("4127 Larkmoor");
+    expect(html).not.toContain(SECRET);
+  }
+  await page.context().close();
+  await agent.context().close();
 });

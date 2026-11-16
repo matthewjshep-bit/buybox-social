@@ -328,9 +328,9 @@ export function ReelFeed({
   const notes = useNotesMode();
   const seenBy: SeenBy =
     mode === "public"
-      ? { text: "Everyone can see your comment and first name.", private: false }
+      ? { text: "Public, with your first name.", private: false }
       : notes
-        ? { text: `${notes.for === "your client" ? "Your client sees" : `${notes.for} sees`} your notes, and anyone on this link.`, private: true }
+        ? { text: "Everyone on this link sees your notes.", private: true }
         : alone
         ? { text: `Only you and ${agent} see this.`, private: true }
         : { text: `Only ${agent} and people on this link see this.`, private: true };
@@ -478,7 +478,7 @@ function Feed({
   // whole, until you let go.
   const [clear, setClear] = useState<number | null>(null);
   if (clear !== null && clear !== active) setClear(null);
-  // "Show the photo only", from More: nothing but the photo on this home,
+  // "Photo only", from More: nothing but the photo on this home,
   // until you move on to another.
   const [bare, setBare] = useState<number | null>(null);
   if (bare !== null && bare !== active) setBare(null);
@@ -574,7 +574,6 @@ function Feed({
         agent: agentFirstName(agentName),
         notesFor: notes?.for,
         agentTake: activePost.timeline.some((item) => (item.kind === "comment" ? item.isAgent && !item.parentId : item.isAgent)),
-        more: active - offset < posts.length - 1 || hasMore,
       })
     : [];
 
@@ -832,12 +831,18 @@ function Feed({
         // runs past its edges (the comments sliding in) is cut off, and it
         // never scrolls sideways to show it.
         "overflow-clip bg-night text-white @container-size/reel",
-        // The photo starts just under the header, never beneath it. Side by
-        // side, the stage and the panel start a little further down (in a
-        // pop-out, below its close button in the corner).
+        // The photo starts just under the header, never beneath it: on a
+        // phone, under the one row that may sit below the header (the way
+        // back, whose homes these are), or under a pop-out's close button.
+        // Side by side, the stage and the panel start a little further down
+        // (in a pop-out, below its close button in the corner).
         header
-          ? "[--chrome-top:4rem] [--photo-top:calc(56px+env(safe-area-inset-top)+4px)] [--stage-top:72px]"
-          : "[--chrome-top:0.75rem] [--photo-top:0.5rem] [--stage-top:64px]",
+          ? "[--chrome-top:4rem] [--photo-top:calc(60px+env(safe-area-inset-top))] has-[[data-reel-bar]]:[--photo-top:calc(104px+env(safe-area-inset-top))] [--stage-top:72px]"
+          : cn(
+              "[--chrome-top:0.75rem] [--stage-top:64px]",
+              // (Beside the map there's no button over it.)
+              embedded && onOpen ? "[--photo-top:0.5rem]" : "[--photo-top:calc(3.75rem+env(safe-area-inset-top))]",
+            ),
         embedded || contained ? "relative h-full w-full" : "fixed inset-0 z-30",
       )}
     >
@@ -934,7 +939,7 @@ function Feed({
               start={((focus ? key === focus.key : i === 0) ? initialPhoto : undefined) ?? context?.homes[key]?.photo ?? undefined}
               take={context?.homes[key]}
               eyebrow={context ? { title: context.title, place: placeIn(context, key) } : null}
-              whose={context?.who?.profileId ?? null}
+              scoped={context?.kind === "person" || context?.kind === "client" || context?.kind === "feed"}
               // (Full screen, the page's Back sits where the band's take would.)
               low={!contained && Boolean(header)}
               onGoToSpot={(spot) => setGoToSpot((current) => ({ key, spot, n: (current?.n ?? 0) + 1 }))}
@@ -999,11 +1004,9 @@ function Feed({
               <>
                 {/* Each `relative`, to stay over a backdrop photo the end screen may have. */}
                 {/* How far through a few homes you are (one home has nothing to count). */}
-                {mode === "share" && posts.length > 1 && (
+                {mode === "share" && posts.length > 1 && reviewed > 0 && (
                   <p className="relative mb-3 text-sm text-white/80">
-                    {reviewed > 0
-                      ? `You've reacted to ${reviewed} of ${posts.length} homes.`
-                      : "Tap the heart on the ones you like."}
+                    {reviewed} of {posts.length} rated
                   </p>
                 )}
                 {end}
@@ -1225,7 +1228,7 @@ function Panel({
   onShare,
   take,
   eyebrow,
-  whose,
+  scoped = false,
   low = false,
   onGoToSpot,
 }: {
@@ -1299,8 +1302,9 @@ function Panel({
   take?: HomeContext;
   // Whose homes these are, and which of them this is ("Maya's highlights · 2 of 7").
   eyebrow?: TakeEyebrow | null;
-  // Their page's id: what they did leads the line at the photo's foot.
-  whose?: string | null;
+  // Someone's homes, a client's, or your feed: the line at the photo's foot
+  // is already only theirs, and never rests on who else liked the home.
+  scoped?: boolean;
   // On a phone, the take sits lower in the band (full screen, under Back).
   low?: boolean;
   // To a spot they picked out, from the take: its photo, with its card open.
@@ -1359,10 +1363,10 @@ function Panel({
   }, [active, settled, listing.ListingKey]);
   // The whole description, rather than two lines.
   const [more, setMore] = useState(false);
-  // How tall the words at the bottom are, so the photo sits right on top of
-  // them. On a phone they're always the same height (so the photo never jumps
-  // from home to home); measured anyway, with the description closed: opening
-  // it shouldn't move the photo.
+  // How tall the words at the bottom are, so the photo's space ends where
+  // they (and the activity line above them) start. On a phone they're always
+  // the same height (so the photo never jumps from home to home); measured
+  // anyway, with the description closed: opening it shouldn't move the photo.
   const words = useRef<HTMLDivElement>(null);
   const [wordsHeight, setWordsHeight] = useState<number | null>(null);
   useLayoutEffect(() => {
@@ -1374,9 +1378,9 @@ function Panel({
     observer.observe(el);
     return () => observer.disconnect();
   }, [more]);
-  // On a phone the buttons down the right reach up over the photo: where they
-  // start, so the photo's arrows stay above them. (Side by side, they have a
-  // column of their own.)
+  // On a phone on its side the buttons reach up over the photo: where they
+  // start, so the photo's arrows stay above them. (Upright they're in a row
+  // under the words, and side by side in the panel.)
   const home = useRef<HTMLElement>(null);
   const [railTop, setRailTop] = useState<number | null>(null);
   const sideBySide = SPLIT_WIDE && !onOpen && wide;
@@ -1391,7 +1395,7 @@ function Panel({
     observer.observe(rail);
     return () => observer.disconnect();
   }, [sideBySide]);
-  // "Show the photo only" puts away any card, and a tap on the photo then is
+  // "Photo only" puts away any card, and a tap on the photo then is
   // just a look: nothing waits to pop up when everything comes back.
   if (bare && picked) setPicked(null);
   // "Show everything" takes the place of what it hid, so the keyboard stays
@@ -1452,7 +1456,7 @@ function Panel({
         }))
       : [];
   const comments = post.timeline.filter((item) => item.kind === "comment").length;
-  // Nothing over the photo: held, or "Show the photo only".
+  // Nothing over the photo: held, or "Photo only".
   const hidden = clear || bare;
   const agentFirst = agentFirstName(agentName);
   const notes = useNotesMode();
@@ -1467,13 +1471,12 @@ function Panel({
 
   // What people did lately, for the line above the price: the page's, or on
   // an agent's link, from the home's own thread (already only the link's).
-  // Whose homes these are (someone's page): what they did comes first, in
-  // its own order, then everyone else's; the line still goes round as ever.
-  const told = useMemo(() => {
-    const all = post.events ?? (mode === "share" ? eventsFromTimeline(post.timeline) : eventsFromHeadline(post.headline));
-    if (!whose) return all;
-    return [...all.filter((event) => event.who.profileId === whose), ...all.filter((event) => event.who.profileId !== whose)];
-  }, [post.events, post.timeline, post.headline, mode, whose]);
+  // (On someone's page it's only what they did; in your feed, only who you
+  // follow and you.)
+  const told = useMemo(
+    () => post.events ?? (mode === "share" ? eventsFromTimeline(post.timeline) : eventsFromHeadline(post.headline)),
+    [post.events, post.timeline, post.headline, mode],
+  );
   // On public pages, what you just did shows there at once, as it will once
   // the page hears it back (keyed the same, so nothing jumps when it does).
   const { unheard } = photos;
@@ -1538,6 +1541,7 @@ function Panel({
     // shows beside it.)
     held: Boolean(picked) || sheetOver || docked || nudge === "photos" || hidden || settled !== photo || touching,
     likes,
+    restOnLikes: !scoped,
   });
   const shownEvent = ticker.item;
   // A hotspot on the photo, where they did it: only on the photo at rest,
@@ -1696,10 +1700,11 @@ function Panel({
       data-home={listing.ListingKey}
       aria-label={listing.UnparsedAddress}
       onPointerDownCapture={onOpen ? undefined : pressPhoto}
-      // Where the photo goes. On a phone: in the clear space between the
-      // header and the words, right on top of them, so the photo and what it
-      // is read as one, top to bottom, with a blurred copy of it filling the
-      // band above. A phone on its side: the full-screen photo with the
+      // Where the photo goes. On a phone: at the top, right under the
+      // header, as wide as the screen, in a space four wide by three tall
+      // with nothing on it; a blurred copy of it fills what a wider photo
+      // leaves of that space. Under it a strip for the activity line, then
+      // the words. A phone on its side: the full-screen photo with the
       // words over it. The photo alone, on a phone: whole and centred in the
       // whole screen, its blurred copy all round it, rather than over an
       // empty band where the words were. Side by side, wide: whole, at the
@@ -1714,12 +1719,12 @@ function Panel({
         "[--photo-fit:1] [--backdrop-shade:0.4]",
         bare
           ? "[--backdrop-bottom:0px] [--backdrop-top:0px] [--photo-align:0.5] [--photo-bottom:env(safe-area-inset-bottom)] [--photo-top:env(safe-area-inset-top)]"
-          : "[--backdrop-bottom:var(--photo-bottom)] [--backdrop-top:var(--photo-top)] [--photo-align:1] [--photo-bottom:calc(var(--words-height,calc(260px+env(safe-area-inset-bottom)))+var(--words-gap,0px))]",
+          : "[--backdrop-bottom:var(--photo-bottom)] [--backdrop-top:var(--photo-top)] [--photo-align:0] [--words-gap:56px] squat:[--words-gap:52px] [--photo-bottom:calc(var(--words-height,calc(330px+env(safe-area-inset-bottom)))+var(--words-gap,0px))]",
         "short:[--backdrop-bottom:0px] short:[--backdrop-shade:0] short:[--backdrop-top:0px] short:[--photo-fit:0] short:[--words-gap:8px]",
         legacy(
           "@5xl:[--backdrop-bottom:0px] @5xl:[--backdrop-shade:0] @5xl:[--backdrop-top:0px] @5xl:[--photo-align:0.5] @5xl:[--photo-fit:0] @5xl:[--photo-top:calc(var(--chrome-top,4rem)+0.5rem)] @5xl:[--words-gap:8px]",
         ),
-        "split:[--photo-fit:1] split:[--photo-left:24px]",
+        "split:[--photo-fit:1] split:[--photo-left:24px] split:[--words-gap:0px]",
         bare
           ? "split:[--photo-align:0.5] split:[--photo-bottom:24px] split:[--photo-right:24px] split:[--photo-top:24px]"
           : cn(
@@ -1767,11 +1772,11 @@ function Panel({
             <>
               {nudge && <NudgeHint nudge={nudge} />}
               {!hidden && !nudge && !(sheetOver && !wide) && (
-                // Who did what on this photo, one at a time, in a caption
-                // floating a little above its foot: left, clear of the buttons
-                // over a phone's photo; centred under a photo side by side,
-                // clear of the buttons down its right edge there too. On a
-                // phone on its side, just above the words over it.
+                // Who did what on this photo, one at a time. On a phone, in
+                // a strip of its own between the photo and the price, never
+                // on the photo. Side by side, a caption floating a little
+                // above the photo's foot, centred. On a phone on its side,
+                // just above the words over the photo, clear of the buttons.
                 <div
                   data-photo-caption
                   style={
@@ -1782,15 +1787,12 @@ function Panel({
                     } as CSSProperties
                   }
                   className={cn(
-                    "pointer-events-none absolute left-(--cap-left) top-[calc(var(--cap-foot)-1rem)] z-10 flex -translate-y-full justify-start",
+                    "pointer-events-none absolute inset-x-3 top-[calc(100cqh-var(--photo-bottom)+(var(--words-gap)-48px)/2)] z-10 flex justify-start",
                     // (It steps aside for a card that's open, as the line waits for it.)
                     picked && "invisible",
-                    onOpen ? "w-(--cap-width)" : "w-[min(var(--cap-width),100cqw-var(--cap-left)-5.25rem)]",
-                    "short:top-[calc(100cqh-var(--words-height,0px)-0.5rem)]",
-                    "split:top-[calc(var(--cap-foot)-1.5rem)] split:justify-center",
-                    onOpen
-                      ? "split:w-(--cap-width)"
-                      : "split:w-(--cap-width)",
+                    "short:left-(--cap-left) short:right-auto short:top-[calc(100cqh-var(--words-height,0px)-0.5rem)] short:-translate-y-full",
+                    onOpen ? "short:w-(--cap-width)" : "short:w-[min(var(--cap-width),100cqw-var(--cap-left)-5.25rem)]",
+                    "split:left-(--cap-left) split:right-auto split:top-[calc(var(--cap-foot)-1.5rem)] split:w-(--cap-width) split:-translate-y-full split:justify-center",
                   )}
                 >
                   <ActivityTicker
@@ -1803,18 +1805,10 @@ function Panel({
                     unseen={unseen}
                     myName={myName}
                     // (On an agent's link, nobody's profile, yours included.)
-                    yours={mode === "public" ? "/people/me" : null}
+                    yours={mode === "public" ? "/people/me?tab=activity" : null}
                     // Beside the map, just to read; a tap there opens the home.
                     onTap={onOpen ? undefined : tapActivity}
-                    hint={
-                      onOpen
-                        ? null
-                        : notes
-                          ? "Tap anything in the photo to like it or add a note"
-                          : mode === "share"
-                            ? `Tap anything in the photo to tell ${agentFirst} what you think`
-                            : "Tap anything in the photo to like it or say something"
-                    }
+                    hint={onOpen ? null : "Tap the photo to like or comment"}
                   />
                 </div>
               )}
@@ -1886,8 +1880,9 @@ function Panel({
           )}
         >
           {!onOpen && (
-            // On a phone, down the right edge. Side by side there's none: the
-            // same things to do are in a row in the panel (PanelActions).
+            // On a phone, in a row under the words, just over the comment
+            // bar. Side by side there's none: the same things to do are in a
+            // row in the panel (PanelActions).
             <Rail
               address={listing.UnparsedAddress}
               things={things}
@@ -1907,10 +1902,13 @@ function Panel({
 
         {/* All the words, in one block at the bottom, read top to bottom like
             a listing: who's talking, the price, beds, baths and size, the
-            address, the description, who listed it, and the comment bar. On a
-            phone a fixed 308px on the dark ground, every row one line (the
-            description two) so it never changes height: anything new belongs
-            in a sheet, not here. Side by side, the same words in a white
+            address, the description, who listed it, the buttons in a row and
+            the comment bar. On a phone, on the dark ground, all the room the
+            photo and the activity line leave under them, every row one line
+            (the description two) so it never changes height from home to
+            home: anything new belongs in a sheet, not here. With little
+            height the rows are a little shorter, and with less still the
+            description gives way. Side by side, the same words in a white
             panel beside the photo, scrolling if they need to, with who liked
             it, and the comment bar at its foot. Beside the map, the phone's,
             with "Open full screen" for the bar. */}
@@ -1928,7 +1926,11 @@ function Panel({
           }
           className={cn(
             "absolute inset-x-0 bottom-0 flex flex-col bg-night pb-(--words-pad) transition-[opacity,visibility] duration-300 [--words-pad:calc(12px+env(safe-area-inset-bottom))]",
-            more ? "h-auto" : "h-[calc(248px+var(--words-pad))]",
+            more
+              ? "h-auto"
+              : onOpen
+                ? "h-[calc(248px+var(--words-pad))] squat:h-[calc(214px+var(--words-pad))]"
+                : "h-[max(calc(318px+var(--words-pad)),calc(100cqh-var(--photo-top)-75cqw-var(--words-gap)))] squat:h-[calc(272px+var(--words-pad))] tiny:h-[calc(190px+var(--words-pad))]",
             // On its side: over the photo, on a shade of their own that
             // starts a little above the first line, so every line of it reads
             // on the brightest photo.
@@ -1952,10 +1954,9 @@ function Panel({
               // Clear of a notch or rounded corner, on a phone on its side.
               "relative w-full pl-[max(1rem,env(safe-area-inset-left))] [text-shadow:0_1px_3px_rgb(0_0_0/0.45)]",
               legacy("@5xl:max-w-xl @5xl:px-0"),
-              // Clear of the buttons down the right (two columns of them, on its side).
-              onOpen
-                ? "pr-[max(1rem,env(safe-area-inset-right))]"
-                : "pr-[calc(76px+env(safe-area-inset-right))] short:pr-[calc(140px+env(safe-area-inset-right))]",
+              // On its side, clear of the buttons down the right (two columns of them).
+              "pr-[max(1rem,env(safe-area-inset-right))]",
+              !onOpen && "short:pr-[calc(140px+env(safe-area-inset-right))]",
               "split:min-h-0 split:flex-1 split:overflow-y-auto split:overscroll-contain split:pb-5 split:pl-5 split:pr-5 split:pt-3 split:[text-shadow:none]",
               // What runs on below fades out, so it reads as more to scroll to.
               "split:[mask-image:linear-gradient(to_bottom,black_calc(100%-24px),transparent)]",
@@ -1993,31 +1994,34 @@ function Panel({
             {/* Side by side, a card on the price or a fact opens over these,
                 and they step aside for it rather than show round it. */}
             <div className={cn(picked?.mediaKey === FACTS && "split:invisible")}>
-              <Caption
-                listing={listing}
-                greeting={post.greeting}
-                note={post.note}
-                fact={
-                  onOpen || !photos.enabled
-                    ? undefined
-                    : {
-                        hint: factHint,
-                        open: picked?.mediaKey === FACTS && picked.tag === "Description",
-                        lit: litFact === "Description",
-                        onOpen: (keyboard) =>
-                          setPicked((now) =>
-                            now?.mediaKey === FACTS && now.tag === "Description"
-                              ? null
-                              : { mediaKey: FACTS, tag: "Description", x: 0, y: 0, keyboard },
-                          ),
-                      }
-                }
-                open={more}
-                // On a phone, the rest of it is in the Porchcard, under
-                // "About this home"; side by side, it opens in the panel.
-                inPlace={inPlace}
-                onToggle={onOpen ? undefined : inPlace ? () => setMore(!more) : () => onScorecard("about")}
-              />
+              {/* (With the least height on a phone, it gives way: it's in the Porchcard.) */}
+              <div className="tiny:hidden split:block">
+                <Caption
+                  listing={listing}
+                  greeting={post.greeting}
+                  note={post.note}
+                  fact={
+                    onOpen || !photos.enabled
+                      ? undefined
+                      : {
+                          hint: factHint,
+                          open: picked?.mediaKey === FACTS && picked.tag === "Description",
+                          lit: litFact === "Description",
+                          onOpen: (keyboard) =>
+                            setPicked((now) =>
+                              now?.mediaKey === FACTS && now.tag === "Description"
+                                ? null
+                                : { mediaKey: FACTS, tag: "Description", x: 0, y: 0, keyboard },
+                            ),
+                        }
+                  }
+                  open={more}
+                  // On a phone, the rest of it is in the Porchcard, under
+                  // "About this home"; side by side, it opens in the panel.
+                  inPlace={inPlace}
+                  onToggle={onOpen ? undefined : inPlace ? () => setMore(!more) : () => onScorecard("about")}
+                />
+              </div>
               {/* Who's selling it runs short before "Sample listing" does: it's
                   the only sign on the home that it isn't real. */}
               {photos.enabled && !onOpen && (
@@ -2079,7 +2083,9 @@ function Panel({
           </div>
           <div
             className={cn(
-              "mt-2 w-full pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]",
+              "w-full pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]",
+              // At the foot, under the row of buttons (which keeps its room here).
+              onOpen ? "mt-2" : "mt-auto pt-[78px] squat:pt-[66px] tiny:pt-[58px] short:mt-2 short:pt-0",
               legacy("@5xl:max-w-xl @5xl:px-0"),
               "split:mt-0 split:border-t split:border-white/[0.08] split:p-3",
             )}
@@ -2114,7 +2120,8 @@ function Panel({
                 type="button"
                 data-keep-clear
                 onClick={onCompose}
-                className="flex h-12 w-full items-center gap-3 rounded-full bg-white/12 pl-5 pr-3 text-left text-base text-white/75 ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18"
+                // (With the least height, the row's Comment button does its job.)
+                className="flex h-12 w-full items-center gap-3 rounded-full bg-white/12 pl-5 pr-3 text-left text-base text-white/75 ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18 tiny:hidden split:flex"
               >
                 <span className="min-w-0 flex-1 truncate">
                   {notes
@@ -2236,7 +2243,9 @@ function RailButton({
         busy && "cursor-progress opacity-60",
       )}
     >
-      <span className="flex size-12 items-center justify-center rounded-full bg-black/35 backdrop-blur-md transition-[transform,background-color] group-active:scale-90 compact:size-11 motion-reduce:transition-none motion-reduce:group-active:scale-100 split:ring-1 split:ring-white/15 split:group-hover:bg-black/55">
+      {/* (On the dark ground under a phone's words, a faint disc with an
+          edge, so each reads as a button; over a photo, glass.) */}
+      <span className="flex size-12 items-center justify-center rounded-full bg-white/[0.07] ring-1 ring-inset ring-white/[0.12] transition-[transform,background-color] group-active:scale-90 squat:size-9 short:size-11 short:bg-black/35 short:ring-0 short:backdrop-blur-md motion-reduce:transition-none motion-reduce:group-active:scale-100 split:ring-1 split:ring-white/15 split:group-hover:bg-black/55">
         {children}
       </span>
       {/* On a backing of the dark ground's own colour: it reads over a
@@ -2250,9 +2259,10 @@ function RailButton({
 
 type Thing = { tag: string; liked: boolean; count: number; toggle: () => void };
 
-// Down the right, in reach of a thumb, bottom up from just over the comment
-// bar: like, comments, the Porchcard, share (or invite, or send), more. Each
-// keeps its label.
+// In a row across a phone, in reach of a thumb, just over the comment bar:
+// like, comments, the Porchcard, share (or invite, or send), more. Each keeps
+// its label. Never on the photo (but for a phone on its side, where they go
+// down the right in two columns).
 function Rail({
   address,
   things,
@@ -2288,7 +2298,8 @@ function Rail({
       // Clear of a notch or rounded corner, on a phone on its side. There, in
       // two columns: one would run up under the header.
       className={cn(
-        "pointer-events-auto absolute bottom-[calc(68px+env(safe-area-inset-bottom))] right-[calc(0.5rem+env(safe-area-inset-right))] z-10 flex flex-col items-center gap-1 short:grid short:grid-cols-2 short:gap-x-2",
+        "pointer-events-auto absolute inset-x-3 bottom-[calc(68px+env(safe-area-inset-bottom))] z-10 flex items-start justify-between tiny:bottom-[calc(12px+env(safe-area-inset-bottom))]",
+        "short:left-auto short:right-[calc(0.5rem+env(safe-area-inset-right))] short:grid short:grid-cols-2 short:items-center short:justify-normal short:gap-x-2 short:gap-y-1",
         legacy("@5xl:bottom-[max(5rem,calc(env(safe-area-inset-bottom)+4.25rem))] @5xl:right-[calc(1rem+env(safe-area-inset-right))]"),
         // Side by side, there's no rail: the same buttons are in a row in
         // the panel, above the comment box (PanelActions).
@@ -2505,12 +2516,12 @@ function Facts({
           ref={card}
           style={cardAt?.tag === open ? (cardAt.style ?? undefined) : undefined}
           // Above the facts, over the photo, clear of everything else, and no
-          // wider than the words (so not over the buttons down the right).
+          // wider than the words.
           className="bottom-full left-0 z-40 mb-2 max-w-full"
         />
       )}
       {/* (On a phone, a fixed 40px, as each row under it: the words never change height.) */}
-      <div className="flex h-10 items-center gap-2.5 split:h-12">
+      <div className="flex h-10 items-center gap-2.5 squat:h-9 split:h-12">
         <p className={cn("font-display text-[30px] font-semibold leading-none tabular-nums split:text-[32px]", legacy("@5xl:text-4xl"))}>
           {fact("Price", formatPrice(listing.ListPrice), undefined, undefined, "price")}
         </p>
@@ -2529,7 +2540,7 @@ function Facts({
         )}
       </div>
       {/* One line however long: the size runs short first. */}
-      <p className="flex h-10 items-center gap-1.5 whitespace-nowrap text-white">
+      <p className="flex h-10 items-center gap-1.5 whitespace-nowrap text-white squat:h-9 split:h-10">
         {fact("Bedrooms", `${beds} ${beds === 1 ? "bed" : "beds"}`, undefined, "shrink-0")}
         {fact("Bathrooms", `${baths} ${baths === 1 ? "bath" : "baths"}`, undefined, "shrink-0")}
         {fact(
@@ -2538,7 +2549,7 @@ function Facts({
           <span className="min-w-0 truncate">{listing.LivingArea.toLocaleString("en-US")} sq ft</span>,
         )}
       </p>
-      <h2 className="flex h-10 min-w-0 items-center text-white">
+      <h2 className="flex h-10 min-w-0 items-center text-white squat:h-9 split:h-10">
         {fact(
           "Address",
           `${listing.UnparsedAddress}, ${listing.City}`,
@@ -2786,7 +2797,7 @@ function HomeDetails({
       {hint && (
         <p aria-hidden className="mt-4 flex items-center gap-1.5 text-meta text-white/55">
           <Hand size={14} className="shrink-0" />
-          Tap any detail to like it or comment
+          Tap any detail
         </p>
       )}
       <ul aria-label="The details" className={cn("grid grid-cols-2 gap-2", hint ? "mt-2" : "mt-4")}>
@@ -2868,13 +2879,18 @@ function Caption({
         "mb-1 text-body leading-[22px] text-white/85 split:mb-2 split:mt-1 split:leading-6 split:text-white/80",
         open
           ? "pointer-events-auto max-h-[45dvh] overflow-y-auto overscroll-contain split:max-h-none split:overflow-visible"
-          : "h-11 short:mb-0 short:h-[22px] split:h-auto split:max-h-60",
+          : "h-11 squat:h-[22px] short:mb-0 short:h-[22px] split:h-auto split:max-h-60",
+        // On a tall phone, whatever lines the room under the photo leaves
+        // for it, two to four (where the browser can count whole lines).
+        !open &&
+          onToggle &&
+          "supports-[height:round(down,1px,1px)]:h-[clamp(44px,round(down,100cqh_-_var(--photo-top)_-_75cqw_-_var(--words-gap)_-_274px_-_var(--words-pad),22px),88px)] supports-[height:round(down,1px,1px)]:squat:h-[22px] supports-[height:round(down,1px,1px)]:short:h-[22px] supports-[height:round(down,1px,1px)]:split:h-auto",
       )}
     >
       <div
         ref={box}
         // (With a note, its own lines and the description's are kept.)
-        className={cn(note && "whitespace-pre-line", !open && n === null && "line-clamp-2 short:line-clamp-1 split:line-clamp-10")}
+        className={cn(note && "whitespace-pre-line", !open && n === null && "line-clamp-2 squat:line-clamp-1 short:line-clamp-1 split:line-clamp-10")}
       >
         {/* The greeting ends with a stop, seen, so it doesn't run into the note. */}
         {greeting && <h1 className="inline font-semibold text-white">{greeting}</h1>}
@@ -3216,8 +3232,7 @@ function HomeSheet({
                   >
                     <PorchcardIcon aria-hidden size={18} className="shrink-0 text-brand" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-body font-semibold leading-5 text-ink">See the Porchcard</span>
-                      <span className="block truncate text-meta leading-[18px] text-muted">What people think of this home</span>
+                      <span className="block truncate text-body font-semibold leading-5 text-ink">What people think</span>
                     </span>
                     <ChevronRight aria-hidden size={18} className="shrink-0 text-stone-400" />
                   </button>
@@ -3246,7 +3261,7 @@ function HomeSheet({
                 }
                 empty={
                   name ? (
-                    <p className="px-2 py-3 text-center text-sm text-muted">Be the first to say something about {name}.</p>
+                    <p className="px-2 py-3 text-center text-sm text-muted">No comments on {name} yet.</p>
                   ) : undefined
                 }
               />
@@ -3306,14 +3321,7 @@ function MoreSheet({
             <ThumbsDown aria-hidden size={18} />
             Not for me
           </button>
-          {state.reaction ? (
-            <AspectChips state={state} onToggle={onToggle} />
-          ) : (
-            <p className="text-sm text-muted">
-              Like it with the heart, or tell us it&apos;s not for you
-              {agentName ? `, and ${agentCalled(agentName)} will know` : ""}. Either way, your picks get better.
-            </p>
-          )}
+          {state.reaction && <AspectChips state={state} onToggle={onToggle} />}
           {passed && (
             <button
               type="button"
@@ -3329,7 +3337,7 @@ function MoreSheet({
               // A fingertip tall, without moving what's round it.
               className="-my-3 inline-flex min-h-11 items-center self-start text-sm font-semibold text-brand underline-offset-2 hover:underline"
             >
-              See homes near {post.listing.City} on the map
+              Map of {post.listing.City}
             </Link>
           )}
           <button
@@ -3338,7 +3346,7 @@ function MoreSheet({
             className={cn(button({ kind: "ghost", flush: true }), "-mt-1 self-start text-ink")}
           >
             <ImageIcon aria-hidden size={17} />
-            Show the photo only
+            Photo only
           </button>
         </div>
       )}
@@ -3403,9 +3411,10 @@ function LikeWithList({ things, children }: { things: Thing[]; children: ReactNo
           ref={list}
           role="group"
           aria-label="Like what's in this photo"
-          className="invisible absolute right-full top-1/2 -translate-y-1/2 pr-2 opacity-0 transition-[opacity,visibility] duration-150 group-hover/like:visible group-hover/like:opacity-100 group-has-focus-visible/like:visible group-has-focus-visible/like:opacity-100 group-data-open/like:visible group-data-open/like:opacity-100"
+          // Up from the heart, at the left of a phone's row (on its side, out to its left).
+          className="invisible absolute bottom-full left-0 pb-2 opacity-0 short:bottom-auto short:left-auto short:right-full short:top-1/2 short:-translate-y-1/2 short:pb-0 short:pr-2 transition-[opacity,visibility] duration-150 group-hover/like:visible group-hover/like:opacity-100 group-has-focus-visible/like:visible group-has-focus-visible/like:opacity-100 group-data-open/like:visible group-data-open/like:opacity-100"
         >
-          <ul className="flex flex-col items-end gap-1.5">
+          <ul className="flex flex-col items-start gap-1.5 short:items-end">
             {things.map((thing, i) => (
               <li
                 key={thing.tag}

@@ -1,7 +1,7 @@
 // What's in each photo, as things you can like. Free of server code, so the
 // browser can use it too.
 import type { Listing, ListingMedia } from "./listings/types";
-import type { Aspect } from "./reactions";
+import { ASPECT_IDS, type Aspect } from "./reactions";
 
 export const mediaKeyOf = (photo: ListingMedia) => photo.MediaKey ?? photo.MediaURL;
 
@@ -19,7 +19,7 @@ export type SpotReaction = "like" | "dislike" | null;
 // its photos: "the price", "the square footage". They go by this in place of a
 // photo's media key.
 export const FACTS = "facts";
-export const FACT_TAGS = [
+const FACT_TAGS = [
   "Price",
   "Bedrooms",
   "Bathrooms",
@@ -82,12 +82,24 @@ export function spotAt(photo: ListingMedia, x: number, y: number, used: string[]
   return { mediaKey, tag, ...tagPosition(photo, tag)! };
 }
 
+// The thing a scanned photo shows at (x, y): the smallest box around it, so
+// the faucet wins over the counter it sits on, and the counter over the wall.
+// A little slack around each box, for a fingertip that lands just beside it.
+const SLACK = 0.012;
+function regionAt(photo: ListingMedia, x: number, y: number) {
+  return (photo.Regions ?? [])
+    .filter((r) => x >= r.x - SLACK && x <= r.x + r.w + SLACK && y >= r.y - SLACK && y <= r.y + r.h + SLACK)
+    .sort((a, b) => a.w * a.h - b.w * b.h)[0];
+}
+
 // The known thing a tag is about: itself, for a named one; for a spot, the
-// thing it's on, if it's close to one ("Front door"); else null.
+// thing it's on ("Front door"): what a photo scan found there, else a named
+// thing it's close to; else null.
 export function thingOf(photo: ListingMedia | undefined, tag: string): string | null {
   if (!isPointTag(tag)) return tag;
   const at = photo && tagPosition(photo, tag);
-  return (at && nearest(photo.Spots ?? [], at.x, at.y, 0.09)?.tag) ?? null;
+  if (!at) return null;
+  return regionAt(photo, at.x, at.y)?.tag ?? nearest(photo.Spots ?? [], at.x, at.y, 0.09)?.tag ?? null;
 }
 
 // How a tag reads in words: the thing it's on, or the spot tag as it is (which
@@ -146,6 +158,9 @@ export function aspectOfTag(photo: ListingMedia, tag: string): Aspect | null {
   const match = (rules: [RegExp, Aspect][], text: string | undefined) =>
     text ? (rules.find(([pattern]) => pattern.test(text))?.[1] ?? null) : null;
   if (tag !== photo.ImageOf) {
+    // A scanned photo says what each thing in it counts toward.
+    const scanned = photo.Regions?.find((r) => r.tag === tag)?.aspect;
+    if (scanned && (ASPECT_IDS as string[]).includes(scanned)) return scanned as Aspect;
     const own = match(FEATURE_ASPECTS, tag);
     if (own) return own;
   }

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { toFirstHome, createShare, heartOf, homeIn, settle, signInAgent } from "./helpers";
+import { toFirstHome, createShare, heartOf, homeIn, openComments, settle, signedIn, signInAgent } from "./helpers";
 
 // The tour stays out of the way of scripted browsers unless they ask for it.
 const withTour = async (page: Page) => {
@@ -13,12 +13,12 @@ test("an agent's take before they send: a note and a like on the price, a dislik
   const agent = await signInAgent(browser, "take@example.com", "Nell Ortiz");
   const { url, dashboardUrl } = await createShare(agent, ["1204 Quillan"], ["Wren"]);
 
-  // Asked for on the link's page, before it's sent: optional, and said so.
+  // Asked for on the link's page, before it's sent.
   const ask = agent.locator("[data-your-take]");
   await expect(ask).toContainText("Add your take before you send");
-  await expect(ask).toContainText("Recommended");
-  await expect(ask).toContainText("Wren sees them on the link");
-  await ask.getByRole("link", { name: "Add your notes" }).click();
+
+  await expect(ask).toContainText("Wren sees your notes on the link");
+  await ask.getByRole("link", { name: "Add your take" }).click();
   await agent.waitForURL("**/s/*");
   await toFirstHome(agent);
   const home = homeIn(agent, "1204 Quillan St SE");
@@ -34,7 +34,7 @@ test("an agent's take before they send: a note and a like on the price, a dislik
   await expect(card.getByRole("button", { name: /^Dislike the price/ })).toBeVisible();
   await card.getByRole("button", { name: /^Add a note on the price/ }).click();
   const sheet = agent.getByRole("dialog", { name: "Comments" });
-  await expect(sheet.getByText("Wren sees your notes, and anyone on this link.")).toBeVisible();
+  await expect(sheet.getByText("Everyone on this link sees your notes.")).toBeVisible();
   await sheet.getByLabel("Add a note on the price").fill("Priced under the last two sales on this street.");
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(sheet).toBeHidden();
@@ -65,7 +65,7 @@ test("an agent's take before they send: a note and a like on the price, a dislik
   await agent.keyboard.press("Escape");
   await agent.getByRole("banner").getByRole("link", { name: "Done" }).click();
   await agent.waitForURL(dashboardUrl);
-  await expect(agent.getByText("1 note, 1 like and 1 dislike, for Wren to see.")).toBeVisible();
+  await expect(agent.getByText("1 note, 1 like and 1 dislike", { exact: true })).toBeVisible();
   await expect(agent.locator("[data-your-take]")).toHaveCount(0);
   // In the thread, the note wears the agent's own photo, as on the link.
   await agent.goto(`${dashboardUrl}?tab=homes`);
@@ -110,6 +110,52 @@ test("an agent's take before they send: a note and a like on the price, a dislik
   await wren.keyboard.press("Escape");
   await expect(heartOf(hers)).toHaveAttribute("aria-pressed", "false");
   await expect(heartOf(hers)).toHaveAccessibleName(/^Like 1204 Quillan St SE$/);
+
+  // Wren asks something on the link, and the agent answers her there.
+  const ASKED = "Is the roof on this one new?";
+  const ANSWER = "Replaced two summers ago, with the permit on file.";
+  // (Signed in, so what she says goes through at once.)
+  const asker = await signedIn(browser);
+  await asker.goto(url);
+  const theirs = homeIn(asker, "1204 Quillan St SE");
+  await theirs.scrollIntoViewIfNeeded();
+  await expect(theirs).toBeInViewport({ ratio: 0.9 });
+  const chat = await openComments(asker, theirs);
+  await chat.getByLabel("Add a comment").fill(ASKED);
+  await chat.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(chat.getByText(ASKED)).toBeVisible();
+  // (Once it's saved, the agent has it.)
+  const panel = agent.getByRole("region", { name: "1204 Quillan St SE" });
+  await expect(async () => {
+    await agent.goto(`${dashboardUrl}?tab=homes`);
+    await expect(panel.getByText(ASKED)).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 20_000 });
+  await panel.getByLabel("Reply to your client").fill(ANSWER);
+  await panel.getByRole("button", { name: "Reply" }).click();
+  await expect(panel.getByText(ANSWER)).toBeVisible();
+
+  // The agent's page, to anyone: the home is there for what they marked and
+  // noted on their link, and the line at its foot says so under their name.
+  // Never what they didn't like, what their client said, or their answer.
+  await agent.goto("/people/me");
+  await agent.waitForURL(/\/people\/[0-9a-f-]{36}$/);
+  const address = `/reel?from=${new URL(agent.url()).pathname.split("/").pop()}&home=SAMPLE-1009`;
+  const guest = await (await browser.newContext()).newPage();
+  await guest.clock.install();
+  await guest.goto(address);
+  const activity = homeIn(guest, "1204 Quillan St SE").getByRole("group", { name: "Recent activity" });
+  const said: string[] = [];
+  for (let i = 0; i < 6; i++) {
+    await expect(activity).toContainText("Nell");
+    said.push((await activity.textContent()) ?? "");
+    await guest.clock.runFor(5000);
+    await guest.waitForTimeout(150);
+  }
+  expect(said).toContainEqual(expect.stringContaining("Nell liked the price"));
+  // (Their note on the price is the same place as their like, so the line says it once.)
+  for (const line of said) expect(line).not.toMatch(/bedrooms|A buyer|Wren|roof|Replaced|privately/);
+  const html = await (await guest.request.get(address)).text();
+  for (const never of [ASKED, ANSWER]) expect(html).not.toContain(never);
   expect(errors).toEqual([]);
 });
 
@@ -137,11 +183,11 @@ test("the first time, a quick tour shows what to tap, step by step, and then get
   await expect(steps.getByRole("button", { name: "Next", exact: true })).toBeFocused();
   await steps.getByRole("button", { name: "Next", exact: true }).click();
   await expect(steps).toContainText("Tap anything in a photo");
-  await expect(steps).toContainText("tell Ivo what you think");
+  await expect(steps).toContainText("Like it, or say something.");
   // A tap anywhere is the next step too.
   await page.mouse.click(20, 200);
   await expect(steps).toContainText("Love the home?");
-  await expect(steps).toContainText("Then swipe up for the next one.");
+  await expect(steps).toContainText("Tap the heart.");
   await steps.getByRole("button", { name: "Got it" }).click();
   await expect(steps).toHaveCount(0);
   // Then the nudges, as before.

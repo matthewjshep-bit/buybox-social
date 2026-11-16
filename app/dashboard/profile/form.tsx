@@ -21,6 +21,8 @@ export function ProfileForm(props: {
   contactEmail: string;
   // The phone they gave when they signed up, offered but never filled in for them.
   suggestedPhone: string;
+  // Their MLS ID, or empty: which listings are theirs.
+  mlsAgentId: string;
 }) {
   const [state, action, pending] = useActionState<ProfileState, FormData>(saveProfile, {});
   const [photo, setPhoto] = useState(props.photo);
@@ -83,7 +85,7 @@ export function ProfileForm(props: {
             className={cn(button({ kind: "light" }), "mt-1.5")}
           >
             <Camera aria-hidden size={16} />
-            {photo ? "Change photo" : "Upload a photo"}
+            {photo ? "Change photo" : "Add a photo"}
           </button>
           {photoError && <p role="alert" className="mt-1 text-sm">{photoError}</p>}
         </div>
@@ -119,7 +121,7 @@ export function ProfileForm(props: {
           className={inputClass}
         />
         <p id="brokerage-hint" className="mt-1 text-sm text-muted">
-          A brokerage, team or company, if you work with one.
+          Or your team.
         </p>
       </div>
 
@@ -180,7 +182,33 @@ export function ProfileForm(props: {
           </p>
         )}
         <p id="contact-hint" className="mt-1 text-sm text-muted">
-          Shown on your links so clients can text, call or email you.
+          Shown on your links.
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="mlsAgentId" className="text-sm font-medium">
+          MLS ID (optional)
+        </label>
+        <input
+          id="mlsAgentId"
+          name="mlsAgentId"
+          maxLength={20}
+          autoComplete="off"
+          autoCapitalize="characters"
+          spellCheck={false}
+          defaultValue={state.values?.mlsAgentId ?? props.mlsAgentId}
+          aria-invalid={state.field === "mlsAgentId" ? true : undefined}
+          aria-describedby={state.field === "mlsAgentId" ? "mlsAgentId-error mlsAgentId-hint" : "mlsAgentId-hint"}
+          className={inputClass}
+        />
+        {state.field === "mlsAgentId" && (
+          <p id="mlsAgentId-error" role="alert" className="mt-1 text-sm text-red-700">
+            {state.error}
+          </p>
+        )}
+        <p id="mlsAgentId-hint" className="mt-1 text-sm text-muted">
+          Your active listings show on your profile.
         </p>
       </div>
 

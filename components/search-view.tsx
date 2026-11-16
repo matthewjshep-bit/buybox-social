@@ -470,8 +470,8 @@ export function SearchView({
             }}
             end={
               <div className="max-w-sm">
-                <h2 className="font-display text-2xl">That&apos;s every home in this search</h2>
-                <p className="mt-2 text-white/80">Zoom out on the map or change the filters to see more.</p>
+                <h2 className="font-display text-2xl">That&apos;s all</h2>
+                <p className="mt-2 text-white/80">Zoom out or change the filters.</p>
               </div>
             }
           />
@@ -569,9 +569,10 @@ export function SearchReel({
             white panel and of the comments that open in its place. */}
         <Link
           href={map}
+          data-reel-bar
           className={cn(
             button({ kind: "glass" }),
-            "absolute right-3 top-[calc(env(safe-area-inset-top)_+_3.75rem)] sm:right-6 split:right-[480px] split:top-[calc(var(--stage-top)+12px)] split-xl:right-[520px]",
+            "absolute left-3 top-[calc(env(safe-area-inset-top)_+_3.5rem)] split:left-auto split:right-[480px] split:top-[calc(var(--stage-top)+12px)] split-xl:right-[520px]",
           )}
         >
           <ArrowLeft aria-hidden size={16} /> Back to map
@@ -580,8 +581,7 @@ export function SearchReel({
     ),
     end: (
       <div className="max-w-sm">
-        <h2 className="font-display text-2xl">That&apos;s every home in this search</h2>
-        <p className="mt-2 text-white/80">Change the filters on the map to see more.</p>
+        <h2 className="font-display text-2xl">That&apos;s all</h2>
         <Link href={map} className={cn(button({ kind: "light", size: "lg" }), "mt-6")}>
           <ArrowLeft aria-hidden size={17} /> Back to the map
         </Link>

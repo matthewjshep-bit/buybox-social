@@ -30,7 +30,7 @@ export async function follows(follower: string | null | undefined, followed: str
   return Boolean(row);
 }
 
-export type FollowPerson = { id: string; name: string; isAgent: boolean; since: string; photo: string | null };
+type FollowPerson = { id: string; name: string; isAgent: boolean; since: string; photo: string | null };
 
 // Someone's followers, or the people they follow, newest first: as their
 // profile names them (an account with no name yet has none here either).

@@ -24,7 +24,7 @@ test("one package, a link for each person: they react, the agent compares and re
   const welcome = jamie.getByRole("region", { name: "Welcome" });
   await expect(welcome.getByText("Alex Rivera", { exact: true })).toBeVisible();
   await expect(welcome.getByText("Harbor & Pine Realty")).toBeVisible();
-  await expect(jamie.getByText(/Sample listings, fictional and not for sale/)).toBeVisible();
+  await expect(jamie.getByText(/Sample listings, not for sale/)).toBeVisible();
 
   const house = homeIn(jamie, "4127 Larkmoor Ave NE");
   await house.getByRole("button", { name: "Next photo" }).click();

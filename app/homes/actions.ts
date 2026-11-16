@@ -1,9 +1,12 @@
 "use server";
 
 import { refresh } from "next/cache";
+import { after } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { escapeLike } from "@/lib/format";
+import { importMissing, runImportsAndContinue } from "@/lib/listings/imports";
+import { findOnRepliers } from "@/lib/listings/repliers";
 import type { Listing } from "@/lib/listings/types";
 import {
   commentSchema,
@@ -19,7 +22,7 @@ import {
 } from "@/lib/engagement";
 import type { SpotReaction } from "@/lib/photos";
 import { getReel, REEL_PAGE, type FeedPost } from "@/lib/feed";
-import { searchHomes } from "@/lib/search";
+import { matchesPlace, searchHomeKeys } from "@/lib/search";
 import { parseFilters } from "@/lib/search-options";
 import { ensureAccountVisitor, findSpot, getPublicIdentity, getVisitor } from "@/lib/public";
 import { getTaste } from "@/lib/taste";
@@ -86,14 +89,8 @@ async function saveReaction(listingKey: string, input: ReactionState): Promise<A
   return { ok: true };
 }
 
-export async function setPublicReaction(listingKey: string, input: ReactionState): Promise<ActionResult> {
-  const result = await saveReaction(listingKey, input);
-  if (result.ok) refresh();
-  return result;
-}
-
-// The home page feed keeps its own place and shows your reaction right away,
-// so it saves without reloading the page underneath you.
+// Saves without reloading the page: each screen shows your reaction right
+// away and keeps its place.
 export async function reactInStream(listingKey: string, input: ReactionState): Promise<ActionResult> {
   return saveReaction(listingKey, input);
 }
@@ -131,19 +128,7 @@ async function savePhotoLike(
 }
 
 // Liking (or not) something in a photo, "the kitchen", or one of the facts,
-// "the price".
-export async function likePhoto(
-  listingKey: string,
-  mediaKey: string,
-  tag: string,
-  reaction: SpotReaction,
-): Promise<ActionResult> {
-  const result = await savePhotoLike(listingKey, mediaKey, tag, reaction);
-  if (result.ok) refresh();
-  return result;
-}
-
-// The same, from the home page stream, which keeps its place.
+// "the price". Saves without reloading the page, so the feed keeps its place.
 export async function likePhotoInStream(
   listingKey: string,
   mediaKey: string,
@@ -212,19 +197,6 @@ async function saveComment(
   return { ok: true };
 }
 
-export async function addPublicComment(
-  listingKey: string,
-  body: string,
-  // Only private share links can share comments publicly; here it's ignored.
-  _sharePublicly?: boolean,
-  parentId: string | null = null,
-  spot: unknown = null,
-): Promise<ActionResult> {
-  const result = await saveComment(listingKey, body, parentId, spot);
-  if (result.ok) refresh();
-  return result;
-}
-
 async function saveCommentLike(commentId: string, liked: boolean): Promise<ActionResult> {
   if (typeof commentId !== "string" || commentId.length > 64) return fail("That comment isn't there anymore.");
   const [comment] = await sql<{ listing_key: string; visitor_id: string }[]>`
@@ -241,12 +213,6 @@ async function saveCommentLike(commentId: string, liked: boolean): Promise<Actio
       delete from public_comment_likes where comment_id = ${commentId}::uuid and visitor_id = ${visitor.id}`;
   }
   return { ok: true };
-}
-
-export async function likePublicComment(commentId: string, liked: boolean): Promise<ActionResult> {
-  const result = await saveCommentLike(commentId, liked);
-  if (result.ok) refresh();
-  return result;
 }
 
 // The home page feed keeps its own place and reloads only the home you're
@@ -267,6 +233,9 @@ export async function commentInReel(
 export async function postAboutHome(listingKey: string, body: string): Promise<ActionResult> {
   if (typeof listingKey !== "string" || listingKey.length > 100) return fail("That home isn't for sale anymore.");
   if (typeof body !== "string" || !body.trim()) return fail("Say something about the home first.");
+  // A home found by its address that isn't here yet is brought in first; its
+  // photos are scanned afterwards.
+  if ((await getCurrentUser())?.role && (await importMissing([listingKey]))) after(() => runImportsAndContinue());
   const result = await saveComment(listingKey, body.trim(), null, null, true);
   if (result.ok) refresh();
   return result;
@@ -287,17 +256,21 @@ export async function findHomesToPost(query: string): Promise<HomeToPost[]> {
   if (typeof query !== "string") return [];
   const text = query.trim().slice(0, 100);
   if (text.length < 2) return [];
-  const pattern = `%${escapeLike(text)}%`;
+  const MOST = 6;
   const rows = await sql<{ data: Listing }[]>`
-    select data from listings
-    where standard_status = 'Active'
-      and (data->>'UnparsedAddress' ilike ${pattern}
-        or data->>'City' ilike ${pattern}
-        or data->>'PostalCode' ilike ${pattern}
-        or data->>'ListingId' ilike ${pattern})
-    order by (data->>'UnparsedAddress' ilike ${`${escapeLike(text)}%`}) desc, updated_at desc, listing_key
-    limit 6`;
-  return rows.map(({ data }) => ({
+    select l.data from listings l
+    where l.standard_status = 'Active' and ${matchesPlace(text)}
+    order by (l.data->>'UnparsedAddress' ilike ${`${escapeLike(text)}%`}) desc, l.updated_at desc, l.listing_key
+    limit ${MOST}`;
+  const here = rows.map((row) => row.data);
+  // Not enough here: homes for sale found by that address elsewhere, for
+  // someone signed in. One is brought in when it's posted about.
+  const have = new Set(here.map((home) => home.ListingKey));
+  const elsewhere =
+    here.length < MOST && (await getCurrentUser())?.role
+      ? (await findOnRepliers(text, MOST)).filter((home) => !have.has(home.ListingKey))
+      : [];
+  return [...here, ...elsewhere].slice(0, MOST).map((data) => ({
     key: data.ListingKey,
     address: data.UnparsedAddress,
     city: data.City,
@@ -354,8 +327,7 @@ export async function loadSearchReel(query: string, shown: string[]): Promise<Fe
   const filters = parseFilters(Object.fromEntries(new URLSearchParams(query)));
   const { viewer, device, taste } = await reelViewer();
   const skip = new Set(exclude.data);
-  const next = (await searchHomes(filters, null))
-    .map((result) => result.listing.ListingKey)
+  const next = (await searchHomeKeys(filters))
     .filter((key) => !skip.has(key))
     .slice(0, REEL_PAGE);
   return next.length ? getReel(viewer, device, taste, { only: next, limit: next.length }) : [];

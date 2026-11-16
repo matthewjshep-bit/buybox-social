@@ -30,7 +30,9 @@ test("signed out, the home page says what this is; Browse homes shows three home
   await expect(page.getByRole("article")).toHaveCount(0);
   // One thing to do: Sign up, which goes to the form at its foot.
   const main = page.getByRole("main");
-  await expect(main.getByRole("link")).toHaveText(["Sign up"]);
+  // (And, by the form, the way in for an agent, whose account is another kind.)
+  await expect(main.getByRole("link")).toHaveText(["Sign up", "I'm an agent"]);
+  await expect(main.getByRole("link", { name: "I'm an agent" })).toHaveAttribute("href", "/login?as=agent");
   await main.getByRole("link", { name: "Sign up" }).click();
   await expect(main.getByRole("form", { name: "Sign up" })).toBeInViewport();
 
@@ -77,7 +79,7 @@ test("signed out, the home page says what this is; Browse homes shows three home
   await gate.getByLabel(/^Phone/).fill("(206) 555-0100");
   await gate.getByRole("button", { name: "Sign up free" }).click();
   await enterCode(page.getByRole("form", { name: "Sign up" }).last());
-  await expect(page.getByRole("button", { name: "Your profile" })).toHaveText("R");
+  await expect(page.getByRole("button", { name: "Account menu" })).toHaveText("R");
   await expect(page).toHaveURL(/localhost:\d+\/reel$/);
 
   // Signed in, the home page is their feed, with every home one tap away,

@@ -55,7 +55,7 @@ export type ThreadActions = {
 export type SpotRef = { mediaKey: string; tag: string };
 
 // How a list of comments names a spot, and takes you to it on the photo.
-export type SpotLinks = { name: (spot: SpotRef) => string; show: (spot: SpotRef) => void };
+type SpotLinks = { name: (spot: SpotRef) => string; show: (spot: SpotRef) => void };
 
 // Who sees what you write here, said under every comment box: "Everyone can
 // see your comment and first name." `private`: only some people (a lock).
@@ -168,7 +168,7 @@ export function NameGate({
                 withName
                 suggestedName={suggestedName}
                 nameHint={nameHint ? `${id}-hint` : undefined}
-                note="Free, and no password. Signed up before? Use the same email."
+                note="Free. No password."
                 onDone={async ({ firstName }) => {
                   // Now on this page's conversation too, as themselves.
                   const result = await actions.join(firstName ?? "").catch(() => ({ ok: false as const, error: "" }));
@@ -272,8 +272,6 @@ export function Timeline({
   spots,
   empty,
   listing,
-  limit,
-  onSeeAll,
 }: {
   listingKey: string;
   items: TimelineItem[];
@@ -289,9 +287,6 @@ export function Timeline({
   empty?: ReactNode;
   // The home, for the photo each card is about.
   listing?: Listing;
-  // Only the newest few, then "See all".
-  limit?: number;
-  onSeeAll?: () => void;
 }) {
   const top = items.filter((item) => item.kind === "reaction" || !item.parentId);
   if (top.length === 0) {
@@ -299,7 +294,6 @@ export function Timeline({
       empty ?? (
         <div className="flex flex-col items-center px-6 py-12 text-center">
           <p className="text-lg font-semibold">No comments yet</p>
-          <p className="mt-1 text-sm text-muted">Start the conversation.</p>
         </div>
       )
     );
@@ -308,47 +302,39 @@ export function Timeline({
   // said, and one for what each person liked (or passed on), each with the
   // photo it was about and where on it.
   const feed = [...top].sort((a, b) => b.at.localeCompare(a.at));
-  const shown = limit ? feed.slice(0, limit) : feed;
   return (
-    <>
-      <ul aria-label="Comments and likes" className="flex flex-col gap-3">
-        {shown.map((item) =>
-          item.kind === "comment" ? (
-            <CommentItem
-              key={item.id}
-              listingKey={listingKey}
-              comment={item}
-              replies={items.filter(
-                (reply): reply is TimelineComment => reply.kind === "comment" && reply.parentId === item.id,
-              )}
-              opened={opened}
-              canShare={canShare}
-              onReply={onReply}
-              spots={spots}
-              listing={listing}
-            />
-          ) : (
-            <ReactionItem
-              key={item.id}
-              listingKey={listingKey}
-              item={item}
-              replies={items.filter(
-                (reply): reply is TimelineComment => reply.kind === "comment" && reply.parentId === item.id,
-              )}
-              opened={opened}
-              onReply={onReply}
-              listing={listing}
-              spots={spots}
-            />
-          ),
-        )}
-      </ul>
-      {shown.length < feed.length && onSeeAll && (
-        <button type="button" onClick={onSeeAll} className={cn(button({ kind: "secondary" }), "mt-3 w-full")}>
-          See all {feed.length}
-        </button>
+    <ul aria-label="Comments and likes" className="flex flex-col gap-3">
+      {feed.map((item) =>
+        item.kind === "comment" ? (
+          <CommentItem
+            key={item.id}
+            listingKey={listingKey}
+            comment={item}
+            replies={items.filter(
+              (reply): reply is TimelineComment => reply.kind === "comment" && reply.parentId === item.id,
+            )}
+            opened={opened}
+            canShare={canShare}
+            onReply={onReply}
+            spots={spots}
+            listing={listing}
+          />
+        ) : (
+          <ReactionItem
+            key={item.id}
+            listingKey={listingKey}
+            item={item}
+            replies={items.filter(
+              (reply): reply is TimelineComment => reply.kind === "comment" && reply.parentId === item.id,
+            )}
+            opened={opened}
+            onReply={onReply}
+            listing={listing}
+            spots={spots}
+          />
+        ),
       )}
-    </>
+    </ul>
   );
 }
 
@@ -828,7 +814,7 @@ export function CommentComposer({
   // Ticked to share it on the public page too: said so, not "only you".
   const seen: SeenBy | undefined =
     sharing && sharePublicly
-      ? { text: "Your words also show on the public page, without your name.", private: false }
+      ? { text: "Also public, without your name.", private: false }
       : seenBy;
 
   const submit = async () => {
@@ -937,7 +923,7 @@ export function CommentComposer({
             // Above the line's touch area, so a tap on the box is on the box.
             className="relative z-[1] size-4.5 shrink-0 accent-[var(--brand)]"
           />
-          <span>Also share this anonymously on the public listing page. Your name stays private.</span>
+          <span>Also share publicly, without my name</span>
         </label>
       )}
       {error && (

@@ -4,10 +4,12 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
+import { listedAgentNames, MLS_ID, sameAgent } from "@/lib/agent-listings";
 import { getCurrentUser, getViewAs, requireAgent } from "@/lib/auth";
 import { isContactPhone, phoneDigits } from "@/lib/contact";
 import { sql } from "@/lib/db";
 import { BRAND_COLORS, escapeLike } from "@/lib/format";
+import { importMissing, runImportsAndContinue } from "@/lib/listings/imports";
 import { notifyClientAdded } from "@/lib/notify";
 import { photoUrl } from "@/lib/person-photo";
 import {
@@ -35,10 +37,10 @@ export type FormState = { error?: string };
 
 // The fields an agent can get wrong on their profile, and what they typed, so a
 // mistake says which one and nothing has to be typed again.
-export type ContactField = "contactPhone" | "contactEmail";
+export type ContactField = "contactPhone" | "contactEmail" | "mlsAgentId";
 export type ProfileState = FormState & {
   field?: ContactField;
-  values?: { brokerage: string; contactPhone: string; contactEmail: string };
+  values?: { brokerage: string; contactPhone: string; contactEmail: string; mlsAgentId: string };
 };
 
 const PHOTO_PATTERN = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/;
@@ -70,6 +72,7 @@ export async function saveProfile(_: ProfileState, form: FormData): Promise<Prof
     brokerage: String(form.get("brokerage") ?? ""),
     contactPhone: String(form.get("contactPhone") ?? "").trim(),
     contactEmail: String(form.get("contactEmail") ?? "").trim().toLowerCase(),
+    mlsAgentId: String(form.get("mlsAgentId") ?? "").trim(),
   };
   const parsed = profileSchema.safeParse({
     fullName: form.get("fullName"),
@@ -86,15 +89,35 @@ export async function saveProfile(_: ProfileState, form: FormData): Promise<Prof
   if (!email.success) {
     return { error: "Please enter a valid email address, or leave it empty.", field: "contactEmail", values };
   }
-  await sql`
-    update accounts set
-      full_name = ${parsed.data.fullName},
-      brokerage = ${parsed.data.brokerage},
-      brand_color = ${parsed.data.brandColor},
-      photo_data_url = ${parsed.data.photo || null},
-      contact_phone = ${phone.data},
-      contact_email = ${email.data}
-    where id = ${agent.id}`;
+  // Their MLS ID: empty, or letters, numbers and dashes. Their listings go by it.
+  if (values.mlsAgentId && !MLS_ID.test(values.mlsAgentId)) {
+    return { error: "Letters, numbers and dashes only, or leave it empty.", field: "mlsAgentId", values };
+  }
+  // An MLS ID is public, so it's theirs only when its listings are under
+  // their name. (One no listing has yet is kept; its listings show once they
+  // are under their name too.)
+  if (values.mlsAgentId) {
+    const listed = await listedAgentNames(values.mlsAgentId);
+    if (listed.length > 0 && !listed.some((name) => sameAgent(parsed.data.fullName, name))) {
+      return { error: "That MLS ID is listed under another name.", field: "mlsAgentId", values };
+    }
+  }
+  try {
+    await sql`
+      update accounts set
+        full_name = ${parsed.data.fullName},
+        brokerage = ${parsed.data.brokerage},
+        brand_color = ${parsed.data.brandColor},
+        photo_data_url = ${parsed.data.photo || null},
+        contact_phone = ${phone.data},
+        contact_email = ${email.data},
+        mls_agent_id = ${values.mlsAgentId}
+      where id = ${agent.id}`;
+  } catch (error) {
+    // One profile per MLS ID.
+    if (isDuplicate(error)) return { error: "That MLS ID is on another profile.", field: "mlsAgentId", values };
+    throw error;
+  }
   // The frame around the page is drawn again too, so a new colour reaches the
   // header's logo straight away.
   refresh();
@@ -138,6 +161,8 @@ export async function createShare(input: {
     return { error: "Pick between 1 and 3 homes." };
   }
   const keys = [...new Set(parsed.data.listingKeys)];
+  // A home found by its address that isn't here yet is brought in first.
+  if (await importMissing(keys)) after(() => runImportsAndContinue());
 
   // Only homes still for sale, the same as adding homes to a link later.
   const found = await sql`
@@ -482,6 +507,7 @@ export async function addHomesToShare(shareId: string, listingKeys: string[]): P
   if (!keys.success) return { error: "Pick between 1 and 3 homes." };
   if (!(await ownShare(agent.id, shareId))) return { error: "We couldn't find that client." };
   const unique = [...new Set(keys.data)];
+  if (await importMissing(unique)) after(() => runImportsAndContinue());
   const found = await sql`
     select listing_key from listings
     where listing_key in ${sql(unique)} and standard_status = 'Active'`;

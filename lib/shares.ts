@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { cache } from "react";
 import type postgres from "postgres";
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
@@ -6,7 +7,7 @@ import type { PersonPick } from "./people-picker";
 import { isPointTag, tagNameIn } from "./photos";
 import { describeReaction, spotPlace, spotsIn, type Aspect, type ReactionState } from "./reactions";
 
-export type CommentTag = "like" | "dislike";
+type CommentTag = "like" | "dislike";
 
 // What a link shows of its agent. The contact fields are only what the agent
 // chose to show clients, never their login email or sign-up phone.
@@ -31,7 +32,7 @@ export type Share = {
   headline: string;
 };
 
-export type ThreadReaction = {
+type ThreadReaction = {
   listingKey: string;
   participantId: string;
   name: string;
@@ -175,7 +176,8 @@ export async function reserveSendTokenFor(agentId: string) {
 
 // A link opens a package two ways: the package's own link (anyone can join
 // by giving a first name), or one person's own link (it opens as them).
-export async function getShareByToken(token: string) {
+// (Read once for a page and its title.)
+export const getShareByToken = cache(async (token: string) => {
   if (!isShareToken(token)) return null;
   const [row] = await sql<(Share & ShareAgent & { person_id: string | null; person_name: string | null })[]>`
     select s.id, s.token, s.agent_id, s.client_name, s.note, s.headline,
@@ -204,7 +206,7 @@ export async function getShareByToken(token: string) {
     // Set when the link is someone's own.
     person: person_id ? { id: person_id, first_name: person_name! } : null,
   };
-}
+});
 
 // Someone signed in, on a link: their place on it. On someone's own link,
 // that person, theirs from the first time they're signed in there (unless
@@ -259,7 +261,7 @@ export async function ensureAgentProfile(agentId: string) {
 // they have a profile, and they and the agent follow each other. Only ever
 // through linkOnce, so it happens once for each agent and client: either can
 // stop following later, and nothing here starts it again.
-export async function joinedLink(accountId: string, shareId: string) {
+async function joinedLink(accountId: string, shareId: string) {
   await ensureLinkProfile(accountId);
   const [agent] = await sql<{ agent_id: string }[]>`select agent_id from shares where id = ${shareId}`;
   if (!agent || agent.agent_id === accountId) return;
@@ -313,14 +315,6 @@ export async function ensureLinkProfile(accountId: string) {
     on conflict do nothing`;
 }
 
-// The people an agent added to a package, each with their own link.
-export async function getInvitees(shareId: string) {
-  return sql<{ id: string; first_name: string; token: string }[]>`
-    select id, first_name, token from participants
-    where share_id = ${shareId} and token is not null
-    order by invited_at, position nulls last, created_at, first_name`;
-}
-
 // Everyone on a link, by first name: the people the agent added, and anyone
 // who joined through the link anyone can open. Only ever shown on the link
 // itself, to the people on it.
@@ -366,7 +360,7 @@ export async function confidantOf(shareId: string) {
 // Porchcard who is already their client, who follows them, or whom they found
 // by name. Only the person's own follow counts: an agent following someone is
 // one click of theirs, so it says nothing about whether that person knows them.
-export type AddedFrom = "name" | "client" | "follow" | "search";
+type AddedFrom = "name" | "client" | "follow" | "search";
 
 // Someone about to be added to a link, as the server worked them out: never
 // the browser's say-so.
@@ -483,7 +477,7 @@ export async function invitePerson(
 
 // The homes on a share. Clients only ever see the ones still on their link;
 // the agent's view also includes homes they removed, flagged with `removedAt`.
-export async function getShareListings(shareId: string, { includeRemoved = false } = {}) {
+export const getShareListings = cache(async (shareId: string, includeRemoved = false) => {
   const rows = await sql<{ data: Listing; standard_status: string; removed_at: Date | null }[]>`
     select l.data, l.standard_status, sl.removed_at
     from share_listings sl join listings l on l.listing_key = sl.listing_key
@@ -495,7 +489,7 @@ export async function getShareListings(shareId: string, { includeRemoved = false
     Media: [...row.data.Media].sort((a, b) => a.Order - b.Order),
     removedAt: row.removed_at?.toISOString() ?? null,
   }));
-}
+});
 
 export async function getThread(shareId: string) {
   const reactions = await sql<

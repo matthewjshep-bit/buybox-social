@@ -51,7 +51,7 @@ test("an agent's home is calm: their clients as people, what each did as big car
   await expect(agent.getByRole("region", { name: "More homes for you" })).toHaveCount(0);
   await expect(you.getByRole("link", { name: "Browse homes" })).toHaveCount(0);
   await expect(agent.getByRole("button", { name: "Following" })).toHaveCount(0);
-  await expect(clients.getByRole("link", { name: "See all clients" })).toHaveAttribute("href", "/dashboard");
+  await expect(clients.getByRole("link", { name: "See all clients", exact: true })).toHaveAttribute("href", "/dashboard");
   // Kit's day ends the Clients stream, and then it stops.
   await expect(agent.getByRole("note", { name: "You're all caught up" })).toBeVisible();
 
@@ -83,6 +83,6 @@ test("someone who follows nobody yet starts on homes picked for them, and Follow
   await expect(picks.getByRole("link", { name: "Browse homes" })).toHaveAttribute("href", "/reel");
   // Following: nobody yet, and what to do about it.
   await lenses.getByRole("button", { name: "Following" }).click();
-  await expect(page.getByText("Follow people with your taste, and what they like shows up here.")).toBeVisible();
+  await expect(page.getByText("Follow people to see what they like.")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(412);
 });

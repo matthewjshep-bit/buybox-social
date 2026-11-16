@@ -11,8 +11,8 @@ import { cn } from "@/lib/format";
 // height and takes a 44px touch area (`hit-44`). A row in a list or a menu,
 // and a chip that carries a photo, are rows and chips, rounded like a card.
 
-export type ButtonKind = "primary" | "neutral" | "secondary" | "ghost" | "danger" | "light" | "glass";
-export type ButtonSize = "md" | "lg";
+type ButtonKind = "primary" | "neutral" | "secondary" | "ghost" | "danger" | "light" | "glass";
+type ButtonSize = "md" | "lg";
 
 // Focus on a dark surface (a photo, the brand colour): white, with a dark
 // halo, so it shows on anything. The reel's whole ground does this already

@@ -26,7 +26,7 @@ export default async function EditProfilePage() {
   return (
     <main className="mx-auto max-w-xl px-4 pb-16 pt-4 lg:pt-8">
       <Link href={back} className="-ml-2 inline-flex min-h-11 items-center gap-2 rounded-full px-2 font-medium hover:bg-black/5">
-        <ArrowLeft aria-hidden size={18} /> Your page
+        <ArrowLeft aria-hidden size={18} /> Your profile
       </Link>
       <h1 className="mt-2 font-display text-4xl">Edit profile</h1>
 
@@ -40,25 +40,21 @@ export default async function EditProfilePage() {
             <PhotoControls hasPhoto={Boolean(person.photo)} />
           </div>
         </div>
-        <p className="mt-4 text-body text-muted">
-          {person.isAgent ? (
-            <>
-              The picture across the top of your page is a scene of home in your brand colour.{" "}
-              <Link href="/dashboard/profile" className="font-semibold text-brand underline-offset-2 hover:underline">
-                Change your colour
-              </Link>
-            </>
-          ) : (
-            "The picture across the top of your page is your own little scene of home, picked for you."
-          )}
-        </p>
+        {person.isAgent && (
+          <Link
+            href="/dashboard/profile"
+            className="mt-2 inline-flex min-h-11 items-center font-semibold text-brand underline-offset-2 hover:underline"
+          >
+            Change banner color
+          </Link>
+        )}
       </section>
 
       <section aria-labelledby="about-title" className={cn(card, "mt-4 p-5")}>
         <h2 id="about-title" className="text-lg font-semibold">
-          {person.isAgent ? "About you and your links" : "About you"}
+          {person.isAgent ? "About and links" : "About you"}
         </h2>
-        <p className="mt-1 text-body text-muted">Everyone who visits your page sees this.</p>
+        <p className="mt-1 text-body text-muted">Public.</p>
         <div className="mt-4">
           <EditAbout bio={person.bio} links={person.links} agent={person.isAgent} done={back} />
         </div>

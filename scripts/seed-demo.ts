@@ -637,6 +637,8 @@ const AGENT = {
   brandColor: "#1E3A5F",
   phone: "(425) 555-0136",
   created: d(13.5),
+  // Their MLS ID: the sample listings that say so are theirs.
+  mlsId: "DEMO-1001",
 };
 
 // What the agent says on a link, about one home.
@@ -941,11 +943,13 @@ type DemoAgent = {
   created: number;
   contactPhone?: string;
   contactEmail?: string;
+  // Their MLS ID, where some sample listings are theirs.
+  mlsId?: string;
 };
 const MORE_AGENTS: (Omit<DemoAgent, "id" | "email"> & { slug: string })[] = [
-  { slug: "priyanka", fullName: "Priyanka Shah", brokerage: "Sound & Summit Homes", brandColor: "#1F5F5B", phone: "(206) 555-0142", created: d(20) },
-  { slug: "daniel", fullName: "Daniel Okafor", brokerage: "Northline Realty", brandColor: "#4B3B78", phone: "(253) 555-0119", created: d(18) },
-  { slug: "elise", fullName: "Elise Navarro", brokerage: "Cascade Key Real Estate", brandColor: "#3F4A2F", phone: "(425) 555-0177", created: d(16) },
+  { slug: "priyanka", fullName: "Priyanka Shah", brokerage: "Sound & Summit Homes", brandColor: "#1F5F5B", phone: "(206) 555-0142", created: d(20), mlsId: "DEMO-1002" },
+  { slug: "daniel", fullName: "Daniel Okafor", brokerage: "Northline Realty", brandColor: "#4B3B78", phone: "(253) 555-0119", created: d(18), mlsId: "DEMO-1003" },
+  { slug: "elise", fullName: "Elise Navarro", brokerage: "Cascade Key Real Estate", brandColor: "#3F4A2F", phone: "(425) 555-0177", created: d(16), mlsId: "DEMO-1004" },
   { slug: "tom", fullName: "Tom Brennan", brokerage: "Lakeshore Partners", brandColor: "#8A4B14", phone: "(360) 555-0108", created: d(15) },
 ];
 const CLIENTS: readonly (readonly [client: string, people: readonly string[]])[] = [
@@ -1264,10 +1268,10 @@ async function seedAgent(
 ) {
   await tx`
     insert into accounts (id, auth_user_id, email, full_name, role, brokerage, brand_color, phone, contact_phone, contact_email,
-      photo_data_url, created_at)
+      mls_agent_id, photo_data_url, created_at)
     values (${agent.id}, ${`dev:${agent.email}`}, ${agent.email}, ${agent.fullName}, 'agent',
       ${agent.brokerage}, ${agent.brandColor}, ${agent.phone}, ${agent.contactPhone ?? ""}, ${agent.contactEmail ?? ""},
-      ${photoFor(agent.email)}, ${ago(agent.created)})`;
+      ${agent.mlsId ?? ""}, ${photoFor(agent.email)}, ${ago(agent.created)})`;
   // Their page, so their clients can follow them.
   const agentVisitor = demoId(`visitor:${agent.email}`);
   await tx`

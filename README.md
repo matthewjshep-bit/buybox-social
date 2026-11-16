@@ -64,7 +64,7 @@ Then send yourself a link by text to check the preview image.
 | Path | What it does |
 |---|---|
 | `app/s/[token]/` | The client page, its actions, and the link preview image |
-| `app/dashboard/` | Agent screens: shares, new share, profile |
+| `app/dashboard/` | Agent screens: clients, links (shares), new link, profile |
 | `app/admin/`, `lib/admin.ts` | The admin: leads, people, homes and comments |
 | `lib/listings/` | The listing source. Swap this to go live |
 | `lib/shares.ts` | Reads for shares and their threads |
@@ -97,5 +97,16 @@ Then:
 3. Add those photo hosts to `images.remotePatterns` in `next.config.ts`.
 4. Run the sync on a schedule. MLS Grid's limits are 2 requests/sec, 7,200/hour, 40,000/day and 4 GB/hour.
 5. Remove the sample rows, and check the client page against NWMLS's display rules with the broker.
+
+### Homes by address (Repliers)
+
+With `REPLIERS_API_KEY` set, a home that isn't in the database can be found by its address in the link builder and the post box. Nothing is copied in bulk:
+
+1. Typing an address asks Repliers for matches (`lib/listings/repliers.ts`). They are shown, not saved.
+2. Putting one on a link or posting about it saves its facts and queues its photos (`lib/listings/imports.ts`, tables `listing_imports` and `listing_photos`).
+3. The photos are scanned in the background, a few at a time (`lib/listings/scan.ts`, needs `ANTHROPIC_API_KEY`). Each scan names the room and boxes everything in the photo, so a tap is named by the smallest box it falls in ("the kitchen island"). Taps made before a photo is scanned get their name when it is.
+4. A run that's out of time hands on to `/api/imports/run` (needs `APP_URL` and `CRON_SECRET`). A Vercel cron on that path picks up anything left behind.
+
+`pnpm import:home "123 Main St"` runs the same steps from the command line (`--fake` for a stand-in scan with no Claude key). Photos stay on Repliers' CDN. A test key returns sample listings; live NWMLS data needs the data agreement above.
 
 Sample photos are from Unsplash. See `public/sample/CREDITS.txt`.

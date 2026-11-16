@@ -163,7 +163,7 @@ export function ShareBuilder({
     <div>
       <PeoplePicker
         label="Who's it for?"
-        hint="Each person gets their own link, so you can see what each of them likes."
+        hint="Each person gets their own link."
         chosen={people}
         onChange={setPeople}
         onTextChange={setTyping}
@@ -177,7 +177,7 @@ export function ShareBuilder({
             This link will be called <b className="font-semibold text-ink">{title}</b>.
           </>
         ) : (
-          "Nobody added: anyone with the link can join, and it's named for whoever joins first."
+          "No name: anyone with the link can join."
         )}
       </p>
     </div>
@@ -188,7 +188,7 @@ export function ShareBuilder({
       <h1 className="font-display text-3xl">
         {start ? (picked.length > 1 ? "Send these homes" : "Send this home") : heading}
       </h1>
-      <p className="mt-1 text-stone-700">{intro}</p>
+      {intro && <p className="mt-1 text-stone-700">{intro}</p>}
       {whoFirst && !addTo && <div className={cn(cardClass, "mt-5 p-4")}>{who}</div>}
       <div className="mt-5 pb-4">
         {searching ? (
@@ -277,7 +277,7 @@ export function ShareBuilder({
               {!whoFirst && who}
               <div>
                 <label htmlFor="note" className="text-sm font-medium">
-                  Personal note (optional)
+                  Note (optional)
                 </label>
                 <textarea
                   id="note"
@@ -306,16 +306,12 @@ export function ShareBuilder({
             {pending
               ? "Creating…"
               : picked.length === 0
-                ? "Pick at least 1 home"
+                ? "Pick a home"
                 : addTo
                   ? `Add ${picked.length} ${picked.length === 1 ? "home" : "homes"} to ${addTo.clientName ? `${addTo.clientName}'s` : "the"} link`
                   : `Create link for ${picked.length} ${picked.length === 1 ? "home" : "homes"}`}
           </button>
-          {!addTo && (
-            <p className="-mt-1 text-center text-sm text-muted">
-              Next, add your take: tap anything on {picked.length > 1 ? "each home" : "the home"} to like it or leave a note.
-            </p>
-          )}
+
         </div>
       </div>
     </>

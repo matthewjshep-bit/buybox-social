@@ -9,12 +9,11 @@ import { Hotspot } from "@/components/spot-highlight";
 import type { SpotRef } from "@/components/listing-thread";
 import { Avatar, Badge, HomeThumb } from "@/components/ui";
 import type { FeedPost } from "@/lib/feed";
-import { agentFirstName, cn, timeAgo } from "@/lib/format";
+import { agentFirstName, cn, namesList, timeAgo } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
 import { FACTS, mediaKeyOf, spotName, tagPosition, thingOf, type FactTag } from "@/lib/photos";
 import {
   buildScorecard,
-  namesList,
   type AspectRow,
   type FactRow,
   type PersonTake,
@@ -33,7 +32,6 @@ import { button, pill } from "@/lib/ui";
 // The agent, in a sentence: their name, or "your agent".
 const agentCalled = (agentName?: string) => (agentName && agentName !== "Your agent" ? agentName : "your agent");
 const firstOf = (agentName?: string) => (agentName === "Your agent" ? "your agent" : agentFirstName(agentName));
-const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 export function ScorecardBody({
   post,
@@ -106,10 +104,10 @@ export function ScorecardBody({
           <p className="mt-2 inline-flex items-start gap-1.5 rounded-2xl bg-stone-100 px-2.5 py-1.5 text-meta leading-[18px] text-stone-700">
             <Lock aria-hidden size={12} className="mt-[3px] shrink-0" />
             {mode === "agent"
-              ? "From the people on this link · only they and you see this"
+              ? "Only people on this link see this"
               : alone
                 ? `Only you and ${agent} see this`
-                : `From the people on this link · only they and ${agent} see this`}
+                : `Only ${agent} and people on this link see this`}
           </p>
         )}
         {/* Said first, so nothing below reads as if they can still see it. */}
@@ -123,7 +121,7 @@ export function ScorecardBody({
 
       {card.quiet ? (
         <>
-          <Quiet mode={mode} agent={agent} offLink={mode === "agent" && offLink} />
+          <Quiet />
           {card.compare && <CompareSection compare={card.compare} />}
         </>
       ) : (
@@ -158,8 +156,7 @@ export function ScorecardBody({
                   liked: card.aspects.liked.filter((row) => row.you).map((row) => row.aspect),
                   disliked: (card.aspects.disliked ?? []).filter((row) => row.you).map((row) => row.aspect),
                 }}
-                // (Someone can like the home and still not like its light.)
-                dislikeNote="Whether or not they passed on the home"
+
                 detail={(aspect, tone) => (
                   <AspectDetail
                     row={(tone === "like" ? card.aspects.liked : (card.aspects.disliked ?? [])).find((r) => r.aspect === aspect)}
@@ -207,7 +204,7 @@ export function ScorecardBody({
           )}
 
           {mode === "agent" ? (
-            <Section title="What people said">
+            <Section title="Comments">
               <Said
                 card={card}
                 post={post}
@@ -286,7 +283,7 @@ export function ScorecardBody({
             )}
             {offLink && (
               <p className={cn("text-meta text-muted", onReply && "mt-2")}>
-                You took this home off their link. What they said about it still counts.
+                Off their link.
               </p>
             )}
           </>
@@ -302,7 +299,7 @@ export function ScorecardBody({
                 Message {firstOf(agentName)}
               </button>
             )}
-            <p className="mt-2 text-meta text-muted">{capital(agent)} sees what you like and say on this link.</p>
+
           </>
         )}
       </div>
@@ -320,24 +317,13 @@ function Section({ title, id, children }: { title: string; id?: string; children
 }
 
 // Nobody's weighed in yet: one card in place of everything they'd have said.
-// `offLink`: a home the agent has taken off the link, so nothing more can come.
-function Quiet({ mode, agent, offLink = false }: { mode: ScorecardMode; agent: string; offLink?: boolean }) {
+function Quiet() {
   return (
-    <div className="flex items-start gap-3 rounded-2xl bg-stone-50 p-4">
+    <div className="flex items-center gap-3 rounded-2xl bg-stone-50 p-4">
       <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white ring-1 ring-stone-200">
         <Hand size={17} className="text-stone-500" />
       </span>
-      <div>
-        <p className="text-body font-semibold">{offLink ? "No one weighed in on it." : "No one has weighed in yet."}</p>
-        <p className="mt-0.5 text-body leading-6 text-muted">
-          {offLink
-            ? "They didn't react to it before you took it off their link."
-            : mode === "agent"
-              ? "When they like something in its photos, pass on it or say something about it, you'll see it here."
-              : "Tap anything in a photo to like it or say something about it."}
-          {mode === "share" && ` ${capital(agent)} sees what you like and say.`}
-        </p>
-      </div>
+      <p className="text-body font-semibold">Nothing yet</p>
     </div>
   );
 }
@@ -726,11 +712,8 @@ function Said({
         // Said only in private: one plain line, never "yet" and "more" at once.
         <p className="text-body text-muted">
           {privateMore > 0
-            ? `No one has commented in public yet. ${chats}`
-            : total > 0
-              ? // (The agent's dashboard, where only what you said yourself is here.)
-                "They haven't said anything about it yet."
-              : "No one has commented yet."}
+            ? chats
+            : "No comments yet"}
         </p>
       ) : (
         <ul className="flex flex-col gap-4">
@@ -1171,7 +1154,7 @@ function CompareSection({ compare }: { compare: NonNullable<Scorecard["compare"]
   };
   return (
     <Section title={`Compare with the other ${others === 1 ? "home" : `${others} homes`}`}>
-      <p id={`${ids}-about`} className="-mt-1 mb-2 text-meta text-muted">
+      <p id={`${ids}-about`} className="sr-only">
         How many people on this link liked or passed on each, home by home.
       </p>
       <div className="relative -mx-1">

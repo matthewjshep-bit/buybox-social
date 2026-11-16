@@ -119,7 +119,8 @@ export function WelcomeEditor({
   return (
     <section aria-labelledby={`${ids}-title`} data-welcome className={cn(card, "mb-3 p-4")}>
       <div className="flex items-center justify-between gap-2">
-        <h2 id={`${ids}-title`} className="text-sm font-semibold">
+        {/* (The section's own heading, just above, says what this is.) */}
+        <h2 id={`${ids}-title`} className="sr-only">
           What it opens on
         </h2>
         {!editing && (
@@ -137,7 +138,7 @@ export function WelcomeEditor({
         <div className="mt-1">
           <p className="font-display text-xl leading-snug">{headline || standard}</p>
           <p className={cn("mt-1 whitespace-pre-line text-sm", note ? "text-stone-700" : "text-muted")}>
-            {note || "No note yet. Add a word on why you picked these."}
+            {note || "No note yet."}
           </p>
         </div>
       ) : (

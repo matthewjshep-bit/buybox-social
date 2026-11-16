@@ -5,12 +5,10 @@ import Link from "next/link";
 import {
   useEffect,
   useId,
-  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
   useTransition,
-  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import { commentInReel, joinPublic, reactInStream } from "@/app/homes/actions";
@@ -101,7 +99,7 @@ export function ShareMyPage({ title }: { title: string }) {
       className={cn(button({ kind: "secondary" }), "mt-3 [@media(scripting:none)]:hidden")}
     >
       <Share2 aria-hidden size={16} />
-      Share my page
+      Share my profile
     </button>
   );
 }
@@ -114,7 +112,7 @@ export function AddFirstName() {
     <NameGate
       actions={{ join: joinPublic, react: reactInStream, comment: commentInReel }}
       myName={null}
-      prompt="It shows at the top of your page and next to what you like and say, and anyone visiting can see it."
+      prompt="Anyone can see it."
     >
       <AddFirstNameLink />
     </NameGate>
@@ -132,7 +130,7 @@ function AddFirstNameLink() {
         // Once the page says the name and the prompt has gone, so neither takes the keyboard back.
         const land = (tries: number) => {
           const heading = document.getElementById("profile-name");
-          const settled = heading?.textContent !== "Your page" && !document.querySelector("dialog[open]");
+          const settled = heading?.textContent !== "Your profile" && !document.querySelector("dialog[open]");
           if (settled) heading?.focus({ preventScroll: true });
           else if (tries < 120) requestAnimationFrame(() => land(tries + 1));
         };
@@ -203,8 +201,7 @@ export function CardMenu({
   const [running, setRunning] = useState<string | null>(null);
   const rows = useRef(new Map<string, HTMLButtonElement>());
   // Where focus goes if this menu is gone once the page catches up: its own
-  // card if that's still there, else the cards after it, then those before,
-  // then the filters.
+  // card if that's still there, else the cards after it, then those before.
   const next = useRef<string[] | null>(null);
   const id = useId();
 
@@ -217,7 +214,6 @@ export function CardMenu({
         after
           .map((card) => document.querySelector<HTMLElement>(`[data-card-link="${CSS.escape(card)}"]`))
           .find(Boolean) ??
-        document.querySelector<HTMLElement>('nav[aria-label="Show"] [aria-current="page"]') ??
         // (An empty page's way on, before the links in the header above it.)
         document.querySelector<HTMLElement>("main [data-empty-action]") ??
         document.querySelector<HTMLElement>("main a[href]");
@@ -306,7 +302,7 @@ export function CardMenu({
               &ldquo;{comment.body}&rdquo;
             </p>
             <p id={`${id}-warn`} className="text-body leading-snug text-stone-700">
-              It comes off this home and your page for everyone
+              It comes off this home and your profile for everyone
               {comment.replies > 0 ? ", with your replies to it" : ""}. You can&apos;t undo this.
             </p>
             <button
@@ -421,56 +417,6 @@ export function CardMenu({
           </p>
         )}
       </Sheet>
-    </>
-  );
-}
-
-// Long words stop after four lines, with a way to read the rest; without
-// scripts they show in full. `meta` ("2 likes · Replied to Sam") sits beside
-// the way to read more.
-export function MoreText({ children, meta, className }: { children: ReactNode; meta?: ReactNode; className?: string }) {
-  const ref = useRef<HTMLParagraphElement>(null);
-  const [clamped, setClamped] = useState(false);
-  const [open, setOpen] = useState(false);
-
-  useLayoutEffect(() => {
-    const text = ref.current;
-    if (!text) return;
-    const check = () => setClamped(text.scrollHeight > text.clientHeight + 1);
-    check();
-    const observer = new ResizeObserver(check);
-    observer.observe(text);
-    return () => observer.disconnect();
-  }, []);
-
-  const more = clamped || open;
-  return (
-    <>
-      <p
-        ref={ref}
-        className={cn(
-          "whitespace-pre-line break-words",
-          !open && "line-clamp-4 [@media(scripting:none)]:line-clamp-none",
-          className,
-        )}
-      >
-        {children}
-      </p>
-      {(meta || more) && (
-        <div className={cn("flex items-center justify-between gap-3", more ? "mt-0.5" : "mt-1")}>
-          <p className="min-w-0 text-meta text-muted">{meta}</p>
-          {more && (
-            <button
-              type="button"
-              aria-expanded={open}
-              onClick={() => setOpen(!open)}
-              className="relative z-20 -mr-2 min-h-11 min-w-11 shrink-0 scroll-mt-[var(--filters)] rounded-full px-2 text-meta font-semibold text-muted hover:text-ink"
-            >
-              {open ? "less" : "more"}
-            </button>
-          )}
-        </div>
-      )}
     </>
   );
 }

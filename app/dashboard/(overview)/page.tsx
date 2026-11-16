@@ -18,7 +18,7 @@ import { button, card } from "@/lib/ui";
 
 const isWaiting = (c: Client) => c.status.kind === "ask" || c.status.kind === "comment";
 
-function Group({ title, note, tone, clients }: { title: string; note?: string; tone?: "attention"; clients: Client[] }) {
+function Group({ title, tone, clients }: { title: string; tone?: "attention"; clients: Client[] }) {
   if (clients.length === 0) return null;
   const id = `group-${title.toLowerCase().replace(/\W+/g, "-")}`;
   return (
@@ -28,7 +28,6 @@ function Group({ title, note, tone, clients }: { title: string; note?: string; t
         {title}
         <span className="text-xl font-normal text-stone-500">{clients.length}</span>
       </h2>
-      {note && <p className="mt-1 text-lg text-stone-600">{note}</p>}
       <ul className={cn(card, "mt-4 divide-y divide-stone-200", tone === "attention" && "ring-2 ring-amber-300")}>
         {clients.map((client) => (
           <ClientListRow key={client.key} client={client} />
@@ -58,20 +57,20 @@ export default async function ClientsPage() {
 
       {clients.length === 0 && unclaimed.length === 0 ? (
         <EmptyState icon={Send} title="Send your first homes" className="mt-8">
-          Pick a few homes and add who they&apos;re for. Everyone you send homes to shows up here.
+          Your clients show up here.
         </EmptyState>
       ) : (
         <>
           <Group title="Waiting for you" tone="attention" clients={waiting} />
           <Group title="Haven't opened yet" clients={unopened} />
-          <Group title={waiting.length + unopened.length > 0 ? "Other clients" : "Your clients"} clients={others} />
+          <Group title={waiting.length + unopened.length > 0 ? "Everyone else" : "Your clients"} clients={others} />
           {unclaimed.length > 0 && (
             <section id="links" aria-labelledby="unclaimed-title" className="mt-12 scroll-mt-4">
               <h2 id="unclaimed-title" className="text-2xl font-semibold">
                 Links without a name
               </h2>
               <p className="mt-1 text-lg text-stone-600">
-                Nobody has given their name on these yet. Open one to add who it&apos;s for.
+                Open one to add a name.
               </p>
               <ul className={cn(card, "mt-4 divide-y divide-stone-200")}>
                 {unclaimed.map((link) => (

@@ -1,25 +1,22 @@
 // The map-and-list search page.
 import { sql } from "./db";
-import type { Listing } from "./listings/types";
-import { ORDER_BY, toTotals, totalsForListing, type HomeCard, type TotalsRow } from "./public";
+import { escapeLike } from "./format";
+import { ORDER_BY, totalsForListing } from "./public";
 import { HOME_TYPES, type SearchFilters } from "./search-options";
-import { NO_REACTION, type ReactionState } from "./reactions";
 
-export type SearchResult = HomeCard & { mine: ReactionState };
+// A home (`listings l`) found by what's typed: part of its address, city, zip
+// or MLS number, taken as it is.
+export const matchesPlace = (text: string) => {
+  const pattern = `%${escapeLike(text)}%`;
+  return sql`(
+    l.data->>'UnparsedAddress' ilike ${pattern} or l.data->>'City' ilike ${pattern}
+    or l.data->>'PostalCode' ilike ${pattern} or l.data->>'ListingId' ilike ${pattern})`;
+};
 
-const escapeLike = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
-
-export async function searchHomes(
-  filters: SearchFilters,
-  visitorId: string | null,
-): Promise<SearchResult[]> {
+// The homes a search finds, in its order: their keys, for the reel to show.
+export async function searchHomeKeys(filters: SearchFilters): Promise<string[]> {
   const conditions = [sql`l.standard_status = 'Active'`];
-  if (filters.q) {
-    const pattern = `%${escapeLike(filters.q)}%`;
-    conditions.push(sql`(
-      l.data->>'City' ilike ${pattern} or l.data->>'PostalCode' ilike ${pattern}
-      or l.data->>'UnparsedAddress' ilike ${pattern} or l.data->>'ListingId' ilike ${pattern})`);
-  }
+  if (filters.q) conditions.push(matchesPlace(filters.q));
   if (filters.minPrice) conditions.push(sql`(l.data->>'ListPrice')::numeric >= ${filters.minPrice}`);
   if (filters.maxPrice) conditions.push(sql`(l.data->>'ListPrice')::numeric <= ${filters.maxPrice}`);
   if (filters.beds) conditions.push(sql`(l.data->>'BedroomsTotal')::int >= ${filters.beds}`);
@@ -38,23 +35,12 @@ export async function searchHomes(
     "price-desc": sql`(l.data->>'ListPrice')::numeric desc`,
   }[filters.sort];
 
-  const rows = await sql<({ data: Listing } & TotalsRow)[]>`
-    select l.data, t.*
+  const rows = await sql<{ listing_key: string }[]>`
+    select l.listing_key
     from listings l
     cross join lateral (${totalsForListing()}) t
     where ${where}
     order by ${orderBy}, ${ORDER_BY.latest()}, l.listing_key
     limit 200`;
-  if (rows.length === 0) return [];
-
-  const mine = visitorId
-    ? await sql<({ listing_key: string } & ReactionState)[]>`
-        select listing_key, reaction, liked, disliked from public_reactions
-        where visitor_id = ${visitorId} and listing_key in ${sql(rows.map((r) => r.data.ListingKey))}`
-    : [];
-  return rows.map((row) => ({
-    listing: row.data,
-    ...toTotals(row),
-    mine: mine.find((m) => m.listing_key === row.data.ListingKey) ?? NO_REACTION,
-  }));
+  return rows.map((row) => row.listing_key);
 }

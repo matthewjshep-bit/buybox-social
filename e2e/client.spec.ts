@@ -36,8 +36,8 @@ test("an agent's client page: what they want, remove and restore, add homes, pri
   await expect(chat.getByText("Not a fan of farmhouse sinks.")).toBeVisible();
   await joe.keyboard.press("Escape");
   // The last screen says the agent sees it all.
-  await expect(joe.getByText("You've reacted to 2 of 2 homes.")).toBeAttached();
-  await expect(joe.getByText("Gwen Agent sees what you liked and said.")).toBeAttached();
+  await expect(joe.getByText("2 of 2 rated")).toBeAttached();
+  await expect(joe.getByText("Gwen Agent sees your likes and comments.")).toBeAttached();
 
   // Someone else reacts to the same home in public.
   const stranger = await (await browser.newContext()).newPage();

@@ -29,7 +29,7 @@ test("tap anywhere on a photo to like that spot or comment on it, and it shows w
   await door.getByRole("button", { name: /^Comment on the front door/ }).click();
   const sheet = page.getByRole("dialog", { name: "Comments" });
   await expect(sheet.getByRole("heading", { name: "On the front door" })).toBeVisible();
-  await expect(sheet.getByText("Be the first to say something about the front door.")).toBeVisible();
+  await expect(sheet.getByText("No comments on the front door yet.")).toBeVisible();
   const field = sheet.getByLabel("Comment on the front door");
   await expect(field).toBeFocused();
   await field.fill("Love this door color");
@@ -185,8 +185,8 @@ test("from the keyboard, each thing's name shows beside it, inside the photo and
 test("a tap on the words or the buttons isn't a tap on the photo, but just beside them is", async ({ page }) => {
   const CORBEL = "812 N Corbel St";
   const SHINGLED = "Shingled home with a wraparound porch and green lawn";
-  // On a phone the words sit below the photo; the buttons down the right
-  // reach over its bottom corner.
+  // On a phone the words sit below the photo, and the buttons in a row
+  // under them: nothing is on the photo's bottom corner.
   await page.goto("/homes/SAMPLE-1003");
   const home = homeIn(page, CORBEL);
   // Scrolled all the way to it, so where things are stays put.
@@ -194,12 +194,11 @@ test("a tap on the words or the buttons isn't a tap on the photo, but just besid
   const photo = (await home.getByRole("img", { name: SHINGLED }).boundingBox())!;
   const rail = (await home.locator("[data-rail]").boundingBox())!;
   const photoBottom = photo.y + photo.height;
-  expect(rail.y).toBeLessThan(photoBottom - 20);
+  expect(rail.y).toBeGreaterThanOrEqual(photoBottom);
 
-  // Just left of the buttons (beside the heart, well above the line at the
-  // photo's foot) is the photo: a tap there opens a card about that spot.
-  const [x, y] = [rail.x - 18, rail.y + 30];
-  expect(y).toBeLessThan(photoBottom - 80);
+  // The photo's bottom right corner is the photo: a tap there opens a card
+  // about that spot.
+  const [x, y] = [photo.x + photo.width - 40, photoBottom - 40];
   await page.mouse.click(x, y);
   const card = home.getByRole("group").and(home.locator("[data-spot-card]"));
   await expect(card).toBeVisible();
@@ -231,11 +230,13 @@ test("a tap on the words or the buttons isn't a tap on the photo, but just besid
   await expect(home.locator("[data-spot-card]")).toHaveCount(0);
   await page.keyboard.press("Escape");
 
-  // The whole description is in the Porchcard, at "About this home".
-  await home.getByRole("button", { name: "more", exact: true }).click();
+  // On a tall phone the whole description fits under the photo, so there's
+  // no "more"; it's in the Porchcard too, at "About this home".
+  await expect(home.getByRole("button", { name: "more", exact: true })).toHaveCount(0);
+  await home.getByRole("button", { name: "Porchcard", exact: true }).click();
   const scorecard = page.getByRole("dialog", { name: "Porchcard" });
   await expect(scorecard).toBeVisible();
-  await expect(scorecard.getByRole("heading", { name: "About this home" })).toBeInViewport();
+  await expect(scorecard.getByRole("heading", { name: "About this home" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(scorecard).toBeHidden();
   // Still nothing drawn on the photo where Sky liked it.

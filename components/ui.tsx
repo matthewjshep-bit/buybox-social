@@ -37,7 +37,7 @@ export function Card({
   );
 }
 
-export type AvatarSize = 6 | 7 | 8 | 9 | 10 | 18;
+type AvatarSize = 6 | 7 | 8 | 9 | 10 | 18;
 
 const FACE: Record<AvatarSize, { box: string; icon: number }> = {
   6: { box: "size-6 text-tiny", icon: 12 },
@@ -137,13 +137,11 @@ export function Avatar({
 // `className` sets its size (and where it sits); `sizes` the photo's width.
 export function HomeThumb({
   src,
-  alt = "",
   sizes,
   className,
   children,
 }: {
   src?: string | null;
-  alt?: string;
   sizes: string;
   className: string;
   // Over the photo: a tick when it's picked.
@@ -151,7 +149,7 @@ export function HomeThumb({
 }) {
   return (
     <span className={cn("relative block shrink-0 overflow-hidden rounded-xl bg-stone-200", className)}>
-      {src && <Image src={src} alt={alt} fill sizes={sizes} className="object-cover" />}
+      {src && <Image src={src} alt="" fill sizes={sizes} className="object-cover" />}
       {children}
     </span>
   );
