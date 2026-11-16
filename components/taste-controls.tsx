@@ -19,7 +19,8 @@ function steady(now: TasteChip[], then: TasteChip[] | undefined) {
   return [...then.map((chip) => latest.get(keyOf(chip)) ?? chip), ...now.filter((chip) => !kept.has(keyOf(chip)))];
 }
 
-// "Not quite right?" on your own taste: a switch for each thing it says you
+// On your own taste, a small button beside its title ("What others see"): a
+// switch for each thing it says you
 // love or pass on, and one for whether your page shows what you pass on.
 // Switching a thing off takes it out of your taste and its description for
 // everyone else; you still see it, marked as only yours.
@@ -73,19 +74,17 @@ export function TasteControls({ loves, passes, hidePasses }: { loves: TasteChip[
 
   return (
     <>
-      <div className="-mb-2 mt-1 flex justify-end">
-        <button
-          type="button"
-          onClick={() => {
-            setOpened({ loves, passes });
-            setOpen(true);
-          }}
-          className="-mr-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 text-body font-semibold text-stone-700 underline decoration-stone-400 underline-offset-2 hover:text-ink hover:decoration-ink"
-        >
-          <SlidersHorizontal aria-hidden size={14} className="shrink-0" />
-          Not quite right?
-        </button>
-      </div>
+      <button
+        type="button"
+        aria-label="What others see"
+        onClick={() => {
+          setOpened({ loves, passes });
+          setOpen(true);
+        }}
+        className="-my-3 -mr-2 grid size-11 shrink-0 place-items-center rounded-full text-stone-600 hover:bg-black/5 hover:text-ink"
+      >
+        <SlidersHorizontal aria-hidden size={16} />
+      </button>
       <Sheet open={open} onClose={close} label="What others see" title="What others see">
         <p className="text-body leading-snug text-stone-700">
           Turn off anything you&apos;d rather not show.

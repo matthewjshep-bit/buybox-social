@@ -9,6 +9,9 @@ const nextConfig: NextConfig = {
     // styles (the dark words block, the desktop layout) were missing from the
     // live CSS. Every build starts clean instead: slower, but always right.
     turbopackFileSystemCacheForBuild: false,
+    // A listing's photo, or a banner image with the image it was made from,
+    // is sent with the action that saves it: more than the usual megabyte.
+    serverActions: { bodySizeLimit: "3mb" },
   },
   // Photos of homes brought in from Repliers stay on its CDN.
   images: {

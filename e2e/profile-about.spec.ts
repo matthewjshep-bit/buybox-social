@@ -29,7 +29,7 @@ test("an agent's page leads with what's between them and their client, and says 
   await form.getByRole("button", { name: "Save" }).click();
   // Saved, back to her page, which says it.
   await agent.waitForURL(new RegExp(`${taraPage}$`));
-  const header = agent.getByRole("region", { name: "Tara (you)" });
+  const header = agent.getByRole("region", { name: "Tara About (you)" });
   await expect(header).toContainText("Eastside homes, first-time buyers.");
   await expect(header.getByRole("link", { name: "Our office" })).toHaveAttribute("href", "https://tara-homes.example.com/");
 
@@ -72,7 +72,7 @@ test("an agent's page leads with what's between them and their client, and says 
   // Someone with nothing between them sees no such thing.
   const stranger = await signUpBuyer(browser, "stan.about@example.com", "Stan About");
   await stranger.goto(taraPage);
-  await expect(stranger.getByRole("heading", { level: 1 })).toHaveText("Tara");
+  await expect(stranger.getByRole("heading", { level: 1 })).toHaveText("Tara About");
   await expect(stranger.getByRole("region", { name: /^Between you and / })).toHaveCount(0);
 });
 

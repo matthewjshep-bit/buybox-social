@@ -1,4 +1,4 @@
-import { Palette, Plus, Send, UserRound } from "lucide-react";
+import { House, Palette, Plus, Send, UserRound } from "lucide-react";
 import Link from "next/link";
 import { ClientFeed } from "@/components/home/client-feed";
 import { ClientsRail } from "@/components/home/clients-rail";
@@ -7,6 +7,7 @@ import { Avatar } from "@/components/ui";
 import type { ClientCard } from "@/lib/client-feed";
 import type { ClientBook } from "@/lib/clients";
 import type { FollowCounts } from "@/lib/follows";
+import type { BannerChoice } from "@/lib/banner";
 import { cn } from "@/lib/format";
 import { button, card } from "@/lib/ui";
 
@@ -59,7 +60,7 @@ export function AgentHome({
   cards,
   follows,
 }: {
-  me: { id: string; name: string; photo: string | null; brokerage: string; brandColor: string };
+  me: { id: string; name: string; photo: string | null; brokerage: string; brandColor: string; banner: BannerChoice };
   // Their own public page.
   profileHref: string;
   book: ClientBook;
@@ -79,6 +80,7 @@ export function AgentHome({
           seed={me.id}
           agent
           bandColor={me.brandColor}
+          banner={me.banner}
           line={me.brokerage.trim() || "Real estate agent"}
           href={profileHref}
           stats={[
@@ -89,6 +91,7 @@ export function AgentHome({
           links={[
             { href: "/dashboard/new", label: "Send homes", icon: <Plus size={18} /> },
             { href: profileHref, label: "Your profile", icon: <UserRound size={18} /> },
+            { href: "/dashboard/listings", label: "Listings", icon: <House size={18} /> },
             { href: "/dashboard/profile", label: "Your brand", icon: <Palette size={18} /> },
           ]}
         />

@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { bannerUrl } from "./banner";
 import { sql } from "./db";
 import { namesList } from "./format";
 import { photoUrl } from "./person-photo";
@@ -525,10 +526,13 @@ export const getProfilePerson = cache(async (visitorId: string) => {
       brand_color: string | null;
       mls_agent_id: string | null;
       full_name: string | null;
+      banner: string | null;
+      banner_v: string | null;
+      banner_frame: unknown;
     }[]
   >`
     select v.id, v.created_at, v.hide_passes, v.taste_hidden, a.id as account_id, a.bio, a.profile_links, a.brokerage,
-      a.brand_color, a.mls_agent_id, a.full_name,
+      a.brand_color, a.mls_agent_id, a.full_name, a.banner, left(md5(a.banner_data_url), 10) as banner_v, a.banner_frame,
       -- An account with no name yet has none here either, even where an
       -- older visitor row stood in with "Someone".
       case when a.id is not null and btrim(a.full_name) = '' then '' else v.first_name end as first_name,
@@ -555,6 +559,10 @@ export const getProfilePerson = cache(async (visitorId: string) => {
     brokerage: visitor.is_agent ? (visitor.brokerage?.trim() ?? "") : "",
     // An agent's own colour, for the band at the top of their page (only ever a plain hex colour).
     brandColor: visitor.is_agent && /^#[0-9a-f]{6}$/i.test(visitor.brand_color ?? "") ? visitor.brand_color : null,
+    // The band at the top of their page, as they chose it.
+    banner: { style: visitor.banner ?? "", image: bannerUrl(visitor.id, visitor.banner_v) },
+    // How their own image is framed in it (lib/resize-photo.ts), as stored.
+    bannerFrame: visitor.banner_frame,
     // An agent's MLS ID: which listings are theirs (lib/agent-listings.ts).
     mlsAgentId: visitor.is_agent ? visitor.mls_agent_id?.trim() || null : null,
     // An agent's whole name: the one their listings are listed under.

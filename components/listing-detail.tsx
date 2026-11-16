@@ -7,6 +7,7 @@ import {
   likeCommentInReel,
   likePhotoInStream,
   reactInStream,
+  saveHome,
 } from "@/app/homes/actions";
 import { FeedEnd } from "@/components/feed-end";
 import { QuickSendReel } from "@/components/quick-send";
@@ -29,6 +30,7 @@ export const publicReelActions = {
   comment: commentInReel,
   likeComment: likeCommentInReel,
   likePhoto: likePhotoInStream,
+  save: saveHome,
 };
 
 // `?photo=` in a home's address, as a photo to open on (from 0): links from

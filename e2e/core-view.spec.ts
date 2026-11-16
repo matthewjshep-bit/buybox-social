@@ -101,17 +101,19 @@ test("on a phone, the whole photo sits at the top, nothing on it, the activity l
   }
 });
 
-test("the buttons in a row: like, comments, Porchcard, share, more, each with its label, just over the comment bar", async ({
+test("the buttons in a row: like, comments, save, share, more, each with its label, just over the comment bar", async ({
   page,
 }) => {
   await page.goto("/homes/SAMPLE-1013");
   const home = homeIn(page, "5902 Lakeview Terrace SE");
   await settled(home);
   const rail = home.locator("[data-rail]");
-  const names = [/^Like 5902 Lakeview Terrace SE/, /^Comments/, "Porchcard", "Share", "More options"];
+  const names = [/^Like 5902 Lakeview Terrace SE/, /^Comments/, "Save 5902 Lakeview Terrace SE", "Share", "More options"];
   await expect(rail.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(rail.getByRole("button").nth(i)).toHaveAccessibleName(name);
-  await expect(rail).toContainText("Porchcard");
+  // (The Porchcard is an agent's, in a client's homes: not here.)
+  await expect(rail).not.toContainText("Porchcard");
+  await expect(rail).toContainText("Save");
   await expect(rail).toContainText("Share");
   await expect(rail).toContainText("More");
   const bar = await box(home.getByRole("button", { name: "Add a comment…" }));
@@ -231,7 +233,7 @@ test("a phone on its side keeps the words over the photo, the description to one
   );
 });
 
-test("the description: two lines, then more right after the last word, which opens the rest in the Porchcard", async ({
+test("the description: two lines, then more right after the last word, which opens the rest right there", async ({
   browser,
 }) => {
   const page = await phone(browser, MIDDLING);
@@ -239,7 +241,8 @@ test("the description: two lines, then more right after the last word, which ope
   const home = homeIn(page, "4127 Larkmoor Ave NE");
   await settled(home);
   const more = home.getByRole("button", { name: "more", exact: true });
-  await expect(more).toHaveAttribute("aria-haspopup", "dialog");
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await expect(more).not.toHaveAttribute("aria-haspopup", "dialog");
   // The words come first, then "more", right after them on the second line.
   const text = home.getByText(/^A warm Ravenna-area Craftsman/);
   const caption = await box(text.locator("xpath=.."));
@@ -258,17 +261,27 @@ test("the description: two lines, then more right after the last word, which ope
     { x: at.x + at.width / 2, y: at.y + at.height + 9 },
   );
   expect(hit).toBe("more");
-  // It opens the Porchcard at "About this home", with all of it there; put
-  // away, the keyboard is back on "more".
+  // It opens the rest where it is, all of it (no Porchcard to open it in:
+  // that's an agent's), over the photo and within the screen; "less" is the
+  // same button, so the keyboard stays on it, and puts it away again.
   await more.focus();
   await page.keyboard.press("Enter");
-  const card = page.getByRole("dialog", { name: "Porchcard" });
-  await expect(card).toBeVisible();
-  await expect(card.getByRole("heading", { name: "About this home" })).toBeInViewport();
-  await expect(card.getByText(/^A warm Ravenna-area Craftsman.+a short walk away\.$/)).toBeInViewport({ ratio: 0.5 });
-  await page.keyboard.press("Escape");
-  await expect(card).toBeHidden();
+  const less = home.getByRole("button", { name: "less", exact: true });
+  await expect(less).toHaveAttribute("aria-expanded", "true");
+  await expect(less).toBeFocused();
+  await expect(page.getByRole("dialog", { name: "Porchcard" })).toHaveCount(0);
+  await expect(home.getByText(/^A warm Ravenna-area Craftsman.+a short walk away\.$/)).toBeInViewport({ ratio: 0.5 });
+  const opened = await box(text.locator("xpath=../.."));
+  expect(opened.height).toBeGreaterThan(caption.height);
+  expect(opened.y).toBeGreaterThanOrEqual(0);
+  expect(opened.y + opened.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  // The price and the buttons are still there, under it.
+  await expect(home.getByRole("button", { name: /^\$[\d,]+/ })).toBeInViewport();
+  await expect(home.getByRole("button", { name: "More options" })).toBeInViewport();
+  await page.keyboard.press("Enter");
+  await expect(more).toHaveAttribute("aria-expanded", "false");
   await expect(more).toBeFocused();
+  expect((await box(text.locator("xpath=.."))).height).toBeLessThanOrEqual(45);
   await page.context().close();
 });
 
@@ -424,11 +437,11 @@ test("on a desktop, the photo has a stage of its own with nothing on it but the 
   expect(Math.abs(panel.x + panel.width - 1416)).toBeLessThanOrEqual(1);
   expect(panel.x - (photo.x + photo.width)).toBeGreaterThanOrEqual(15);
   // No rail on the photo: each thing to do is in the panel, once, in a row
-  // just over the comment box (like, comments, Porchcard, share, more).
+  // just over the comment box (like, comments, save, share, more).
   await expect(home.locator("[data-rail]")).toBeHidden();
   const panelWords = home.locator("[data-words]");
   const actions = panelWords.locator("[data-actions]");
-  const names = [/^Like 1880 Tamsen Ridge Pl SE/, /^Comments/, "Porchcard", "Share", "More options"];
+  const names = [/^Like 1880 Tamsen Ridge Pl SE/, /^Comments/, "Save 1880 Tamsen Ridge Pl SE", "Share", "More options"];
   await expect(actions.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(actions.getByRole("button").nth(i)).toHaveAccessibleName(name);
   for (const name of names) await expect(home.getByRole("button", { name })).toHaveCount(1);
@@ -571,10 +584,11 @@ test("on a desktop, comments sit beside the photo, which can still be tapped; Es
   await expect.poll(async () => Math.round((await box(sheet)).x)).toBe(Math.round(panel.x));
   expect(await sheet.evaluate((el) => el.matches(":modal"))).toBe(false);
   // What's under it is out of reach, the panel's own buttons with it. The
-  // keyboard starts in the comments: in their header, the tab that's
-  // showing, then Close.
+  // keyboard starts in the comments: in their header, on their title (no
+  // tabs: the Porchcard beside them is an agent's), then Close.
   await expect(words).toHaveAttribute("inert");
-  await expect(sheet.getByRole("tab", { name: /^Comments/ })).toBeFocused();
+  await expect(sheet.getByRole("tablist")).toHaveCount(0);
+  await expect(sheet.getByRole("heading", { name: "Comments" })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(sheet.getByRole("button", { name: "Close" })).toBeFocused();
   // Escape closes it from anywhere: from out on the photo's own arrow, the

@@ -339,7 +339,7 @@ test("privacy: hidden passes stay out, only the owner sees what they didn't like
   await thread.getByRole("button", { name: "Post", exact: true }).click();
   await expect(thread.getByText(OTTO_SAID)).toBeVisible();
   const ottoPage = await pageOf(otto);
-  await otto.getByRole("button", { name: "Not quite right?" }).click();
+  await otto.getByRole("button", { name: "What others see" }).click();
   const controls = otto.getByRole("dialog", { name: "What others see" });
   const passes = controls.getByRole("switch", { name: "Show my passes" });
   await Promise.all([saved(otto), passes.click()]);

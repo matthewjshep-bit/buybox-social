@@ -52,6 +52,8 @@ export type FeedPost = {
   timeline: TimelineItem[];
   photoLikes: PhotoLikes;
   mine: ReactionState;
+  // Saved by the viewer, to come back to (theirs alone).
+  saved?: boolean;
   buzz: Buzz;
   // Why this home fits the viewer's taste, if it does.
   reasons: string[];
@@ -191,7 +193,8 @@ export async function getReel(
         order by at desc
         limit 1
       ) h on true
-      where (l.standard_status = 'Active' and ${only === undefined})
+      -- (A listing someone added themselves is on their profile and their links, not in what everyone browses.)
+      where (l.standard_status = 'Active' and l.owner_account_id is null and ${only === undefined})
         or l.listing_key in ${sql(wanted.length ? wanted : [""])}
       order by t.this_week desc, l.data->>'OnMarketDate' desc nulls last, l.listing_key
       limit 300`,
@@ -249,6 +252,15 @@ export async function getReel(
   if (keys.length === 0) return [];
 
   const listings = page.map(({ row }) => sortedMedia(row.data));
+  // Which of these the viewer has saved.
+  const savedKeys = new Set(
+    visitorId
+      ? (
+          await sql<{ listing_key: string }[]>`
+            select listing_key from saved_homes where visitor_id = ${visitorId} and listing_key in ${sql(keys)}`
+        ).map((row) => row.listing_key)
+      : [],
+  );
   const [likers, likeCounts, timelines, photoLikes, events] = await Promise.all([
     sql<{ listing_key: string; first_name: string }[]>`
       select listing_key, first_name from (
@@ -404,6 +416,7 @@ export async function getReel(
       timeline: timelines.get(key) ?? [],
       photoLikes: photoLikes.get(key) ?? NO_PHOTO_LIKES,
       mine: mineByKey.get(key) ?? NO_REACTION,
+      saved: savedKeys.has(key),
       buzz: totals.buzz,
       reasons: match.reasons,
       events: toEvents(

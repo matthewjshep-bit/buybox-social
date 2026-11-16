@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { EditAbout } from "@/app/people/[id]/about";
 import { PhotoControls, Toast } from "@/app/people/[id]/client";
 import { Avatar } from "@/components/ui";
+import { BannerPicker } from "./banner-picker";
 import { getCurrentUser } from "@/lib/auth";
 import { cn } from "@/lib/format";
 import { getProfilePerson } from "@/lib/profile";
@@ -12,7 +13,8 @@ import { card } from "@/lib/ui";
 
 export const metadata = { title: "Edit profile · Porchcard" };
 
-// Your profile's settings, away from the page itself: your photo, a few words
+// Your profile's settings, away from the page itself: your photo, the band
+// across the top (a scene, nothing, or your own image), a few words
 // about yourself, and (an agent) your links. Only ever your own.
 export default async function EditProfilePage() {
   const account = await getCurrentUser();
@@ -40,14 +42,19 @@ export default async function EditProfilePage() {
             <PhotoControls hasPhoto={Boolean(person.photo)} />
           </div>
         </div>
-        {person.isAgent && (
-          <Link
-            href="/dashboard/profile"
-            className="mt-2 inline-flex min-h-11 items-center font-semibold text-brand underline-offset-2 hover:underline"
-          >
-            Change banner color
-          </Link>
-        )}
+      </section>
+
+      <section aria-labelledby="banner-title" className={cn(card, "mt-4 p-5")}>
+        <h2 id="banner-title" className="text-lg font-semibold">
+          Banner
+        </h2>
+        <BannerPicker
+          seed={person.id}
+          brand={person.brandColor}
+          choice={person.banner}
+          frame={person.bannerFrame}
+          agent={person.isAgent}
+        />
       </section>
 
       <section aria-labelledby="about-title" className={cn(card, "mt-4 p-5")}>

@@ -71,11 +71,30 @@ const brandPalette = (brand: string): Palette => ({
   tree: mix(brand, 0.05),
 });
 
-export function BannerArt({ seed, brand }: { seed: string; brand?: string | null }) {
+// The scenes anyone can choose, by name: the eight in warm colours, and (an
+// agent) the four in their own colour.
+export const WARM_SCENES = SCENES.map((_, i) => `scene${i}`);
+export const BRAND_SCENES: string[] = MOTIFS;
+
+// `pick`: the scene they chose ("scene3", or "porch" in an agent's colour);
+// without one, the scene picked for them from `seed`.
+export function BannerArt({ seed, brand, pick }: { seed: string; brand?: string | null; pick?: string | null }) {
   const n = hashOf(seed);
   const own = brand && /^#[0-9a-f]{6}$/i.test(brand) ? brand : null;
-  const { motif, palette } = own ? { motif: MOTIFS[n % MOTIFS.length], palette: brandPalette(own) } : SCENES[n % SCENES.length];
-  const id = `sky-${n % 9973}`;
+  const chosenScene = pick?.startsWith("scene") ? SCENES[Number(pick.slice(5))] : undefined;
+  const chosenMotif = MOTIFS.find((motif) => motif === pick);
+  const { motif, palette } =
+    chosenScene ??
+    (chosenMotif
+      ? // (Someone with no colour of their own gets the first warm scene of that kind.)
+        own
+        ? { motif: chosenMotif, palette: brandPalette(own) }
+        : SCENES.find((scene) => scene.motif === chosenMotif)!
+      : own
+        ? { motif: MOTIFS[n % MOTIFS.length], palette: brandPalette(own) }
+        : SCENES[n % SCENES.length]);
+  // (Its own id: several scenes can be on one page, in the picker.)
+  const id = `sky-${n % 9973}-${pick ?? "own"}`;
   const scene: Record<Motif, (p: Palette) => ReactNode> = { hills: Hills, porch: Porch, street: Street, fence: Fence };
   return (
     <svg aria-hidden viewBox="0 0 600 160" preserveAspectRatio="xMidYMid slice" className="block size-full">

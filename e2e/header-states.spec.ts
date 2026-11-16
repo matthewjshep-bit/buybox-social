@@ -168,12 +168,17 @@ test("an agent's dashboard is in their colour, and the header is just Search, Cl
   await expect(header.getByRole("button", { name: "Sign out" })).toBeHidden();
   expect(await agent.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
 
-  // Clients is marked on their brand page too, and isn't said twice: nothing
-  // under their initial goes there.
+  // Clients is under their initial too, by name (in the header it's only an
+  // icon on a phone), marked as where they are, on their brand page too. No
+  // Dashboard there.
   await header.getByRole("button", { name: "Account menu" }).click();
   await expect(header.getByRole("link", { name: "Your profile" })).toBeVisible();
   await expect(header.getByRole("link", { name: "Dashboard" })).toHaveCount(0);
-  await expect(header.getByRole("link", { name: "Clients", exact: true })).toHaveCount(1);
+  const named = agent.locator("#account-menu").getByRole("link", { name: "Clients", exact: true });
+  await expect(named).toBeVisible();
+  await expect(named).toHaveAttribute("href", "/dashboard");
+  await expect(named).toHaveAttribute("aria-current", "page");
+  await expect(header.getByRole("link", { name: "Clients", exact: true })).toHaveCount(2);
   await agent.keyboard.press("Escape");
   await agent.goto("/dashboard/profile");
   await expect(clients).toHaveAttribute("aria-current", "true");

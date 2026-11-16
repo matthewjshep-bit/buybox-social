@@ -2,6 +2,7 @@ import { after, connection } from "next/server";
 import { AgentHome } from "@/components/home/agent-home";
 import { BuyerHome } from "@/components/home/buyer-home";
 import { MarketingHome } from "@/components/marketing-home";
+import { getBanner } from "@/lib/banner";
 import { devLoginEnabled, firstName, getCurrentUser, getViewAs } from "@/lib/auth";
 import { getClientCards } from "@/lib/client-feed";
 import { getClientBook } from "@/lib/clients";
@@ -60,6 +61,7 @@ export default async function Home({
     photo: visitorId ? photoUrl(visitorId, photoVersion(user.photo_data_url)) : user.photo_data_url,
   };
   const noFollows = { followers: 0, following: 0 };
+  const banner = await getBanner(visitorId);
 
   if (user.role === "agent") {
     // (No homes picked for an agent, and no one they follow: their home is
@@ -71,7 +73,7 @@ export default async function Home({
     ]);
     return (
       <AgentHome
-        me={{ ...me, brokerage: user.brokerage, brandColor: user.brand_color }}
+        me={{ ...me, brokerage: user.brokerage, brandColor: user.brand_color, banner }}
         profileHref={profileHref}
         book={book}
         cards={cards}
@@ -93,7 +95,7 @@ export default async function Home({
   return (
     <BuyerHome
       firstName={firstName(user)}
-      me={me}
+      me={{ ...me, banner }}
       follows={follows}
       profileHref={profileHref}
       links={links}

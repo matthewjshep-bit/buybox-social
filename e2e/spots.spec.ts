@@ -230,15 +230,13 @@ test("a tap on the words or the buttons isn't a tap on the photo, but just besid
   await expect(home.locator("[data-spot-card]")).toHaveCount(0);
   await page.keyboard.press("Escape");
 
-  // On a tall phone the whole description fits under the photo, so there's
-  // no "more"; it's in the Porchcard too, at "About this home".
+  // On a tall phone the whole description fits under the photo, to its last
+  // word, so there's no "more" (and no Porchcard to read it in: that's an
+  // agent's, in a client's homes).
   await expect(home.getByRole("button", { name: "more", exact: true })).toHaveCount(0);
-  await home.getByRole("button", { name: "Porchcard", exact: true }).click();
-  const scorecard = page.getByRole("dialog", { name: "Porchcard" });
-  await expect(scorecard).toBeVisible();
-  await expect(scorecard.getByRole("heading", { name: "About this home" })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(scorecard).toBeHidden();
+  await expect(home.locator('[data-fact="Description"]')).toHaveText(/\.$/);
+  await expect(home.locator('[data-fact="Description"]')).toBeInViewport();
+  await expect(home.getByRole("button", { name: "Porchcard", exact: true })).toHaveCount(0);
   // Still nothing drawn on the photo where Sky liked it.
   await expect(home.locator("[data-pin], [data-pins-toggle]")).toHaveCount(0);
 });

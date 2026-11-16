@@ -1,17 +1,19 @@
 "use client";
 
-import { Check, Home, Search, X } from "lucide-react";
+import { Bookmark, Check, Home, Search, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
-import { findHomesToPost, postAboutHome, type HomeToPost } from "@/app/homes/actions";
+import { findHomesToPost, postAboutHome, saveHome, type HomeToPost } from "@/app/homes/actions";
 import { Avatar, HomeThumb } from "@/components/ui";
 import { cn, formatPrice } from "@/lib/format";
 import { button, card } from "@/lib/ui";
 
-// At the top of your own page, as Facebook has "What's on your mind?": a
-// post about a home. Find it by its address or MLS number, say what you think
-// ("Drove by this one today. That porch!"), and post. It goes on your page,
-// in your followers' feeds and in the home's own conversation. It opens in
-// place, so nothing else on the page moves away.
+// At the top of your own page, as Facebook has "What's on your mind?": post
+// about a home, or just save it. Find it by its address or MLS number (one
+// that isn't here yet is brought in). Say what you think ("Drove by this one
+// today. That porch!") and post: it goes on your page, in your followers'
+// feeds and in the home's own conversation. Or save it, with nothing said:
+// it goes under Saved, for you alone. It opens in place, so nothing else on
+// the page moves away.
 export function PostComposer({ me }: { me: { name: string; photo: string | null; agent: boolean } }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -20,7 +22,8 @@ export function PostComposer({ me }: { me: { name: string; photo: string | null;
   const [home, setHome] = useState<HomeToPost | null>(null);
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [posted, setPosted] = useState(false);
+  // What was just done, said under the box: "Posted", "Saved".
+  const [done, setDone] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const searchBox = useRef<HTMLInputElement>(null);
   const textBox = useRef<HTMLTextAreaElement>(null);
@@ -45,7 +48,7 @@ export function PostComposer({ me }: { me: { name: string; photo: string | null;
 
   const start = () => {
     setOpen(true);
-    setPosted(false);
+    setDone(null);
     requestAnimationFrame(() => searchBox.current?.focus());
   };
   const reset = () => {
@@ -70,7 +73,19 @@ export function PostComposer({ me }: { me: { name: string; photo: string | null;
       if (!result.ok) setError(result.error);
       else {
         reset();
-        setPosted(true);
+        setDone("Posted");
+      }
+    });
+  };
+  const save = () => {
+    if (!home || pending) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await saveHome(home.key, true);
+      if (!result.ok) setError(result.error);
+      else {
+        reset();
+        setDone("Saved");
       }
     });
   };
@@ -86,12 +101,12 @@ export function PostComposer({ me }: { me: { name: string; photo: string | null;
             className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full bg-stone-100 px-4 text-left text-body text-stone-600 hover:bg-stone-200"
           >
             <Home aria-hidden size={18} className="shrink-0 text-stone-500" />
-            <span className="truncate">Post about a home…</span>
+            <span className="truncate">Post or save a home…</span>
           </button>
         </div>
-        {posted && (
+        {done && (
           <p role="status" className="mt-2 flex items-center gap-1 px-1 text-meta font-semibold text-emerald-700">
-            <Check aria-hidden size={14} /> Posted
+            <Check aria-hidden size={14} /> {done}
           </p>
         )}
       </div>
@@ -116,7 +131,7 @@ export function PostComposer({ me }: { me: { name: string; photo: string | null;
       <div className="flex items-center gap-3">
         <Avatar name={me.name} tone={me.agent ? "agent" : "person"} photo={me.photo} size={10} />
         <h2 id={titleId} className="flex-1 text-lg font-semibold">
-          Post about a home
+          Post or save a home
         </h2>
         <button
           type="button"
@@ -207,13 +222,15 @@ export function PostComposer({ me }: { me: { name: string; photo: string | null;
               {error}
             </p>
           )}
-          <button
-            type="submit"
-            disabled={pending || !body.trim()}
-            className={cn(button({ kind: "primary", size: "lg" }), "self-end")}
-          >
-            {pending ? "Posting" : "Post"}
-          </button>
+          {/* Save keeps it for you alone, with nothing said; Post shares what you wrote. */}
+          <div className="flex items-center justify-end gap-2">
+            <button type="button" disabled={pending} onClick={save} className={button({ kind: "secondary", size: "lg" })}>
+              <Bookmark aria-hidden size={18} /> Save
+            </button>
+            <button type="submit" disabled={pending || !body.trim()} className={button({ kind: "primary", size: "lg" })}>
+              {pending ? "Posting" : "Post"}
+            </button>
+          </div>
         </>
       )}
     </form>

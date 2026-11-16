@@ -49,6 +49,8 @@ export type ThreadActions = {
   likeComment?: (commentId: string, liked: boolean) => Promise<ActionResult>;
   // Liking, or not, something in a photo ("the kitchen") or a fact ("the price").
   likePhoto?: (listingKey: string, mediaKey: string, tag: string, reaction: SpotReaction) => Promise<ActionResult>;
+  // Public pages only: saving a home to come back to (or taking it off the list).
+  save?: (listingKey: string, saved: boolean) => Promise<ActionResult>;
 };
 
 // A spot in one of a home's photos: a named thing ("Front door") or a place ("@42,61").

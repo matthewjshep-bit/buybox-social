@@ -136,12 +136,33 @@ export async function openComments(page: Page, home: Locator) {
   return sheet;
 }
 
-// A home's Porchcard: what everyone thinks of it, from the button on its rail.
+// An agent going through a link's homes, full screen, on one of them (as from
+// the home's address on the link's page of the dashboard): the one place a
+// home has its Porchcard. Everyone else has Save there.
+export async function linkHomes(agent: Page, dashboardUrl: string, listingKey: string, address: string) {
+  await agent.goto(`/reel?from=share:${dashboardUrl.split("/").pop()}&home=${listingKey}`);
+  const home = homeIn(agent, address);
+  await expect(home).toBeInViewport({ ratio: 0.9 });
+  return home;
+}
+
+// A home's Porchcard: what everyone thinks of it, from the button on its rail
+// (an agent's alone, in a link's homes or a client's: linkHomes).
 export async function openScorecard(page: Page, home: Locator) {
   await home.getByRole("button", { name: "Porchcard", exact: true }).click();
   const sheet = page.getByRole("dialog", { name: "Porchcard" });
   await expect(sheet).toBeVisible();
   return sheet;
+}
+
+// The Porchcard on the agent's own page for a link (the dashboard): what
+// each person on the link thinks of a home, by name.
+export async function linkPorchcard(agent: Page, dashboardUrl: string, address: string) {
+  await agent.goto(dashboardUrl);
+  await agent.getByRole("region", { name: address }).getByRole("button", { name: `Porchcard for ${address}` }).click();
+  const card = agent.getByRole("dialog", { name: "Porchcard" });
+  await expect(card).toBeVisible();
+  return card;
 }
 
 export async function openMore(page: Page, home: Locator) {

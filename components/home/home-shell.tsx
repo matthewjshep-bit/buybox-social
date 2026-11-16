@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { BannerArt } from "@/components/banner-art";
+import { Banner } from "@/components/banner";
 import { Avatar } from "@/components/ui";
+import { NO_BANNER, type BannerChoice } from "@/lib/banner";
 import { cn } from "@/lib/format";
 import { card } from "@/lib/ui";
 
@@ -25,6 +26,7 @@ export function ProfileRail({
   links,
   bandColor = null,
   seed,
+  banner = NO_BANNER,
 }: {
   name: string;
   photo: string | null;
@@ -38,14 +40,19 @@ export function ProfileRail({
   // page's id), as on their page; an agent's in their colour (`bandColor`).
   bandColor?: string | null;
   seed: string;
+  // As they chose it for their profile.
+  banner?: BannerChoice;
 }) {
+  const ownImage = banner.style === "image" && Boolean(banner.image);
   return (
     <div className="flex flex-col gap-3">
       <section aria-label="You" className={cn(card, "overflow-hidden")}>
-        <div aria-hidden className="h-14 overflow-hidden">
-          <BannerArt seed={seed} brand={agent ? bandColor : null} />
+        {/* Their own image (a logo, often) shows whole, with their face under
+            it; over a drawn scene or a plain band, their face sits on its edge. */}
+        <div aria-hidden className={cn("overflow-hidden", ownImage ? "aspect-[10/3]" : "h-14")}>
+          <Banner seed={seed} brand={agent ? bandColor : null} choice={banner} />
         </div>
-        <div className="-mt-9 flex flex-col items-center px-4 pb-4 text-center">
+        <div className={cn("flex flex-col items-center px-4 pb-4 text-center", ownImage ? "mt-3" : "-mt-9")}>
           <Avatar name={name} tone={agent ? "agent" : "person"} photo={photo} size={18} className="ring-4 ring-white" />
           <Link href={href} className="mt-2 text-lg font-semibold leading-tight underline-offset-2 hover:underline">
             {name}

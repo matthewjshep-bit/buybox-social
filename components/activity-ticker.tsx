@@ -361,8 +361,12 @@ export function ActivityTicker({
   line,
   myName = null,
   yours = null,
+  about = "comments",
 }: {
   ticker: Ticker;
+  // What a tap on a line about the home as a whole opens: its comments, or
+  // (an agent's) its Porchcard.
+  about?: "comments" | "porchcard";
   listing: Listing;
   photoKey: string | undefined;
   // Your name, for your own face; and where your profile is (null: none here,
@@ -429,12 +433,12 @@ export function ActivityTicker({
       "spot-comments": "See the comments about it",
       comment: "See it in the comments",
       fact: `Show ${event.spot ? `the ${event.spot.toLowerCase()}` : "it"}`,
-      home: "See the Porchcard",
+      home: about === "porchcard" ? "See the Porchcard" : "See the comments",
     };
     const where = words.elsewhere ? `, in photo ${words.index + 1}` : words.where ? `, in ${words.where}` : "";
     name = `${ended(`${words.sentence}${where}${event.body ? `: ${event.body}` : ""}`)} ${spokenAgo(ago)}. ${what[words.tap]}.`;
   } else if (now?.kind === "rest") {
-    name = `${now.text}. See the Porchcard.`;
+    name = `${now.text}. ${about === "porchcard" ? "See the Porchcard" : "See the comments"}.`;
   }
 
   const multi = cycle.length > 1 && !readOnly;

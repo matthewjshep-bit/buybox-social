@@ -1,5 +1,17 @@
 import { expect, test } from "@playwright/test";
-import { signedIn, createShare, heartOf, homeIn, joinAs, openComments, openScorecard, settle, signInAgent, signUpBuyer } from "./helpers";
+import {
+  signedIn,
+  createShare,
+  heartOf,
+  homeIn,
+  joinAs,
+  linkHomes,
+  openComments,
+  openScorecard,
+  settle,
+  signInAgent,
+  signUpBuyer,
+} from "./helpers";
 
 // No other test after this one counts anything on this home. (Named to run
 // after taste-and-picks: all this makes Halvard one of the week's busiest
@@ -169,8 +181,7 @@ test("the year built, the description and who listed it are each something to li
   await expect(said.getByRole("button", { name: /^About the year built/ })).toBeVisible();
   expect(pageErrors).toEqual([]);
 
-  // On a phone: the description over the photo takes a tap, and the
-  // Porchcard's facts open their cards too.
+  // On a phone: the description over the photo takes a tap.
   const phone = await (await browser.newContext()).newPage();
   phone.on("pageerror", (error) => pageErrors.push(error.message));
   await phone.goto("/homes/SAMPLE-1005");
@@ -182,13 +193,22 @@ test("the year built, the description and who listed it are each something to li
   // (The line at the photo's foot steps aside for it.)
   await expect(onPhone.locator("[data-photo-caption]")).toBeHidden();
   await card.getByRole("button", { name: "Close" }).click();
-  const scorecard = await openScorecard(phone, onPhone);
+  // (No Porchcard there for a visitor.)
+  await expect(phone.getByRole("button", { name: "Porchcard", exact: true })).toHaveCount(0);
+
+  // An agent, going through a link's homes on a phone, has the Porchcard, and
+  // its facts open their cards too.
+  const fay = await signInAgent(browser, "fay-facts@example.com", "Fay Facts");
+  fay.on("pageerror", (error) => pageErrors.push(error.message));
+  const { dashboardUrl } = await createShare(fay, ["Halvard"]);
+  const theirs = await linkHomes(fay, dashboardUrl, "SAMPLE-1005", HALVARD);
+  const scorecard = await openScorecard(fay, theirs);
   await scorecard.getByRole("button", { name: /^On the market since, / }).click();
-  const market = onPhone.getByRole("group", { name: "Days on market" });
+  const market = theirs.getByRole("group", { name: "Days on market" });
   await expect(market).toBeVisible();
   await settle(market);
   await market.getByRole("button", { name: /^Comment on the time on the market/ }).click();
-  const phoneSheet = phone.getByRole("dialog", { name: "Comments" });
+  const phoneSheet = fay.getByRole("dialog", { name: "Comments" });
   await expect(phoneSheet.getByRole("heading", { name: "On the time on the market" })).toBeVisible();
   expect(pageErrors).toEqual([]);
 });

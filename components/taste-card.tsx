@@ -1,21 +1,16 @@
-import { ChevronRight, Lock, Sparkles } from "lucide-react";
+import { ChevronRight, Lock } from "lucide-react";
 import Link from "next/link";
-import { Headline, TasteRow } from "@/components/taste-story-card";
+import { TasteRow } from "@/components/taste-story-card";
 import { cn } from "@/lib/format";
 import { getProfilePerson, getProfileRows, type TopicSide } from "@/lib/profile";
 import { hasTaste, TASTE_MIN_REACTIONS, type Taste } from "@/lib/taste";
-import { readStory, shownStory, storyOf, voiceOf, type TasteChip } from "@/lib/taste-story";
+import { storyOf, type TasteChip } from "@/lib/taste-story";
 import { card } from "@/lib/ui";
 
 // Your taste as your own page tells it, for the end of the feed: the same
-// headline, words and chips, so "See your taste" opens a card that agrees.
+// chips, so "See your taste" opens a card that agrees.
 type ReelTaste = {
   visitorId: string;
-  headline: string | null;
-  // In your voice ("You tend to like…"), or none yet.
-  sentence: string | null;
-  // Written by AI (and so labelled), rather than from the template.
-  ai: boolean;
   loves: TasteChip[];
   passes: TasteChip[];
   // Passes kept off your page for everyone else.
@@ -45,12 +40,8 @@ async function reelTaste(visitorId: string | null, taste: Taste | null): Promise
     hidden: person.tasteHidden,
     hidePasses: person.hidePasses,
   });
-  const shown = shownStory(await readStory(person.id), story, false);
   return {
     visitorId: person.id,
-    headline: story.headline,
-    sentence: shown ? voiceOf(shown.text, person.name, true) : null,
-    ai: shown?.ai ?? false,
     loves: story.own.loves,
     passes: story.own.passes,
     passesPrivate: person.hidePasses,
@@ -69,7 +60,6 @@ export function TasteCard({
   className?: string;
 }) {
   const reacted = taste ? taste.likes + taste.passes : 0;
-  const chips = Boolean(story && story.loves.length + story.passes.length > 0);
   // Each chip shows just those homes on your page, as it does there.
   const chipHref = (key: string, side: TopicSide) =>
     `/people/${story?.visitorId}?${new URLSearchParams({ about: key, side })}`;
@@ -89,9 +79,6 @@ export function TasteCard({
         </p>
       ) : (
         <>
-          {story?.headline && <Headline text={story.headline} />}
-          {/* The chips say it all: words only when there are none. */}
-          {story?.sentence && !chips && <p className="mt-2 text-body leading-6 text-stone-800">{story.sentence}</p>}
           {story && (
             <>
               <TasteRow side="like" chips={story.loves} current={null} href={chipHref} isMe />
@@ -103,12 +90,6 @@ export function TasteCard({
                 </p>
               )}
             </>
-          )}
-          {story?.ai && story.sentence && !chips && (
-            <p className="mt-3 flex items-start gap-1.5 text-meta leading-snug text-muted">
-              <Sparkles aria-hidden size={14} className="mt-px shrink-0 text-brand" />
-              Written by AI
-            </p>
           )}
           {/* Their own profile, where a chip shows just those homes (an agent's is
               under Activity, after their listings). */}

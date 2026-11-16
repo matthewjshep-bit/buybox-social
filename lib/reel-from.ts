@@ -25,6 +25,7 @@ import {
   type ProfileShow,
   type TopicSide,
 } from "./profile";
+import { getSavedHomes } from "./saved";
 import { getPublicIdentity } from "./public";
 import { NO_REACTION, type ReactionState } from "./reactions";
 import {
@@ -53,6 +54,7 @@ import { yourClient } from "./your-client";
 // - "client:<participant>": every home an agent sent that client (the agent only);
 // - "share:<link>": the homes on one of an agent's links (the agent only);
 // - "listings:<page id>": an agent's own listings, as their page shows them (anyone).
+// - "saved": the homes you saved, newest first (yours alone, signed in);
 // Null for anything else, or anything this viewer may not open.
 
 // The page's filters as an address has them, before they're checked.
@@ -103,6 +105,7 @@ export async function homesFrom(from: string, filters: ReelFilters = {}): Promis
   if (from.startsWith("client:")) return viewer?.role === "agent" ? clientScope(viewer, from.slice(7)) : null;
   if (from.startsWith("share:")) return viewer?.role === "agent" ? shareScope(viewer, from.slice(6)) : null;
   if (from.startsWith("listings:")) return listingsScope(from.slice(9), viewer, visitorId);
+  if (from === "saved") return viewer && visitorId ? savedScope(visitorId) : null;
   return personScope(from, filters ?? {}, viewer, visitorId);
 }
 
@@ -112,7 +115,7 @@ async function listingsScope(id: string, viewer: Account | null, visitorId: stri
   if (!z.uuid().safeParse(id).success) return null;
   const person = await getProfilePerson(id);
   if (!person?.isAgent) return null;
-  const listings = await getAgentListings(person.mlsAgentId, person.agentName);
+  const listings = await getAgentListings(person.mlsAgentId, person.agentName, person.accountId);
   if (listings.length === 0) return null;
   const isMe = visitorId === person.id;
   const name = person.name.trim() || "An agent";
@@ -136,6 +139,30 @@ async function listingsScope(id: string, viewer: Account | null, visitorId: stri
     },
     query: new URLSearchParams({ from: `listings:${person.id}` }).toString(),
     filters: ALL,
+  };
+}
+
+// The homes you saved, as your profile lists them. Yours alone: listing data
+// only, and the line at each photo's foot says only what you did.
+async function savedScope(visitorId: string): Promise<ReelScope> {
+  const keys = (await getSavedHomes(visitorId)).map((listing) => listing.ListingKey);
+  const href = `/people/${visitorId}?show=saved`;
+  return {
+    keys,
+    back: { href, label: "Back to your saved homes" },
+    context: {
+      kind: "pick",
+      title: "Saved",
+      who: null,
+      filter: null,
+      keys,
+      homes: Object.fromEntries(keys.map((key) => [key, { takes: [], photo: null }])),
+      href,
+    },
+    query: new URLSearchParams({ from: "saved" }).toString(),
+    filters: ALL,
+    profiles: [],
+    mine: true,
   };
 }
 
@@ -266,7 +293,7 @@ async function personScope(
 
   const params = filterParams(filters);
   // An agent with listings: their page opens on those, so this says Activity.
-  const hasListings = person.isAgent && (await getAgentListings(person.mlsAgentId, person.agentName)).length > 0;
+  const hasListings = person.isAgent && (await getAgentListings(person.mlsAgentId, person.agentName, person.accountId)).length > 0;
   const pageParams = [...(hasListings ? [["tab", "activity"]] : []), ...params];
   const pageHref = `/people/${person.id}${pageParams.length ? `?${new URLSearchParams(pageParams)}` : ""}`;
   const what = show === "comments" ? "comments" : show === "liked" ? "likes" : show === "passed" ? "passes" : null;

@@ -2,23 +2,14 @@ import { ExternalLink, Globe, Images, Link2, Pencil } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AddFirstName, ShareMyPage } from "@/app/people/[id]/client";
-import { BannerArt } from "@/components/banner-art";
+import { Banner } from "@/components/banner";
 import { Avatar, Badge } from "@/components/ui";
+import { NO_BANNER, type BannerChoice } from "@/lib/banner";
 import { cn } from "@/lib/format";
 import { sinceLabel, type ProfileLink } from "@/lib/profile";
 import { button, card } from "@/lib/ui";
 
-// The band across the top of a page: a little scene of home (BannerArt),
-// an agent's in their own brand colour; never grey.
-function Banner({ personId, brandColor }: { personId: string; brandColor: string | null }) {
-  return (
-    <div aria-hidden className="h-[120px] overflow-hidden">
-      <BannerArt seed={personId} brand={brandColor} />
-    </div>
-  );
-}
-
-// The top of someone's page: a band (see Banner), their
+// The top of someone's page: a band (theirs to choose: components/banner.tsx), their
 // face, name, how long they've been looking, and what they say about
 // themselves (an agent's links too). Who follows them and whom they follow are
 // links, to those lists, with Follow beside them. On your own page, a pencil
@@ -44,8 +35,13 @@ export function ProfileHeader({
   brokerage = "",
   personId,
   brandColor = null,
+  banner = NO_BANNER,
+  fullName,
 }: {
   name: string;
+  // An agent's whole name, for the top of their own page: they're there by
+  // profession. (Everyone else goes by their first name, here as everywhere.)
+  fullName?: string;
   // What their initial is from, if not their name ("" for a plain figure).
   face?: string;
   isMe: boolean;
@@ -73,10 +69,16 @@ export function ProfileHeader({
   // Whose page it is, and an agent's own colour, for the band at the top.
   personId: string;
   brandColor?: string | null;
+  // The band at the top, as they chose it.
+  banner?: BannerChoice;
 }) {
   return (
     <section aria-labelledby="profile-name" className={cn(card, "overflow-hidden")}>
-      <Banner personId={personId} brandColor={brandColor} />
+      {/* Their own image keeps the shape they framed it in, whatever the width, so what
+          they placed is what shows; a drawn scene or a plain band is a fixed height. */}
+      <div aria-hidden className={cn("overflow-hidden", banner.style === "image" && banner.image ? "aspect-[10/3]" : "h-[120px]")}>
+        <Banner seed={personId} brand={brandColor} choice={banner} />
+      </div>
       <div className="px-4 pb-4">
         <div className="flex items-end justify-between gap-3">
           <Avatar name={face} tone={agent ? "agent" : "person"} size={18} photo={photo} className="relative -mt-9 ring-4 ring-white" />
@@ -88,7 +90,7 @@ export function ProfileHeader({
         </div>
         {/* The keyboard comes here once you've said your name, as it changes. */}
         <h1 id="profile-name" tabIndex={-1} className="mt-2 break-words font-display text-[30px] leading-tight outline-none">
-          {isMe ? (unnamed ? "Your profile" : `${name} (you)`) : name}
+          {isMe ? (unnamed ? "Your profile" : `${fullName || name} (you)`) : fullName || name}
         </h1>
         {followsYou && (
           <p className="mt-1">

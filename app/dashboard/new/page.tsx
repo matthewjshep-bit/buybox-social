@@ -47,6 +47,8 @@ export default async function NewSharePage({
     sql<{ data: Listing }[]>`
       select l.data from listings l
       where l.standard_status = 'Active'
+        -- (Of the listings people added themselves, only this agent's own.)
+        and (l.owner_account_id is null or l.owner_account_id = ${agent.id})
         and l.listing_key not in ${sql(onLink.length ? onLink : [""])}
         and ${matchesPlace(query)}
       order by l.updated_at desc, l.listing_key

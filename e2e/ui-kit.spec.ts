@@ -93,7 +93,7 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   // Their own page: their face as it is in the header beside it, the photo
   // they added on signing up (without one, their initial in ink).
   await agent.goto("/people/me");
-  await expect(agent.locator("#profile-name")).toHaveText("Una (you)");
+  await expect(agent.locator("#profile-name")).toHaveText("Una Kit (you)");
   const big = agent.locator("#profile-name").locator("xpath=preceding-sibling::*[1]/*[1]");
   await expect(big).toHaveAttribute("src", /^\/people\/[\w-]+\/photo\?v=\w+$/);
   await expect(agent.getByRole("banner").getByRole("button", { name: "Account menu" }).locator("img")).toBeVisible();

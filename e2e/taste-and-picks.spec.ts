@@ -8,7 +8,6 @@ import {
   likeInPhoto,
   openComments,
   openMore,
-  openScorecard,
   scrollToEnd,
   settle,
   signUpBuyer,
@@ -58,36 +57,21 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
   await pia.keyboard.press("Escape");
 
   // Your taste so far waits at the end of the feed, told as your own page
-  // tells it: the same headline, the same chips.
+  // tells it: the same chips.
   await pia.reload();
   await scrollToEnd(pia);
   const taste = pia.getByRole("region", { name: "Your taste" });
   await expect(taste).not.toContainText("reactions");
   await expect(taste.getByRole("group", { name: "Loves" }).getByRole("link", { name: "Loves Vibe" })).toBeVisible();
-  const story = (region: typeof taste) =>
-    region.evaluate((el) =>
-      [...el.querySelectorAll("p")].slice(0, 1).map((p) => p.textContent?.replace(/\s+/g, " ").trim()),
-    );
-  const told = await story(taste);
-  // The headline, then the chips: no sentence saying the chips over again.
-  expect(told).toEqual([expect.stringMatching(/^Vibe · /)]);
+  // Only the things they like: no headline, and no sentence about them.
+  await expect(taste).not.toContainText(/ · |beds/);
   await expect(taste).not.toContainText("You tend to like");
   const own = await pia.context().newPage();
   await own.goto("/people/me");
   const ownTaste = own.getByRole("region", { name: "Your taste" });
   await expect(ownTaste.getByRole("group", { name: "Loves" }).getByRole("link", { name: "Loves Vibe" })).toBeVisible();
-  expect(await story(ownTaste)).toEqual(told);
+  await expect(ownTaste).not.toContainText(/ · |beds/);
   await own.close();
-  // Homes that match it say why, in the Porchcard, under your take.
-  let fits = false;
-  for (let i = 0; i < (await homes.count()) && !fits; i++) {
-    const card = await openScorecard(pia, homes.nth(i));
-    fits = (await card.getByText(/^For you:/).count()) > 0;
-    if (fits) await expect(card.getByText(/^For you:/)).toBeVisible();
-    await pia.keyboard.press("Escape");
-    await expect(card).toBeHidden();
-  }
-  expect(fits).toBe(true);
 
   // Her home, following nobody yet, opens on more homes picked for her taste
   // (the picks that used to sit beside the feed), each opening them all in
@@ -104,6 +88,15 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
     /^\/reel\?from=picks&home=SAMPLE-\d+$/,
   );
   await expect(picks.getByRole("link", { name: "Browse homes" })).toHaveAttribute("href", "/reel");
+  // Homes that match her taste say why: on the pick, and on the home it opens.
+  const fit = picks.getByRole("listitem").filter({ hasText: "Why this: " }).first().getByRole("link");
+  const reason = (await fit.textContent())!.split("Why this: ")[1].trim();
+  expect(reason).not.toBe("");
+  const href = (await fit.getAttribute("href"))!;
+  await pia.goto(href);
+  const picked = pia.locator(`[data-home="${new URL(href, "http://localhost").searchParams.get("home")}"]`);
+  await expect(picked).toBeInViewport({ ratio: 0.9 });
+  await expect(picked.getByRole("region", { name: "Why it's here" })).toContainText(`Picked for you · ${reason}`);
   expect(pageErrors).toEqual([]);
 });
 
@@ -140,11 +133,8 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   let devChat = await openComments(dev, devHome);
   await expect(devChat.getByText("Cleo liked the three-car garage")).toBeVisible();
   await dev.keyboard.press("Escape");
-  const devCard = await openScorecard(dev, devHome);
-  await expect(devCard.getByText("What people liked", { exact: true })).toBeVisible();
-  await expect(devCard.getByRole("button", { name: /^Exterior 1 person/ })).toBeVisible();
-  await dev.keyboard.press("Escape");
-  await expect(devCard).toBeHidden();
+  // (Counted up, it's in the Porchcard, which is an agent's: e2e/public.spec.ts.)
+  await expect(dev.getByRole("button", { name: "Porchcard", exact: true })).toHaveCount(0);
   devChat = await openComments(dev, devHome);
 
   // Dev likes Cleo's comment and replies to it.

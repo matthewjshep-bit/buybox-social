@@ -41,7 +41,6 @@ import { enterCode,
   likeInPhoto,
   openComments,
   openMore,
-  openScorecard,
   pick,
   settle,
   signInAgent,
@@ -112,7 +111,8 @@ test("a profile is one card per home per day, with the photo and the spots picke
   await expect(filterOf(lena).locator("summary")).toHaveText("Show: All");
   await expect(lena.getByRole("link", { name: "Comments", exact: true })).toBeHidden();
   await filterOf(lena).locator("summary").click();
-  await expect(filterOf(lena).getByRole("link")).toHaveText(["All", "Liked", "Didn't like", "Comments"]);
+  // (Saved, last, is hers alone: e2e/saved-homes.spec.ts.)
+  await expect(filterOf(lena).getByRole("link")).toHaveText(["All", "Liked", "Didn't like", "Comments", /^Saved/]);
   await expect(filterOf(lena).getByRole("link", { name: "All" })).toHaveAttribute("aria-current", "page");
   // Escape, or a tap anywhere else, closes it.
   await lena.keyboard.press("Escape");
@@ -368,10 +368,12 @@ test("what someone does on an agent's link never shows on their page", async ({ 
   await expect(async () => {
     await rowan.goto(url);
     const saved = homeIn(rowan, QUILLAN);
-    // The pass and why, as the Porchcard has them from the server.
-    const take = await openScorecard(rowan, saved);
-    await expect(take.getByText("You passed on this.")).toBeVisible({ timeout: 2000 });
-    await expect(take.locator("p").filter({ hasText: /^What you didn't like:/ })).toContainText("Yard", { timeout: 2000 });
+    // The pass and why, as More has them from the server.
+    const take = await openMore(rowan, saved);
+    await expect(take.getByRole("button", { name: "Not for me" })).toHaveAttribute("aria-pressed", "true", { timeout: 2000 });
+    await expect(
+      take.getByRole("group", { name: "What made you pass?" }).getByRole("button", { name: "Yard" }),
+    ).toHaveAttribute("aria-pressed", "true", { timeout: 2000 });
     await rowan.keyboard.press("Escape");
     await expect(take).toBeHidden();
     // The like and the dislike in the photos, and the words about the door,
@@ -918,11 +920,13 @@ test("the taste story is written from the data, and what someone switches off st
   }).toPass({ timeout: 20_000 });
   const profileUrl = nadia.url();
   const own = nadia.getByRole("region", { name: "Your taste" });
-  // The headline is what they love, then where, how much and how big: the
-  // two homes they liked are in Edmonds and Seattle, $689K and $749K, 2 beds.
+  // The card is only the things they like and pass on. (What they love, then
+  // where, how much and how big, describes the page to whoever it's shared
+  // with: the two homes they liked are in Edmonds and Seattle, $689K and
+  // $749K, 2 beds.)
   const headline = "Vibe · Edmonds · $689K–$749K · 2 beds";
-  await expect(own.getByText(headline, { exact: true })).toBeVisible();
-  // The chips say it: no sentence repeating them, and no count of where it's from.
+  await expect(own).not.toContainText(/Edmonds|beds/);
+  // No sentence about them, and no count of where it's from.
   await expect(own).not.toContainText(/tend to like|usually pass|From your|updated/);
   await expect(own).not.toContainText("Written by AI");
   await expect(own.getByRole("group", { name: "Loves" }).getByRole("link")).toHaveText(["Vibe"]);
@@ -940,12 +944,12 @@ test("the taste story is written from the data, and what someone switches off st
   await expect(theirs).not.toContainText(/tends to like|usually passes|From Nadia|updated/);
   await expect(visitor.locator('meta[name="description"]')).toHaveAttribute("content", headline);
   await expect(visitor.locator('meta[property="og:description"]')).toHaveAttribute("content", headline);
-  await expect(visitor.getByRole("button", { name: "Not quite right?" })).toHaveCount(0);
+  await expect(visitor.getByRole("button", { name: "What others see" })).toHaveCount(0);
   expect(await theirs.innerText()).not.toMatch(NEVER_SAID);
 
   // One love switched off: off their page and out of the words for everyone
   // else, kept (and marked) for Nadia, and remembered.
-  await nadia.getByRole("button", { name: "Not quite right?" }).click();
+  await nadia.getByRole("button", { name: "What others see" }).click();
   const sheet = nadia.getByRole("dialog", { name: "What others see" });
   const vibe = sheet.getByRole("switch", { name: "Show Vibe in my taste" });
   await expect(vibe).toHaveAccessibleDescription("2 homes");
@@ -955,19 +959,19 @@ test("the taste story is written from the data, and what someone switches off st
   await nadia.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
   await nadia.reload();
-  await nadia.getByRole("button", { name: "Not quite right?" }).click();
+  await nadia.getByRole("button", { name: "What others see" }).click();
   await expect(sheet.getByRole("switch", { name: "Show Vibe in my taste" })).toHaveAttribute("aria-checked", "false");
   await nadia.keyboard.press("Escape");
 
   await visitor.reload();
-  await expect(theirs.getByText("Edmonds · $689K–$749K · 2 beds", { exact: true })).toBeVisible();
+  await expect(theirs).not.toContainText(/Edmonds|beds/);
   await expect(theirs.getByRole("group", { name: "Passes on" }).getByRole("link")).toHaveText(["Price"]);
   await expect(theirs.getByRole("group", { name: "Loves" })).toHaveCount(0);
   await expect(theirs).not.toContainText(/vibe/i);
 
   // Passes kept private: gone for everyone else, still there for Nadia, and
   // its chip goes off with it, saying why.
-  await nadia.getByRole("button", { name: "Not quite right?" }).click();
+  await nadia.getByRole("button", { name: "What others see" }).click();
   const passSwitch = sheet.getByRole("switch", { name: "Show my passes" });
   await expect(passSwitch).toHaveAttribute("aria-checked", "true");
   await expect(passSwitch).toHaveAccessibleDescription(/Each home's own page still shows that you passed/);
@@ -977,10 +981,10 @@ test("the taste story is written from the data, and what someone switches off st
   await expect(price).toBeDisabled();
   await expect(price).toHaveAttribute("aria-checked", "false");
   await expect(price).toHaveAccessibleDescription("2 homes · Hidden");
-  // That leaves two homes anyone else can see: too few to say anything
-  // about, so Nadia is told how to get a description back.
+  // Her passes are hers alone now, and the card says so.
   await expect(own).toContainText("Only you see passes");
-  await expect(own).toContainText("Like a few more homes to see your taste.");
+  // (Her own chips are still there for her, so there's nothing to prompt.)
+  await expect(own).not.toContainText("Like a few more homes");
   await expect(own).not.toContainText("pass on the price");
   await nadia.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
@@ -1016,7 +1020,7 @@ test("the taste story is written from the data, and what someone switches off st
   }
 
   // The vibe back on: below the threshold, others see just the chips.
-  await nadia.getByRole("button", { name: "Not quite right?" }).click();
+  await nadia.getByRole("button", { name: "What others see" }).click();
   await sheet.getByRole("switch", { name: "Show Vibe in my taste" }).click();
   await expect(sheet.getByRole("switch", { name: "Show Vibe in my taste" })).toHaveAttribute("aria-checked", "true");
   await expect(own.getByRole("link", { name: "Loves Vibe" })).toBeVisible();

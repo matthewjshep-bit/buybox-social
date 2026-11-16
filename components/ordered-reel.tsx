@@ -137,6 +137,10 @@ export function OrderedReel({
       </>
     ),
     end: <EndCard context={context} back={back} contained={contained} onClose={() => router.back()} />,
+    // An agent going through a client's homes (or a link's) has the
+    // Porchcard: how the home has gone down with everyone, beside what that
+    // client made of it (the take above the photo). Everyone else saves homes.
+    porchcard: context?.kind === "client" || context?.kind === "share",
   };
   return sender ? <QuickSendReel {...reel} profileComplete={sender.profileComplete} /> : <ReelFeed {...reel} />;
 }

@@ -9,6 +9,7 @@ import { FollowingFeed } from "@/components/home-feed";
 import { Avatar } from "@/components/ui";
 import type { FeedPost } from "@/lib/feed";
 import type { FollowCounts } from "@/lib/follows";
+import type { BannerChoice } from "@/lib/banner";
 import { cn } from "@/lib/format";
 import type { FeedWho, FollowedFace, HomeFeedEntry } from "@/lib/home-feed";
 import type { MyLink } from "@/lib/my-links";
@@ -121,7 +122,7 @@ export function BuyerHome({
   lens,
 }: {
   firstName: string;
-  me: { id: string; name: string; photo: string | null };
+  me: { id: string; name: string; photo: string | null; banner: BannerChoice };
   follows: FollowCounts;
   profileHref: string;
   // The links they're on, newest first.
@@ -157,6 +158,7 @@ export function BuyerHome({
           name={me.name}
           photo={me.photo}
           seed={me.id}
+          banner={me.banner}
           agent={false}
           line={agentName ? `Looking with ${links[0].agent.name}` : ""}
           href={profileHref}

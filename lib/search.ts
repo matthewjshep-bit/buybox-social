@@ -15,7 +15,8 @@ export const matchesPlace = (text: string) => {
 
 // The homes a search finds, in its order: their keys, for the reel to show.
 export async function searchHomeKeys(filters: SearchFilters): Promise<string[]> {
-  const conditions = [sql`l.standard_status = 'Active'`];
+  // (Not the listings people added themselves: those are on their profiles.)
+  const conditions = [sql`l.standard_status = 'Active' and l.owner_account_id is null`];
   if (filters.q) conditions.push(matchesPlace(filters.q));
   if (filters.minPrice) conditions.push(sql`(l.data->>'ListPrice')::numeric >= ${filters.minPrice}`);
   if (filters.maxPrice) conditions.push(sql`(l.data->>'ListPrice')::numeric <= ${filters.maxPrice}`);

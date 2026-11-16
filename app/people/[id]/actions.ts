@@ -4,6 +4,7 @@ import { refresh } from "next/cache";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { BANNER_STYLE } from "@/lib/banner";
 import { fail, readDevice, type ActionResult } from "@/lib/engagement";
 import { ensureAccountVisitor, getPublicIdentity } from "@/lib/public";
 import type { Sentiment } from "@/lib/reactions";
@@ -153,6 +154,44 @@ export async function setMyPhoto(photo: string): Promise<ActionResult> {
   const account = await getCurrentUser();
   if (!account?.role) return fail("Sign in to add a photo.");
   await sql`update accounts set photo_data_url = ${photo || null} where id = ${account.id}`;
+  refresh();
+  return { ok: true };
+}
+
+// The band across the top of your profile: a drawn scene, nothing ("blank"),
+// or an image of your own (a small wide JPEG made in the browser:
+// lib/resize-photo.ts), sent with the choice the first time and whenever it
+// changes. "" goes back to the scene picked for you. An image, once added, is
+// kept while another choice is on, so it can be chosen again. With a new
+// image comes the image as it was added (`source`), kept so it can be moved
+// and resized later; and with any image, how it's framed (`frame`).
+const bannerFrame = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), zoom: z.number().min(0.01).max(3) });
+
+export async function setMyBanner(
+  style: string,
+  image?: string,
+  source?: string,
+  frame?: { x: number; y: number; zoom: number },
+): Promise<ActionResult> {
+  if (typeof style !== "string" || !BANNER_STYLE.test(style)) return fail("We couldn't save that.");
+  if (image !== undefined && (typeof image !== "string" || image.length > 600_000 || !PHOTO.test(image))) {
+    return fail("We couldn't use that image. Try a JPEG or PNG.");
+  }
+  if (source !== undefined && (typeof source !== "string" || source.length > 900_000 || !PHOTO.test(source))) {
+    return fail("That image is too large. Try a smaller one.");
+  }
+  const framed = frame === undefined ? null : bannerFrame.safeParse(frame);
+  if (framed && !framed.success) return fail("We couldn't save that.");
+  const account = await getCurrentUser();
+  if (!account?.role) return fail("Sign in to change your banner.");
+  const saved = await sql`
+    update accounts set banner = ${style},
+      banner_data_url = coalesce(${image ?? null}, banner_data_url),
+      banner_source_data_url = coalesce(${source ?? null}, banner_source_data_url),
+      banner_frame = coalesce(${framed ? sql.json(framed.data) : null}, banner_frame)
+    where id = ${account.id} and (${style} <> 'image' or coalesce(${image ?? null}, banner_data_url) is not null)
+    returning id`;
+  if (saved.length === 0) return fail("Add an image first.");
   refresh();
   return { ok: true };
 }

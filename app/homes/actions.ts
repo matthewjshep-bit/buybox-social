@@ -241,6 +241,35 @@ export async function postAboutHome(listingKey: string, body: string): Promise<A
   return result;
 }
 
+// A home saved, to come back to (or taken off the list): theirs alone. One
+// found by its address that isn't here yet is brought in first, as a post's is.
+export async function saveHome(listingKey: string, saved: boolean): Promise<ActionResult> {
+  if (typeof listingKey !== "string" || listingKey.length > 100 || typeof saved !== "boolean") {
+    return fail("We couldn't save that home.");
+  }
+  const account = await getCurrentUser();
+  if (!account?.role) return fail("Please sign up or sign in first.");
+  const visitor = await ensureAccountVisitor(account);
+  if (!saved) {
+    await sql`delete from saved_homes where visitor_id = ${visitor.id} and listing_key = ${listingKey}`;
+    refresh();
+    return { ok: true };
+  }
+  if (await importMissing([listingKey])) after(() => runImportsAndContinue());
+  const kept = await sql`
+    insert into saved_homes (visitor_id, listing_key)
+    select ${visitor.id}, listing_key from listings where listing_key = ${listingKey} and standard_status = 'Active'
+    on conflict do nothing
+    returning listing_key`;
+  if (kept.length === 0) {
+    const [already] = await sql`
+      select 1 from saved_homes where visitor_id = ${visitor.id} and listing_key = ${listingKey}`;
+    if (!already) return fail("That home isn't for sale anymore.");
+  }
+  refresh();
+  return { ok: true };
+}
+
 export type HomeToPost = {
   key: string;
   address: string;
@@ -257,9 +286,12 @@ export async function findHomesToPost(query: string): Promise<HomeToPost[]> {
   const text = query.trim().slice(0, 100);
   if (text.length < 2) return [];
   const MOST = 6;
+  // (Of the listings people added themselves, only your own.)
+  const me = (await getCurrentUser())?.id ?? null;
   const rows = await sql<{ data: Listing }[]>`
     select l.data from listings l
     where l.standard_status = 'Active' and ${matchesPlace(text)}
+      and (l.owner_account_id is null or l.owner_account_id = ${me}::uuid)
     order by (l.data->>'UnparsedAddress' ilike ${`${escapeLike(text)}%`}) desc, l.updated_at desc, l.listing_key
     limit ${MOST}`;
   const here = rows.map((row) => row.data);

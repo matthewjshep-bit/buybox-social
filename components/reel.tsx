@@ -1,10 +1,12 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
   ArrowUp,
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Bookmark,
   Ellipsis,
   Eye,
   Flame,
@@ -193,6 +195,7 @@ export function ReelFeed({
   tour,
   context,
   stageBar,
+  porchcard = false,
 }: {
   initial: FeedPost[];
   // Public pages, or an agent's private link.
@@ -256,6 +259,9 @@ export function ReelFeed({
   // In the pop-out, wide: across the top of the photo's column, whose homes
   // these are and the way to the full page.
   stageBar?: ReactNode;
+  // The Porchcard (what everyone thinks of a home) is an agent's, for seeing
+  // what their clients make of it. Everyone else gets Save in its place.
+  porchcard?: boolean;
 }) {
   // The order is fixed when the page opens, so a background refresh never
   // reshuffles the homes under your thumb. Agent links follow the page, which
@@ -364,6 +370,8 @@ export function ReelFeed({
         initialComment={initialComment}
         context={context}
         stageBar={stageBar}
+        porchcard={porchcard}
+        save={actions.save}
         onPhotoSeen={onPhotoSeen}
         agentName={agentName}
         canInvite={canInvite}
@@ -413,8 +421,12 @@ function Feed({
   onNearEnd,
   nameAnchorRef,
   tour,
+  porchcard,
+  save,
 }: {
   posts: FeedPost[];
+  porchcard: boolean;
+  save?: ThreadActions["save"];
   mode: "public" | "share";
   myName: string | null;
   header?: ReactNode;
@@ -492,6 +504,24 @@ function Feed({
     back?: HTMLElement | null;
   } | null>(null);
   const reactions = useReactions(Object.fromEntries(posts.map((post) => [post.listing.ListingKey, post.mine])));
+  // Homes saved or taken back since the page arrived: at once, and put back
+  // if it doesn't hold (signed out: on to signing in, and back here after).
+  const [savedNow, setSavedNow] = useState<Record<string, boolean>>({});
+  const router = useRouter();
+  const saves = {
+    now: savedNow,
+    toggle: (key: string, to: boolean) => {
+      if (!save) return;
+      setSavedNow((now) => ({ ...now, [key]: to }));
+      void save(key, to).then((result) => {
+        if (result.ok) return;
+        setSavedNow((now) => ({ ...now, [key]: !to }));
+        if (/sign/i.test(result.error)) {
+          router.push(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+        }
+      });
+    },
+  };
   const offset = intro ? 1 : 0;
   const panelCount = offset + posts.length + 1;
   const activePost = posts[active - offset];
@@ -800,12 +830,6 @@ function Feed({
         : undefined,
     [sheetPost, sheetState, sheetYours],
   );
-  // On an agent's link with a few homes, the others, for the Porchcard to set
-  // this one beside.
-  const sheetSiblings = useMemo(
-    () => (mode === "share" && sheetPost && posts.length > 1 ? posts.filter((post) => post !== sheetPost) : undefined),
-    [mode, posts, sheetPost],
-  );
   // A home's own button on the rail (the Porchcard's, More's), for the
   // keyboard to go back to.
   const railButton = (key: string, which: "scorecard" | "more") =>
@@ -964,7 +988,9 @@ function Feed({
               onCommentSpot={(spot) => openComments(key, true, spot)}
               onCommentsAbout={(spot) => openComments(key, false, spot)}
               onCommentAt={(id) => openComments(key, false, undefined, id)}
-              onScorecard={(section) => openScorecard(key, section)}
+              onScorecard={porchcard ? (section) => openScorecard(key, section) : undefined}
+              saved={saves.now[key] ?? Boolean(post.saved)}
+              onSave={save ? () => saves.toggle(key, !(saves.now[key] ?? Boolean(post.saved))) : undefined}
               onYours={tellYours}
               reactedAt={reactions.changedAt[key]}
               // Over the words on a phone; in the white panel's place, wide.
@@ -1043,13 +1069,13 @@ function Feed({
       <HomeSheet
         post={sheet?.kind === "comments" || sheet?.kind === "scorecard" ? (sheetPost ?? null) : null}
         kind={sheet?.kind === "scorecard" ? "scorecard" : "comments"}
+        porchcard={porchcard}
         spot={sheet?.kind === "comments" ? sheet.spot : undefined}
         opened={sheet?.kind === "comments" ? sheet.commentId : undefined}
         section={sheet?.kind === "scorecard" ? sheet.section : undefined}
         mode={mode}
         agentName={agentName}
         viewer={sheetViewer}
-        siblings={sheetSiblings}
         alone={alone}
         myName={myName}
         canShare={sheetPost ? reactions.states[sheetPost.listing.ListingKey]?.reaction === "like" : false}
@@ -1095,6 +1121,9 @@ function Feed({
         post={sheet?.kind === "more" ? (sheetPost ?? null) : null}
         state={sheetPost ? (reactions.states[sheetPost.listing.ListingKey] ?? NO_REACTION) : NO_REACTION}
         agentName={agentName}
+        // On a phone, what the home is beyond its price and size is here
+        // (side by side, the panel beside the photo already says it).
+        about={!wide}
         // Side by side, up from the foot of the white panel, like the comments.
         anchor={wide ? dock : frame}
         // Turned to from the Porchcard ("Change your take"), the keyboard
@@ -1212,6 +1241,8 @@ function Panel({
   onCommentsAbout,
   onCommentAt,
   onScorecard,
+  saved,
+  onSave,
   onYours,
   reactedAt,
   covered,
@@ -1271,7 +1302,11 @@ function Panel({
   // The comments, on one of them.
   onCommentAt: (commentId: string) => void;
   // Its Porchcard (at "About this home", from the description's "more").
-  onScorecard: (section?: "about") => void;
+  // (None but for an agent: everyone else saves the home in its place.)
+  onScorecard?: (section?: "about") => void;
+  // Saved by you, and the way to save it (or take it back).
+  saved: boolean;
+  onSave?: () => void;
   // What you've liked and not in its photos and facts just now (likeIds).
   onYours?: (listingKey: string, liked: string[], disliked: string[]) => void;
   // When you last changed your reaction to it here.
@@ -1609,7 +1644,7 @@ function Panel({
     const spot = event.mediaKey && event.spot ? { mediaKey: event.mediaKey, tag: event.spot } : null;
     if (tap === "comment" && event.commentId) return onCommentAt(event.commentId);
     // About the home as a whole: what everyone thinks of it.
-    if (tap === "home") return onScorecard();
+    if (tap === "home") return onScorecard ? onScorecard() : onComments();
     if (!spot || tap === "comment") return onComments();
     if (spot.mediaKey === FACTS) {
       if (tap === "spot-comments") return onCommentsAbout(spot);
@@ -1808,6 +1843,7 @@ function Panel({
                     yours={mode === "public" ? "/people/me?tab=activity" : null}
                     // Beside the map, just to read; a tap there opens the home.
                     onTap={onOpen ? undefined : tapActivity}
+                    about={onScorecard ? "porchcard" : "comments"}
                     hint={onOpen ? null : "Tap the photo to like or comment"}
                   />
                 </div>
@@ -1892,7 +1928,9 @@ function Panel({
               shareAs={shareAs}
               onLike={onLike}
               onComments={onComments}
-              onScorecard={() => onScorecard()}
+              onScorecard={onScorecard && (() => onScorecard())}
+              saved={saved}
+              onSave={onSave}
               onShare={onShare}
               onMore={onMore}
               moreRef={moreButton}
@@ -1994,7 +2032,7 @@ function Panel({
             {/* Side by side, a card on the price or a fact opens over these,
                 and they step aside for it rather than show round it. */}
             <div className={cn(picked?.mediaKey === FACTS && "split:invisible")}>
-              {/* (With the least height on a phone, it gives way: it's in the Porchcard.) */}
+              {/* (With the least height on a phone, it gives way: it's under More, in "About this home".) */}
               <div className="tiny:hidden split:block">
                 <Caption
                   listing={listing}
@@ -2018,8 +2056,9 @@ function Panel({
                   open={more}
                   // On a phone, the rest of it is in the Porchcard, under
                   // "About this home"; side by side, it opens in the panel.
-                  inPlace={inPlace}
-                  onToggle={onOpen ? undefined : inPlace ? () => setMore(!more) : () => onScorecard("about")}
+                  // (With no Porchcard, it opens where it is.)
+                  inPlace={inPlace || !onScorecard}
+                  onToggle={onOpen ? undefined : inPlace || !onScorecard ? () => setMore(!more) : () => onScorecard("about")}
                 />
               </div>
               {/* Who's selling it runs short before "Sample listing" does: it's
@@ -2099,7 +2138,9 @@ function Panel({
                 shareAs={shareAs}
                 onLike={onLike}
                 onComments={onComments}
-                onScorecard={() => onScorecard()}
+                onScorecard={onScorecard && (() => onScorecard())}
+                saved={saved}
+                onSave={onSave}
                 onShare={onShare}
                 onMore={onMore}
               />
@@ -2273,6 +2314,8 @@ function Rail({
   onLike,
   onComments,
   onScorecard,
+  saved,
+  onSave,
   onShare,
   onMore,
   moreRef,
@@ -2285,7 +2328,10 @@ function Rail({
   shareAs: ShareKind | null;
   onLike: () => void;
   onComments: () => void;
-  onScorecard: () => void;
+  // The Porchcard (an agent's), or else Save.
+  onScorecard?: () => void;
+  saved: boolean;
+  onSave?: () => void;
   onShare?: () => void;
   onMore: () => void;
   moreRef?: Ref<HTMLButtonElement>;
@@ -2330,9 +2376,16 @@ function Rail({
       >
         <MessageCircle size={28} {...icon} />
       </RailButton>
-      <RailButton name="Porchcard" label="Porchcard" onClick={onScorecard} follow="scorecard">
-        <PorchcardIcon size={26} {...icon} />
-      </RailButton>
+      {onScorecard && (
+        <RailButton name="Porchcard" label="Porchcard" onClick={onScorecard} follow="scorecard">
+          <PorchcardIcon size={26} {...icon} />
+        </RailButton>
+      )}
+      {!onScorecard && onSave && (
+        <RailButton name={saved ? `Saved ${address}` : `Save ${address}`} label={saved ? "Saved" : "Save"} pressed={saved} onClick={onSave}>
+          <Bookmark aria-hidden size={27} className={cn(saved ? "fill-white text-white" : "text-white", "drop-shadow")} />
+        </RailButton>
+      )}
       {/* For a moment after each send, while the link for the next is made,
           it waits, turning, and says so (the same button, so the keyboard
           comes back to it). */}
@@ -2692,6 +2745,8 @@ function PanelActions({
   onLike,
   onComments,
   onScorecard,
+  saved,
+  onSave,
   onShare,
   onMore,
 }: {
@@ -2702,7 +2757,10 @@ function PanelActions({
   shareAs: ShareKind | null;
   onLike: () => void;
   onComments: () => void;
-  onScorecard: () => void;
+  // The Porchcard (an agent's), or else Save.
+  onScorecard?: () => void;
+  saved: boolean;
+  onSave?: () => void;
   onShare?: () => void;
   onMore: () => void;
 }) {
@@ -2731,10 +2789,24 @@ function PanelActions({
         <MessageCircle aria-hidden size={21} />
         {comments > 0 && <span className="tabular-nums">{countLabel(comments)}</span>}
       </button>
-      <button type="button" aria-label="Porchcard" data-follow="scorecard" onClick={onScorecard} className={action}>
-        <PorchcardIcon aria-hidden size={20} />
-        Porchcard
-      </button>
+      {onScorecard && (
+        <button type="button" aria-label="Porchcard" data-follow="scorecard" onClick={onScorecard} className={action}>
+          <PorchcardIcon aria-hidden size={20} />
+          Porchcard
+        </button>
+      )}
+      {!onScorecard && onSave && (
+        <button
+          type="button"
+          aria-label={saved ? `Saved ${address}` : `Save ${address}`}
+          aria-pressed={saved}
+          onClick={onSave}
+          className={action}
+        >
+          <Bookmark aria-hidden size={20} className={cn("transition-transform active:scale-90", saved && "fill-white")} />
+          {saved ? "Saved" : "Save"}
+        </button>
+      )}
       <span className="ml-auto" />
       {onShare && (shareAs === "send" || sending) && (
         <button
@@ -2986,13 +3058,13 @@ const NO_ITEMS: FeedPost["timeline"] = [];
 function HomeSheet({
   post,
   kind,
+  porchcard,
   spot,
   opened,
   section,
   mode,
   agentName,
   viewer,
-  siblings,
   myName,
   alone,
   canShare,
@@ -3010,6 +3082,8 @@ function HomeSheet({
   onOpenMore,
 }: {
   post: FeedPost | null;
+  // Whether the Porchcard is theirs to open (an agent's): its tab, and the way to it from the comments.
+  porchcard: boolean;
   kind: "comments" | "scorecard";
   // Only the comments about this spot in a photo, and a box to add one.
   spot?: SpotRef;
@@ -3020,8 +3094,6 @@ function HomeSheet({
   mode: "public" | "share";
   agentName?: string;
   viewer?: ScorecardViewer;
-  // The other homes on an agent's link, to compare with.
-  siblings?: FeedPost[];
   myName: string | null;
   // On an agent's link known to be this person's alone.
   alone: boolean;
@@ -3054,7 +3126,7 @@ function HomeSheet({
   const key = post?.listing.ListingKey ?? null;
   const scorecard = kind === "scorecard";
   // Tabs beside the photo (not about one spot, which has its own title).
-  const tabbed = docked && !spot;
+  const tabbed = porchcard && docked && !spot;
   const tabsId = useId();
 
   // A new comment of yours scrolls into view where it lands, after the others
@@ -3205,7 +3277,6 @@ function HomeSheet({
               mode={mode}
               agentName={agentName}
               viewer={viewer}
-              siblings={siblings}
               myName={myName}
               alone={alone}
               // Beside the photo, the panel under it says what the home is.
@@ -3220,7 +3291,7 @@ function HomeSheet({
             />
           ) : (
             <>
-              {!spot && !tabbed && (
+              {porchcard && !spot && !tabbed && (
                 // What everyone thinks of the home: at the top, where it shows
                 // at either height, then what people said.
                 <div className="-mt-1 mb-3 border-b border-stone-100 pb-1">
@@ -3291,10 +3362,14 @@ function MoreSheet({
   onClose,
   anchor,
   returnTo,
+  about = false,
 }: {
   post: FeedPost | null;
   state: ReactionState;
   agentName?: string;
+  // Say what the home is, under the rest: its description whole, and the
+  // details there's no room for under a phone's photo.
+  about?: boolean;
   anchor: RefObject<HTMLElement | null>;
   returnTo?: () => HTMLElement | null;
   onPass: () => void;
@@ -3348,6 +3423,24 @@ function MoreSheet({
             <ImageIcon aria-hidden size={17} />
             Photo only
           </button>
+          {about && (post.listing.PublicRemarks || homeDetails(post.listing).length > 0) && (
+            <section aria-labelledby="about-home-title" className="border-t border-stone-200 pt-4">
+              <h3 id="about-home-title" className="text-meta font-semibold text-muted">
+                About this home
+              </h3>
+              {post.listing.PublicRemarks && (
+                <p className="mt-1 whitespace-pre-line text-body leading-snug text-ink">{post.listing.PublicRemarks}</p>
+              )}
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
+                {homeDetails(post.listing).map((row) => (
+                  <div key={row.label}>
+                    <dt className="text-meta text-muted">{row.label}</dt>
+                    <dd className="text-body font-semibold text-ink">{row.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          )}
         </div>
       )}
     </Sheet>

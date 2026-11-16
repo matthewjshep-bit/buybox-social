@@ -4,13 +4,21 @@ import { readDevice } from "@/lib/engagement";
 import { ensureAccountVisitor, getPublicIdentity } from "@/lib/public";
 
 // Your own profile, wherever you are: by account, or by this browser.
-// `?tab=activity` comes along for an agent, whose profile may open on their listings.
-export default async function MyProfile({ searchParams }: { searchParams: Promise<{ tab?: string | string[] }> }) {
-  const { tab } = await searchParams;
+// `?tab=activity` comes along for an agent, whose profile may open on their
+// listings; so does `?show=saved`, for the homes you saved.
+export default async function MyProfile({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string | string[]; show?: string | string[] }>;
+}) {
+  const { tab, show } = await searchParams;
   const [account, device] = await Promise.all([getCurrentUser(), readDevice()]);
   const { visitor } = await getPublicIdentity(account, device);
   // Signed in but nothing public yet: your profile still exists, just empty.
   const me = visitor ?? (account ? await ensureAccountVisitor(account) : null);
-  const activity = tab === "activity" && account?.role === "agent";
-  redirect(me ? `/people/${me.id}${activity ? "?tab=activity" : ""}` : "/login");
+  const params = new URLSearchParams();
+  if (tab === "activity" && account?.role === "agent") params.set("tab", "activity");
+  if (show === "saved") params.set("show", "saved");
+  const query = params.toString();
+  redirect(me ? `/people/${me.id}${query ? `?${query}` : ""}` : "/login");
 }

@@ -6,19 +6,22 @@ import { cn } from "@/lib/format";
 
 const LINKS = [
   { href: "/dashboard", label: "Clients" },
+  { href: "/dashboard/listings", label: "Listings" },
   { href: "/dashboard/profile", label: "Your brand" },
 ];
 
-// The dashboard's two places. A client's page and a new link count as part
-// of "Clients". The one you're in is marked the way the header marks the
-// page you're on: a soft grey pill, in ink.
+// The dashboard's places. A client's page and a new link count as part of
+// "Clients"; a listing's own page, as part of "Listings". The one you're in
+// is marked the way the header marks the page you're on: a soft grey pill,
+// in ink.
 export function DashboardNav() {
   const pathname = usePathname();
   return (
     <nav aria-label="Dashboard" className="flex gap-1 pt-3 text-sm font-medium">
       {LINKS.map(({ href, label }) => {
         const here = pathname === href;
-        const within = here || (href === "/dashboard" && !pathname.startsWith("/dashboard/profile"));
+        const elsewhere = LINKS.some((link) => link.href !== "/dashboard" && pathname.startsWith(link.href));
+        const within = here || (href === "/dashboard" ? !elsewhere : pathname.startsWith(href));
         return (
           <Link
             key={href}

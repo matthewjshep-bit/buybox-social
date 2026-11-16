@@ -103,7 +103,7 @@ test("signed out, an agent's page is their listings, with Activity one tap away"
   await expect(sections(anon).getByRole("link", { name: /^Listings/ })).toHaveAttribute("aria-current", "page");
   await expect(grid(anon).getByRole("link")).toHaveCount(4);
   await expect(anon.getByRole("link", { name: "Edit profile" })).toHaveCount(0);
-  await expect(anon).toHaveTitle("Jordan · Porchcard");
+  await expect(anon).toHaveTitle("Jordan Rivera · Porchcard");
 
   // All four, to the end, with nothing asking them to sign up on the way; Follow is the way in.
   await anon.goto(`/reel?from=listings:${liaId}&home=SAMPLE-1001`);

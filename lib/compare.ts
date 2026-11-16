@@ -156,7 +156,8 @@ export async function suggestHomes(
   if (tastes.length === 0) return { suggestions: [], together: false };
 
   const rows = await sql<{ data: Listing }[]>`
-    select data from listings where standard_status = 'Active' order by updated_at desc limit 300`;
+    select data from listings where standard_status = 'Active' and owner_account_id is null
+    order by updated_at desc limit 300`;
   const scored = rows
     .map(({ data: listing }) => {
       if (onPackage.has(listing.ListingKey)) return null;

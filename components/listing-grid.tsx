@@ -5,12 +5,27 @@ import type { Listing } from "@/lib/listings/types";
 
 const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
-// An agent's listings as a board: photo, price, beds and baths, address. Each
+// Homes as a board (an agent's listings, the homes you saved): photo, price, beds and baths, address. Each
 // opens them all full screen (the reel), on that one, in this order. Nothing
 // sits on the photos; the words are under them.
-export function ListingGrid({ listings, from }: { listings: Listing[]; from: string }) {
+export function ListingGrid({
+  listings,
+  from,
+  label = "Listings",
+  edit,
+  credit,
+}: {
+  listings: Listing[];
+  // Which homes the reel opens with (`/reel?from=`).
+  from: string;
+  label?: string;
+  // On their own profile: where a listing they added themselves is changed.
+  edit?: (listing: Listing) => string | null;
+  // Who listed it, said under a home someone else listed ("Listed by …").
+  credit?: (listing: Listing) => string | null;
+}) {
   return (
-    <ul aria-label="Listings" className="grid grid-cols-2 gap-x-2.5 gap-y-5">
+    <ul aria-label={label} className="grid grid-cols-2 gap-x-2.5 gap-y-5">
       {listings.map((listing, i) => {
         const photo = listing.Media[0];
         // An odd one out leads, full width.
@@ -42,7 +57,17 @@ export function ListingGrid({ listings, from }: { listings: Listing[]; from: str
               <span className="block truncate px-0.5 text-meta text-muted group-hover:underline">
                 {listing.UnparsedAddress}, {listing.City}
               </span>
+              {credit?.(listing) && <span className="block truncate px-0.5 text-meta text-muted">{credit(listing)}</span>}
             </Link>
+            {edit?.(listing) && (
+              <Link
+                href={edit(listing)!}
+                aria-label={`Edit ${listing.UnparsedAddress}`}
+                className="inline-flex min-h-11 items-center gap-1 px-0.5 text-sm font-semibold text-brand underline-offset-2 hover:underline"
+              >
+                Edit
+              </Link>
+            )}
           </li>
         );
       })}

@@ -6,6 +6,7 @@ import { signedIn,
   homeIn,
   joinAs,
   likeInPhoto,
+  linkHomes,
   openComments,
   openMore,
   openScorecard,
@@ -20,7 +21,15 @@ test("public pages show activity, never private words, and private threads share
   browser,
   page,
 }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(120_000);
+  // Another agent, with a link of her own that has the same home on it (sent
+  // first, so it's the oldest news about the home). Going through its homes
+  // she has the home's Porchcard (nobody else has one): what everyone thinks
+  // of it, which may say only what the public page may.
+  const rival = await signInAgent(browser, "rhea-rival@example.com", "Rhea Rival");
+  const hers = await createShare(rival, ["2205 Brackenfield"], ["Sam"]);
+  const porchcard = async () => openScorecard(rival, await linkHomes(rival, hers.dashboardUrl, "SAMPLE-1006", BRACKENFIELD));
+
   // A private client thread: a private comment, a like with a photo like, and
   // a comment the client chooses to share anonymously.
   const agent = await signInAgent(browser, "pat@example.com", "Pat Agent");
@@ -80,22 +89,34 @@ test("public pages show activity, never private words, and private threads share
   await expect(page.getByText(SECRET)).toHaveCount(0);
   await expect(page.getByText(/Riley|Quinn/)).toHaveCount(0);
   await page.keyboard.press("Escape");
-  // ...nor in the Porchcard, which has what people like and the quiet signals.
-  let card = await openScorecard(page, post);
+  // (No Porchcard for a visitor: Save is where it was.)
+  await expect(page.getByRole("button", { name: "Porchcard", exact: true })).toHaveCount(0);
+  await expect(post.getByRole("button", { name: `Save ${BRACKENFIELD}`, exact: true })).toBeVisible();
+  // ...nor in the Porchcard the other agent has, which has what people like
+  // and the quiet signals.
+  let card = await porchcard();
   await expect(card.getByText("What people liked", { exact: true })).toBeVisible();
   await expect(card.getByRole("button", { name: /^Exterior 1 person/ })).toBeVisible();
   await expect(card.getByText("What people didn't like")).toHaveCount(0);
   await expect(card.getByLabel(/passed$/)).toHaveCount(0);
   await expect(card).not.toContainText(/pass/i);
   const buzz = card.getByLabel("Activity");
-  await expect(buzz).toContainText("agents sent it to 1 buyer");
+  await expect(buzz).toContainText("agents sent it to 2 buyers");
   // (The one shared here shows among the comments, so isn't counted again.)
   await expect(buzz).toContainText("1 comment in private chats");
   await expect(buzz).not.toContainText("pass");
   await expect(card.getByText(SECRET)).toHaveCount(0);
   await expect(card.getByText(/Riley|Quinn/)).toHaveCount(0);
-  await page.keyboard.press("Escape");
-  await expect(card).toBeHidden();
+  // Nor in the comments beside it, nor anywhere in her page as it's sent.
+  await card.getByRole("button", { name: /^See the \d+ comments?$/ }).click();
+  const rivalSheet = rival.getByRole("dialog", { name: "Comments" });
+  await expect(rivalSheet).toContainText(SHARED);
+  await expect(rivalSheet).not.toContainText(/pass/i);
+  await expect(rival.getByText(SECRET)).toHaveCount(0);
+  await expect(rival.getByText(/Riley|Quinn/)).toHaveCount(0);
+  const rivalHtml = await (await rival.request.get(rival.url())).text();
+  expect(rivalHtml).not.toContain(SECRET);
+  expect(rivalHtml).not.toMatch(/Riley|Quinn/);
 
   // Any visitor can react and comment in public.
   await heartOf(post).click();
@@ -110,9 +131,8 @@ test("public pages show activity, never private words, and private threads share
   await expect(commentIn(thread, "Morgan", "Love the quiet cul-de-sac.")).toBeVisible();
   await expect(thread).toContainText("You liked the natural light");
   await page.keyboard.press("Escape");
-  card = await openScorecard(page, post);
+  card = await porchcard();
   await expect(card.getByText("Natural light 1")).toBeVisible();
-  await page.keyboard.press("Escape");
   await expect(post.getByRole("button", { name: `Like ${BRACKENFIELD}, 2 likes` })).toBeVisible();
 
   // Other visitors see it, by name.
@@ -145,11 +165,12 @@ test("public pages show activity, never private words, and private threads share
   otherSheet = await openComments(other, otherPost);
   await expect(otherSheet.getByText("You passed, didn't like the price")).toBeVisible();
   await other.keyboard.press("Escape");
-  const otherCard = await openScorecard(other, otherPost);
-  await expect(otherCard.getByText("What people didn't like")).toBeVisible();
-  await expect(otherCard.getByRole("button", { name: /^Price 1 person/ })).toBeVisible();
-  await expect(otherCard.getByText(/Riley|Quinn/)).toHaveCount(0);
-  await other.keyboard.press("Escape");
+  // In the Porchcard too: the public pass and why, and still nobody from the link.
+  card = await porchcard();
+  await expect(card.getByText("What people didn't like")).toBeVisible();
+  await expect(card.getByRole("button", { name: /^Price 1 person/ })).toBeVisible();
+  await expect(card.getByRole("button", { name: /^Yard/ })).toHaveCount(0);
+  await expect(card.getByText(/Riley|Quinn/)).toHaveCount(0);
 
   // Private words and names are not in the public HTML at all.
   for (const path of ["/", "/homes/SAMPLE-1006"]) {

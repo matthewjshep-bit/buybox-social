@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
+import { getPinnedListings, getShownOwnListings } from "./own-listings";
 
 // What an MLS ID may be (also checked by the database).
 export const MLS_ID = /^[A-Za-z0-9-]{1,20}$/;
@@ -34,17 +35,31 @@ export async function listedAgentNames(mlsAgentId: string): Promise<string[]> {
   return rows.map((row) => row.name ?? "");
 }
 
-// An agent's own homes for sale, newest on the market first: the ones with
-// their MLS ID that are listed under their name. Public listing data only:
-// nothing anyone did on them.
-export const getAgentListings = cache(async (mlsAgentId: string | null, agentName: string): Promise<Listing[]> => {
-  if (!mlsAgentId) return [];
-  const rows = await sql<{ data: Listing }[]>`
-    select data from listings
-    where standard_status = 'Active' and lower(data->>'ListAgentMlsId') = ${mlsAgentId.toLowerCase()}
-    order by data->>'OnMarketDate' desc nulls last, listing_key
-    limit ${MOST}`;
-  return rows
-    .filter(({ data }) => sameAgent(agentName, data.ListAgentFullName))
-    .map(({ data }) => ({ ...data, Media: [...data.Media].sort((a, b) => a.Order - b.Order) }));
-});
+// An agent's own homes for sale: the listings they added themselves (typed
+// in, then found and added, newest first), then the ones with their MLS ID
+// that are listed under their name (newest on the market first). Each home
+// once. Public listing data only: nothing anyone did on them.
+export const getAgentListings = cache(
+  async (mlsAgentId: string | null, agentName: string, accountId: string | null = null): Promise<Listing[]> => {
+    const [own, pinned, rows] = await Promise.all([
+      getShownOwnListings(accountId),
+      getPinnedListings(accountId),
+      mlsAgentId
+        ? sql<{ data: Listing }[]>`
+            select data from listings
+            where standard_status = 'Active' and owner_account_id is null
+              and lower(data->>'ListAgentMlsId') = ${mlsAgentId.toLowerCase()}
+            order by data->>'OnMarketDate' desc nulls last, listing_key
+            limit ${MOST}`
+        : [],
+    ]);
+    const seen = new Set<string>();
+    return [
+      ...own,
+      ...pinned,
+      ...rows
+        .filter(({ data }) => sameAgent(agentName, data.ListAgentFullName))
+        .map(({ data }) => ({ ...data, Media: [...data.Media].sort((a, b) => a.Order - b.Order) })),
+    ].filter((listing) => !seen.has(listing.ListingKey) && Boolean(seen.add(listing.ListingKey)));
+  },
+);

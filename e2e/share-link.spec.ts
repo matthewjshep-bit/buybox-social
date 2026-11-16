@@ -6,9 +6,9 @@ import { signedIn, toFirstHome,
   heartOf,
   homeIn,
   joinAs,
+  linkPorchcard,
   openComments,
   openMore,
-  openScorecard,
   pick,
   signInAgent,
 } from "./helpers";
@@ -352,34 +352,49 @@ test("a link whose homes were all taken off says so, with a way to reach the age
   );
 });
 
-test("the Porchcard says who on the link hasn't weighed in yet, never you", async ({ browser }) => {
+test("the agent's Porchcard for the link says who on it hasn't weighed in yet; the people on it have no Porchcard", async ({
+  browser,
+}) => {
   test.setTimeout(60_000);
   const agent = await signInAgent(browser, "notyet-agent@example.com", "Jordan Rivera");
-  const { urls } = await createShare(agent, ["812 N Corbel"], ["Owen", "Pat"]);
+  const { urls, dashboardUrl } = await createShare(agent, ["812 N Corbel"], ["Owen", "Pat"]);
+  const noPorchcard = (page: Page) => expect(page.getByRole("button", { name: /Porchcard/ })).toHaveCount(0);
 
   const owen = await signedIn(browser);
   await owen.goto(urls.Owen);
   const home = homeIn(owen, "812 N Corbel St");
+  const liked = owen.waitForResponse(
+    (res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]),
+  );
   await heartOf(home).click();
   await expect(heartOf(home)).toHaveAttribute("aria-pressed", "true");
-  let card = await openScorecard(owen, home);
-  await expect(card).toContainText("You liked it");
-  await expect(card.getByText("Not yet: Pat", { exact: true })).toBeVisible();
+  await liked;
+  // Like, Comments and More on his link: the Porchcard is the agent's.
+  await expect(home.locator("[data-rail]").getByRole("button")).toHaveCount(3);
+  await noPorchcard(owen);
   // Two people on it: never "only you".
-  await expect(card.getByText("Only Jordan Rivera and people on this link see this", { exact: true })).toBeVisible();
+  const chat = await openComments(owen, home);
+  await expect(chat.getByText("Only Jordan Rivera and people on this link see this.")).toBeVisible();
+  await expect(chat.getByText("What people think")).toHaveCount(0);
+  await owen.keyboard.press("Escape");
 
-  // Pat sees Owen's take, and isn't told he hasn't given his own.
+  // Pat, who hasn't said what he thinks, has none either.
   const pat = await (await browser.newContext()).newPage();
   await pat.goto(urls.Pat);
-  card = await openScorecard(pat, homeIn(pat, "812 N Corbel St"));
+  await expect(homeIn(pat, "812 N Corbel St")).toBeVisible();
+  await noPorchcard(pat);
+
+  // The agent's, on the link's own page: Owen's take, and Pat still to come.
+  const card = await linkPorchcard(agent, dashboardUrl, "812 N Corbel St");
   await expect(card).toContainText("Owen liked it");
-  await expect(card.getByText(/^Not yet/)).toHaveCount(0);
+  await expect(card.getByText("Not yet: Pat", { exact: true })).toBeVisible();
+  await expect(card).toContainText("Only people on this link see this");
 });
 
-test("one person on two devices is one person, and never 'not yet' to themselves", async ({ browser }) => {
+test("one person on two devices is one person: on the agent's Porchcard once, and not still to come", async ({ browser }) => {
   test.setTimeout(90_000);
   const agent = await signInAgent(browser, "twice-agent@example.com", "Jordan Rivera");
-  const { url } = await packageLink(agent, ["812 N Corbel"]);
+  const { url, dashboardUrl } = await packageLink(agent, ["812 N Corbel"]);
   const ADDRESS = "812 N Corbel St";
 
   // Says who they are with a pass (a pass stays on the link), and unless
@@ -409,17 +424,17 @@ test("one person on two devices is one person, and never 'not yet' to themselves
   const laptop = await joinWithPass("Owen", false);
   const pat = await joinWithPass("Pat", false);
 
-  for (const page of [phone, laptop]) {
+  // None of them has a Porchcard on the link: it's the agent's.
+  for (const page of [phone, laptop, pat]) {
     await page.reload();
-    const card = await openScorecard(page, homeIn(page, ADDRESS));
-    await expect(card.getByText(/^Not yet/)).toHaveText("Not yet: Pat");
-    if (page === phone) await expect(card).toContainText("You passed");
+    await expect(homeIn(page, ADDRESS)).toBeVisible();
+    await expect(page.getByRole("button", { name: /Porchcard/ })).toHaveCount(0);
   }
-  // Pat sees Owen's pass, and no Owen still to come.
-  await pat.reload();
-  const card = await openScorecard(pat, homeIn(pat, ADDRESS));
+  // On the agent's, for the link: Owen's pass, once, and only Pat still to
+  // come (no second Owen, from the laptop, who hasn't weighed in).
+  const card = await linkPorchcard(agent, dashboardUrl, ADDRESS);
   await expect(card).toContainText("Owen passed");
-  await expect(card.getByText(/^Not yet/)).toHaveCount(0);
+  await expect(card.getByText(/^Not yet/)).toHaveText("Not yet: Pat");
 });
 
 test("'only you' is said only when nobody else can read it: not once the package link is out", async ({ browser }) => {
@@ -448,9 +463,9 @@ test("'only you' is said only when nobody else can read it: not once the package
   await expect(chat.getByText(/Only you and/)).toHaveCount(0);
   await owen.keyboard.press("Escape");
   await expect(chat).toBeHidden();
-  const card = await openScorecard(owen, home);
-  await expect(card).toBeVisible();
-  await expect(card.getByText(/only you and/i)).toHaveCount(0);
+  // (The Porchcard, which said so too, is the agent's now: not on the link.)
+  await expect(owen.getByRole("button", { name: /Porchcard/ })).toHaveCount(0);
+  await expect(owen.getByText(/only you and/i)).toHaveCount(0);
   expect(await (await owen.request.get(owenUrl)).text()).not.toContain("Only you and");
 });
 

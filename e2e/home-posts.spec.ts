@@ -24,11 +24,14 @@ test("someone posts about a home from their page; a follower sees it in their fe
   await expect(ravi.getByRole("button", { name: /^Following/ })).toBeVisible();
 
   // Pia finds the home by its street, and says what she thinks.
-  await pia.getByRole("button", { name: "Post about a home…" }).click();
-  const form = pia.getByRole("form", { name: "Post about a home" });
+  await pia.getByRole("button", { name: "Post or save a home…" }).click();
+  const form = pia.getByRole("form", { name: "Post or save a home" });
   await form.getByRole("searchbox", { name: "Which home? Address or MLS number" }).fill("Larkmoor");
   await form.getByRole("list", { name: "Homes" }).getByRole("button", { name: new RegExp(LARKMOOR) }).click();
   await expect(form).toContainText(LARKMOOR);
+  // Save is there beside Post (it keeps the home for her alone, with nothing
+  // said: e2e/saved-homes.spec.ts); Post waits for something to say.
+  await expect(form.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
   await expect(form.getByRole("button", { name: "Post", exact: true })).toBeDisabled();
   await form.getByRole("textbox", { name: "What do you think of it?" }).fill(WORDS);
   await form.getByRole("button", { name: "Post", exact: true }).click();
@@ -45,7 +48,7 @@ test("someone posts about a home from their page; a follower sees it in their fe
   await expect(hers).toContainText("Pia posted about this home");
   await expect(hers.locator("[data-card-link]")).toHaveAttribute("href", /^\/reel\?from=[\w-]+&home=SAMPLE-/);
   // Not someone else's page: no box to post on it.
-  await expect(ravi.getByRole("button", { name: "Post about a home…" })).toHaveCount(0);
+  await expect(ravi.getByRole("button", { name: "Post or save a home…" })).toHaveCount(0);
 
   // Ravi's feed has it, and a box right under it, his face beside it.
   await ravi.goto("/");

@@ -1,8 +1,7 @@
-import { Heart, Home, Lock, MessageCircle, ThumbsDown, X } from "lucide-react";
+import { Bookmark, Heart, Home, Lock, MessageCircle, Pencil, ThumbsDown, X } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { after } from "next/server";
 import { cache, type CSSProperties } from "react";
 import { FollowButton, Toast } from "@/app/people/[id]/client";
 import { BetweenCard } from "@/components/between-card";
@@ -14,7 +13,7 @@ import { ProfileHeader } from "@/components/profile-header";
 import { TasteControls } from "@/components/taste-controls";
 import { TasteStoryCard } from "@/components/taste-story-card";
 import { EmptyState } from "@/components/ui";
-import { getAgentListings } from "@/lib/agent-listings";
+import { getAgentListings, sameAgent } from "@/lib/agent-listings";
 import { getCurrentUser } from "@/lib/auth";
 import { getBetween } from "@/lib/between";
 import { readDevice } from "@/lib/engagement";
@@ -35,7 +34,9 @@ import {
   type TopicSide,
 } from "@/lib/profile";
 import { getPublicIdentity } from "@/lib/public";
-import { readStory, refreshStory, shownStory, storyOf, storyWriting, type TasteStory } from "@/lib/taste-story";
+import { OWN_PREFIX } from "@/lib/own-listings";
+import { getSavedHomes } from "@/lib/saved";
+import { storyOf } from "@/lib/taste-story";
 import { ANONYMOUS_BUYER } from "@/lib/timeline";
 import { yourClient, type YourClient } from "@/lib/your-client";
 import { button, pill } from "@/lib/ui";
@@ -87,30 +88,17 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const isMe = visitor?.id === person.id;
   const story = await tasteOf(person, isMe);
   const { name, unnamed } = await nameOf(person, isMe, await clientOf(person.id, isMe));
-  const title = `${unnamed && isMe ? "Your profile" : name} · Porchcard`;
+  // (An agent's page goes by their whole name.)
+  const title = `${unnamed && isMe ? "Your profile" : (person.isAgent && person.agentName) || name} · Porchcard`;
   // The headline is from what everyone can see, whoever is looking, and it's
   // what a shared link to the page says under its title.
   // An agent with listings: their page is those first, so it says so.
-  const listed = person.isAgent && !unnamed && (await getAgentListings(person.mlsAgentId, person.agentName)).length > 0;
+  const listed = person.isAgent && !unnamed && (await getAgentListings(person.mlsAgentId, person.agentName, person.accountId)).length > 0;
   const description = listed
     ? `${name}'s listings${person.brokerage ? ` · ${person.brokerage}` : ""}, on Porchcard.`
     : story.headline ??
     (unnamed ? `What ${isMe ? "you like" : "they like"} in homes, on Porchcard.` : `What ${name} likes in homes, on Porchcard.`);
   return { title, description, openGraph: { title, description } };
-}
-
-// The words to show, from the database (never the model): the model's, if
-// it wrote some that still hold, else the template. If it should write them
-// again, that starts once the page has gone out. Only this page ever asks.
-async function storyNow(personId: string, story: TasteStory) {
-  try {
-    const shown = shownStory(await readStory(personId), story);
-    if (shown?.refresh) after(() => refreshStory(personId, story));
-    return shown;
-  } catch (error) {
-    console.error("[taste] couldn't read the taste summary", error);
-    return shownStory(null, story, false);
-  }
 }
 
 // Someone's page, Facebook-style: who they are and what they keep liking,
@@ -131,7 +119,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
     clientOf(person.id, isMe),
     getProfileSummary(person.id, isMe, passes),
     // An agent's page leads with their listings, when they have any.
-    person.isAgent ? getAgentListings(person.mlsAgentId, person.agentName) : [],
+    person.isAgent ? getAgentListings(person.mlsAgentId, person.agentName, person.accountId) : [],
     tasteOf(person, isMe),
     getCurrentUser(),
     // Who follows them, whom they follow, and whether that's whoever's looking.
@@ -141,6 +129,9 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   ]);
   const { name, face, unnamed } = await nameOf(person, isMe, client);
   const show: ProfileShow = isProfileShow(query.show) ? query.show : "all";
+  // The homes they saved: on their own profile only, and only ever theirs to see.
+  const savedView = isMe && query.show === "saved";
+  const saved = savedView ? await getSavedHomes(person.id) : [];
   // Their passes, asked for by someone they keep them from.
   const keptPrivate = show === "passed" && !passes;
   // Only a specific, or a thing they've done something with, can be a topic.
@@ -153,7 +144,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   // A filter or a page of earlier activity is always Activity.
   const tabs = listings.length > 0;
   const tab: "listings" | "activity" =
-    tabs && query.tab !== "activity" && show === "all" && !about && !before ? "listings" : "activity";
+    tabs && query.tab !== "activity" && show === "all" && !savedView && !about && !before ? "listings" : "activity";
   const [feed, between] = await Promise.all([
     keptPrivate || tab === "listings"
       ? { cards: [], earlier: null }
@@ -186,28 +177,30 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   // and counted from everything they've done (as their feed shows it).
   const loves = isMe ? story.own.loves : story.loves.filter((chip) => !chip.hidden);
   const passChips = isMe ? story.own.passes : passes ? story.passes.filter((chip) => !chip.hidden) : [];
-  const showTaste =
-    loves.length > 0 ||
-    passChips.length > 0 ||
-    Boolean(story.headline || story.template) ||
-    (isMe && summary.counts.homes > 0);
-  // Their own card with nothing to say yet says how to get there.
-  const prompt =
-    isMe && (!story.enough || (!story.headline && !story.template && loves.length === 0 && passChips.length === 0));
+  // The card is the things they like (and pass on): with none to show, it's
+  // only on their own page, saying how to get there.
+  const prompt = isMe && loves.length === 0 && passChips.length === 0;
+  const showTaste = loves.length > 0 || passChips.length > 0 || (isMe && summary.counts.homes > 0);
   // Anything to switch: a chip, or passes (kept private or not) even when no chip shows them.
   const controllable = isMe && (loves.length > 0 || passChips.length > 0 || story.hasPasses || person.hidePasses);
   // What to show, on the first day's line: passes only for those who may see them.
   const control = keptPrivate ? null : (
     <FeedFilter
-      current={show}
-      options={(["all", "liked", "passed", "comments"] as const)
-        .filter((key) => key !== "passed" || passes)
-        .map((key) => ({
-          key,
-          label: PROFILE_FILTERS[key],
-          href: href({ show: key }),
-          lock: key === "passed" && isMe && person.hidePasses,
-        }))}
+      current={savedView ? "saved" : show}
+      options={[
+        ...(["all", "liked", "passed", "comments"] as const)
+          .filter((key) => key !== "passed" || passes)
+          .map((key) => ({
+            key,
+            label: PROFILE_FILTERS[key],
+            href: href({ show: key }),
+            lock: key === "passed" && isMe && person.hidePasses,
+          })),
+        // Theirs alone, so only on their own profile.
+        ...(isMe
+          ? [{ key: "saved", label: "Saved", href: `/people/${person.id}?${tabs ? "tab=activity&" : ""}show=saved`, lock: true }]
+          : []),
+      ]}
     />
   );
 
@@ -225,6 +218,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
         <div className="xl:col-start-1 xl:row-start-1 [@media(min-width:80rem)_and_(min-height:860px)]:sticky [@media(min-width:80rem)_and_(min-height:860px)]:top-2 [@media(min-width:80rem)_and_(min-height:860px)]:max-h-[calc(100dvh-1rem)] [@media(min-width:80rem)_and_(min-height:860px)]:overflow-y-auto [@media(min-width:80rem)_and_(min-height:860px)]:overscroll-contain xl:-m-1 xl:self-start xl:p-1">
           <ProfileHeader
             name={name}
+            fullName={person.isAgent && !unnamed ? person.agentName || undefined : undefined}
             face={face}
             isMe={isMe}
             unnamed={unnamed}
@@ -247,6 +241,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
             brokerage={person.brokerage}
             personId={person.id}
             brandColor={person.brandColor}
+            banner={person.banner}
             follow={
               isMe ? undefined : (
                 <FollowButton
@@ -266,20 +261,10 @@ export default async function ProfilePage({ params, searchParams }: Props) {
             <TasteStoryCard
               name={name}
               isMe={isMe}
-              headline={story.headline}
               prompt={prompt}
               loves={loves}
               passes={passChips}
               passesPrivate={isMe && person.hidePasses}
-              // The words show only when there are no chips to say it, so only then are they read (or written).
-              shown={
-                loves.length + passChips.length > 0
-                  ? null
-                  : storyWriting() && story.template
-                    ? storyNow(person.id, story)
-                    : shownStory(null, story, false)
-              }
-              template={shownStory(null, story, false)}
               current={current}
               chipHref={chipHref}
               controls={
@@ -298,7 +283,8 @@ export default async function ProfilePage({ params, searchParams }: Props) {
           <BetweenCard id="between-wide" links={between} name={name} className="mb-4 hidden lg:block" />
         )}
         {tabs && (
-          <nav aria-label="Sections" className="mb-4 flex gap-1 border-b border-stone-200">
+          <div className="mb-4 flex items-end border-b border-stone-200">
+          <nav aria-label="Sections" className="-mb-px flex gap-1">
             {(["listings", "activity"] as const).map((key) => (
               <Link
                 key={key}
@@ -306,7 +292,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                 scroll={false}
                 aria-current={tab === key ? "page" : undefined}
                 className={cn(
-                  "-mb-px flex min-h-11 items-center gap-1.5 border-b-2 px-4 text-body font-semibold",
+                  "flex min-h-11 items-center gap-1.5 border-b-2 px-4 text-body font-semibold",
                   tab === key ? "border-stone-900 text-ink" : "border-transparent text-stone-600 hover:text-ink",
                 )}
               >
@@ -315,23 +301,72 @@ export default async function ProfilePage({ params, searchParams }: Props) {
               </Link>
             ))}
           </nav>
+            {/* Their own: where they add and change the listings they keep themselves. */}
+            {isMe && (
+              <Link
+                href="/dashboard/listings"
+                className="ml-auto flex min-h-11 items-center gap-1.5 px-2 text-sm font-semibold text-brand underline-offset-2 hover:underline"
+              >
+                <Pencil aria-hidden size={15} /> Edit listings
+              </Link>
+            )}
+          </div>
         )}
         {isMe && tab === "activity" && show === "all" && !about && !before && (
           <PostComposer me={{ name: face || name, photo: person.photo, agent: person.isAgent }} />
         )}
         {tab === "listings" ? (
-          <ListingGrid listings={listings} from={`listings:${person.id}`} />
+          <ListingGrid
+            listings={listings}
+            from={`listings:${person.id}`}
+            // A home they put here that someone else listed says who did.
+            credit={(listing) =>
+              listing.ListAgentFullName && !sameAgent(person.agentName, listing.ListAgentFullName)
+                ? `Listed by ${listing.ListAgentFullName}`
+                : null
+            }
+            // Their own profile: each listing they added themselves, a tap from changing it.
+            edit={
+              isMe
+                ? (listing) => (listing.ListingKey.startsWith(OWN_PREFIX) ? `/dashboard/listings/${listing.ListingKey}` : null)
+                : undefined
+            }
+          />
+        ) : savedView ? (
+          <section aria-labelledby="saved-title">
+            <div className="flex items-center justify-between gap-3 px-1">
+              <h2 id="saved-title" className="flex items-center gap-1.5 text-body font-semibold text-muted">
+                Saved
+                <Lock aria-hidden size={13} />
+                <span className="sr-only">Only you see this</span>
+              </h2>
+              {control}
+            </div>
+            <div className="mt-2">
+              {saved.length > 0 ? (
+                <ListingGrid listings={saved} from="saved" label="Saved homes" />
+              ) : (
+                <EmptyState icon={Bookmark} title="Nothing saved yet">
+                  Save a home to find it here.
+                </EmptyState>
+              )}
+            </div>
+          </section>
         ) : nothingYet ? (
           isMe ? (
-            <EmptyState
-              icon={Home}
-              title="Nothing here yet"
-              action={
-                <Link href="/reel" data-empty-action className={button({ kind: "primary" })}>
-                  See homes
-                </Link>
-              }
-            />
+            <>
+              {/* Nothing liked or said yet still leaves the way to what they saved. */}
+              <div className="mb-1 flex justify-end">{control}</div>
+              <EmptyState
+                icon={Home}
+                title="Nothing here yet"
+                action={
+                  <Link href="/reel" data-empty-action className={button({ kind: "primary" })}>
+                    See homes
+                  </Link>
+                }
+              />
+            </>
           ) : (
             <EmptyState icon={Home} title="Nothing yet">
               {name} hasn&apos;t liked anything yet.
