@@ -119,6 +119,11 @@ export const field = ({
 // padding is the page's to choose.
 export const card = "rounded-2xl bg-white ring-1 ring-stone-200";
 
+// Which side of the app a page is on, said small at its top: "Agent
+// dashboard" on an agent's home and dashboard pages, "Your public profile"
+// on their own profile. One style, so the two read as a pair.
+export const pageLabel = "px-1 text-[12px] font-semibold uppercase leading-4 tracking-[0.08em] text-stone-600";
+
 
 // Someone's face: an agent's in ink, a buyer's (yours included) in the
 // brand's colour, someone unnamed in stone. On the dark ground, stone is

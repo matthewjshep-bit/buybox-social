@@ -30,8 +30,13 @@ const MAX_HEIGHT = `(${CLEAR} + (100cqh - ${CLEAR}) * (1 - ${FIT}))`;
 // The strip of photos under the photo, side by side.
 const STRIP_HEIGHT = "88px";
 
+// (A video with no size given is taken as wide-screen, so it has a frame to play in.)
 const ratioOf = (photo: ListingMedia | undefined) =>
-  photo?.ImageWidth && photo?.ImageHeight ? photo.ImageWidth / photo.ImageHeight : null;
+  photo?.ImageWidth && photo?.ImageHeight
+    ? photo.ImageWidth / photo.ImageHeight
+    : photo && (photo.MediaCategory === "Video" || photo.VideoEmbed)
+      ? 16 / 9
+      : null;
 
 // Where a photo goes: as big as it can be, whole, never cropped. On a phone it
 // sits at the top of the clear space, right under the header, with the words
@@ -144,7 +149,7 @@ export const isNear = (box: Box, x: number, y: number, margin = CLEAR_MARGIN) =>
   x >= box.left - margin && x <= box.right + margin && y >= box.top - margin && y <= box.bottom + margin;
 
 const isVideo = (photo: ListingMedia) =>
-  photo.MediaCategory === "Video" || /\.(mp4|webm|mov)(\?|$)/i.test(photo.MediaURL);
+  photo.MediaCategory === "Video" || Boolean(photo.VideoEmbed) || /\.(mp4|webm|mov)(\?|$)/i.test(photo.MediaURL);
 
 // How long a press lasts before it counts as holding, and how soon a second
 // tap has to follow the first to make a double-tap.
@@ -387,7 +392,14 @@ export function ReelPhotos({
                 </div>
               )}
               <PhotoBox photo={photo}>
-                {isVideo(photo) ? (
+                {photo.VideoEmbed ? (
+                  <ReelEmbed
+                    embed={photo.VideoEmbed}
+                    poster={photo.VideoPoster}
+                    on={active && i === index}
+                    label={photo.ShortDescription ?? `${address}, video`}
+                  />
+                ) : isVideo(photo) ? (
                   <ReelVideo src={photo.MediaURL} playing={active && i === index} label={photo.ShortDescription} />
                 ) : (
                   <Image
@@ -593,6 +605,50 @@ function Filmstrip({
         })}
       </ul>
     </div>
+  );
+}
+
+// A video on another site (YouTube, Vimeo, Loom): its still (or a plain dark
+// ground) with a play button, until it's tapped; then that site's own player,
+// in place, with its own controls. Moving on to another photo puts it away.
+// (Taps on it are its own: they never count as taps on a photo.)
+function ReelEmbed({ embed, poster, on, label }: { embed: string; poster?: string; on: boolean; label: string }) {
+  const [started, setStarted] = useState(false);
+  const mine = (event: { stopPropagation: () => void }) => event.stopPropagation();
+  if (started && on) {
+    return (
+      <div className="absolute inset-0" onPointerDown={mine} onPointerUp={mine} onClick={mine}>
+        <iframe
+          src={`${embed}${embed.includes("?") ? "&" : "?"}autoplay=1&playsinline=1&rel=0`}
+          title={label}
+          allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+          allowFullScreen
+          className="absolute inset-0 h-full w-full border-0 bg-black"
+        />
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      aria-label={`Play video: ${label}`}
+      onPointerDown={mine}
+      onPointerUp={mine}
+      onClick={(event) => {
+        event.stopPropagation();
+        setStarted(true);
+      }}
+      className="absolute inset-0 grid place-items-center bg-stone-900"
+    >
+      {poster && (
+        // A still from the video's own site, shown as it is.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={poster} alt="" draggable={false} className="absolute inset-0 h-full w-full object-cover opacity-80" />
+      )}
+      <span className="relative grid size-16 place-items-center rounded-full bg-black/60 ring-2 ring-white/80">
+        <Play aria-hidden size={28} className="ml-1 fill-white text-white" />
+      </span>
+    </button>
   );
 }
 

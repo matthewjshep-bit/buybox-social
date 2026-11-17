@@ -460,7 +460,13 @@ export function buildScorecard(
   const address = factTally("Address");
   const facts: FactRow[] = [
     { label: "Price", value: formatPrice(listing.ListPrice), ...factTally("Price") },
-    ...(listing.LivingArea > 0
+    ...(listing.AfterRepairValue
+      ? [{ label: "After repair value", value: formatPrice(listing.AfterRepairValue), ...factTally("After repair value") }]
+      : []),
+    ...(listing.EstimatedRehab
+      ? [{ label: "Estimated rehab", value: formatPrice(listing.EstimatedRehab), ...factTally("Estimated rehab") }]
+      : []),
+    ...(listing.LivingArea > 0 && !listing.HidePricePerSqFt
       ? [{ label: "Price per sq ft", value: formatPrice(Math.round(listing.ListPrice / listing.LivingArea)), ...factTally("Price per sq ft") }]
       : []),
     { label: "Bedrooms", value: String(listing.BedroomsTotal), ...factTally("Bedrooms") },
@@ -596,7 +602,14 @@ const aspectOfSpot = (listing: Listing, row: SpotRow) =>
 // beside its photo. Only what the listing has.
 export function homeDetails(listing: Listing): { label: string; value: string; tag: FactTag }[] {
   return [
-    ...(listing.LivingArea > 0
+    // A deal's numbers lead, where its owner gave them.
+    ...(listing.AfterRepairValue
+      ? [{ label: "After repair value", value: formatPrice(listing.AfterRepairValue), tag: "After repair value" as const }]
+      : []),
+    ...(listing.EstimatedRehab
+      ? [{ label: "Estimated rehab", value: formatPrice(listing.EstimatedRehab), tag: "Estimated rehab" as const }]
+      : []),
+    ...(listing.LivingArea > 0 && !listing.HidePricePerSqFt
       ? [{ label: "Price per sq ft", value: formatPrice(Math.round(listing.ListPrice / listing.LivingArea)), tag: "Price per sq ft" as const }]
       : []),
     ...(listing.PropertySubType ? [{ label: "Home type", value: listing.PropertySubType, tag: "Home type" as const }] : []),

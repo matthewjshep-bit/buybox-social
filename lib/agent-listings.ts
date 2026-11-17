@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { sql } from "./db";
 import type { Listing } from "./listings/types";
-import { getPinnedListings, getShownOwnListings } from "./own-listings";
+import { getCopiedKeys, getListingsLook, getPinnedListings, getShownOwnListings } from "./own-listings";
 
 // What an MLS ID may be (also checked by the database).
 export const MLS_ID = /^[A-Za-z0-9-]{1,20}$/;
@@ -38,12 +38,16 @@ export async function listedAgentNames(mlsAgentId: string): Promise<string[]> {
 // An agent's own homes for sale: the listings they added themselves (typed
 // in, then found and added, newest first), then the ones with their MLS ID
 // that are listed under their name (newest on the market first). Each home
-// once. Public listing data only: nothing anyone did on them.
+// once, the one they chose to feature first. Public listing data only: nothing anyone did on them.
 export const getAgentListings = cache(
   async (mlsAgentId: string | null, agentName: string, accountId: string | null = null): Promise<Listing[]> => {
-    const [own, pinned, rows] = await Promise.all([
+    const [own, pinned, copied, look, rows] = await Promise.all([
       getShownOwnListings(accountId),
       getPinnedListings(accountId),
+      // (A copy they made to change stands in for its original.)
+      getCopiedKeys(accountId),
+      // (The one they chose to lead goes first.)
+      getListingsLook(accountId),
       mlsAgentId
         ? sql<{ data: Listing }[]>`
             select data from listings
@@ -53,13 +57,15 @@ export const getAgentListings = cache(
             limit ${MOST}`
         : [],
     ]);
-    const seen = new Set<string>();
-    return [
+    const seen = new Set<string>(copied);
+    const all = [
       ...own,
       ...pinned,
       ...rows
         .filter(({ data }) => sameAgent(agentName, data.ListAgentFullName))
         .map(({ data }) => ({ ...data, Media: [...data.Media].sort((a, b) => a.Order - b.Order) })),
     ].filter((listing) => !seen.has(listing.ListingKey) && Boolean(seen.add(listing.ListingKey)));
+    const lead = all.find((listing) => listing.ListingKey === look.featured);
+    return lead ? [lead, ...all.filter((listing) => listing !== lead)] : all;
   },
 );

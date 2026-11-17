@@ -4,7 +4,7 @@ import { Banner } from "@/components/banner";
 import { Avatar } from "@/components/ui";
 import { NO_BANNER, type BannerChoice } from "@/lib/banner";
 import { cn } from "@/lib/format";
-import { card } from "@/lib/ui";
+import { card, pageLabel } from "@/lib/ui";
 
 // Everyone's home, laid out the same way: who you are and where you go, down
 // the left (from a tablet up); the feed in the middle; what's beside it (an
@@ -98,23 +98,27 @@ export function ProfileRail({
 
 export function HomeShell({
   title,
+  shown = false,
   left,
   right,
   children,
 }: {
-  // The page's heading, for a screen reader only.
+  // The page's heading: for a screen reader only, unless it's `shown`, small,
+  // at the top of the feed (an agent's home says it's their dashboard).
   title: string;
+  shown?: boolean;
   left: ReactNode;
   right: ReactNode;
   children: ReactNode;
 }) {
   return (
     <main className="mx-auto grid max-w-[1140px] grid-cols-1 gap-6 px-4 pb-16 pt-3 md:grid-cols-[220px_minmax(0,1fr)] lg:grid-cols-[220px_minmax(0,560px)_300px] lg:justify-center lg:pt-5">
-      <h1 className="sr-only">{title}</h1>
+      {!shown && <h1 className="sr-only">{title}</h1>}
       <aside aria-label="Your profile" className="hidden md:sticky md:top-5 md:block md:self-start">
         {left}
       </aside>
       <div className="flex min-w-0 flex-col gap-5">
+        {shown && <h1 className={cn(pageLabel, "-mb-2")}>{title}</h1>}
         {children}
       </div>
       <aside aria-label="Beside your feed" className="hidden flex-col gap-4 lg:sticky lg:top-5 lg:flex lg:self-start">

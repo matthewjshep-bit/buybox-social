@@ -32,6 +32,8 @@ const FACT_TAGS = [
   "Days on market",
   "Description",
   "Listing agent",
+  "After repair value",
+  "Estimated rehab",
 ] as const;
 export type FactTag = (typeof FACT_TAGS)[number];
 export const isFactTag = (tag: string): tag is FactTag => (FACT_TAGS as readonly string[]).includes(tag);

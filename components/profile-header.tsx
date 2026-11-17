@@ -1,4 +1,4 @@
-import { ExternalLink, Globe, Images, Link2, Pencil } from "lucide-react";
+import { ExternalLink, Images, Link2, Lock, Pencil } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AddFirstName, ShareMyPage } from "@/app/people/[id]/client";
@@ -150,10 +150,13 @@ export function ProfileHeader({
         )}
         {isMe && (
           <>
-            <p className="mt-3 flex gap-1.5 text-meta leading-snug text-muted">
-              <Globe aria-hidden size={14} className="mt-0.5 shrink-0" />
-              {agent ? "Public" : "Public. Agent links stay private."}
-            </p>
+            {/* (That it's public is said above the card. What isn't, for someone on agents' links.) */}
+            {!agent && (
+              <p className="mt-3 flex gap-1.5 text-meta leading-snug text-muted">
+                <Lock aria-hidden size={14} className="mt-0.5 shrink-0" />
+                Agent links stay private.
+              </p>
+            )}
             <ShareMyPage title={unnamed ? "My profile on Porchcard" : `${name} on Porchcard`} />
           </>
         )}

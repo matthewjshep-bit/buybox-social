@@ -34,12 +34,12 @@ import {
   type TopicSide,
 } from "@/lib/profile";
 import { getPublicIdentity } from "@/lib/public";
-import { OWN_PREFIX } from "@/lib/own-listings";
+import { getListingsLook, OWN_PREFIX } from "@/lib/own-listings";
 import { getSavedHomes } from "@/lib/saved";
 import { storyOf } from "@/lib/taste-story";
 import { ANONYMOUS_BUYER } from "@/lib/timeline";
 import { yourClient, type YourClient } from "@/lib/your-client";
-import { button, pill } from "@/lib/ui";
+import { button, pageLabel, pill } from "@/lib/ui";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -216,6 +216,8 @@ export default async function ProfilePage({ params, searchParams }: Props) {
           they are down the left, their taste down the right, each staying put the same way. */}
       <div className="flex flex-col gap-3 *:shrink-0 lg:-m-1 lg:p-1 xl:contents [@media(min-width:64rem)_and_(min-height:860px)]:sticky [@media(min-width:64rem)_and_(min-height:860px)]:top-2 [@media(min-width:64rem)_and_(min-height:860px)]:max-h-[calc(100dvh-1rem)] [@media(min-width:64rem)_and_(min-height:860px)]:overflow-y-auto [@media(min-width:64rem)_and_(min-height:860px)]:overscroll-contain">
         <div className="xl:col-start-1 xl:row-start-1 [@media(min-width:80rem)_and_(min-height:860px)]:sticky [@media(min-width:80rem)_and_(min-height:860px)]:top-2 [@media(min-width:80rem)_and_(min-height:860px)]:max-h-[calc(100dvh-1rem)] [@media(min-width:80rem)_and_(min-height:860px)]:overflow-y-auto [@media(min-width:80rem)_and_(min-height:860px)]:overscroll-contain xl:-m-1 xl:self-start xl:p-1">
+          {/* Their own: said small, as the dashboard says what it is. */}
+          {isMe && <p className={cn(pageLabel, "mb-2")}>Your public profile</p>}
           <ProfileHeader
             name={name}
             fullName={person.isAgent && !unnamed ? person.agentName || undefined : undefined}
@@ -319,6 +321,8 @@ export default async function ProfilePage({ params, searchParams }: Props) {
           <ListingGrid
             listings={listings}
             from={`listings:${person.id}`}
+            // As they chose to lay them out.
+            layout={(await getListingsLook(person.accountId)).layout}
             // A home they put here that someone else listed says who did.
             credit={(listing) =>
               listing.ListAgentFullName && !sameAgent(person.agentName, listing.ListAgentFullName)
@@ -344,7 +348,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
             </div>
             <div className="mt-2">
               {saved.length > 0 ? (
-                <ListingGrid listings={saved} from="saved" label="Saved homes" />
+                <ListingGrid listings={saved} from="saved" label="Saved homes" layout="grid2" />
               ) : (
                 <EmptyState icon={Bookmark} title="Nothing saved yet">
                   Save a home to find it here.

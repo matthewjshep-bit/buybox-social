@@ -19,6 +19,14 @@ export type ListingValues = {
   sqft: string;
   about: string;
   shown: boolean;
+  // No longer available: sold, or the deal done.
+  closed: boolean;
+  // The optional ones: empty, they aren't shown on the listing.
+  yearBuilt: string;
+  arv: string;
+  rehab: string;
+  // Whether the price per square foot shows.
+  perSqft: boolean;
 };
 
 const inputClass = cn(field(), "mt-1");
@@ -30,7 +38,7 @@ function Fields({ values, state }: { values: ListingValues; state: ListingState 
   const text = (
     name: Exclude<ListingField, "about">,
     label: string,
-    extra: { inputMode?: "numeric"; autoComplete?: string; maxLength?: number; className?: string } = {},
+    extra: { inputMode?: "numeric"; autoComplete?: string; maxLength?: number; className?: string; optional?: boolean } = {},
   ) => (
     <div className={extra.className}>
       <label htmlFor={name} className="block text-sm font-semibold">
@@ -40,7 +48,7 @@ function Fields({ values, state }: { values: ListingValues; state: ListingState 
         id={name}
         name={name}
         defaultValue={values[name]}
-        required
+        required={!extra.optional}
         inputMode={extra.inputMode}
         autoComplete={extra.autoComplete ?? "off"}
         maxLength={extra.maxLength ?? 120}
@@ -78,6 +86,46 @@ function Fields({ values, state }: { values: ListingValues; state: ListingState 
           className={cn(field({ lines: true }), "mt-1")}
         />
       </div>
+      {/* What else the listing says: each shows only when it's filled in, and
+          the price per square foot only when it's ticked. */}
+      <fieldset className="rounded-2xl bg-stone-50 p-4 ring-1 ring-stone-200">
+        <legend className="px-1 text-sm font-semibold">More to show (optional)</legend>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {text("arv", "After repair value", { inputMode: "numeric", maxLength: 14, optional: true })}
+          {text("rehab", "Estimated rehab", { inputMode: "numeric", maxLength: 14, optional: true })}
+          {text("yearBuilt", "Year built", { inputMode: "numeric", maxLength: 4, optional: true })}
+        </div>
+        <label className="mt-3 flex min-h-11 items-center gap-3 text-body">
+          <input type="checkbox" name="perSqft" defaultChecked={values.perSqft} className="size-5 accent-brand" />
+          Show price per sq ft
+        </label>
+      </fieldset>
+      {/* Whether it can still be had: a closed one stays on their profile, marked. */}
+      <fieldset>
+        <legend className="text-sm font-semibold">Status</legend>
+        <div className="mt-1 flex gap-2">
+          {(
+            [
+              ["available", "Available"],
+              ["closed", "Closed"],
+            ] as const
+          ).map(([value, label]) => (
+            <label
+              key={value}
+              className="flex min-h-11 cursor-pointer items-center gap-2 rounded-full border border-stone-300 bg-white px-4 text-body font-semibold has-[:checked]:border-brand has-[:checked]:bg-brand has-[:checked]:text-white has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand/40"
+            >
+              <input
+                type="radio"
+                name="status"
+                value={value}
+                defaultChecked={values.closed === (value === "closed")}
+                className="sr-only"
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <label className="flex min-h-11 items-center gap-3 text-body">
         <input type="checkbox" name="shown" defaultChecked={values.shown} className="size-5 accent-brand" />
         Show on my profile
@@ -116,7 +164,23 @@ export function ListingForm({ listingKey, values: stored }: { listingKey: string
   );
 }
 
-const EMPTY: ListingValues = { address: "", city: "", state: "WA", zip: "", price: "", beds: "", baths: "", sqft: "", about: "", shown: true };
+const EMPTY: ListingValues = {
+  address: "",
+  city: "",
+  state: "WA",
+  zip: "",
+  price: "",
+  beds: "",
+  baths: "",
+  sqft: "",
+  about: "",
+  shown: true,
+  closed: false,
+  yearBuilt: "",
+  arv: "",
+  rehab: "",
+  perSqft: true,
+};
 
 // A new listing, in one go: its photos (several at once, the first one
 // leading) and what it is, then one button. The listing is made first and

@@ -72,7 +72,9 @@ export function AgentHome({
   return (
     <HomeShell
       // (For a screen reader: on screen, the page is plainly the agent's.)
-      title="Home"
+      // Said at the top, small: this is the agent's side, not their public profile.
+      title="Agent dashboard"
+      shown
       left={
         <ProfileRail
           name={me.name}

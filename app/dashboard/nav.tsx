@@ -17,7 +17,7 @@ const LINKS = [
 export function DashboardNav() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Dashboard" className="flex gap-1 pt-3 text-sm font-medium">
+    <nav aria-label="Dashboard" className="-ml-1 flex gap-1 pt-1.5 text-sm font-medium">
       {LINKS.map(({ href, label }) => {
         const here = pathname === href;
         const elsewhere = LINKS.some((link) => link.href !== "/dashboard" && pathname.startsWith(link.href));

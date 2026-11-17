@@ -1,4 +1,6 @@
 import { requireAgent } from "@/lib/auth";
+import { cn } from "@/lib/format";
+import { pageLabel } from "@/lib/ui";
 import { DashboardNav } from "./nav";
 
 export const metadata = { title: "Clients · Porchcard" };
@@ -15,6 +17,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
       className="lg:has-[[data-scorecard-docked]]:pr-[29.5rem]"
     >
       <div className="mx-auto max-w-3xl px-4">
+        {/* The agent's side, as their home says it too. */}
+        <p className={cn(pageLabel, "pt-4")}>Agent dashboard</p>
         <DashboardNav />
         <main className="pb-6 pt-5">{children}</main>
       </div>

@@ -3,22 +3,24 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAgent } from "@/lib/auth";
 import { cn } from "@/lib/format";
-import { getOwnListing, OWN_PHOTOS_MOST } from "@/lib/own-listings";
+import { getOwnListing, OWN_PHOTOS_MOST, OWN_VIDEOS_MOST, photosOf, VIDEO_MOST_BYTES, videosOf } from "@/lib/own-listings";
+import { supabaseConfigured } from "@/lib/supabase/server";
 import { button, card } from "@/lib/ui";
 import { ListingForm } from "../form";
-import { DeleteListing, ListingPhotos } from "../photos";
+import { DeleteListing, ListingPhotos, ListingVideos } from "../photos";
 
 export const metadata = { title: "Edit listing · Porchcard" };
 
 // One of an agent's own listings: its photos first (it isn't on their
-// profile until it has one), then what it is, then the way to take it away.
+// profile until it has one), its videos, then what it is, then the way to
+// take it away.
 export default async function EditListingPage({ params }: { params: Promise<{ key: string }> }) {
   const agent = await requireAgent();
   const { key } = await params;
   const own = await getOwnListing(agent.id, decodeURIComponent(key));
   if (!own) notFound();
-  const { listing, active } = own;
-  const shown = active && listing.Media.length > 0;
+  const { listing, active, closed } = own;
+  const shown = active && photosOf(listing).length > 0;
   return (
     <>
       <Link href="/dashboard/listings" className="-ml-2 inline-flex min-h-11 items-center gap-2 rounded-full px-2 font-medium hover:bg-black/5">
@@ -33,7 +35,7 @@ export default async function EditListingPage({ params }: { params: Promise<{ ke
         )}
       </div>
       <p className={cn("mt-1 text-body", shown ? "text-emerald-700" : "text-amber-800")}>
-        {shown ? "On your profile" : active ? "Add a photo to show it on your profile" : "Hidden"}
+        {shown ? (closed ? "Closed · On your profile" : "On your profile") : active ? "Add a photo to show it on your profile" : "Hidden"}
       </p>
 
       <section aria-labelledby="photos-title" className={cn(card, "mt-5 p-5")}>
@@ -43,7 +45,24 @@ export default async function EditListingPage({ params }: { params: Promise<{ ke
         <ListingPhotos
           listingKey={listing.ListingKey}
           most={OWN_PHOTOS_MOST}
-          photos={listing.Media.map((photo) => ({ key: photo.MediaKey ?? photo.MediaURL, url: photo.MediaURL }))}
+          photos={photosOf(listing).map((photo) => ({ key: photo.MediaKey ?? photo.MediaURL, url: photo.MediaURL }))}
+        />
+      </section>
+
+      <section aria-labelledby="videos-title" className={cn(card, "mt-4 p-5")}>
+        <h2 id="videos-title" className="mb-3 text-lg font-semibold">
+          Videos
+        </h2>
+        <ListingVideos
+          listingKey={listing.ListingKey}
+          most={OWN_VIDEOS_MOST}
+          mostBytes={VIDEO_MOST_BYTES}
+          canUpload={supabaseConfigured}
+          videos={videosOf(listing).map((video) => ({
+            key: video.MediaKey ?? video.MediaURL,
+            label: video.ShortDescription ?? "Video",
+            poster: video.VideoPoster ?? null,
+          }))}
         />
       </section>
 
@@ -64,6 +83,11 @@ export default async function EditListingPage({ params }: { params: Promise<{ ke
             sqft: String(listing.LivingArea),
             about: listing.PublicRemarks ?? "",
             shown: active,
+            closed,
+            yearBuilt: listing.YearBuilt ? String(listing.YearBuilt) : "",
+            arv: listing.AfterRepairValue ? String(listing.AfterRepairValue) : "",
+            rehab: listing.EstimatedRehab ? String(listing.EstimatedRehab) : "",
+            perSqft: !listing.HidePricePerSqFt,
           }}
         />
       </section>

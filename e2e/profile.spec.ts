@@ -128,7 +128,8 @@ test("a profile is one card per home per day, with the photo and the spots picke
   await expect(filterOf(lena)).not.toHaveAttribute("open", "");
   await lena.goto(profileUrl);
   await expect(lena.getByRole("link", { name: "Edit profile" })).toHaveAttribute("href", "/people/me/edit");
-  await expect(lena.getByText("Public. Agent links stay private.")).toBeVisible();
+  await expect(lena.getByText("Your public profile")).toBeVisible();
+  await expect(lena.getByText("Agent links stay private.")).toBeVisible();
   await expect(lena.getByRole("button", { name: "Share my profile" })).toBeVisible();
 
   // One card per home, newest first, under "Today".
