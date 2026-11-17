@@ -6,7 +6,6 @@ import { HomeShell, ProfileRail } from "@/components/home/home-shell";
 import { Avatar } from "@/components/ui";
 import type { ClientCard } from "@/lib/client-feed";
 import type { ClientBook } from "@/lib/clients";
-import type { FollowCounts } from "@/lib/follows";
 import type { BannerChoice } from "@/lib/banner";
 import { cn } from "@/lib/format";
 import { button, card } from "@/lib/ui";
@@ -58,14 +57,12 @@ export function AgentHome({
   profileHref,
   book,
   cards,
-  follows,
 }: {
   me: { id: string; name: string; photo: string | null; brokerage: string; brandColor: string; banner: BannerChoice };
   // Their own public page.
   profileHref: string;
   book: ClientBook;
   cards: ClientCard[];
-  follows: FollowCounts;
 }) {
   const { clients, unclaimed } = book;
   const sent = new Set([...clients.flatMap((c) => c.links.map((link) => link.shareId)), ...unclaimed.map((l) => l.shareId)]);
@@ -86,9 +83,8 @@ export function AgentHome({
           line={me.brokerage.trim() || "Real estate agent"}
           href={profileHref}
           stats={[
+            // (Who follows them is on their public profile: this side is their clients.)
             { label: "Clients", value: clients.length, href: "/dashboard" },
-
-            { label: "Followers", value: follows.followers, href: profileHref.endsWith("/me") ? profileHref : `${profileHref}/followers` },
           ]}
           links={[
             { href: "/dashboard/new", label: "Send homes", icon: <Plus size={18} /> },

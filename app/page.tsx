@@ -66,18 +66,13 @@ export default async function Home({
   if (user.role === "agent") {
     // (No homes picked for an agent, and no one they follow: their home is
     // their clients, and it loads without the reads those take.)
-    const [book, cards, follows] = await Promise.all([
-      getClientBook(user.id),
-      getClientCards(user.id),
-      visitorId ? getFollowCounts(visitorId) : noFollows,
-    ]);
+    const [book, cards] = await Promise.all([getClientBook(user.id), getClientCards(user.id)]);
     return (
       <AgentHome
         me={{ ...me, brokerage: user.brokerage, brandColor: user.brand_color, banner }}
         profileHref={profileHref}
         book={book}
         cards={cards}
-        follows={follows}
       />
     );
   }
