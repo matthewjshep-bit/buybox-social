@@ -116,6 +116,7 @@ export async function getReel(
     profiles,
     mine: withMine = false,
     agent,
+    host,
   }: {
     exclude?: string[];
     only?: string[];
@@ -124,6 +125,9 @@ export async function getReel(
     profiles?: string[];
     mine?: boolean;
     agent?: { account: string; profile: string };
+    // Whose listings these are (their page id): what they did on them is kept
+    // on the line whatever else came since, and marked as theirs, to lead it.
+    host?: string;
   } = {},
 ): Promise<FeedPost[]> {
   const { visitor } = await getPublicIdentity(viewer, deviceToken);
@@ -295,7 +299,8 @@ export async function getReel(
         select e.*, row_number() over (
           partition by e.listing_key
           -- (What people they follow did is kept, whatever else came since.)
-          order by coalesce(e.profile_id in ${sql(followed.length ? followed : [""])}, false) desc, e.at desc, e.id
+          order by coalesce(e.profile_id = ${host ?? ""}, false) desc,
+            coalesce(e.profile_id in ${sql(followed.length ? followed : [""])}, false) desc, e.at desc, e.id
         ) as n
         from (
           select r.listing_key, 'reaction' as kind, md5('pr:' || r.listing_key || ':' || r.visitor_id) as id,
@@ -423,6 +428,7 @@ export async function getReel(
         events.filter((event) => event.listing_key === key),
         new Set(followed),
         faces,
+        host,
       ),
     };
   };
@@ -471,16 +477,22 @@ const onPage = (row: EventRow) => row.source === "public" || row.source === "age
 // strangers' plain likes this week fold into one: "4 buyers liked this home".
 // `faces`: people's own photos by page id, so a face on the line is the one
 // their page shows.
-function toEvents(rows: EventRow[], followed: Set<string>, faces: Map<string, string> = new Map()): TickerEvent[] {
+function toEvents(
+  rows: EventRow[],
+  followed: Set<string>,
+  faces: Map<string, string> = new Map(),
+  host?: string,
+): TickerEvent[] {
   const events: TickerEvent[] = [];
   const folded: TickerEvent[] = [];
   for (const row of rows) {
     const at = row.at.toISOString();
     const named = (onPage(row) || row.source === "client") && row.name;
     const paged = onPage(row) && row.profile_id;
+    const hosts = Boolean(host && paged === host);
     const who: TickerEvent["who"] =
       row.mine
-        ? { tone: "you", name: null }
+        ? { tone: "you", name: null, ...(hosts && { host: true }) }
         : named
           ? {
               tone: row.source === "client" ? "client" : "person",
@@ -488,6 +500,7 @@ function toEvents(rows: EventRow[], followed: Set<string>, faces: Map<string, st
               ...(paged && { profileId: paged }),
               ...(paged && followed.has(paged) && { following: true }),
               ...(paged && faces.has(paged) && { photo: faces.get(paged) }),
+              ...(hosts && { host: true }),
             }
           : { tone: "anonymous", name: null };
     if (row.kind === "reaction") {

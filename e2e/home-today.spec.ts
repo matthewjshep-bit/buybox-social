@@ -47,7 +47,7 @@ test("an agent's home is calm: their clients as people, what each did as big car
   const you = agent.getByRole("complementary", { name: "Your profile" });
   await expect(you.getByRole("link", { name: "Tess Today" })).toHaveAttribute("href", /^\/people\/[\w-]+$/);
   await expect(you.getByRole("link", { name: /^Clients/ }).first()).toHaveAttribute("href", "/dashboard");
-  await expect(you.getByRole("link", { name: "Your brand" })).toHaveAttribute("href", "/dashboard/profile");
+  await expect(you.getByRole("link", { name: "Edit profile" })).toHaveAttribute("href", "/people/me/edit");
   await expect(agent.getByRole("region", { name: "More homes for you" })).toHaveCount(0);
   await expect(you.getByRole("link", { name: "Browse homes" })).toHaveCount(0);
   await expect(agent.getByRole("button", { name: "Following" })).toHaveCount(0);

@@ -79,6 +79,9 @@ type ReelScope = {
   // An agent's page: their account and page id, so what they marked and
   // noted on their own links (which their page shows) is on the line too.
   agent?: { account: string; profile: string };
+  // An agent's listings: their page id, so what they say about their own
+  // listing leads the line, before anyone else's.
+  host?: string;
 };
 
 const ALL: FeedFilters = { show: "all", about: null, side: null };
@@ -139,6 +142,9 @@ async function listingsScope(id: string, viewer: Account | null, visitorId: stri
     },
     query: new URLSearchParams({ from: `listings:${person.id}` }).toString(),
     filters: ALL,
+    host: person.id,
+    // (And what they marked and noted on their own links, as their page shows it.)
+    ...(person.accountId && { agent: { account: person.accountId, profile: person.id } }),
   };
 }
 

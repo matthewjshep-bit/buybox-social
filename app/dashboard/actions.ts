@@ -8,6 +8,8 @@ import { listedAgentNames, MLS_ID, sameAgent } from "@/lib/agent-listings";
 import { getCurrentUser, getViewAs, requireAgent } from "@/lib/auth";
 import { isContactPhone, phoneDigits } from "@/lib/contact";
 import { sql } from "@/lib/db";
+import type { Listing } from "@/lib/listings/types";
+import { homesToSend } from "@/lib/send-search";
 import { BRAND_COLORS, escapeLike } from "@/lib/format";
 import { importMissing, runImportsAndContinue } from "@/lib/listings/imports";
 import { notifyClientAdded } from "@/lib/notify";
@@ -40,6 +42,8 @@ export type FormState = { error?: string };
 export type ContactField = "contactPhone" | "contactEmail" | "mlsAgentId";
 export type ProfileState = FormState & {
   field?: ContactField;
+  // Saved, and still on the page (Edit profile).
+  saved?: boolean;
   values?: { brokerage: string; contactPhone: string; contactEmail: string; mlsAgentId: string };
 };
 
@@ -80,6 +84,8 @@ export async function saveProfile(_: ProfileState, form: FormData): Promise<Prof
     brandColor: form.get("brandColor"),
     photo: form.get("photo") ?? "",
   });
+  // (From Edit profile, where their photo has its own place: it isn't sent, and stays as it is.)
+  const keepPhoto = !form.has("photo");
   if (!parsed.success) return { error: "Please add your name and choose a color.", values };
   const phone = contactPhoneSchema.safeParse(values.contactPhone);
   if (!phone.success) {
@@ -108,7 +114,7 @@ export async function saveProfile(_: ProfileState, form: FormData): Promise<Prof
         full_name = ${parsed.data.fullName},
         brokerage = ${parsed.data.brokerage},
         brand_color = ${parsed.data.brandColor},
-        photo_data_url = ${parsed.data.photo || null},
+        photo_data_url = ${keepPhoto ? sql`photo_data_url` : parsed.data.photo || null},
         contact_phone = ${phone.data},
         contact_email = ${email.data},
         mls_agent_id = ${values.mlsAgentId}
@@ -121,6 +127,9 @@ export async function saveProfile(_: ProfileState, form: FormData): Promise<Prof
   // The frame around the page is drawn again too, so a new colour reaches the
   // header's logo straight away.
   refresh();
+  // Among their other settings, saving stays put and says so; setting up for
+  // the first time goes on to their clients.
+  if (form.get("stay")) return { saved: true, values };
   redirect("/dashboard");
 }
 
@@ -216,6 +225,24 @@ async function ownShare(agentId: string, shareId: string) {
   const [share] = await sql<{ id: string }[]>`
     select id from shares where id = ${shareId} and agent_id = ${agentId}`;
   return share ?? null;
+}
+
+// Homes as an agent types one's address (or MLS number) on the way to
+// sending it: a few, the closest first, each with only what a suggestion
+// shows and its first photo. Not ones on the link they're adding to.
+export async function suggestHomes(query: string, shareId?: string): Promise<Listing[]> {
+  const agent = await requireAgent();
+  if (typeof query !== "string" || query.trim().length < 2) return [];
+  let onLink: string[] = [];
+  if (shareId) {
+    if (!(await ownShare(agent.id, shareId))) return [];
+    onLink = (
+      await sql<{ listing_key: string }[]>`
+        select listing_key from share_listings where share_id = ${shareId} and removed_at is null`
+    ).map((row) => row.listing_key);
+  }
+  const homes = await homesToSend(agent.id, query, { onLink, limit: 6 });
+  return homes.map((home) => ({ ...home, Media: [...home.Media].sort((a, b) => a.Order - b.Order).slice(0, 1) }));
 }
 
 const searchSchema = z.object({

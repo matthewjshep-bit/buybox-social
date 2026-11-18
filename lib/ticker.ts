@@ -36,6 +36,9 @@ export type TickerEvent = {
     agent?: boolean;
     following?: boolean;
     photo?: string;
+    // Whose listings these are (an agent's own, opened from their page):
+    // what they say about their own listing comes first.
+    host?: boolean;
   };
   at: string;
   // The photo it's in, or the facts (FACTS).
@@ -208,8 +211,10 @@ export function buildCycle(
   const here = (event: TickerEvent) => Boolean(photoKey) && event.mediaKey === photoKey && onPhoto(event);
   // It leads with what you've just done, when you have; else what someone you
   // follow did; else the newest. On an agent's link, the agent's own words.
+  // On an agent's own listings, what they say about it themselves.
   const first =
     events.find((event) => event.who.tone === "agent" && event.kind === "comment") ??
+    events.find((event) => event.who.host && event.kind === "comment") ??
     (events[0]?.who.tone === "you" ? events[0] : undefined) ??
     events.find((event) => event.who.following && !isDislike(event)) ??
     events.find((event) => !isDislike(event)) ??
@@ -227,7 +232,9 @@ export function buildCycle(
             ? 3
             : 4;
   // On their link, the agent's own take goes round before anyone else's.
-  const lead = (event: TickerEvent) => (event.who.tone === "agent" ? (event.kind === "comment" ? 0 : 1) : 2);
+  // (And on their own listings, the same: their words, then what they liked.)
+  const lead = (event: TickerEvent) =>
+    event.who.tone === "agent" || event.who.host ? (event.kind === "comment" ? 0 : 1) : 2;
   const rest = events
     .filter((event) => event !== first)
     .sort(
@@ -255,7 +262,7 @@ export function buildCycle(
     const person = personOf(event);
     const key = person ? `${person}\u0001${placeOf(event)}` : `anonymous\u0001${readsAs(event)}`;
     // (The agent's take, all of it, as far as the line holds.)
-    const most = event.who.tone === "agent" ? CYCLE_MOST : 2;
+    const most = event.who.tone === "agent" ? CYCLE_MOST : event.who.host ? 3 : 2;
     if (seen.has(key) || (person && (perPerson.get(person) ?? 0) >= most)) continue;
     seen.add(key);
     if (person) perPerson.set(person, (perPerson.get(person) ?? 0) + 1);

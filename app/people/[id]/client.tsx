@@ -96,10 +96,11 @@ export function ShareMyPage({ title }: { title: string }) {
       type="button"
       onClick={share}
       // It can't share or copy without scripts, so without them it isn't there.
-      className={cn(button({ kind: "secondary" }), "mt-3 [@media(scripting:none)]:hidden")}
+      aria-label="Share my profile"
+      className={cn(button({ kind: "secondary" }), "[@media(scripting:none)]:hidden")}
     >
       <Share2 aria-hidden size={16} />
-      Share my profile
+      Share
     </button>
   );
 }

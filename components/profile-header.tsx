@@ -76,25 +76,61 @@ export function ProfileHeader({
     <section aria-labelledby="profile-name" className={cn(card, "overflow-hidden")}>
       {/* Their own image keeps the shape they framed it in, whatever the width, so what
           they placed is what shows; a drawn scene or a plain band is a fixed height. */}
-      <div aria-hidden className={cn("overflow-hidden", banner.style === "image" && banner.image ? "aspect-[10/3]" : "h-[120px]")}>
+      <div
+        aria-hidden
+        className={cn("overflow-hidden", banner.style === "image" && banner.image ? "aspect-[10/3]" : "h-[120px] sm:h-44")}
+      >
         <Banner seed={personId} brand={brandColor} choice={banner} />
       </div>
-      <div className="px-4 pb-4">
+      <div className="px-4 pb-5 sm:px-6">
+        {/* Their face over the banner's edge; beside it, the one or two things to do here. */}
         <div className="flex items-end justify-between gap-3">
-          <Avatar name={face} tone={agent ? "agent" : "person"} size={18} photo={photo} className="relative -mt-9 ring-4 ring-white" />
-          {isMe && (
-            <Link href="/people/me/edit" className={button({ kind: "secondary" })}>
-              <Pencil aria-hidden size={16} /> Edit profile
-            </Link>
-          )}
+          <Avatar
+            name={face}
+            tone={agent ? "agent" : "person"}
+            size={28}
+            photo={photo}
+            className="relative -mt-10 ring-4 ring-white sm:-mt-14"
+          />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {isMe ? (
+              <>
+                <Link href="/people/me/edit" className={button({ kind: "secondary" })}>
+                  <Pencil aria-hidden size={16} /> Edit profile
+                </Link>
+                <ShareMyPage title={unnamed ? "My profile on Porchcard" : `${name} on Porchcard`} />
+              </>
+            ) : (
+              follow
+            )}
+          </div>
         </div>
         {/* The keyboard comes here once you've said your name, as it changes. */}
-        <h1 id="profile-name" tabIndex={-1} className="mt-2 break-words font-display text-[30px] leading-tight outline-none">
+        <h1
+          id="profile-name"
+          tabIndex={-1}
+          className="mt-3 break-words font-display text-[30px] leading-tight outline-none sm:text-[34px]"
+        >
           {isMe ? (unnamed ? "Your profile" : `${fullName || name} (you)`) : fullName || name}
         </h1>
-        {followsYou && (
-          <p className="mt-1">
-            <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-700">Follows you</span>
+        {isMe && unnamed && <AddFirstName />}
+        <p className="mt-1 text-body text-stone-700">
+          {agent ? brokerage || "Real estate agent" : `Looking since ${sinceLabel(since)}`}
+          {homes > 0 && ` · ${homes} ${homes === 1 ? "home" : "homes"}`}
+        </p>
+        {people && (
+          <p className="mt-1 text-body text-stone-700">
+            <Link href={`${people.href}/followers`} className="underline-offset-2 hover:underline">
+              <strong className="font-semibold text-ink tabular-nums">{people.followers}</strong>{" "}
+              {people.followers === 1 ? "follower" : "followers"}
+            </Link>
+            {" · "}
+            <Link href={`${people.href}/following`} className="underline-offset-2 hover:underline">
+              <strong className="font-semibold text-ink tabular-nums">{people.following}</strong> following
+            </Link>
+            {followsYou && (
+              <span className="ml-2 rounded-full bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-700">Follows you</span>
+            )}
           </p>
         )}
         {client && (
@@ -108,21 +144,18 @@ export function ProfileHeader({
             </Link>
           </div>
         )}
-        {isMe && unnamed && <AddFirstName />}
-        <p className="mt-1 text-body text-muted">
-          {agent ? brokerage || "Real estate agent" : `Looking since ${sinceLabel(since)}`}
-          {homes > 0 && ` · ${homes} ${homes === 1 ? "home" : "homes"}`}
-        </p>
-        {bio && <p className="mt-3 whitespace-pre-line break-words text-body leading-relaxed text-ink">{bio}</p>}
+        {bio && (
+          <p className="mt-3 max-w-2xl whitespace-pre-line break-words text-body leading-relaxed text-ink">{bio}</p>
+        )}
         {links.length > 0 && (
-          <ul aria-label={`${isMe ? "Your" : `${name}'s`} links`} className="mt-2 flex flex-col">
+          <ul aria-label={`${isMe ? "Your" : `${name}'s`} links`} className="-ml-1 mt-2 flex flex-wrap gap-x-4">
             {links.map((link) => (
-              <li key={link.url}>
+              <li key={link.url} className="max-w-full">
                 <a
                   href={link.url}
                   target="_blank"
                   rel="noopener noreferrer nofollow ugc"
-                  className="-ml-1 inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-lg px-1 text-body font-semibold text-brand hover:underline"
+                  className="inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-lg px-1 text-body font-semibold text-brand hover:underline"
                 >
                   <ExternalLink aria-hidden size={14} className="shrink-0" />
                   <span className="truncate">{link.label || hostOf(link.url)}</span>
@@ -131,34 +164,12 @@ export function ProfileHeader({
             ))}
           </ul>
         )}
-        {(people || follow) && (
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-            {people && (
-              <p className="text-body text-stone-700">
-                <Link href={`${people.href}/followers`} className="underline-offset-2 hover:underline">
-                  <strong className="font-semibold text-ink tabular-nums">{people.followers}</strong>{" "}
-                  {people.followers === 1 ? "follower" : "followers"}
-                </Link>
-                {" · "}
-                <Link href={`${people.href}/following`} className="underline-offset-2 hover:underline">
-                  <strong className="font-semibold text-ink tabular-nums">{people.following}</strong> following
-                </Link>
-              </p>
-            )}
-            {follow}
-          </div>
-        )}
-        {isMe && (
-          <>
-            {/* (That it's public is said above the card. What isn't, for someone on agents' links.) */}
-            {!agent && (
-              <p className="mt-3 flex gap-1.5 text-meta leading-snug text-muted">
-                <Lock aria-hidden size={14} className="mt-0.5 shrink-0" />
-                Agent links stay private.
-              </p>
-            )}
-            <ShareMyPage title={unnamed ? "My profile on Porchcard" : `${name} on Porchcard`} />
-          </>
+        {/* (That it's public is said above the card. What isn't, for someone on agents' links.) */}
+        {isMe && !agent && (
+          <p className="mt-3 flex gap-1.5 text-meta leading-snug text-muted">
+            <Lock aria-hidden size={14} className="mt-0.5 shrink-0" />
+            Agent links stay private.
+          </p>
         )}
       </div>
     </section>

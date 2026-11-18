@@ -1,9 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { requireAgent } from "@/lib/auth";
+import { homesToSend } from "@/lib/send-search";
 import { sql } from "@/lib/db";
-import { matchesPlace } from "@/lib/search";
-import { findOnRepliers } from "@/lib/listings/repliers";
 import type { Listing } from "@/lib/listings/types";
 import { linkTitle } from "@/lib/people-picker";
 import { ShareBuilder } from "./builder";
@@ -38,28 +37,14 @@ export default async function NewSharePage({
   }
 
   const query = (typeof q === "string" ? q : "").trim().slice(0, 100);
-  const [[start], rows] = await Promise.all([
+  const [[start], results] = await Promise.all([
     // Only a home still for sale; anything else and the usual search shows.
     !addTo && typeof homeKey === "string" && homeKey.length <= 100
       ? sql<{ data: Listing }[]>`
           select data from listings where listing_key = ${homeKey} and standard_status = 'Active'`
       : [],
-    sql<{ data: Listing }[]>`
-      select l.data from listings l
-      where l.standard_status = 'Active'
-        -- (Of the listings people added themselves, only this agent's own.)
-        and (l.owner_account_id is null or l.owner_account_id = ${agent.id})
-        and l.listing_key not in ${sql(onLink.length ? onLink : [""])}
-        and ${matchesPlace(query)}
-      order by l.updated_at desc, l.listing_key
-      limit 24`,
+    homesToSend(agent.id, query, { onLink }),
   ]);
-
-  // Few here by that address: homes for sale found by it elsewhere. One is
-  // brought in when it goes on a link.
-  const here = rows.map((row) => row.data);
-  const known = new Set([...here.map((home) => home.ListingKey), ...onLink]);
-  const elsewhere = query && here.length < 6 ? (await findOnRepliers(query)).filter((home) => !known.has(home.ListingKey)) : [];
 
   return (
     <ShareBuilder
@@ -78,8 +63,7 @@ export default async function NewSharePage({
             ? ""
             : "Pick up to 3 homes."
       }
-      results={[...here, ...elsewhere]}
-      initialQuery={query}
+      results={results}
       addTo={addTo}
       start={start?.data}
     />

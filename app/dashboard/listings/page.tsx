@@ -12,7 +12,7 @@ import { getListingsLook, getOwnListings, getPinnedListings, photosOf } from "@/
 import { button, card } from "@/lib/ui";
 import { editMlsListing } from "./actions";
 import { RemoveFound } from "./find";
-import { FeatureButton, LayoutPicker } from "./look";
+import { FeatureButton } from "./look";
 
 export const metadata = { title: "Listings · Porchcard" };
 
@@ -46,11 +46,13 @@ export default async function ListingsPage() {
           <Plus aria-hidden size={20} /> Add a listing
         </Link>
       </div>
-      {/* How they're laid out on their profile: there once there's something to lay out. */}
+      {/* How they're laid out on their profile is among their profile's settings. */}
       {added + fromMls.length > 0 && (
-        <div className="mt-5">
-          <LayoutPicker layout={look.layout} />
-        </div>
+        <p className="mt-3 text-body text-stone-700">
+          <Link href="/people/me/edit#layout" className="font-semibold text-brand underline-offset-2 hover:underline">
+            Change the layout
+          </Link>
+        </p>
       )}
       {added === 0 && fromMls.length === 0 && (
         <EmptyState icon={Home} title="Add your first listing" className="mt-8">
@@ -101,7 +103,7 @@ export default async function ListingsPage() {
           </h2>
           <p className="mb-2 px-1 text-body text-stone-600">
             Matched by your MLS ID ({mlsId}).{" "}
-            <Link href="/dashboard/profile" className="font-semibold text-brand underline-offset-2 hover:underline">
+            <Link href="/people/me/edit#details" className="font-semibold text-brand underline-offset-2 hover:underline">
               Change it
             </Link>
           </p>

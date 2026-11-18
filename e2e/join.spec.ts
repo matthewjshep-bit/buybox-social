@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { enterCode, scrollToEnd } from "./helpers";
+import { createShare, enterCode, scrollToEnd, signInAgent, toFirstHome } from "./helpers";
 
 const SMALL = { viewport: { width: 360, height: 640 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
 const ON_ITS_SIDE = { viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
@@ -118,4 +118,47 @@ test("on a phone, the welcome fits under the header, and a swipe on it goes on t
     await expect(page.getByRole("article").first(), name).toBeInViewport({ ratio: 0.9 });
     await page.context().close();
   }
+});
+
+test("on a phone, the comment box and the sign-up button stay above the keyboard", async ({ browser }) => {
+  const agent = await signInAgent(browser, `keys.${Date.now()}@example.com`, "Kay Board");
+  const { url } = await createShare(agent, ["4127 Larkmoor Ave NE"]);
+  const page = await (await browser.newContext(SMALL)).newPage();
+  await page.goto(url);
+  await toFirstHome(page);
+  // A phone's keyboard covers the foot of the window without making the window smaller.
+  const keyboard = (height: number) =>
+    page.evaluate((covered) => {
+      const view = window.visualViewport!;
+      Object.defineProperty(view, "height", { configurable: true, get: () => innerHeight - covered });
+      view.dispatchEvent(new Event("resize"));
+    }, height);
+  const bottomOf = async (el: ReturnType<Page["locator"]>) => {
+    const box = (await el.boundingBox())!;
+    return box.y + box.height;
+  };
+  const seen = 640 - 290;
+
+  await page.getByRole("article").first().getByRole("button", { name: /^Comments/ }).click();
+  const comments = page.getByRole("dialog", { name: "Comments" });
+  const box = comments.getByRole("textbox").first();
+  await expect(box).toBeVisible();
+  await keyboard(290);
+  await expect.poll(() => bottomOf(box)).toBeLessThanOrEqual(seen);
+  expect((await comments.boundingBox())!.y).toBeGreaterThanOrEqual(0);
+
+  // Sending it, signed out, asks who they are: the whole form within reach, Continue included.
+  await box.fill("Love the porch");
+  await box.press("Enter");
+  const join = page.getByRole("dialog", { name: "Sign up to like and comment" });
+  await expect(join).toBeVisible();
+  await expect.poll(() => bottomOf(join)).toBeLessThanOrEqual(seen);
+  expect((await join.boundingBox())!.y).toBeGreaterThanOrEqual(0);
+  const go = join.getByRole("button", { name: "Continue" });
+  await go.scrollIntoViewIfNeeded();
+  expect(await bottomOf(go)).toBeLessThanOrEqual(seen);
+
+  // The keyboard away: back at the foot of the screen.
+  await keyboard(0);
+  await expect.poll(() => bottomOf(join)).toBe(640);
 });

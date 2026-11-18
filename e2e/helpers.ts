@@ -29,6 +29,19 @@ export async function signInAgent(browser: Browser, email: string, name: string)
   return page;
 }
 
+// An agent's own details (name, company, how clients reach them, MLS ID,
+// colour) are among their profile settings: Edit profile, "Your details".
+export const detailsForm = (page: Page) => page.getByRole("form", { name: "Your details" });
+export async function toDetails(page: Page) {
+  await page.goto("/people/me/edit");
+  await expect(detailsForm(page)).toBeVisible();
+}
+// Saved there: the page stays put and says so.
+export async function saveDetails(page: Page) {
+  await detailsForm(page).getByRole("button", { name: "Save details" }).click();
+  await expect(detailsForm(page).getByRole("status")).toHaveText("Saved");
+}
+
 // Sending homes goes a step at a time: the homes, who it's for, then (on the
 // link itself) what the agent thinks of them. From the homes (one picked), on
 // to who it's for.

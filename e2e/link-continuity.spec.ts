@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, openComments, signInAgent, toFirstHome } from "./helpers";
+import { createShare, heartOf, homeIn, joinAs, openComments, saveDetails, signInAgent, toFirstHome } from "./helpers";
 
 // A client's own link leads on to the rest of Porchcard and never ends in a
 // dead end: signed in, their menu and the bell are in the agent's header; a
@@ -10,8 +10,7 @@ async function saveContact(agent: Page, { phone, email }: { phone?: string; emai
   await agent.goto("/dashboard/profile");
   if (phone !== undefined) await agent.getByLabel("Phone for clients (optional)").fill(phone);
   if (email !== undefined) await agent.getByLabel("Email for clients (optional)").fill(email);
-  await agent.getByRole("button", { name: "Save" }).click();
-  await agent.waitForURL(/\/dashboard$/);
+  await saveDetails(agent);
 }
 
 // Down to the end of the link, past every home.

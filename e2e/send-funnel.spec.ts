@@ -16,19 +16,40 @@ test("a home from a pasted Zillow link, nobody named, their thoughts skipped: th
   await expect(agent.getByRole("button", { name: "Back" })).toHaveCount(0);
 
   // A link to the home on Zillow: its street is read out of it and found here.
-  const search = agent.getByRole("searchbox", { name: "Address, MLS number, or a link to the home" });
+  const search = agent.getByRole("combobox", { name: "Address, MLS number, or a link to the home" });
   await search.fill("https://www.zillow.com/homedetails/1204-Quillan-St-SE-Olympia-WA-98501/48755123_zpid/");
   await expect(agent.getByRole("status").filter({ hasText: "From your link" })).toHaveText("From your link: 1204 Quillan St SE");
-  const cards = agent.getByRole("button", { name: /^\$/ });
-  await expect(cards).toHaveCount(1);
-  await expect(cards).toContainText("1204 Quillan St SE");
+  const offered = agent.getByRole("listbox", { name: "Homes that match" }).getByRole("option");
+  await expect(offered).toHaveCount(1);
+  await expect(offered).toContainText("1204 Quillan St SE");
   // A link with no address in it says so.
   await search.fill("https://www.zillow.com/homes/for_sale/");
   await expect(agent.getByRole("status").filter({ hasText: "couldn't read" })).toBeVisible();
-  // Typed, it's found as it's typed.
-  await search.fill("Quillan");
-  await expect(cards).toHaveCount(1);
-  await cards.click();
+  // Typed, it's offered right under the box as it's typed: the part typed
+  // stands out, and Enter (or a tap) picks it. The box empties for the next.
+  await search.fill("quil");
+  await expect(offered).toHaveCount(1);
+  await expect(offered).toContainText("1204 Quillan St SE");
+  await expect(offered).toContainText("Olympia");
+  await expect(search).toHaveAttribute("aria-expanded", "true");
+  await search.press("Enter");
+  await expect(agent.getByRole("list", { name: "Picked homes" })).toContainText("1204 Quillan St SE");
+  await expect(search).toHaveValue("");
+  await expect(agent.getByRole("listbox", { name: "Homes that match" })).toHaveCount(0);
+  await expect(agent.getByText("1 of 3 picked")).toBeVisible();
+  // One that's picked isn't offered again; nothing that matches says so.
+  await search.fill("quil");
+  await expect(agent.getByRole("listbox", { name: "Homes that match" })).toContainText("No homes match that.");
+  await search.fill("zzzz");
+  await expect(agent.getByRole("listbox", { name: "Homes that match" })).toContainText("No homes match that.");
+  await search.press("Escape");
+  await expect(agent.getByRole("listbox", { name: "Homes that match" })).toHaveCount(0);
+  await search.fill("");
+  // A tap picks too.
+  await search.fill("Saltm");
+  await agent.getByRole("option", { name: /719 Saltmarsh Ln/ }).click();
+  await expect(agent.getByText("2 of 3 picked")).toBeVisible();
+  await agent.getByRole("list", { name: "Picked homes" }).getByRole("button", { name: "Remove 719 Saltmarsh Ln" }).click();
   await expect(agent.getByText("1 of 3 picked")).toBeVisible();
   await agent.getByRole("button", { name: "Next", exact: true }).click();
 

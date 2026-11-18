@@ -23,6 +23,18 @@ function notch() {
   return at;
 }
 
+// How much of the window's foot a phone's on-screen keyboard covers, and how
+// far the page has been slid up under it. A phone doesn't shrink the window
+// for its keyboard: without this, a sheet's foot (the comment box, Continue)
+// sits underneath it. (Zoomed in, the visible part is smaller for another
+// reason: left alone.)
+function keyboard() {
+  const view = window.visualViewport;
+  if (!view || Math.abs(view.scale - 1) > 0.01) return { covers: 0, top: 0 };
+  const covers = innerHeight - view.offsetTop - view.height;
+  return covers > 60 ? { covers, top: view.offsetTop } : { covers: 0, top: 0 };
+}
+
 // The keyboard goes back to what opened a sheet, as soon as that can take it
 // (it may still be fading back in from under the sheet), unless something
 // else has taken the keyboard meanwhile. (Just shut, the sheet can still
@@ -169,18 +181,22 @@ export function Sheet({
     el.style.left = `${box.left + (box.width - width) / 2}px`;
     el.style.top = "";
     el.style.width = `${width}px`;
-    el.style.bottom = `${Math.max(0, innerHeight - box.bottom)}px`;
+    // Above a phone's keyboard when it's up, and no taller than what's left.
+    const keys = keyboard();
+    const foot = Math.max(0, innerHeight - box.bottom, keys.covers);
+    const room = keys.covers ? innerHeight - foot - keys.top - 8 : Infinity;
+    el.style.bottom = `${foot}px`;
     // Rising from a box above the window's foot (the white panel), its
     // bottom corners follow the box's round ones.
     el.style.borderBottomLeftRadius = el.style.borderBottomRightRadius = innerHeight - box.bottom > 1 ? "1rem" : "";
     if (minTop !== undefined) {
       const { medium, large } = tops(box);
       setOneHeight(medium === large);
-      el.style.height = `${box.bottom - (detent.current === "large" ? large : medium)}px`;
+      el.style.height = `${Math.min(room, box.bottom - (detent.current === "large" ? large : medium))}px`;
       el.style.maxHeight = "";
     } else {
-      el.style.height = tall ? `${Math.round(box.height * 0.6)}px` : "";
-      el.style.maxHeight = `${Math.round(box.height * (tall ? 0.6 : 0.8))}px`;
+      el.style.height = tall ? `${Math.min(room, Math.round(box.height * 0.6))}px` : "";
+      el.style.maxHeight = `${Math.min(room, Math.round(box.height * (tall ? 0.6 : 0.8)))}px`;
     }
   };
 
@@ -234,7 +250,15 @@ export function Sheet({
     }
     const resize = () => place(el);
     window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
+    // A phone's keyboard coming up or going away (the window itself doesn't change).
+    const view = window.visualViewport;
+    view?.addEventListener("resize", resize);
+    view?.addEventListener("scroll", resize);
+    return () => {
+      window.removeEventListener("resize", resize);
+      view?.removeEventListener("resize", resize);
+      view?.removeEventListener("scroll", resize);
+    };
     // `place` reads only what's listed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, anchor, tall, docked, minTop]);

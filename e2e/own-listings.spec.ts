@@ -3,7 +3,7 @@
 // and take away; on their profile for anyone; never in the homes everyone
 // browses, and never anyone else's to edit.
 import { expect, test } from "@playwright/test";
-import { signInAgent, signUpBuyer } from "./helpers";
+import { saveDetails, signInAgent, signUpBuyer } from "./helpers";
 
 // A tiny PNG, as a photo would arrive.
 const PNG = Buffer.from(
@@ -240,8 +240,7 @@ test("an MLS listing of theirs is changed through their own copy, which takes it
   const agent = await signInAgent(browser, "elise.copy@example.com", "Elise Navarro");
   await agent.goto("/dashboard/profile");
   await agent.getByLabel("MLS ID (optional)").fill("DEMO-1004");
-  await agent.getByRole("button", { name: "Save" }).click();
-  await agent.waitForURL("**/dashboard");
+  await saveDetails(agent);
 
   // Her two listings from the MLS, each with Edit.
   await agent.goto("/dashboard/listings");
@@ -372,7 +371,10 @@ test("an agent chooses how their listings are laid out, which one leads, and mar
   await visitor.reload();
   await expect(tiles.nth(0)).toContainText("1 Layout Ln");
 
-  // Three across: all the same size, still in that order.
+  // Three across: all the same size, still in that order. (The layout is
+  // among their profile's settings, a link away from their listings.)
+  await agent.getByRole("link", { name: "Change the layout" }).click();
+  await agent.waitForURL(/\/people\/me\/edit#layout$/);
   const layout = agent.getByRole("radiogroup", { name: "Layout on your profile" });
   await expect(layout.getByRole("radio", { name: "Featured" })).toHaveAttribute("aria-checked", "true");
   await layout.getByRole("radio", { name: "3 across" }).click();
@@ -392,6 +394,7 @@ test("an agent chooses how their listings are laid out, which one leads, and mar
   expect(Math.abs((await tiles.nth(1).boundingBox())!.x - (await tiles.nth(0).boundingBox())!.x)).toBeLessThan(2);
 
   // One marked closed: still on the profile, and it says so.
+  await agent.goto("/dashboard/listings");
   await agent.getByRole("link", { name: "Edit 2 Layout Ln" }).click();
   await agent.waitForURL(/\/dashboard\/listings\/OWN-[\w-]+$/);
   const details = agent.getByRole("form", { name: "Listing details" });

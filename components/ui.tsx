@@ -37,7 +37,7 @@ export function Card({
   );
 }
 
-type AvatarSize = 6 | 7 | 8 | 9 | 10 | 18;
+type AvatarSize = 6 | 7 | 8 | 9 | 10 | 18 | 28;
 
 const FACE: Record<AvatarSize, { box: string; icon: number }> = {
   6: { box: "size-6 text-tiny", icon: 12 },
@@ -47,6 +47,8 @@ const FACE: Record<AvatarSize, { box: string; icon: number }> = {
   10: { box: "size-10 text-base", icon: 18 },
   // The face at the top of someone's page.
   18: { box: "size-18 font-display text-[28px]", icon: 30 },
+  // The face at the top of someone's page, over the edge of their banner.
+  28: { box: "size-20 font-display text-[32px] sm:size-28 sm:text-[40px]", icon: 36 },
 };
 
 // Where the small mark sits on a face (a heart, a reply), for its size.
@@ -57,6 +59,7 @@ const MARK: Record<AvatarSize, string> = {
   9: "-bottom-1 -right-1 size-4.5",
   10: "-bottom-0.5 -right-0.5 size-5",
   18: "bottom-0 right-0 size-6",
+  28: "bottom-1 right-1 size-7",
 };
 
 // Someone's face, as their initial: a buyer's (yours too) in the brand's

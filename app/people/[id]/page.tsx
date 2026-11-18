@@ -7,6 +7,7 @@ import { FollowButton, Toast } from "@/app/people/[id]/client";
 import { BetweenCard } from "@/components/between-card";
 import { FeedFilter } from "@/components/feed-filter";
 import { ListingGrid } from "@/components/listing-grid";
+import { ListingsMap } from "@/components/listings-map";
 import { PostComposer } from "@/components/post-composer";
 import { ProfileFeed } from "@/components/profile-feed";
 import { ProfileHeader } from "@/components/profile-header";
@@ -34,6 +35,7 @@ import {
   type TopicSide,
 } from "@/lib/profile";
 import { getPublicIdentity } from "@/lib/public";
+import { getListingCounts } from "@/lib/listing-counts";
 import { getListingsLook, OWN_PREFIX } from "@/lib/own-listings";
 import { getSavedHomes } from "@/lib/saved";
 import { storyOf } from "@/lib/taste-story";
@@ -204,62 +206,112 @@ export default async function ProfilePage({ params, searchParams }: Props) {
     />
   );
 
+  // Where each of their listings is, for the map under them (those that say where).
+  const pins = listings.flatMap((listing) =>
+    listing.Latitude != null && listing.Longitude != null
+      ? [
+          {
+            key: listing.ListingKey,
+            latitude: listing.Latitude,
+            longitude: listing.Longitude,
+            price: listing.ListPrice,
+            address: listing.UnparsedAddress,
+          },
+        ]
+      : [],
+  );
+  const taste = showTaste && tab === "activity";
+
+  // Who they are, across the top; under it, what's theirs: an agent's
+  // listings (and where they are), or what they've done, their taste beside it.
   return (
     <main
-      className="mx-auto max-w-xl px-4 pb-16 pt-4 lg:grid lg:max-w-6xl lg:grid-cols-[360px_minmax(0,600px)] lg:items-start lg:justify-center lg:gap-8 lg:px-6 lg:pt-6 xl:max-w-[1360px] xl:grid-cols-[340px_minmax(0,600px)_320px]"
+      className="mx-auto max-w-4xl px-4 pb-16 pt-4 lg:px-6 lg:pt-6"
       // Whatever is focused in the feed scrolls clear of the filters stuck above it.
       style={{ "--filters": about ? "5rem" : "0.5rem" } as CSSProperties}
     >
-      {/* It stays put beside the feed only on screens tall enough to hold it (and then scrolls on
-          its own if it still runs long); on shorter ones it scrolls away with the page, so nothing
-          in it ever sits below the fold out of reach. On the widest screens it steps aside: who
-          they are down the left, their taste down the right, each staying put the same way. */}
-      <div className="flex flex-col gap-3 *:shrink-0 lg:-m-1 lg:p-1 xl:contents [@media(min-width:64rem)_and_(min-height:860px)]:sticky [@media(min-width:64rem)_and_(min-height:860px)]:top-2 [@media(min-width:64rem)_and_(min-height:860px)]:max-h-[calc(100dvh-1rem)] [@media(min-width:64rem)_and_(min-height:860px)]:overflow-y-auto [@media(min-width:64rem)_and_(min-height:860px)]:overscroll-contain">
-        <div className="xl:col-start-1 xl:row-start-1 [@media(min-width:80rem)_and_(min-height:860px)]:sticky [@media(min-width:80rem)_and_(min-height:860px)]:top-2 [@media(min-width:80rem)_and_(min-height:860px)]:max-h-[calc(100dvh-1rem)] [@media(min-width:80rem)_and_(min-height:860px)]:overflow-y-auto [@media(min-width:80rem)_and_(min-height:860px)]:overscroll-contain xl:-m-1 xl:self-start xl:p-1">
-          {/* Their own: said small, as the dashboard says what it is. */}
-          {isMe && <p className={cn(pageLabel, "mb-2")}>Your public profile</p>}
-          <ProfileHeader
-            name={name}
-            fullName={person.isAgent && !unnamed ? person.agentName || undefined : undefined}
-            face={face}
-            isMe={isMe}
-            unnamed={unnamed}
-            agent={person.isAgent}
-            since={person.since}
-            homes={summary.counts.homes}
-            people={{ ...people, href: `/people/${person.id}` }}
-            photo={person.photo}
-            followsYou={followsYou}
-            client={
-              client
-                ? {
-                    homes: `/reel?from=client:${client.participantId}`,
-                    link: `/dashboard/shares/${client.shareId}`,
-                  }
-                : undefined
-            }
-            bio={person.bio}
-            links={person.links}
-            brokerage={person.brokerage}
-            personId={person.id}
-            brandColor={person.brandColor}
-            banner={person.banner}
-            follow={
-              isMe ? undefined : (
-                <FollowButton
-                  personId={person.id}
-                  name={name}
-                  following={following}
-                  signIn={account?.role ? undefined : `/login?next=${encodeURIComponent(`/people/${person.id}`)}`}
-                />
-              )
-            }
-          />
+      {/* Their own: said small, as the dashboard says what it is. */}
+      {isMe && <p className={cn(pageLabel, "mb-2")}>Your public profile</p>}
+      <ProfileHeader
+        name={name}
+        fullName={person.isAgent && !unnamed ? person.agentName || undefined : undefined}
+        face={face}
+        isMe={isMe}
+        unnamed={unnamed}
+        agent={person.isAgent}
+        since={person.since}
+        homes={summary.counts.homes}
+        people={{ ...people, href: `/people/${person.id}` }}
+        photo={person.photo}
+        followsYou={followsYou}
+        client={
+          client
+            ? {
+                homes: `/reel?from=client:${client.participantId}`,
+                link: `/dashboard/shares/${client.shareId}`,
+              }
+            : undefined
+        }
+        bio={person.bio}
+        links={person.links}
+        brokerage={person.brokerage}
+        personId={person.id}
+        brandColor={person.brandColor}
+        banner={person.banner}
+        follow={
+          isMe ? undefined : (
+            <FollowButton
+              personId={person.id}
+              name={name}
+              following={following}
+              signIn={account?.role ? undefined : `/login?next=${encodeURIComponent(`/people/${person.id}`)}`}
+            />
+          )
+        }
+      />
+      {between.length > 0 && <BetweenCard id="between" links={between} name={name} className="mt-3" />}
+      {tabs && (
+        <div className="mt-3 flex items-end border-b border-stone-200">
+          <nav aria-label="Sections" className="-mb-px flex gap-1">
+            {(["listings", "activity"] as const).map((key) => (
+              <Link
+                key={key}
+                href={`/people/${person.id}?tab=${key}`}
+                scroll={false}
+                aria-current={tab === key ? "page" : undefined}
+                className={cn(
+                  "flex min-h-12 items-center gap-1.5 border-b-2 px-4 text-body font-semibold",
+                  tab === key ? "border-stone-900 text-ink" : "border-transparent text-stone-600 hover:text-ink",
+                )}
+              >
+                {key === "listings" ? "Listings" : "Activity"}
+                {key === "listings" && <span className="text-muted tabular-nums">{listings.length}</span>}
+              </Link>
+            ))}
+          </nav>
+          {/* Their own: where they add and change the listings they keep themselves. */}
+          {isMe && (
+            <Link
+              href="/dashboard/listings"
+              className="ml-auto flex min-h-11 items-center gap-1.5 px-2 text-sm font-semibold text-brand underline-offset-2 hover:underline"
+            >
+              <Pencil aria-hidden size={15} /> Edit listings
+            </Link>
+          )}
         </div>
-        {between.length > 0 && <BetweenCard id="between-phone" links={between} name={name} className="lg:hidden" />}
-        {/* Their taste goes with what they've done: with their listings, it's out of the way. */}
-        {showTaste && tab === "activity" && (
-          <div className={cn("xl:col-start-3 xl:row-start-1 [@media(min-width:80rem)_and_(min-height:860px)]:sticky [@media(min-width:80rem)_and_(min-height:860px)]:top-2 [@media(min-width:80rem)_and_(min-height:860px)]:max-h-[calc(100dvh-1rem)] [@media(min-width:80rem)_and_(min-height:860px)]:overflow-y-auto [@media(min-width:80rem)_and_(min-height:860px)]:overscroll-contain xl:-m-1 xl:self-start xl:p-1")}>
+      )}
+
+      <div
+        className={cn(
+          "mt-4",
+          tab === "activity" &&
+            (taste ? "lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start lg:gap-6" : "mx-auto max-w-[600px]"),
+        )}
+      >
+        {/* Their taste goes with what they've done: beside it on a wide screen (staying put
+            as the feed scrolls), above it on a phone. With their listings, it's out of the way. */}
+        {taste && (
+          <div className="mb-3 lg:sticky lg:top-2 lg:mb-0">
             <TasteStoryCard
               name={name}
               isMe={isMe}
@@ -277,50 +329,16 @@ export default async function ProfilePage({ params, searchParams }: Props) {
             />
           </div>
         )}
-      </div>
-
-      {/* With their listings, the grid takes the room their taste would have had. */}
-      <div className={cn("mt-3 min-w-0 lg:mt-0 xl:col-start-2 xl:row-start-1", tab === "listings" && "xl:col-span-2")}>
-        {between.length > 0 && (
-          <BetweenCard id="between-wide" links={between} name={name} className="mb-4 hidden lg:block" />
-        )}
-        {tabs && (
-          <div className="mb-4 flex items-end border-b border-stone-200">
-          <nav aria-label="Sections" className="-mb-px flex gap-1">
-            {(["listings", "activity"] as const).map((key) => (
-              <Link
-                key={key}
-                href={`/people/${person.id}?tab=${key}`}
-                scroll={false}
-                aria-current={tab === key ? "page" : undefined}
-                className={cn(
-                  "flex min-h-11 items-center gap-1.5 border-b-2 px-4 text-body font-semibold",
-                  tab === key ? "border-stone-900 text-ink" : "border-transparent text-stone-600 hover:text-ink",
-                )}
-              >
-                {key === "listings" ? "Listings" : "Activity"}
-                {key === "listings" && <span className="text-muted tabular-nums">{listings.length}</span>}
-              </Link>
-            ))}
-          </nav>
-            {/* Their own: where they add and change the listings they keep themselves. */}
-            {isMe && (
-              <Link
-                href="/dashboard/listings"
-                className="ml-auto flex min-h-11 items-center gap-1.5 px-2 text-sm font-semibold text-brand underline-offset-2 hover:underline"
-              >
-                <Pencil aria-hidden size={15} /> Edit listings
-              </Link>
-            )}
-          </div>
-        )}
+        <div className="min-w-0">
         {isMe && tab === "activity" && show === "all" && !about && !before && (
           <PostComposer me={{ name: face || name, photo: person.photo, agent: person.isAgent }} />
         )}
         {tab === "listings" ? (
+          <>
           <ListingGrid
             listings={listings}
             from={`listings:${person.id}`}
+            counts={await getListingCounts(listings.map((listing) => listing.ListingKey))}
             // As they chose to lay them out.
             layout={(await getListingsLook(person.accountId)).layout}
             // A home they put here that someone else listed says who did.
@@ -336,6 +354,8 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                 : undefined
             }
           />
+            {pins.length > 0 && <ListingsMap homes={pins} from={`listings:${person.id}`} />}
+          </>
         ) : savedView ? (
           <section aria-labelledby="saved-title">
             <div className="flex items-center justify-between gap-3 px-1">
@@ -348,7 +368,13 @@ export default async function ProfilePage({ params, searchParams }: Props) {
             </div>
             <div className="mt-2">
               {saved.length > 0 ? (
-                <ListingGrid listings={saved} from="saved" label="Saved homes" layout="grid2" />
+                <ListingGrid
+                  listings={saved}
+                  from="saved"
+                  label="Saved homes"
+                  layout="grid2"
+                  counts={await getListingCounts(saved.map((listing) => listing.ListingKey))}
+                />
               ) : (
                 <EmptyState icon={Bookmark} title="Nothing saved yet">
                   Save a home to find it here.
@@ -444,6 +470,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
             )}
           </>
         )}
+        </div>
       </div>
       {/* What you just did on your page, said in a word: "Link copied", "Like removed". */}
       {isMe && <Toast />}

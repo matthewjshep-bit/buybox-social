@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { enterCode, signInAgent, signUpBuyer } from "./helpers";
+import { enterCode, saveDetails, signInAgent, signUpBuyer } from "./helpers";
 
 // The colour things in the header take (Porchcard blue, or an agent's own
 // on their dashboard): what a swatch of the brand colour comes out as there.
@@ -180,7 +180,7 @@ test("an agent's dashboard is in their colour, and the header is just Search, Cl
   await expect(named).toHaveAttribute("aria-current", "page");
   await expect(header.getByRole("link", { name: "Clients", exact: true })).toHaveCount(2);
   await agent.keyboard.press("Escape");
-  await agent.goto("/dashboard/profile");
+  await agent.goto("/dashboard/listings");
   await expect(clients).toHaveAttribute("aria-current", "true");
 
   // Anywhere else, the site's own colour, and Search is where you are on the map.
@@ -190,9 +190,12 @@ test("an agent's dashboard is in their colour, and the header is just Search, Cl
   await expect(clients).not.toHaveAttribute("aria-current");
 
   // A new colour, saved: the logo has it at once, with no reload.
+  // (Their colour is among their details, on Edit profile.)
   await agent.goto("/dashboard/profile");
+  await agent.waitForURL(/\/people\/me\/edit#details$/);
   await agent.getByRole("button", { name: "Plum" }).click();
-  await agent.getByRole("button", { name: "Save" }).click();
+  await saveDetails(agent);
+  await agent.getByRole("link", { name: "Clients", exact: true }).first().click();
   await agent.waitForURL("**/dashboard");
   await expect.poll(() => background(agent)).toBe("rgb(75, 59, 120)");
 });

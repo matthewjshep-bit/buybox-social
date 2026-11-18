@@ -1,6 +1,8 @@
+import { Heart, MessageCircle } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { cn, formatPrice } from "@/lib/format";
+import type { ListingCounts } from "@/lib/listing-counts";
 import type { Listing } from "@/lib/listings/types";
 import type { ListingLayout } from "@/lib/own-listings";
 
@@ -19,6 +21,7 @@ export function ListingGrid({
   layout = "featured",
   edit,
   credit,
+  counts,
 }: {
   listings: Listing[];
   // Which homes the reel opens with (`/reel?from=`).
@@ -29,6 +32,8 @@ export function ListingGrid({
   edit?: (listing: Listing) => string | null;
   // Who listed it, said under a home someone else listed ("Listed by …").
   credit?: (listing: Listing) => string | null;
+  // How many liked each home, and how many comments it has: said small, by its price.
+  counts?: ListingCounts;
 }) {
   const list = layout === "list";
   return (
@@ -47,6 +52,7 @@ export function ListingGrid({
         const closed = listing.StandardStatus === "Closed";
         const editHref = edit?.(listing) ?? null;
         const by = credit?.(listing) ?? null;
+        const tally = <Tally {...(counts?.get(listing.ListingKey) ?? { likes: 0, comments: 0 })} />;
         const href = `/reel?${new URLSearchParams({ from, home: listing.ListingKey })}`;
         if (list) {
           return (
@@ -59,6 +65,7 @@ export function ListingGrid({
                   <span className="flex items-center gap-2">
                     <span className="font-display text-lg leading-tight">{formatPrice(listing.ListPrice)}</span>
                     {closed && <Closed />}
+                    {tally}
                   </span>
                   <span className="block text-meta text-stone-700">
                     {count(listing.BedroomsTotal, "bed")} · {count(listing.BathroomsTotalInteger, "bath")}
@@ -79,7 +86,7 @@ export function ListingGrid({
               <span
                 className={cn(
                   "relative block overflow-hidden rounded-[14px] bg-stone-200",
-                  lead ? "aspect-[3/2]" : "aspect-square sm:aspect-[4/3]",
+                  lead ? "aspect-[3/2] sm:aspect-[2/1]" : "aspect-square sm:aspect-[4/3]",
                 )}
               >
                 {photo && (
@@ -88,7 +95,7 @@ export function ListingGrid({
                     alt=""
                     fill
                     priority={i < 2}
-                    sizes={lead ? "(min-width: 1024px) 600px, 100vw" : "(min-width: 1024px) 295px, 50vw"}
+                    sizes={lead ? "(min-width: 896px) 864px, 100vw" : "(min-width: 896px) 430px, 50vw"}
                     className="object-cover"
                   />
                 )}
@@ -98,7 +105,10 @@ export function ListingGrid({
                   </span>
                 )}
               </span>
-              <span className="mt-1.5 block px-0.5 font-display text-lg leading-tight">{formatPrice(listing.ListPrice)}</span>
+              <span className="mt-1.5 flex items-center gap-2 px-0.5">
+                <span className="font-display text-lg leading-tight">{formatPrice(listing.ListPrice)}</span>
+                {tally}
+              </span>
               <span className="block px-0.5 text-meta text-stone-700">
                 {count(listing.BedroomsTotal, "bed")} · {count(listing.BathroomsTotalInteger, "bath")}
               </span>
@@ -112,6 +122,29 @@ export function ListingGrid({
         );
       })}
     </ul>
+  );
+}
+
+// "♥ 4  💬 2", small and to the right: only what there's any of.
+function Tally({ likes, comments }: { likes: number; comments: number }) {
+  if (likes === 0 && comments === 0) return null;
+  return (
+    <span className="ml-auto flex shrink-0 items-center gap-2.5 text-meta font-medium tabular-nums text-stone-600">
+      {likes > 0 && (
+        <span className="flex items-center gap-1">
+          <Heart aria-hidden size={14} className="fill-rose-600 text-rose-600" />
+          {likes}
+          <span className="sr-only">{likes === 1 ? "like" : "likes"}</span>
+        </span>
+      )}
+      {comments > 0 && (
+        <span className="flex items-center gap-1">
+          <MessageCircle aria-hidden size={14} />
+          {comments}
+          <span className="sr-only">{comments === 1 ? "comment" : "comments"}</span>
+        </span>
+      )}
+    </span>
   );
 }
 

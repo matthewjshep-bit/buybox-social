@@ -1,17 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { signedIn, toFirstHome,
-  commentIn,
-  createShare,
-  heartOf,
-  homeIn,
-  joinAs,
-  linkPorchcard,
-  openComments,
-  openMore,
-  pick,
-  signInAgent,
-} from "./helpers";
+import { commentIn, createShare, heartOf, homeIn, joinAs, linkPorchcard, openComments, openMore, pick, saveDetails, signedIn, signInAgent, toFirstHome } from "./helpers";
 
 // The link anyone can join, when no one was named.
 async function packageLink(agent: Page, addresses: string[]) {
@@ -23,8 +12,7 @@ async function saveContact(agent: Page, { phone, email }: { phone?: string; emai
   await agent.goto("/dashboard/profile");
   if (phone !== undefined) await agent.getByLabel("Phone for clients (optional)").fill(phone);
   if (email !== undefined) await agent.getByLabel("Email for clients (optional)").fill(email);
-  await agent.getByRole("button", { name: "Save" }).click();
-  await agent.waitForURL(/\/dashboard$/);
+  await saveDetails(agent);
 }
 
 const emailsTo = (address: string) =>

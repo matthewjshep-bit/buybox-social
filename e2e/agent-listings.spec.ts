@@ -5,7 +5,7 @@
 // one of their links comes along. The IDs are given back at the end, so no
 // later spec finds an agent with listings.
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, openComments, signedIn, signInAgent } from "./helpers";
+import { createShare, detailsForm, heartOf, homeIn, joinAs, openComments, signedIn, signInAgent, toDetails } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -22,11 +22,11 @@ let liaId: string;
 const sections = (page: Page) => page.getByRole("navigation", { name: "Sections" });
 const grid = (page: Page) => page.getByRole("list", { name: "Listings" });
 
-// The MLS ID on the brand page, saved.
+// The MLS ID among their details (Edit profile), and Save.
 async function saveMlsId(page: Page, id: string) {
-  await page.goto("/dashboard/profile");
+  await toDetails(page);
   await page.getByLabel("MLS ID (optional)").fill(id);
-  await page.getByRole("button", { name: "Save" }).click();
+  await detailsForm(page).getByRole("button", { name: "Save details" }).click();
 }
 
 // The last screen of a reel on a page of its own.
@@ -57,8 +57,8 @@ test("an agent adds their MLS ID and their listings lead their page", async ({ b
   await expect(lia.locator("#mlsAgentId-error")).toHaveText("Letters, numbers and dashes only, or leave it empty.");
   await expect(lia.getByLabel("MLS ID (optional)")).toBeFocused();
   await lia.getByLabel("MLS ID (optional)").fill("demo-1001");
-  await lia.getByRole("button", { name: "Save" }).click();
-  await lia.waitForURL("**/dashboard");
+  await detailsForm(lia).getByRole("button", { name: "Save details" }).click();
+  await expect(detailsForm(lia).getByRole("status")).toHaveText("Saved");
 
   // Her page opens on her listings: Listings first, then Activity.
   await lia.goto(liaPage);
@@ -104,6 +104,11 @@ test("signed out, an agent's page is their listings, with Activity one tap away"
   await expect(grid(anon).getByRole("link")).toHaveCount(4);
   await expect(anon.getByRole("link", { name: "Edit profile" })).toHaveCount(0);
   await expect(anon).toHaveTitle("Jordan Rivera · Porchcard");
+  // Under them, where they are: a map, there on the listings and gone with Activity.
+  await expect(anon.getByRole("region", { name: "Map" })).toBeVisible();
+  await anon.goto(`${liaPage}?tab=activity`);
+  await expect(anon.getByRole("region", { name: "Map" })).toHaveCount(0);
+  await anon.goto(liaPage);
 
   // All four, to the end, with nothing asking them to sign up on the way; Follow is the way in.
   await anon.goto(`/reel?from=listings:${liaId}&home=SAMPLE-1001`);
@@ -179,6 +184,53 @@ test("what she likes is on Activity, and its homes go back to Activity", async (
   await expect(heartOf(halvard)).toHaveAttribute("aria-pressed", "false");
 });
 
+test("her own words lead her listing, after anyone else's, and its tile counts likes and comments", async ({ browser }) => {
+  test.setTimeout(90_000);
+  const TAKE = "New roof last spring, and the porch catches the evening sun.";
+  // Someone says something on her listing first …
+  const fan = await signedIn(browser);
+  await fan.goto(`/reel?from=listings:${liaId}&home=SAMPLE-1002`);
+  const fanHome = homeIn(fan, TAMSEN);
+  await heartOf(fanHome).click();
+  await joinAs(fan, "Fay");
+  await expect(heartOf(fanHome)).toHaveAttribute("aria-pressed", "true");
+  const fanChat = await openComments(fan, fanHome);
+  await fanChat.getByLabel("Add a comment").fill("Is the yard fenced?");
+  await fanChat.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(fanChat.getByText("Is the yard fenced?")).toBeVisible();
+  // … then she says what she has to say about it.
+  await lia.goto(`/reel?from=listings:${liaId}&home=SAMPLE-1002`);
+  const chat = await openComments(lia, homeIn(lia, TAMSEN));
+  await chat.getByLabel("Add a comment").fill(TAKE);
+  await chat.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(chat.getByText(TAKE)).toBeVisible();
+  // And once more someone else, newer than hers.
+  const late = await signedIn(browser);
+  await late.goto(`/reel?from=listings:${liaId}&home=SAMPLE-1002`);
+  const lateChat = await openComments(late, homeIn(late, TAMSEN));
+  await lateChat.getByLabel("Add a comment").fill("Love the trees.");
+  await lateChat.getByRole("button", { name: "Post", exact: true }).click();
+  await joinAs(late, "Lou");
+  await expect(lateChat.getByText("Love the trees.")).toBeVisible();
+
+  // Anyone, on her page: the tile says how many liked it and how many comments.
+  const anon = await (await browser.newContext()).newPage();
+  await anon.goto(liaPage);
+  const tile = grid(anon).locator('a[href*="home=SAMPLE-1002"]');
+  await expect(tile).toContainText(/1\s*like/);
+  await expect(tile).toContainText(/3\s*comments/);
+  // One nobody's touched says nothing of the kind.
+  await expect(grid(anon).locator('a[href*="home=SAMPLE-1001"]')).not.toContainText(/comment|like/);
+
+  // Into it: the line at the photo's foot starts with what she said, not the newest.
+  await tile.click();
+  await anon.waitForURL(/\/reel\?/);
+  const line = homeIn(anon, TAMSEN).getByRole("group", { name: "Recent activity" });
+  await expect(line).toContainText("Jordan");
+  await expect(line).toContainText("New roof last spring");
+  await expect(line).not.toContainText("Love the trees");
+});
+
 test("an MLS ID is theirs only under their name, one profile per ID, and nobody without listings gets the tabs", async ({ browser }) => {
   test.setTimeout(90_000);
   const noel = await signInAgent(browser, "noel-listings@example.com", "Noel Nolistings");
@@ -188,13 +240,13 @@ test("an MLS ID is theirs only under their name, one profile per ID, and nobody 
   await expect(noel.getByLabel("MLS ID (optional)")).toBeFocused();
   // Under that name too, it's still on one profile only.
   await noel.getByLabel("Full name").fill("Jordan Rivera");
-  await noel.getByRole("button", { name: "Save" }).click();
+  await detailsForm(noel).getByRole("button", { name: "Save details" }).click();
   await expect(noel.locator("#mlsAgentId-error")).toHaveText("That MLS ID is on another profile.");
   await noel.getByLabel("Full name").fill("Noel Nolistings");
   // An ID no listing has: saved, and their page is as it was.
   await noel.getByLabel("MLS ID (optional)").fill("NOBODY-1");
-  await noel.getByRole("button", { name: "Save" }).click();
-  await noel.waitForURL("**/dashboard");
+  await detailsForm(noel).getByRole("button", { name: "Save details" }).click();
+  await expect(detailsForm(noel).getByRole("status")).toHaveText("Saved");
   await noel.goto("/people/me");
   await noel.waitForURL(/\/people\/[0-9a-f-]{36}$/);
   await expect(noel.getByRole("heading", { level: 1 })).toContainText("Noel");
@@ -212,7 +264,7 @@ test("privacy: what a client says on the agent's link never shows on the agent's
   test.setTimeout(120_000);
   const pat = await signInAgent(browser, "pat-listings@example.com", "Daniel Okafor");
   await saveMlsId(pat, "DEMO-1003");
-  await pat.waitForURL("**/dashboard");
+  await expect(detailsForm(pat).getByRole("status")).toHaveText("Saved");
   const { url } = await createShare(pat, ["1204 Quillan"], ["Toby"]);
   await pat.goto("/people/me");
   await pat.waitForURL(/\/people\/[0-9a-f-]{36}$/);
@@ -243,11 +295,11 @@ test("privacy: what a client says on the agent's link never shows on the agent's
 
   // The IDs go back: with none, the tabs go too.
   await saveMlsId(pat, "");
-  await pat.waitForURL("**/dashboard");
+  await expect(detailsForm(pat).getByRole("status")).toHaveText("Saved");
   await pat.goto(patPage);
   await expect(sections(pat)).toHaveCount(0);
   await saveMlsId(lia, "");
-  await lia.waitForURL("**/dashboard");
+  await expect(detailsForm(lia).getByRole("status")).toHaveText("Saved");
   await lia.goto(liaPage);
   await expect(sections(lia)).toHaveCount(0);
 });

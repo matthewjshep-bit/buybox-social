@@ -448,12 +448,12 @@ test("the longer way to send one home starts with it picked, and keeps it in vie
   const picked = agent.getByRole("button", { pressed: true });
   await expect(picked).toHaveCount(1);
   await expect(picked).toContainText("96 Fernhollow Ln");
-  await expect(agent.getByRole("searchbox")).toHaveCount(0);
+  await expect(agent.getByRole("combobox", { name: "Address, MLS number, or a link to the home" })).toHaveCount(0);
   await expect(agent.getByRole("button", { name: "Next", exact: true })).toBeVisible();
 
   // Adding another: the first stays first, and the heading follows.
   await agent.getByRole("button", { name: "Add another home" }).click();
-  await expect(agent.getByRole("searchbox")).toBeFocused();
+  await expect(agent.getByRole("combobox", { name: "Address, MLS number, or a link to the home" })).toBeFocused();
   const cards = agent.getByRole("button", { name: /^\$/ });
   await expect(cards.first()).toContainText("96 Fernhollow Ln");
   await expect(cards.first()).toHaveAttribute("aria-pressed", "true");
@@ -480,7 +480,7 @@ test("the longer way to send one home starts with it picked, and keeps it in vie
   // A home that isn't for sale: the usual way to start.
   await agent.goto("/dashboard/new?home=SAMPLE-SOLD");
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send homes");
-  await expect(agent.getByRole("searchbox")).toBeVisible();
+  await expect(agent.getByRole("combobox", { name: "Address, MLS number, or a link to the home" })).toBeVisible();
   await expect(agent.getByRole("button", { pressed: true })).toHaveCount(0);
 });
 

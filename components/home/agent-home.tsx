@@ -1,4 +1,4 @@
-import { House, Palette, Plus, Send, UserRound } from "lucide-react";
+import { House, Pencil, Plus, Send, UserRound } from "lucide-react";
 import Link from "next/link";
 import { ClientFeed } from "@/components/home/client-feed";
 import { ClientsRail } from "@/components/home/clients-rail";
@@ -90,7 +90,7 @@ export function AgentHome({
             { href: "/dashboard/new", label: "Send homes", icon: <Plus size={18} /> },
             { href: profileHref, label: "Your profile", icon: <UserRound size={18} /> },
             { href: "/dashboard/listings", label: "Listings", icon: <House size={18} /> },
-            { href: "/dashboard/profile", label: "Your brand", icon: <Palette size={18} /> },
+            { href: "/people/me/edit", label: "Edit profile", icon: <Pencil size={18} /> },
           ]}
         />
       }

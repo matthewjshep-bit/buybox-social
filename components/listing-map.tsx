@@ -109,6 +109,7 @@ export default function ListingMap({
   hoveredKey,
   onHover,
   onSelect,
+  cooperative = false,
 }: {
   homes: MapHome[];
   // The home showing beside the map.
@@ -116,6 +117,9 @@ export default function ListingMap({
   hoveredKey: string | null;
   onHover: (key: string | null) => void;
   onSelect: (key: string) => void;
+  // Within a page that scrolls: a finger (or the wheel) scrolls the page, and
+  // two fingers (or the wheel with a key held) move the map.
+  cooperative?: boolean;
 }) {
   const map = useRef<MapRef>(null);
   const chips = useRef(new globalThis.Map<string, HTMLButtonElement>());
@@ -165,6 +169,7 @@ export default function ListingMap({
       mapStyle={MAP_STYLE}
       style={{ width: "100%", height: "100%" }}
       attributionControl={{ compact: true }}
+      cooperativeGestures={cooperative}
       onZoom={(event) => setZoom(event.viewState.zoom)}
       onLoad={(event) => {
         setZoom(event.target.getZoom());

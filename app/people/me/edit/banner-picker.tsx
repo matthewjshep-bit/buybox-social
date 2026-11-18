@@ -154,7 +154,7 @@ export function BannerPicker({
               </button>
             )}
             {agent && (
-              <Link href="/dashboard/profile" className="inline-flex min-h-11 items-center font-semibold text-brand underline-offset-2 hover:underline">
+              <Link href="#details" className="inline-flex min-h-11 items-center font-semibold text-brand underline-offset-2 hover:underline">
                 Change your color
               </Link>
             )}

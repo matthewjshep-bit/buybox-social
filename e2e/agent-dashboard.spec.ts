@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import type { Listing } from "../lib/listings/types";
 import { mediaKeyOf } from "../lib/photos";
 import { describeReaction, spotPlace } from "../lib/reactions";
-import { clientRow, commentIn, createShare, heartOf, homeIn, joinAs, likeInPhoto, missedTaps, openComments, openMore, pick, settle, signedIn, signInAgent, tapPhoto, toFirstHome, toWho } from "./helpers";
+import { clientRow, commentIn, createShare, detailsForm, heartOf, homeIn, joinAs, likeInPhoto, missedTaps, openComments, openMore, pick, settle, signedIn, signInAgent, tapPhoto, toFirstHome, toWho } from "./helpers";
 
 const emailsTo = (address: string) =>
   readFileSync("test-results-server.log", "utf8")
@@ -22,7 +22,7 @@ test("an agent's phone and email for clients: checked, kept as digits, and never
   const agent = await signInAgent(browser, "casey-contact@example.com", "Casey Agent");
   await agent.goto("/dashboard/profile");
   // (Next's route announcer is an alert too.)
-  const alert = agent.locator("form").getByRole("alert");
+  const alert = detailsForm(agent).getByRole("alert");
   const phone = agent.getByLabel("Phone for clients (optional)");
   const email = agent.getByLabel("Email for clients (optional)");
   // Nothing shows on links until they type it: never their login email.
@@ -31,16 +31,16 @@ test("an agent's phone and email for clients: checked, kept as digits, and never
 
   // A number without its area code says so, under the field, and saves nothing.
   await phone.fill("555-0142");
-  await agent.getByRole("button", { name: "Save" }).click();
+  await detailsForm(agent).getByRole("button", { name: "Save details" }).click();
   await expect(alert).toHaveText("Please enter a phone number with the area code, or leave it empty.");
   await expect(phone).toHaveAttribute("aria-invalid", "true");
   await expect(phone).toHaveValue("555-0142");
-  await expect(agent).toHaveURL(/\/dashboard\/profile$/);
+  await expect(agent).toHaveURL(/\/people\/me\/edit#details$/);
 
   // So does an address that can't be one, even with a good phone beside it.
   await phone.fill("(206) 555-0142");
   await email.fill("casey@nowhere");
-  await agent.getByRole("button", { name: "Save" }).click();
+  await detailsForm(agent).getByRole("button", { name: "Save details" }).click();
   await expect(alert).toHaveText("Please enter a valid email address, or leave it empty.");
   await expect(email).toHaveAttribute("aria-invalid", "true");
   await expect(email).toHaveValue("casey@nowhere");
@@ -51,8 +51,8 @@ test("an agent's phone and email for clients: checked, kept as digits, and never
   // Both good: saved, and shown back as a phone number.
   await phone.fill("(206) 555-0142");
   await email.fill("Casey@Harborpine.example");
-  await agent.getByRole("button", { name: "Save" }).click();
-  await agent.waitForURL(/\/dashboard$/);
+  await detailsForm(agent).getByRole("button", { name: "Save details" }).click();
+  await expect(detailsForm(agent).getByRole("status")).toHaveText("Saved");
   await agent.goto("/dashboard/profile");
   await expect(phone).toHaveValue("(206) 555-0142");
   await expect(email).toHaveValue("casey@harborpine.example");
@@ -75,8 +75,8 @@ test("an agent's phone and email for clients: checked, kept as digits, and never
   await agent.goto("/dashboard/profile");
   await phone.fill("");
   await email.fill("");
-  await agent.getByRole("button", { name: "Save" }).click();
-  await agent.waitForURL(/\/dashboard$/);
+  await detailsForm(agent).getByRole("button", { name: "Save details" }).click();
+  await expect(detailsForm(agent).getByRole("status")).toHaveText("Saved");
   await client.reload();
   await client.getByRole("button", { name: "Contact" }).click();
   await expect(contact).toBeVisible();
@@ -326,7 +326,7 @@ test("the agent's page about a client reads like the product: a card per home, s
   await agent.goto(`${dashboardUrl}?tab=want`);
   const nav = agent.getByRole("navigation", { name: "Dashboard" });
   await expect(nav.getByRole("link", { name: "Clients" })).toHaveAttribute("aria-current", "true");
-  expect((await nav.getByRole("link", { name: "Your brand" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect((await nav.getByRole("link", { name: "Listings" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
   const compare = agent.getByRole("region", { name: "What they each want" });
   await expect(compare.getByRole("table")).toBeHidden();
   // A spot she liked counts: the summary and her card agree.
@@ -882,12 +882,15 @@ test("on a phone, picked homes stay in view whatever the search, and a bar leads
   await expect(agent.getByText("1 of 3 picked")).toBeVisible();
   await expect(next).toBeVisible();
 
-  // A search that leaves it out still shows it, above the homes, and it can come off from there.
-  await agent.getByRole("searchbox").fill("Seattle");
-  await expect(agent).toHaveURL(/q=Seattle/);
-  await expect(cards.filter({ hasText: "1204 Quillan" })).toHaveCount(0);
+  // Typing looks for another: what's picked stays put, above the homes that
+  // match, and can come off from there.
+  const box = agent.getByRole("combobox", { name: "Address, MLS number, or a link to the home" });
+  await box.fill("Seattle");
+  const offered = agent.getByRole("listbox", { name: "Homes that match" });
+  await expect(offered.getByRole("option").first()).toBeVisible();
+  await expect(offered).not.toContainText("1204 Quillan");
   await expect(tray).toContainText("1204 Quillan St SE");
-  expect((await tray.boundingBox())!.y).toBeLessThan((await cards.first().boundingBox())!.y);
+  expect((await tray.boundingBox())!.y).toBeLessThan((await offered.boundingBox())!.y);
   await tray.getByRole("button", { name: "Remove 1204 Quillan St SE" }).click();
   await expect(tray).toHaveCount(0);
   await expect(next).toHaveCount(0);
@@ -895,8 +898,8 @@ test("on a phone, picked homes stay in view whatever the search, and a bar leads
 
   // Three picked: one row of them that slides rather than widening the page,
   // and Next goes to who it's for, ready to type.
-  await agent.getByRole("searchbox").fill("");
-  await expect(agent).toHaveURL(/\/dashboard\/new$/);
+  await box.fill("");
+  await expect(offered).toHaveCount(0);
   for (const i of [0, 1, 2]) await cards.nth(i).click();
   await expect(agent.getByText("3 of 3 picked")).toBeVisible();
   await expect(tray.getByRole("listitem")).toHaveCount(3);

@@ -7,7 +7,6 @@ import { cn } from "@/lib/format";
 const LINKS = [
   { href: "/dashboard", label: "Clients" },
   { href: "/dashboard/listings", label: "Listings" },
-  { href: "/dashboard/profile", label: "Your brand" },
 ];
 
 // The dashboard's places. A client's page and a new link count as part of

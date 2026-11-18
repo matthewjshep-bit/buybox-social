@@ -1,7 +1,6 @@
 "use client";
 
 import { ArrowLeft, ArrowRight, Check, Plus, Search, X } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { PeoplePicker, typed, type Chosen } from "@/components/people-picker";
 import { HomeThumb } from "@/components/ui";
@@ -10,7 +9,7 @@ import type { Listing } from "@/lib/listings/types";
 import { addressFromLink, looksLikeLink } from "@/lib/listing-link";
 import { peopleTitle } from "@/lib/people-picker";
 import { button, card as cardClass, field } from "@/lib/ui";
-import { addHomesToShare, createShare } from "../actions";
+import { addHomesToShare, createShare, suggestHomes } from "../actions";
 
 const MAX_LISTINGS = 3;
 const MAX_PEOPLE = 6;
@@ -30,22 +29,19 @@ export function ShareBuilder({
   heading,
   intro,
   results,
-  initialQuery,
   addTo,
   start,
 }: {
   heading: string;
   intro: string;
   results: Listing[];
-  initialQuery: string;
   // Adding to an existing client's link rather than starting a new one.
   addTo?: { shareId: string; clientName: string };
   // A home already picked (sent from the home itself): just who it's for, and
   // a note, until they ask for another home.
   start?: Listing;
 }) {
-  const router = useRouter();
-  const [query, setQuery] = useState(initialQuery);
+  const [query, setQuery] = useState("");
   const [step, setStep] = useState<Step>("home");
   const heading_ = useRef<HTMLHeadingElement>(null);
   // What a pasted link was read as: its street, or "none" when it had none.
@@ -61,7 +57,6 @@ export function ShareBuilder({
   const title = peopleTitle(everyone.map((person) => person.name));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const debounce = useRef<ReturnType<typeof setTimeout>>(undefined);
   // Sent from a home: what's picked so far leads each set of results, so the
   // home it started with stays in view. Fixed per search, so a card doesn't
   // jump away from the finger that picked it.
@@ -74,7 +69,38 @@ export function ShareBuilder({
       ]
     : results;
 
-  useEffect(() => () => clearTimeout(debounce.current), []);
+
+  // The homes that match what's being typed, in a list right under the box:
+  // a tap (or the arrow keys and Enter) picks one. Asked for a moment after
+  // each letter; only the newest answer counts.
+  const [suggested, setSuggested] = useState<{ query: string; homes: Listing[] } | null>(null);
+  const [activeOption, setActiveOption] = useState(0);
+  const suggestTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const suggestAsked = useRef(0);
+  useEffect(() => () => clearTimeout(suggestTimer.current), []);
+  const suggest = (text: string) => {
+    clearTimeout(suggestTimer.current);
+    const n = ++suggestAsked.current;
+    setActiveOption(0);
+    if (text.trim().length < 2) return setSuggested(null);
+    suggestTimer.current = setTimeout(async () => {
+      const homes = await suggestHomes(text.trim(), addTo?.shareId).catch((): Listing[] => []);
+      if (n === suggestAsked.current) setSuggested({ query: text.trim(), homes });
+    }, 120);
+  };
+  // What the list offers: not what's picked already.
+  const options = (suggested?.homes ?? []).filter((home) => !picked.some((l) => l.ListingKey === home.ListingKey));
+  // While something's typed, the matches take the place of the homes below.
+  const typing_ = query.trim().length >= 2;
+  const listOpen = typing_ && suggested !== null;
+  const full = picked.length >= MAX_LISTINGS;
+  const choose = (listing: Listing) => {
+    if (full) return;
+    setPicked((current) => (current.some((l) => l.ListingKey === listing.ListingKey) ? current : [...current, listing]));
+    // On to the next one: the box empties, and the homes below are all of them again.
+    onSearch("");
+    setSuggested(null);
+  };
 
   const onSearch = (value: string) => {
     setQuery(value);
@@ -82,15 +108,7 @@ export function ShareBuilder({
     const street = looksLikeLink(value) ? addressFromLink(value) : null;
     setFromLink(looksLikeLink(value) ? (street ?? "none") : null);
     const asked = looksLikeLink(value) ? (street ?? "") : value;
-    clearTimeout(debounce.current);
-    debounce.current = setTimeout(() => {
-      const params = new URLSearchParams();
-      if (addTo) params.set("share", addTo.shareId);
-      if (start) params.set("home", start.ListingKey);
-      if (asked.trim()) params.set("q", asked.trim());
-      const search = params.toString();
-      router.replace(`/dashboard/new${search ? `?${search}` : ""}`, { scroll: false });
-    }, 250);
+    suggest(asked);
   };
 
   const toggle = (listing: Listing) => {
@@ -258,14 +276,34 @@ export function ShareBuilder({
                 Address, MLS number, or a link to the home
               </label>
               <div className="relative">
-                <Search aria-hidden size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
+                <Search aria-hidden size={18} className="absolute left-4 top-6 -translate-y-1/2 text-muted" />
                 <input
                   id="search"
                   type="search"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded={listOpen}
+                  aria-controls="home-suggestions"
+                  aria-activedescendant={listOpen && options[activeOption] ? `home-option-${activeOption}` : undefined}
+                  autoComplete="off"
                   value={query}
                   // Asked for from "Add another home", so the cursor goes straight there.
                   autoFocus={Boolean(start)}
                   onChange={(event) => onSearch(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (!listOpen) return;
+                    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                      event.preventDefault();
+                      const step = event.key === "ArrowDown" ? 1 : -1;
+                      setActiveOption((now) => (options.length ? (now + step + options.length) % options.length : 0));
+                    } else if (event.key === "Enter" && options[activeOption]) {
+                      event.preventDefault();
+                      choose(options[activeOption]);
+                    } else if (event.key === "Escape") {
+                      event.preventDefault();
+                      setSuggested(null);
+                    }
+                  }}
                   placeholder="Address, MLS #, or paste a link"
                   className={cn(field(), "pl-11")}
                 />
@@ -283,8 +321,52 @@ export function ShareBuilder({
                 </p>
               )}
               {tray && <div className="mt-3">{tray}</div>}
-              {shown.length > 0 && <ul className="mt-4 grid gap-3 sm:grid-cols-2">{shown.map(card)}</ul>}
-              {results.length === 0 && <p className="mt-6 text-center text-stone-700">No homes match that.</p>}
+              {/* The homes that match, right under the box, in the page (so
+                  nothing else is ever under a tap meant for one of them). */}
+              {listOpen && (
+                <ul
+                  id="home-suggestions"
+                  role="listbox"
+                  aria-label="Homes that match"
+                  className="mt-2 overflow-hidden rounded-2xl bg-white py-1 ring-1 ring-stone-200"
+                >
+                  {options.map((home, i) => (
+                    <li
+                      key={home.ListingKey}
+                      id={`home-option-${i}`}
+                      role="option"
+                      aria-selected={i === activeOption}
+                      aria-disabled={full || undefined}
+                      // (The cursor stays in the box, ready for the next home.)
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={() => choose(home)}
+                      onPointerEnter={() => setActiveOption(i)}
+                      className={cn(
+                        "flex min-h-14 cursor-pointer items-center gap-3 px-3 py-1.5",
+                        i === activeOption && "bg-stone-100",
+                        full && "cursor-not-allowed opacity-50",
+                      )}
+                    >
+                      <HomeThumb src={home.Media[0]?.MediaURL} sizes="48px" className="size-11 shrink-0 rounded-lg" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-body font-semibold">
+                          <Matched text={home.UnparsedAddress} part={suggested?.query ?? ""} />
+                        </span>
+                        <span className="block truncate text-meta text-muted">
+                          {home.City} · {formatPrice(home.ListPrice)}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                  {options.length === 0 && (
+                    <li role="option" aria-selected={false} aria-disabled className="px-4 py-3 text-body text-muted">
+                      No homes match that.
+                    </li>
+                  )}
+                </ul>
+              )}
+              {/* With nothing typed: homes to pick from. */}
+              {!typing_ && shown.length > 0 && <ul className="mt-4 grid gap-3 sm:grid-cols-2">{shown.map(card)}</ul>}
             </>
           ) : (
             <>
@@ -352,6 +434,20 @@ export function ShareBuilder({
           </button>
         </div>
       )}
+    </>
+  );
+}
+
+// An address with the part that was typed in ink, the rest a shade lighter,
+// so the eye lands on why it matched.
+function Matched({ text, part }: { text: string; part: string }) {
+  const at = part ? text.toLowerCase().indexOf(part.toLowerCase()) : -1;
+  if (at < 0) return <>{text}</>;
+  return (
+    <>
+      <span className="font-normal text-stone-600">{text.slice(0, at)}</span>
+      {text.slice(at, at + part.length)}
+      <span className="font-normal text-stone-600">{text.slice(at + part.length)}</span>
     </>
   );
 }

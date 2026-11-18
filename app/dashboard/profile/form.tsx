@@ -23,7 +23,11 @@ export function ProfileForm(props: {
   suggestedPhone: string;
   // Their MLS ID, or empty: which listings are theirs.
   mlsAgentId: string;
+  // Among their other profile settings (Edit profile): their photo has its
+  // own place there, saving stays on the page, and the button says what it saves.
+  embedded?: boolean;
 }) {
+  const embedded = props.embedded ?? false;
   const [state, action, pending] = useActionState<ProfileState, FormData>(saveProfile, {});
   const [photo, setPhoto] = useState(props.photo);
   const [color, setColor] = useState(props.brandColor);
@@ -48,48 +52,51 @@ export function ProfileForm(props: {
       : { "aria-describedby": "contact-hint" };
 
   return (
-    <form ref={form} action={action} className="mt-6 flex flex-col gap-5">
-      <input type="hidden" name="photo" value={photo ?? ""} />
+    <form ref={form} action={action} aria-label="Your details" className={cn("flex flex-col gap-5", !embedded && "mt-6")}>
+      {/* (With no photo sent, the one they have is kept.) */}
+      {embedded ? <input type="hidden" name="stay" value="1" /> : <input type="hidden" name="photo" value={photo ?? ""} />}
       <input type="hidden" name="brandColor" value={color} />
 
-      <div className="flex items-center gap-4 rounded-2xl p-4 text-white" style={{ background: color }}>
-        <AgentAvatar agent={{ full_name: fullName, photo_data_url: photo }} size={64} className="ring-2 ring-white/70" />
-        <div className="min-w-0 flex-1">
-          <label htmlFor="photo-file" className="block text-sm font-semibold">
-            Your photo
-          </label>
-          {/* The browser's own file box says "Choose File" and "No file
-              chosen", even beside a photo; this button says it in our words. */}
-          <input
-            ref={fileInput}
-            id="photo-file"
-            type="file"
-            accept="image/*"
-            hidden
-            onChange={async (event) => {
-              const file = event.target.files?.[0];
-              // So picking the same file again still counts.
-              event.target.value = "";
-              if (!file) return;
-              try {
-                setPhoto(await resizePhoto(file));
-                setPhotoError(null);
-              } catch {
-                setPhotoError("We couldn't read that image. Try a JPEG or PNG.");
-              }
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => fileInput.current?.click()}
-            className={cn(button({ kind: "light" }), "mt-1.5")}
-          >
-            <Camera aria-hidden size={16} />
-            {photo ? "Change photo" : "Add a photo"}
-          </button>
-          {photoError && <p role="alert" className="mt-1 text-sm">{photoError}</p>}
+      {!embedded && (
+        <div className="flex items-center gap-4 rounded-2xl p-4 text-white" style={{ background: color }}>
+          <AgentAvatar agent={{ full_name: fullName, photo_data_url: photo }} size={64} className="ring-2 ring-white/70" />
+          <div className="min-w-0 flex-1">
+            <label htmlFor="photo-file" className="block text-sm font-semibold">
+              Your photo
+            </label>
+            {/* The browser's own file box says "Choose File" and "No file
+                chosen", even beside a photo; this button says it in our words. */}
+            <input
+              ref={fileInput}
+              id="photo-file"
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={async (event) => {
+                const file = event.target.files?.[0];
+                // So picking the same file again still counts.
+                event.target.value = "";
+                if (!file) return;
+                try {
+                  setPhoto(await resizePhoto(file));
+                  setPhotoError(null);
+                } catch {
+                  setPhotoError("We couldn't read that image. Try a JPEG or PNG.");
+                }
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInput.current?.click()}
+              className={cn(button({ kind: "light" }), "mt-1.5")}
+            >
+              <Camera aria-hidden size={16} />
+              {photo ? "Change photo" : "Add a photo"}
+            </button>
+            {photoError && <p role="alert" className="mt-1 text-sm">{photoError}</p>}
+          </div>
         </div>
-      </div>
+      )}
 
       <div>
         <label htmlFor="fullName" className="text-sm font-medium">
@@ -239,15 +246,22 @@ export function ProfileForm(props: {
           {state.error}
         </p>
       )}
-      <button
-        type="submit"
-        disabled={pending}
-        // In the colour picked, before it's saved.
-        style={{ background: color }}
-        className={button({ kind: "primary", size: "lg" })}
-      >
-        {pending ? "Saving…" : "Save"}
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          type="submit"
+          disabled={pending}
+          // In the colour picked, before it's saved.
+          style={{ background: color }}
+          className={button({ kind: "primary", size: "lg" })}
+        >
+          {pending ? "Saving…" : embedded ? "Save details" : "Save"}
+        </button>
+        {state.saved && !pending && (
+          <p role="status" className="flex items-center gap-1 text-meta font-semibold text-emerald-700">
+            <Check aria-hidden size={14} /> Saved
+          </p>
+        )}
+      </div>
     </form>
   );
 }
