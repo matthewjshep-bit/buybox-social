@@ -240,7 +240,6 @@ export default async function ProfilePage({ params, searchParams }: Props) {
         unnamed={unnamed}
         agent={person.isAgent}
         since={person.since}
-        homes={summary.counts.homes}
         people={{ ...people, href: `/people/${person.id}` }}
         photo={person.photo}
         followsYou={followsYou}

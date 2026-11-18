@@ -105,7 +105,8 @@ test("a profile is one card per home per day, with the photo and the spots picke
   const profileUrl = lena.url();
   await expect(lena.getByRole("heading", { level: 1 })).toHaveText("Lena (you)");
   const main = lena.locator("main");
-  await expect(main).toContainText(/Looking since \w+ · 2 homes/);
+  await expect(main).toContainText(/Looking since \w+/);
+  await expect(main).not.toContainText(/· 2 homes/);
   // No counts; one word on the first day's line chooses what to show.
   await expect(main).not.toContainText("2 liked");
   await expect(filterOf(lena).locator("summary")).toHaveText("Show: All");
@@ -402,7 +403,7 @@ test("what someone does on an agent's link never shows on their page", async ({ 
     const main = page.locator("main");
     await expect(page.getByRole("link", { name: `${LAKEVIEW}: liked this` })).toBeVisible();
     await expect(cardLinks(page)).toHaveCount(1);
-    await expect(main).toContainText("1 home");
+    // (Her page says nothing of how many homes: the homes themselves do.)
     await expect(main).not.toContainText(QUILLAN);
     await expect(main).not.toContainText(SECRET);
     await expect(main).not.toContainText(/red front door|picket fence|Passes on|Yard/i);

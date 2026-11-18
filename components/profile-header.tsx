@@ -24,7 +24,6 @@ export function ProfileHeader({
   unnamed = false,
   agent = false,
   since,
-  homes,
   people,
   followsYou = false,
   follow,
@@ -50,7 +49,6 @@ export function ProfileHeader({
   // An agent's face is ink, as everywhere.
   agent?: boolean;
   since: string;
-  homes: number;
   // Their followers and whom they follow: how many, and the page listing each.
   people?: { followers: number; following: number; href: string };
   // They follow whoever's looking.
@@ -78,7 +76,11 @@ export function ProfileHeader({
           they placed is what shows; a drawn scene or a plain band is a fixed height. */}
       <div
         aria-hidden
-        className={cn("overflow-hidden", banner.style === "image" && banner.image ? "aspect-[10/3]" : "h-[120px] sm:h-44")}
+        // (A faint line under it: a white banner, a logo on white, would otherwise run into the card.)
+        className={cn(
+          "overflow-hidden border-b border-stone-200",
+          banner.style === "image" && banner.image ? "aspect-[10/3]" : "h-[120px] sm:h-44",
+        )}
       >
         <Banner seed={personId} brand={brandColor} choice={banner} />
       </div>
@@ -116,23 +118,7 @@ export function ProfileHeader({
         {isMe && unnamed && <AddFirstName />}
         <p className="mt-1 text-body text-stone-700">
           {agent ? brokerage || "Real estate agent" : `Looking since ${sinceLabel(since)}`}
-          {homes > 0 && ` · ${homes} ${homes === 1 ? "home" : "homes"}`}
         </p>
-        {people && (
-          <p className="mt-1 text-body text-stone-700">
-            <Link href={`${people.href}/followers`} className="underline-offset-2 hover:underline">
-              <strong className="font-semibold text-ink tabular-nums">{people.followers}</strong>{" "}
-              {people.followers === 1 ? "follower" : "followers"}
-            </Link>
-            {" · "}
-            <Link href={`${people.href}/following`} className="underline-offset-2 hover:underline">
-              <strong className="font-semibold text-ink tabular-nums">{people.following}</strong> following
-            </Link>
-            {followsYou && (
-              <span className="ml-2 rounded-full bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-700">Follows you</span>
-            )}
-          </p>
-        )}
         {client && (
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Badge tone="ink">Your client</Badge>
@@ -163,6 +149,21 @@ export function ProfileHeader({
               </li>
             ))}
           </ul>
+        )}
+        {people && (
+          <p className="mt-3 text-body text-stone-700">
+            <Link href={`${people.href}/followers`} className="underline-offset-2 hover:underline">
+              <strong className="font-semibold text-ink tabular-nums">{people.followers}</strong>{" "}
+              {people.followers === 1 ? "follower" : "followers"}
+            </Link>
+            {" · "}
+            <Link href={`${people.href}/following`} className="underline-offset-2 hover:underline">
+              <strong className="font-semibold text-ink tabular-nums">{people.following}</strong> following
+            </Link>
+            {followsYou && (
+              <span className="ml-2 rounded-full bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-700">Follows you</span>
+            )}
+          </p>
         )}
         {/* (That it's public is said above the card. What isn't, for someone on agents' links.) */}
         {isMe && !agent && (
