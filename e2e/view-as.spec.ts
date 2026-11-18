@@ -62,7 +62,7 @@ test("anyone can add a photo of themselves, shown in place of their initial, and
   await page.waitForURL(/\/people\/[\w-]+$/);
   const me = page.getByRole("banner").getByRole("button", { name: "Account menu" });
   const header = page.getByRole("region", { name: "Pat (you)" });
-  await expect(me).toHaveText("P");
+  await expect(me).toContainText("P");
   await expect(header.locator("img[src*='/photo?v=']")).toHaveCount(0);
 
   // Their photo is edited on a page of its own, from the pencil on theirs.
@@ -91,5 +91,5 @@ test("anyone can add a photo of themselves, shown in place of their initial, and
   await expect(page.getByLabel("Add a photo")).toBeAttached();
   await page.goto("/people/me");
   await expect(photo).toHaveCount(0);
-  await expect(me).toHaveText("P");
+  await expect(me).toContainText("P");
 });

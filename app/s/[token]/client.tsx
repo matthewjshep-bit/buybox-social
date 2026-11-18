@@ -14,6 +14,7 @@ import {
   useState,
   useSyncExternalStore,
   type ComponentProps,
+  useTransition,
 } from "react";
 import { Toast } from "@/app/people/[id]/client";
 import { AgentAvatar } from "@/components/agent-avatar";
@@ -354,8 +355,11 @@ export function ShareReel({
   };
 
   const linkAgent = useMemo(
-    (): LinkAgent => ({ agent: { full_name: agent.full_name, photo_data_url: agent.photo_data_url }, notes: notes ?? null }),
-    [agent.full_name, agent.photo_data_url, notes],
+    (): LinkAgent => ({
+      agent: { full_name: agent.full_name, photo_data_url: agent.photo_data_url, is_agent: agent.is_agent },
+      notes: notes ?? null,
+    }),
+    [agent.full_name, agent.photo_data_url, agent.is_agent, notes],
   );
 
   return (
@@ -368,6 +372,7 @@ export function ShareReel({
         // (Only when there's one to open on.)
         {...(initialComment && { initialComment })}
         tour={notes ? "notes" : "link"}
+        {...(notes?.step && { introLabel: "Add your feedback" })}
         onActiveChange={(key) => {
           // The time on the home that was on screen counts up to now.
           bankTime.current();
@@ -391,7 +396,6 @@ export function ShareReel({
             onOpenChange={setContact}
             preview={preview}
             notes={notes ?? null}
-            onReuse={notes?.step ? () => reuseTake(token) : undefined}
             account={account}
             extras={extras}
           />
@@ -526,6 +530,68 @@ export function ShareWelcome({
 
         <ChevronDown size={26} strokeWidth={2.25} className="animate-[nudge-down_1.6s_ease-in-out_infinite]" />
       </button>
+    </div>
+  );
+}
+
+// The last step of sending homes, said plainly before the homes: add your
+// feedback (a like or a comment on each), or skip it. And where they've given
+// their feedback on these homes for someone else, one tap brings it here.
+export function ThoughtsIntro({
+  token,
+  photo,
+  count,
+  client,
+  done,
+  earlier,
+}: {
+  token: string;
+  photo?: ListingMedia;
+  count: number;
+  // Who the link is for ("" on one anyone can join).
+  client: string;
+  // Where Skip goes: the link, ready to copy.
+  done: string;
+  // How many of these homes they've given feedback on before, on another link.
+  earlier: number;
+}) {
+  const [pending, startTransition] = useTransition();
+  return (
+    <div className="relative flex h-full flex-col">
+      <Backdrop photo={photo} priority blurred tinted />
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-6 pt-[calc(env(safe-area-inset-top)+4.5rem)] sm:px-10">
+        <div className="mx-auto my-auto flex w-full max-w-md flex-col items-center py-6 text-center">
+          <p className="text-meta font-semibold uppercase tracking-wider text-white/85">Step 3 of 3</p>
+          <h1 className="mt-2 text-balance font-display text-4xl leading-tight sm:text-5xl">Add your feedback</h1>
+          <p className="mt-3 text-pretty text-lg leading-relaxed text-white/90">
+            Like or comment on {count === 1 ? "the home" : "the homes"}
+            {client ? `, so ${client} sees what you think` : ""}. Or skip this step.
+          </p>
+          <button type="button" onClick={goToFirstHome} className={cn(button({ kind: "light", size: "lg" }), "mt-8 w-full max-w-xs shadow-lg")}>
+            Add feedback
+          </button>
+          <Link href={done} className={cn(button({ kind: "glass", size: "lg" }), "mt-3 w-full max-w-xs")}>
+            Skip this step
+          </Link>
+          {earlier > 0 && (
+            <div className="mt-8 w-full rounded-2xl bg-black/45 p-4 ring-1 ring-white/15 backdrop-blur-md">
+              <p className="text-pretty text-body leading-snug">
+                {count === 1
+                  ? "You've already given feedback on this home, on another link."
+                  : `You've already given feedback on ${earlier} of these homes, on other links.`}
+              </p>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => startTransition(async () => void (await reuseTake(token)))}
+                className={cn(button({ kind: "light" }), "mt-3 disabled:opacity-60")}
+              >
+                {pending ? "Adding…" : "Use the same feedback"}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

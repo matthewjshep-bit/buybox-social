@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
 import { listedAgentNames, MLS_ID, sameAgent } from "@/lib/agent-listings";
-import { getCurrentUser, getViewAs, requireAgent } from "@/lib/auth";
+import { getCurrentUser, getViewAs, requireAgent, requireUser } from "@/lib/auth";
 import { isContactPhone, phoneDigits } from "@/lib/contact";
 import { sql } from "@/lib/db";
 import type { Listing } from "@/lib/listings/types";
@@ -161,7 +161,8 @@ export async function createShare(input: {
   people: PersonPick[];
   note: string;
 }): Promise<FormState> {
-  const agent = await requireAgent();
+  // (Anyone signed in can send homes; an agent's go to their clients.)
+  const agent = await requireUser();
   const parsed = shareSchema.safeParse(input);
   if (!parsed.success) {
     const field = parsed.error.issues[0]?.path[0];
@@ -231,7 +232,8 @@ async function ownShare(agentId: string, shareId: string) {
 // sending it: a few, the closest first, each with only what a suggestion
 // shows and its first photo. Not ones on the link they're adding to.
 export async function suggestHomes(query: string, shareId?: string): Promise<Listing[]> {
-  const agent = await requireAgent();
+  // (Anyone signed in can send homes; an agent's go to their clients.)
+  const agent = await requireUser();
   if (typeof query !== "string" || query.trim().length < 2) return [];
   let onLink: string[] = [];
   if (shareId) {
@@ -269,7 +271,8 @@ export async function searchPeople(input: {
   shareId?: string;
   exclude?: string[];
 }): Promise<PersonOption[]> {
-  const agent = await requireAgent();
+  // (Anyone signed in can send homes; an agent's go to their clients.)
+  const agent = await requireUser();
   const parsed = searchSchema.safeParse(input);
   if (!parsed.success) return [];
   const query = parsed.data.query.trim().replace(/\s+/g, " ").slice(0, 40);

@@ -1,4 +1,4 @@
-import { Bell, Search as SearchIcon, Users } from "lucide-react";
+import { Bell, House, Images, Search as SearchIcon, Send, Users } from "lucide-react";
 import { signOut } from "@/app/login/actions";
 import { AccountMenu, NavLink, SignInLink, SiteLogo } from "@/components/header-nav";
 import { countUnreadActivity } from "@/lib/activity";
@@ -10,12 +10,12 @@ import { photoUrl, photoVersion } from "@/lib/person-photo";
 import { getPublicIdentity } from "@/lib/public";
 import { button } from "@/lib/ui";
 
-// On every page, one header: the logo always goes home; then the map, your
-// clients if you send homes, the bell, and you (your initial, opening your
-// places, the homes your agent sent, and Sign out), or Sign in and Sign up.
-// On phones the map, clients and the bell are icons, keeping their names for
-// screen readers. The page you're on
-// is marked. Over the full-screen feed it floats on the dark ground, white;
+// On every page, one bar across the top: the logo, then the same few places
+// for everyone signed in (Home, the homes, Search, the bell, and you: your
+// face, opening your places and Sign out), each an icon over its name, the
+// one you're on underlined. An agent has Dashboard (their clients) there;
+// anyone else, Send. Signed out: For agents, and Sign in. On phones the
+// places are icons, keeping their names for screen readers. Over the full-screen feed it floats on the dark ground, white;
 // only on a phone on its side, where the photo runs under it, does it bring
 // its own shade, dark enough behind its words for a bright sky, and gone
 // before the sign-up card below it starts.
@@ -28,13 +28,18 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
     // Someone on an agent's link: the way back to it, under their initial.
     user?.role && user.role !== "agent" ? getMyLinks(user.id) : [],
   ]);
+  // Each place in the bar: its icon over its name (the name only where
+  // there's room: on a phone, the icon, with the name kept for screen
+  // readers), and a line under the one you're on.
   const navItem = cn(
-    "flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-full px-2.5",
+    "relative flex h-14 min-w-11 shrink-0 flex-col items-center justify-center gap-1 px-1.5 text-[12px] font-medium leading-none md:min-w-[4.75rem]",
+    "after:absolute after:inset-x-1.5 after:bottom-0 after:h-0.5 after:rounded-full",
     overlay
-      ? // Marked with a darker fill and an edge, never a lighter one behind white words.
-        "hover:bg-white/15 [text-shadow:0_1px_3px_rgb(0_0_0/0.5)] [&[aria-current]]:bg-black/35 [&[aria-current]]:ring-1 [&[aria-current]]:ring-white/50"
-      : "hover:bg-stone-100 [&[aria-current]]:bg-stone-100 [&[aria-current]]:text-ink",
+      ? "text-white/85 hover:text-white [text-shadow:0_1px_3px_rgb(0_0_0/0.5)] [&[aria-current]]:text-white [&[aria-current]]:after:bg-white"
+      : "text-stone-600 hover:text-ink [&[aria-current]]:text-ink [&[aria-current]]:after:bg-ink",
   );
+  const name = "sr-only md:not-sr-only";
+  const agent = user?.role === "agent";
   return (
     <header
       className={cn(
@@ -48,81 +53,107 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
       <nav
         aria-label="Main"
         className={cn(
-          "mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-3 sm:px-6",
-          // Side by side, edge to edge: the logo over the photo's left edge,
-          // you over the white panel's right edge.
-          overlay && "split:max-w-none split:px-6",
-          // Over the map, which runs edge to edge, in line with its search
-          // field and its photos (HeaderGate says which page wants this).
-          "group-data-wide/top:max-w-none sm:group-data-wide/top:px-4",
+          // The whole width of the window: the logo at its far left, the
+          // places in the middle of it (on a phone, where there's no room
+          // for a middle, they follow the logo to the right edge).
+          "flex h-14 items-center justify-between gap-1 px-3 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]",
+          // Over the map, in line with its search field and its photos
+          // (HeaderGate says which page wants this).
+          "sm:group-data-wide/top:px-4",
         )}
       >
-        <SiteLogo overlay={overlay} />
-        <div className="flex min-w-0 items-center gap-0.5 text-sm font-medium">
-          {/* Signed out, just two things: the page for agents, and Sign in
-              (which signs up too). The logo is the way home. */}
-          {/* Signed in: Search, an agent's Clients, the bell, and you (where
-              everything else is: your profile, Activity, Admin,
-              your agent's homes). The logo is the way home. */}
-          {user && (
+        <div className="flex shrink-0 justify-start">
+          <SiteLogo overlay={overlay} />
+        </div>
+        {/* Signed in, the same few places for everyone, across the top: Home,
+            the homes, Search, the bell, and you. An agent has their
+            Dashboard (their clients) in place of Send, which is in it. */}
+        {user?.role ? (
+          <div className="flex min-w-0 items-center md:gap-1">
+            <NavLink href="/" className={navItem}>
+              <House aria-hidden size={20} />
+              <span className={name}>Home</span>
+            </NavLink>
+            {agent && (
+              <NavLink href="/dashboard" section className={navItem}>
+                <Users aria-hidden size={20} />
+                <span className={name}>Dashboard</span>
+              </NavLink>
+            )}
+            <NavLink href="/reel" className={navItem}>
+              <Images aria-hidden size={20} />
+              <span className={name}>Browse</span>
+            </NavLink>
             <NavLink href="/search" className={navItem}>
-              <SearchIcon aria-hidden size={18} />
-              <span className="sr-only md:not-sr-only">Search</span>
+              <SearchIcon aria-hidden size={20} />
+              <span className={name}>Search</span>
             </NavLink>
-          )}
-          {/* An agent's clients, one tap from anywhere (and marked anywhere
-              in the dashboard). */}
-          {user?.role === "agent" && (
-            <NavLink href="/dashboard" section className={navItem}>
-              <Users aria-hidden size={18} />
-              <span className="sr-only md:not-sr-only">Clients</span>
-            </NavLink>
-          )}
-          {!user && (
-            <NavLink href="/for-agents" className={navItem}>
-              For agents
-            </NavLink>
-          )}
-          {user && visitor && (
-            <NavLink href="/activity" className={`${navItem} relative`}>
-              <Bell aria-hidden size={18} />
-              <span className="sr-only">
-                Activity{unread > 0 && `, ${unread} new`}
-              </span>
-              {unread > 0 && (
-                <span
-                  aria-hidden
-                  className="absolute right-1 top-1.5 flex min-w-[18px] items-center justify-center rounded-full bg-rose-600 px-1 text-tiny font-bold leading-[18px] text-white tabular-nums [text-shadow:none]"
-                >
-                  {unread > 9 ? "9+" : unread}
+            {!agent && (
+              <NavLink href="/send" section className={navItem}>
+                <Send aria-hidden size={20} />
+                <span className={name}>Send</span>
+              </NavLink>
+            )}
+            {visitor && (
+              <NavLink href="/activity" className={navItem}>
+                <span className="relative">
+                  <Bell aria-hidden size={20} />
+                  {unread > 0 && (
+                    <span
+                      aria-hidden
+                      className="absolute -right-2.5 -top-1.5 flex min-w-[18px] items-center justify-center rounded-full bg-rose-600 px-1 text-tiny font-bold leading-[18px] text-white tabular-nums [text-shadow:none]"
+                    >
+                      {unread > 9 ? "9+" : unread}
+                    </span>
+                  )}
                 </span>
-              )}
-            </NavLink>
-          )}
-          {user?.role ? (
+                {/* (Its name whole for a screen reader; on screen, the word, where there's room.) */}
+                <span className="sr-only">{unread > 0 ? `Notifications, ${unread} new` : "Notifications"}</span>
+                <span aria-hidden className="hidden md:inline">
+                  Notifications
+                </span>
+              </NavLink>
+            )}
             <AccountMenu
               profile={visitor ? `/people/${visitor.id}` : "/people/me"}
               photo={visitor ? photoUrl(visitor.id, photoVersion(user.photo_data_url)) : user.photo_data_url}
               initial={(user.full_name.trim() || user.email)[0]?.toUpperCase() ?? ""}
               name={user.full_name.trim()}
               email={user.email}
-              agent={user.role === "agent"}
+              agent={agent}
               admin={admin}
               unread={unread}
               overlay={overlay}
               links={menuLinks(links)}
             />
-          ) : user ? (
-            <form action={signOut}>
-              <button type="submit" className={navItem}>
-                Sign out
-              </button>
-            </form>
-          ) : (
-            // The one thing to do, so it's the button.
-            <SignInLink className={cn(button({ kind: "primary" }), "ml-1 shrink-0")} />
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="flex min-w-0 items-center gap-0.5 text-sm font-medium md:col-start-3 md:justify-self-end">
+            {/* Signed out, just two things: the page for agents, and Sign in
+                (which signs up too). The logo is the way home. */}
+            {user ? (
+              <form action={signOut}>
+                <button type="submit" className="flex min-h-11 items-center rounded-full px-3 hover:bg-stone-100">
+                  Sign out
+                </button>
+              </form>
+            ) : (
+              <>
+                <NavLink
+                  href="/for-agents"
+                  className={cn(
+                    "flex min-h-11 shrink-0 items-center rounded-full px-2.5",
+                    overlay ? "hover:bg-white/15 [text-shadow:0_1px_3px_rgb(0_0_0/0.5)]" : "hover:bg-stone-100 [&[aria-current]]:bg-stone-100",
+                  )}
+                >
+                  For agents
+                </NavLink>
+                {/* The one thing to do, so it's the button. */}
+                <SignInLink className={cn(button({ kind: "primary" }), "ml-1 shrink-0")} />
+              </>
+            )}
+          </div>
+        )}
       </nav>
     </header>
   );

@@ -79,7 +79,7 @@ test("signed out, the home page says what this is; Browse homes shows three home
   await gate.getByLabel(/^Phone/).fill("(206) 555-0100");
   await gate.getByRole("button", { name: "Sign up free" }).click();
   await enterCode(page.getByRole("form", { name: "Sign up" }).last());
-  await expect(page.getByRole("button", { name: "Account menu" })).toHaveText("R");
+  await expect(page.getByRole("button", { name: "Account menu" })).toContainText("R");
   await expect(page).toHaveURL(/localhost:\d+\/reel$/);
 
   // Signed in, the home page is their feed, with every home one tap away,

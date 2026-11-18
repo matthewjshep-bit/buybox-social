@@ -38,7 +38,7 @@ test("signed in on their own link, a client has their menu and the bell, the age
   const header = page.getByRole("banner");
   // Signed out: the agent's header as it always was, with no menu or bell.
   await expect(header.getByRole("button", { name: "Account menu" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /^Activity/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /^Notifications/ })).toHaveCount(0);
   await toFirstHome(page);
   const larkmoor = homeIn(page, "4127 Larkmoor Ave NE");
   await heartOf(larkmoor).click();
@@ -55,7 +55,7 @@ test("signed in on their own link, a client has their menu and the bell, the age
   // Back on it later: they're signed in, so the link leads on to the rest of Porchcard.
   await page.reload();
   await expect(header.getByRole("button", { name: "Account menu" })).toBeVisible();
-  const bell = header.getByRole("link", { name: /^Activity/ });
+  const bell = header.getByRole("link", { name: /^Notifications/ });
   await expect(bell).toBeVisible();
   await expect(bell).toHaveAttribute("href", "/activity");
   // Contact is still there beside them (on a phone, as its icon).

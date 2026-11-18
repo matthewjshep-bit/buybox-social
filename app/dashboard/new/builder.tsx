@@ -29,12 +29,19 @@ export function ShareBuilder({
   heading,
   intro,
   results,
+  groups = [],
+  peer = false,
   addTo,
   start,
 }: {
   heading: string;
   intro: string;
   results: Listing[];
+  // With nothing typed: not every home there is, just theirs (their listings,
+  // and the homes they've liked, commented on or sent before), under a title each.
+  groups?: { title: string; homes: Listing[] }[];
+  // Anyone who isn't an agent, sending homes to a friend: the same steps.
+  peer?: boolean;
   // Adding to an existing client's link rather than starting a new one.
   addTo?: { shareId: string; clientName: string };
   // A home already picked (sent from the home itself): just who it's for, and
@@ -183,6 +190,7 @@ export function ShareBuilder({
         max={MAX_PEOPLE}
         autoFocus
         notify
+        peer={peer}
       />
       <p className="mt-2 text-sm text-stone-700" aria-live="polite">
         {title ? (
@@ -367,6 +375,14 @@ export function ShareBuilder({
               )}
               {/* With nothing typed: homes to pick from. */}
               {!typing_ && shown.length > 0 && <ul className="mt-4 grid gap-3 sm:grid-cols-2">{shown.map(card)}</ul>}
+              {!typing_ &&
+                shown.length === 0 &&
+                groups.map((group) => (
+                  <section key={group.title} aria-label={group.title} className="mt-6">
+                    <h2 className="px-1 text-meta font-semibold text-muted">{group.title}</h2>
+                    <ul className="mt-2 grid gap-3 sm:grid-cols-2">{group.homes.map(card)}</ul>
+                  </section>
+                ))}
             </>
           ) : (
             <>

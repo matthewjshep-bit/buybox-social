@@ -67,13 +67,21 @@ export async function linkMade(page: Page) {
   await page.waitForURL(/\/dashboard\/shares\/[\w-]+\?tab=/);
 }
 
+// On Send homes: a home found by typing its address, and picked from what's
+// offered under the box. (With nothing typed, only the agent's own listings
+// and homes they've had to do with are listed.)
+export async function pickHome(page: Page, address: string) {
+  const search = page.getByRole("combobox", { name: "Address, MLS number, or a link to the home" });
+  await search.fill(address);
+  await page.getByRole("listbox", { name: "Homes that match" }).getByRole("option", { name: new RegExp(address) }).click();
+  await expect(page.getByRole("list", { name: "Picked homes" })).toContainText(address);
+}
+
 // A package of homes for one or more people. Each person gets their own link.
 // (With nobody, it's a link anyone can join: packageLink, in share-link.spec.ts.)
 export async function createShare(page: Page, addresses: string[], people: string[] = ["Jamie"]) {
   await page.goto("/dashboard/new");
-  for (const address of addresses) {
-    await page.getByRole("button", { name: new RegExp(address) }).click();
-  }
+  for (const address of addresses) await pickHome(page, address);
   await toWho(page);
   // Who it's for: each first name typed, then Enter, as someone new.
   const who = page.getByRole("combobox", { name: "Who's it for?" });

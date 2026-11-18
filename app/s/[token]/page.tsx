@@ -26,7 +26,7 @@ import { headlineFromTimeline, type FeedPost } from "@/lib/feed";
 import { eventsFromTimeline } from "@/lib/ticker";
 import { getSharePhotoLikes, getShareTimelines, type TimelineReaction } from "@/lib/timeline";
 import { addComment, askToSee, joinThread, likePhotoInShare, setCommentSharing, setReaction } from "./actions";
-import { ShareEnd, ShareReel, ShareWelcome } from "./client";
+import { ShareEnd, ShareReel, ShareWelcome, ThoughtsIntro } from "./client";
 import { leaveLink } from "./leave";
 
 type Props = {
@@ -64,7 +64,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const found = await getShareByToken(token);
   if (!found) return { title: "Link not available", robots: { index: false } };
   const listings = await getShareListings(found.share.id);
-  const title = `${found.agent.full_name || "Your agent"} picked ${
+  const title = `${found.agent.full_name || (found.agent.is_agent ? "Your agent" : "A friend")} picked ${
     listings.length === 1 ? listings[0].UnparsedAddress : `${listings.length} homes`
   } for you`;
   // The home's facts, for one; never the client's name, the note or anything said.
@@ -98,7 +98,11 @@ export default async function SharePage({ params, searchParams }: Props) {
   // taken for the client. The header says so. What they like or write here
   // is their own first pass, for everyone on the link (actions.ts).
   const agentViewing = viewer?.id === share.agent_id;
-  const client = person?.first_name || share.client_name || "your client";
+  const client = person?.first_name || share.client_name || (agent.is_agent ? "your client" : "your friend");
+  // Where its owner goes from it: an agent's link has a page on their
+  // dashboard; anyone else's, the one page with their link to copy.
+  const ownPage = agent.is_agent ? `/dashboard/shares/${share.id}` : `/send/${share.id}`;
+  const readyPage = agent.is_agent ? `${ownPage}/sent` : ownPage;
   const preview = agentViewing ? `Viewing as ${client}` : undefined;
   // The agent, just having made the link: the last step of sending homes is
   // here, on the homes themselves, liking and saying what they think. Then
@@ -164,7 +168,7 @@ export default async function SharePage({ params, searchParams }: Props) {
   const mineFor = (key: string) =>
     timelines.get(key)?.find((item): item is TimelineReaction => item.kind === "reaction" && item.mine)?.state ??
     NO_REACTION;
-  const agentName = agent.full_name || "Your agent";
+  const agentName = agent.full_name || (agent.is_agent ? "Your agent" : "A friend");
   const count = listings.length;
   // The welcome screen's headline: the agent's own words, or the standard line.
   const greeting =
@@ -215,7 +219,8 @@ export default async function SharePage({ params, searchParams }: Props) {
       members,
       // The agent on their own link: what they said there is theirs, so the
       // line above the price says "You", as it does for anyone's own.
-      ...(agentViewing && { events: eventsFromTimeline(timeline, { agentViewing }) }),
+      // (From someone who isn't an agent, the line never calls them "your agent".)
+      ...((agentViewing || !agent.is_agent) && { events: eventsFromTimeline(timeline, { agentViewing, peer: !agent.is_agent }) }),
     };
   });
 
@@ -247,7 +252,7 @@ export default async function SharePage({ params, searchParams }: Props) {
           agentViewing
             ? {
                 for: client,
-                done: adding ? `/dashboard/shares/${share.id}/sent` : `/dashboard/shares/${share.id}`,
+                done: adding ? readyPage : ownPage,
                 step: adding,
                 ...(adding && { added: saidSoFar > 0, earlier: saidSoFar > 0 ? 0 : earlierHomes }),
               }
@@ -299,6 +304,17 @@ export default async function SharePage({ params, searchParams }: Props) {
                     ]
                   : [],
               )}
+            />
+          ) : count > 0 && saidSoFar === 0 ? (
+            // The agent, with nothing said yet: what this step is, and that it can be skipped.
+            <ThoughtsIntro
+              key="thoughts"
+              token={token}
+              photo={listings[0].Media[0]}
+              count={count}
+              client={client}
+              done={readyPage}
+              earlier={earlierHomes}
             />
           ) : undefined
         }

@@ -6,7 +6,7 @@ import { card } from "@/lib/ui";
 export default function ActivityLoading() {
   return (
     <main aria-busy className="mx-auto max-w-2xl px-4 pb-16 pt-6">
-      <h1 className="font-display text-3xl">Activity</h1>
+      <h1 className="font-display text-3xl">Notifications</h1>
       <Loading what="your activity" />
       <Placeholder className="ml-1 mt-4 h-4 w-20" />
       <ul aria-hidden className="mt-3 flex flex-col gap-2">

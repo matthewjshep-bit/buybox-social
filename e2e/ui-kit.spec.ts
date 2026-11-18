@@ -103,10 +103,12 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   const search = await expectFieldFocus(agent, "Address, MLS number, or a link to the home");
   expect(search.height).toBe(48);
   const heading = await agent.getByRole("heading", { level: 1 }).evaluate((el) => getComputedStyle(el).fontFamily);
-  const price = agent.getByRole("button", { name: /812 N Corbel/ }).getByText("$724,900");
-  expect(await price.evaluate((el) => getComputedStyle(el).fontFamily)).toBe(heading);
 
   const { dashboardUrl } = await createShare(agent, ["812 N Corbel"], ["Kit"]);
+  // (A home they've sent before is listed there, under the box.)
+  await agent.goto("/dashboard/new");
+  const price = agent.getByRole("button", { name: /812 N Corbel/ }).getByText("$724,900");
+  expect(await price.evaluate((el) => getComputedStyle(el).fontFamily)).toBe(heading);
   // Each part of the client page: sending it (where it starts), then the homes.
   await agent.goto(dashboardUrl);
   await expectKitButtons(agent, "client page");

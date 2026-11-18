@@ -1,4 +1,4 @@
-import { House, Map as MapIcon, Send, UserRound } from "lucide-react";
+import { House, Map as MapIcon, Plus, Send, UserRound } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { FollowText } from "@/components/home/follow-text";
@@ -145,6 +145,7 @@ export function BuyerHome({
       ? [{ href: `/s/${links[0].token}`, label: `Homes from ${agentName}`, icon: <Send size={18} /> }]
       : []),
     { href: "/reel", label: "Browse homes", icon: <House size={18} /> },
+    { href: "/send", label: "Send homes", icon: <Plus size={18} /> },
     { href: "/search", label: "Map", icon: <MapIcon size={18} /> },
     { href: profileHref, label: "Your profile", icon: <UserRound size={18} /> },
   ];
@@ -171,6 +172,17 @@ export function BuyerHome({
       }
       right={<TastePeople people={suggestions} />}
     >
+      {/* Shaped like a box to type in, as a post box is: the steps for sending homes to someone. */}
+      <div className={cn(card, "flex items-center gap-3 p-3")}>
+        <Avatar name={me.name} photo={me.photo} size={10} />
+        <Link
+          href="/send"
+          aria-label="Send homes to someone"
+          className="flex h-11 min-w-0 flex-1 items-center rounded-full border border-stone-300 px-4 text-body hover:border-stone-400 hover:bg-stone-50"
+        >
+          <span className="text-stone-600">Send homes…</span>
+        </Link>
+      </div>
       {links.length > 0 && <FromYourAgent links={links} />}
       <section aria-labelledby="stream-title">
         <h2 id="stream-title" className="sr-only">

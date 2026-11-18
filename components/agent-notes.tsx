@@ -18,7 +18,7 @@ import type { TimelineComment, TimelineItem } from "@/lib/timeline";
 // it's the agent looking at their own link, who their notes are for and the
 // way back to the dashboard once they're done.
 export type LinkAgent = {
-  agent: Pick<ShareAgent, "full_name" | "photo_data_url">;
+  agent: Pick<ShareAgent, "full_name" | "photo_data_url"> & { is_agent?: boolean };
   // (`step`: just having made the link, as the last step of sending homes.
   // `added`: they've said something on it, so the way on is Done, not Skip.
   // `earlier`: how many of its homes they gave a take on, on an earlier link,
@@ -32,7 +32,11 @@ export const useLinkAgent = () => useContext(LinkAgentContext);
 // The agent on their own link, writing notes: who for.
 export const useNotesMode = () => useContext(LinkAgentContext)?.notes ?? null;
 
-const agentFirst = (agent: LinkAgent["agent"]) => agent.full_name.split(" ")[0] || "Your agent";
+const agentFirst = (agent: LinkAgent["agent"]) =>
+  agent.full_name.split(" ")[0] || (agent.is_agent === false ? "A friend" : "Your agent");
+// "Jordan, your agent"; from anyone else, just "Maya".
+const agentCalled = (agent: LinkAgent["agent"]) =>
+  agent.is_agent === false ? agentFirst(agent) : `${agentFirst(agent)}, your agent`;
 
 // Whether the agent liked one thing, or didn't: a fact ("Price") or a spot
 // in a photo.
@@ -77,7 +81,7 @@ export function AgentMark({ size = 18, className }: { size?: number; className?:
 export function useAgentMarkWords() {
   const link = useLinkAgent();
   if (!link) return null;
-  return link.notes ? "your note" : `with a note from ${agentFirst(link.agent)}, your agent`;
+  return link.notes ? "your note" : `with a note from ${agentCalled(link.agent)}`;
 }
 
 // At the top of a fact's or a spot's card: what the agent thought of it, in
@@ -92,7 +96,7 @@ export function AgentTake({ notes, reaction }: { notes: TimelineComment[]; react
     <div data-agent-take className="mt-1 rounded-xl bg-stone-50 px-3 py-2.5 ring-1 ring-inset ring-stone-200/80">
       <p className="flex items-center gap-2 text-meta font-semibold text-stone-700">
         <AgentAvatar agent={link.agent} size={22} decorative light className="text-[9px]" />
-        <span className="min-w-0 truncate">{mine ? "Your note" : `${agentFirst(link.agent)}, your agent`}</span>
+        <span className="min-w-0 truncate">{mine ? "Your note" : agentCalled(link.agent)}</span>
         {reaction === "like" && !mine && (
           <span className="ml-auto flex shrink-0 items-center gap-1 text-rose-700">
             <Heart aria-hidden size={12} className="fill-rose-500 text-rose-500" />

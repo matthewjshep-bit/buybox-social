@@ -3,7 +3,7 @@
 // thoughts, given on the homes themselves (a like, a note), or skipped; then
 // the link, ready to copy.
 import { expect, test } from "@playwright/test";
-import { homeIn, settle, signInAgent } from "./helpers";
+import { homeIn, settle, signInAgent, pickHome } from "./helpers";
 
 test("a home from a pasted Zillow link, nobody named, their thoughts skipped: three steps and the link", async ({ browser }) => {
   test.setTimeout(90_000);
@@ -62,16 +62,21 @@ test("a home from a pasted Zillow link, nobody named, their thoughts skipped: th
   await expect(agent.getByText("Leave it empty for a link anyone can use.")).toBeVisible();
   await agent.getByRole("button", { name: "Next", exact: true }).click();
 
-  // Their thoughts: on the home itself, as their client will see it, straight
-  // to it (no welcome), with what to do said across the top. Skipped, here.
+  // Their feedback: first, what this step is, in the middle of the screen,
+  // with the two ways on: add it (down to the home, as their client will see
+  // it) or skip. Across the top it says the same.
   await agent.waitForURL(/\/s\/[\w-]+\?step=thoughts$/);
   const top = agent.getByRole("banner");
   await expect(top).toContainText("Step 3 of 3");
-  await expect(top).toContainText("Like or comment");
-  await expect(homeIn(agent, "1204 Quillan St SE")).toBeInViewport({ ratio: 0.9 });
+  await expect(top).toContainText("Add your feedback");
+  await expect(agent.getByRole("heading", { level: 1, name: "Add your feedback" })).toBeInViewport();
+  await expect(agent.getByRole("link", { name: "Skip this step" })).toHaveAttribute("href", /\/dashboard\/shares\/[\w-]+\/sent$/);
   await expect(agent.getByRole("region", { name: "Welcome" })).toHaveCount(0);
-  // Nothing said, and nothing said before to bring over: the way on is Skip.
-  await expect(top.getByRole("button", { name: "Use it here" })).toHaveCount(0);
+  // Nothing said before to bring over.
+  await expect(agent.getByRole("button", { name: "Use the same feedback" })).toHaveCount(0);
+  await agent.getByRole("button", { name: "Add feedback" }).click();
+  await expect(homeIn(agent, "1204 Quillan St SE")).toBeInViewport({ ratio: 0.9 });
+  // Nothing said: the way on is Skip.
   await expect(top.getByRole("link", { name: "Done", exact: true })).toHaveCount(0);
   await top.getByRole("link", { name: "Skip", exact: true }).click();
 
@@ -97,7 +102,7 @@ test("for two people, with the agent's like and note on the home: each has a lin
   test.setTimeout(90_000);
   const agent = await signInAgent(browser, "fin.funnel@example.com", "Fin Funnel");
   await agent.goto("/dashboard/new");
-  await agent.getByRole("button", { name: /719 Saltmarsh/ }).click();
+  await pickHome(agent, "719 Saltmarsh");
   await agent.getByRole("button", { name: "Next", exact: true }).click();
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
   await expect(who).toBeFocused();
@@ -111,7 +116,10 @@ test("for two people, with the agent's like and note on the home: each has a lin
   // Step 3: the price liked, with a note on it.
   await agent.waitForURL(/\/s\/[\w-]+\?step=thoughts$/);
   const home = homeIn(agent, "719 Saltmarsh Ln");
+  await agent.getByRole("button", { name: "Add feedback" }).click();
   await expect(home).toBeInViewport({ ratio: 0.9 });
+  // (Come to rest: a tap while it's still sliding into place can miss.)
+  await expect.poll(async () => Math.abs((await home.boundingBox())?.y ?? 99)).toBeLessThan(1);
   const price = home.locator('[data-fact="Price"]');
   await price.click();
   const card = home.getByRole("group", { name: "Price" });
@@ -145,18 +153,19 @@ test("for two people, with the agent's like and note on the home: each has a lin
   await expect(client.getByText("Priced to move. Worth seeing this week.").first()).toBeAttached();
   // The same home again, for someone else: what they thought of it is a tap from being there too.
   await agent.goto("/dashboard/new");
-  await agent.getByRole("button", { name: /719 Saltmarsh/ }).click();
+  await pickHome(agent, "719 Saltmarsh");
   await agent.getByRole("button", { name: "Next", exact: true }).click();
   await who.fill("Cal");
   await who.press("Enter");
   await agent.getByRole("button", { name: "Next", exact: true }).click();
   await agent.waitForURL(/\/s\/[\w-]+\?step=thoughts$/);
-  await expect(top).toContainText("You've shared your take on this home before.");
+  await expect(agent.getByText("You've already given feedback on this home, on another link.")).toBeVisible();
   await expect(top.getByRole("link", { name: "Skip", exact: true })).toBeVisible();
-  await top.getByRole("button", { name: "Use it here" }).click();
-  // It's on this link now: Done, the offer gone, and their note on the price again.
+  await agent.getByRole("button", { name: "Use the same feedback" }).click();
+  // It's on this link now: Done, the step's screen and its offer gone, and their note on the price again.
   await expect(top.getByRole("link", { name: "Done", exact: true })).toBeVisible();
-  await expect(top.getByRole("button", { name: "Use it here" })).toHaveCount(0);
+  await expect(agent.getByRole("button", { name: "Use the same feedback" })).toHaveCount(0);
+  await expect(agent.getByRole("heading", { level: 1, name: "Add your feedback" })).toHaveCount(0);
   await expect(homeIn(agent, "719 Saltmarsh Ln").locator('[data-fact="Price"]')).toHaveAccessibleName(/your note, 1 like$/);
   await top.getByRole("link", { name: "Done", exact: true }).click();
   await agent.waitForURL(/\/dashboard\/shares\/[\w-]+\/sent$/);

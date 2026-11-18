@@ -20,6 +20,9 @@ export type ShareAgent = {
   contact_phone: string;
   // Empty unless the agent set one.
   contact_email: string;
+  // Sent by an agent, or by anyone else (a friend, a partner): the same
+  // link, without the words that call them "your agent".
+  is_agent: boolean;
 };
 
 export type Share = {
@@ -181,7 +184,10 @@ export const getShareByToken = cache(async (token: string) => {
   if (!isShareToken(token)) return null;
   const [row] = await sql<(Share & ShareAgent & { person_id: string | null; person_name: string | null })[]>`
     select s.id, s.token, s.agent_id, s.client_name, s.note, s.headline,
-           a.full_name, a.brokerage, a.photo_data_url, a.brand_color, a.contact_phone, a.contact_email,
+           coalesce(nullif(btrim(a.full_name), ''),
+             (select v.first_name from visitors v where v.account_id = a.id limit 1), '') as full_name,
+           a.brokerage, a.photo_data_url, a.brand_color, a.contact_phone, a.contact_email,
+           coalesce(a.role = 'agent', false) as is_agent,
            p.id as person_id, p.first_name as person_name
     from shares s
     join accounts a on a.id = s.agent_id
@@ -196,13 +202,14 @@ export const getShareByToken = cache(async (token: string) => {
     brand_color,
     contact_phone,
     contact_email,
+    is_agent,
     person_id,
     person_name,
     ...share
   } = row;
   return {
     share: share as Share,
-    agent: { full_name, brokerage, photo_data_url, brand_color, contact_phone, contact_email } as ShareAgent,
+    agent: { full_name, brokerage, photo_data_url, brand_color, contact_phone, contact_email, is_agent } as ShareAgent,
     // Set when the link is someone's own.
     person: person_id ? { id: person_id, first_name: person_name! } : null,
   };

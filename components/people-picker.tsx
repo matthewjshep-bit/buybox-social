@@ -70,10 +70,13 @@ export function PeoplePicker({
   onTextChange,
   notify = false,
   beside,
+  peer = false,
 }: {
   // The field's name, as it's read out and shown.
   label: string;
   hint?: string;
+  // Not an agent: the people they've sent homes to before aren't "clients".
+  peer?: boolean;
   // Multi: everyone picked so far. Single: the one person in the field, as
   // typed or as picked (empty for nobody), which is what the form sends.
   chosen: Chosen[];
@@ -445,7 +448,7 @@ export function PeoplePicker({
             autoCapitalize="words"
             spellCheck={false}
             enterKeyHint={single ? "go" : "done"}
-            placeholder={full ? "Link is full" : "A client, or a first name"}
+            placeholder={full ? "Link is full" : peer ? "A first name" : "A client, or a first name"}
             onChange={(event) => setText(event.target.value)}
             onFocus={() => {
               closeAfterPress.current = false;
@@ -486,7 +489,7 @@ export function PeoplePicker({
           return (
             <li key={group.key} role="presentation" className="mt-1 first:mt-0">
               <p id={`${id}-${group.key}`} className="px-2.5 pb-0.5 pt-1.5 text-meta font-semibold uppercase tracking-wide text-muted">
-                {group.label}
+                {peer && group.key === "client" ? "People you've sent homes" : group.label}
               </p>
               <ul role="group" aria-labelledby={`${id}-${group.key}`} className="flex flex-col gap-0.5">
                 {items.map(({ item: { option }, i }) => (
@@ -531,7 +534,7 @@ export function PeoplePicker({
 
       {sameName && (
         <p className="mt-1.5 text-meta text-stone-700">
-          {sameName.name} is already your client. Pick them from the list.
+          {peer ? `You've sent ${sameName.name} homes before.` : `${sameName.name} is already your client.`} Pick them from the list.
         </p>
       )}
       {problem && (

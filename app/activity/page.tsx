@@ -16,6 +16,7 @@ import {
 } from "@/lib/activity";
 import { Avatar, EmptyState, HomeThumb } from "@/components/ui";
 import { getCurrentUser, getViewAs } from "@/lib/auth";
+import { sql } from "@/lib/db";
 import { readDevice } from "@/lib/engagement";
 import { cn, timeAgo } from "@/lib/format";
 import { getPublicIdentity } from "@/lib/public";
@@ -23,7 +24,7 @@ import { button, card } from "@/lib/ui";
 import { FollowBack } from "./follow-back";
 import { MarkSeen } from "./mark-seen";
 
-export const metadata = { title: "Activity · Porchcard" };
+export const metadata = { title: "Notifications · Porchcard" };
 
 // What happened, as a small badge on the person: a rose heart for a like, as
 // everywhere else.
@@ -53,6 +54,24 @@ export default async function ActivityPage() {
   // Nobody's activity to show: sign in, then back here.
   if (!account && !visitor) redirect("/login?next=/activity");
   const rows = visitor ? await getActivityRows(visitor.id) : [];
+  // Who among the people on these lines is an agent: only they are "Your
+  // agent" (a friend who sent homes isn't), and only an agent has clients.
+  const senders = [...new Set(rows.flatMap((row) => row.people.flatMap((person) => (person.profileId ? [person.profileId] : []))))];
+  const agents = new Set(
+    senders.length
+      ? (
+          await sql<{ id: string }[]>`
+            select v.id from visitors v join accounts a on a.id = v.account_id
+            where a.role = 'agent' and v.id in ${sql(senders)}`
+        ).map((row) => row.id)
+      : [],
+  );
+  const relationFor = (row: ActivityRow) => {
+    const said = relationOf(row.kind);
+    if (said === "Your client") return account?.role === "agent" ? said : null;
+    if (said === "Your agent") return row.people.some((person) => person.profileId && agents.has(person.profileId)) ? said : null;
+    return said;
+  };
   const sections = ACTIVITY_SECTIONS.map((title) => ({
     title,
     rows: rows.filter((row) => activitySection(row.at) === title),
@@ -60,7 +79,7 @@ export default async function ActivityPage() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 pb-16 pt-6">
-      <h1 className="font-display text-3xl">Activity</h1>
+      <h1 className="font-display text-3xl">Notifications</h1>
       {/* Looking as someone else leaves what's new to them as it was. */}
       {visitor && !viewAs && <MarkSeen />}
       {rows.length === 0 ? (
@@ -87,7 +106,7 @@ export default async function ActivityPage() {
                 </h2>
                 <ul className="mt-2 flex flex-col gap-2">
                   {section.rows.map((row) => (
-                    <Row key={row.id} row={row} />
+                    <Row key={row.id} row={row} relation={relationFor(row)} />
                   ))}
                 </ul>
               </section>
@@ -101,10 +120,9 @@ export default async function ActivityPage() {
 
 // A line: the whole of it goes to what it's about, and above that, each name
 // goes to that person's page (and a new follower can be followed back).
-function Row({ row }: { row: ActivityRow }) {
+function Row({ row, relation }: { row: ActivityRow; relation: string | null }) {
   const { people: named, others } = whoOf(row.people);
   const first = row.people[0];
-  const relation = relationOf(row.kind);
   const quote = quoteOf(row);
   // The line's link is called by its sentence, names and all. Spelled out as
   // text: named by the sentence's element, the name links would come out

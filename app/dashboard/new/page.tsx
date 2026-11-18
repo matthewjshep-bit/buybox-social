@@ -1,7 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { requireAgent } from "@/lib/auth";
-import { homesToSend } from "@/lib/send-search";
+import { ensureAccountVisitor } from "@/lib/public";
+import { homesToOffer, homesToSend } from "@/lib/send-search";
 import { sql } from "@/lib/db";
 import type { Listing } from "@/lib/listings/types";
 import { linkTitle } from "@/lib/people-picker";
@@ -37,13 +38,17 @@ export default async function NewSharePage({
   }
 
   const query = (typeof q === "string" ? q : "").trim().slice(0, 100);
-  const [[start], results] = await Promise.all([
+  const me = await ensureAccountVisitor(agent);
+  const [[start], results, offer] = await Promise.all([
     // Only a home still for sale; anything else and the usual search shows.
     !addTo && typeof homeKey === "string" && homeKey.length <= 100
       ? sql<{ data: Listing }[]>`
           select data from listings where listing_key = ${homeKey} and standard_status = 'Active'`
       : [],
-    homesToSend(agent.id, query, { onLink }),
+    // (Asked for by address in the page's own address, the old way: still answered.)
+    query ? homesToSend(agent.id, query, { onLink }) : [],
+    // Before anything's typed: their own listings, and homes they've had to do with.
+    homesToOffer(agent, me.id, { onLink }),
   ]);
 
   return (
@@ -64,6 +69,10 @@ export default async function NewSharePage({
             : "Pick up to 3 homes."
       }
       results={results}
+      groups={[
+        { title: "Your listings", homes: offer.mine },
+        { title: "Homes you've liked or sent", homes: offer.touched },
+      ].filter((group) => group.homes.length > 0)}
       addTo={addTo}
       start={start?.data}
     />

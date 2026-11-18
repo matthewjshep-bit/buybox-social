@@ -59,7 +59,7 @@ test("activity shows people and homes, with repeats on one comment on one line",
 
   // Nothing yet: what will show up here, and a way on.
   await ana.goto("/activity");
-  await expect(ana.getByRole("heading", { level: 1 })).toHaveText("Activity");
+  await expect(ana.getByRole("heading", { level: 1 })).toHaveText("Notifications");
   await expect(ana.getByText("Nothing yet")).toBeVisible();
   await expect(ana.getByText("Replies and likes show up here.")).toBeVisible();
   await expect(ana.getByRole("link", { name: "See homes" })).toHaveAttribute("href", "/reel");
@@ -122,10 +122,10 @@ test("activity shows people and homes, with repeats on one comment on one line",
   // Two lines, not five: the bell counts them as the page shows them.
   await expect(async () => {
     await ana.goto("/");
-    await expect(ana.getByRole("link", { name: "Activity, 2 new" })).toBeVisible({ timeout: 1000 });
+    await expect(ana.getByRole("link", { name: "Notifications, 2 new" })).toBeVisible({ timeout: 1000 });
   }).toPass({ timeout: 20_000 });
-  await ana.getByRole("link", { name: "Activity, 2 new" }).click();
-  await expect(ana.getByRole("heading", { level: 1 })).toHaveText("Activity");
+  await ana.getByRole("link", { name: "Notifications, 2 new" }).click();
+  await expect(ana.getByRole("heading", { level: 1 })).toHaveText("Notifications");
   await expect(ana.getByRole("heading", { level: 2 })).toHaveText(["Today"]);
   const today = ana.getByRole("region", { name: "Today" });
   const rows = today.getByRole("listitem");

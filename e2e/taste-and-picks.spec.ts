@@ -206,10 +206,10 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
 
   // Cleo's bell counts all three, and the activity page explains each.
   await cleo.goto("/");
-  const bell = cleo.getByRole("link", { name: "Activity, 3 new" });
+  const bell = cleo.getByRole("link", { name: "Notifications, 3 new" });
   await expect(bell).toBeVisible();
   await bell.click();
-  await expect(cleo.getByRole("heading", { name: "Activity" })).toBeVisible();
+  await expect(cleo.getByRole("heading", { name: "Notifications" })).toBeVisible();
   await expect(cleo.getByText(`replied to your comment on ${FOXGLOVE}`)).toBeVisible();
   await expect(cleo.getByText(`liked your comment on ${FOXGLOVE}`)).toBeVisible();
   await expect(cleo.getByText(`commented on ${FOXGLOVE}, a home you liked`)).toBeVisible();
@@ -218,7 +218,7 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   // Once seen, the bell goes quiet (marking it seen happens just after the page loads).
   await expect(async () => {
     await cleo.goto("/search");
-    await expect(cleo.getByRole("link", { name: "Activity", exact: true })).toBeVisible({ timeout: 1000 });
+    await expect(cleo.getByRole("link", { name: "Notifications", exact: true })).toBeVisible({ timeout: 1000 });
   }).toPass();
 
   // Tapping a name opens their profile: what they've liked and said. Only the

@@ -39,6 +39,8 @@ export type TickerEvent = {
     // Whose listings these are (an agent's own, opened from their page):
     // what they say about their own listing comes first.
     host?: boolean;
+    // Whoever sent the link, when they aren't an agent: by name, no more.
+    peer?: boolean;
   };
   at: string;
   // The photo it's in, or the facts (FACTS).
@@ -91,7 +93,11 @@ const newestFirst = (a: TickerEvent, b: TickerEvent) => b.at.localeCompare(a.at)
 // thread, already only the link's. What you did or said is "You", like
 // everyone's own; `agentViewing`: the agent on their own link, whose words
 // there are theirs ("You", with their face in ink).
-export function eventsFromTimeline(items: TimelineItem[], { agentViewing = false } = {}): TickerEvent[] {
+export function eventsFromTimeline(
+  items: TimelineItem[],
+  // `peer`: the link is from someone who isn't an agent.
+  { agentViewing = false, peer = false } = {},
+): TickerEvent[] {
   const events: TickerEvent[] = [];
   for (const item of items) {
     if (item.kind === "comment") {
@@ -103,7 +109,7 @@ export function eventsFromTimeline(items: TimelineItem[], { agentViewing = false
         who: item.isAgent
           ? agentViewing
             ? { tone: "you", name: item.name, agent: true }
-            : { tone: "agent", name: item.name, ...(item.personKey && { key: item.personKey }) }
+            : { tone: "agent", name: item.name, ...(item.personKey && { key: item.personKey }), ...(peer && { peer }) }
           : item.mine
             ? { tone: "you", name: null }
             : item.fromPrivateChat
@@ -124,7 +130,7 @@ export function eventsFromTimeline(items: TimelineItem[], { agentViewing = false
     const who: TickerEvent["who"] = item.isAgent
       ? agentViewing
         ? { tone: "you", name: item.name, agent: true }
-        : { tone: "agent", name: item.name, ...(item.personKey && { key: item.personKey }) }
+        : { tone: "agent", name: item.name, ...(item.personKey && { key: item.personKey }), ...(peer && { peer }) }
       : item.mine
       ? { tone: "you", name: null }
       : item.fromPrivateChat
@@ -277,7 +283,7 @@ function whoText(who: TickerEvent["who"]) {
   if (who.tone === "you") return "You";
   if (who.tone === "anonymous" || !who.name) return "A buyer";
   if (who.tone === "client") return `${who.name}, your client,`;
-  if (who.tone === "agent") return `${who.name.split(" ")[0] || who.name} (your agent)`;
+  if (who.tone === "agent") return `${who.name.split(" ")[0] || who.name}${who.peer ? "" : " (your agent)"}`;
   if (who.following) return `${who.name}, who you follow,`;
   return who.name;
 }

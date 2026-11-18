@@ -30,20 +30,24 @@ export async function notifyAgent(
 ) {
   try {
     const [row] = open
-      ? await sql<{ email: string }[]>`
+      ? await sql<{ email: string; role: string | null }[]>`
           update shares s set last_open_notified_at = now()
           from accounts a
           where s.id = ${shareId} and a.id = s.agent_id
             and (s.last_open_notified_at is null or s.last_open_notified_at < now() - interval '10 minutes')
-          returning a.email`
-      : await sql<{ email: string }[]>`
+          returning a.email, a.role`
+      : await sql<{ email: string; role: string | null }[]>`
           update shares s set last_notified_at = now()
           from accounts a
           where s.id = ${shareId} and a.id = s.agent_id
             and (${now} or s.last_notified_at is null or s.last_notified_at < now() - interval '10 minutes')
-          returning a.email`;
+          returning a.email, a.role`;
     if (!row) return;
-    const link = `${appUrl()}/dashboard/shares/${shareId}${anchor ? `?tab=homes#${encodeURIComponent(anchor)}` : ""}`;
+    // (Someone who isn't an agent has no dashboard: their link's own page.)
+    const link =
+      row.role === "agent"
+        ? `${appUrl()}/dashboard/shares/${shareId}${anchor ? `?tab=homes#${encodeURIComponent(anchor)}` : ""}`
+        : `${appUrl()}/send/${shareId}`;
     await sendEmail(row.email, summary, `${summary}\n\nSee all the activity: ${link}`);
   } catch (error) {
     console.error("[email] failed to notify agent", error);
@@ -59,9 +63,11 @@ export async function notifyAgent(
 // someone signed up, at the email on their account, which the agent never sees.
 export async function notifyClientAdded(participantId: string) {
   try {
-    const [row] = await sql<{ email: string; agent_name: string; token: string; homes: number }[]>`
+    const [row] = await sql<{ email: string; agent_name: string; agent_role: string | null; token: string; homes: number }[]>`
       with person as (
-        select p.id, p.account_id, p.token, s.id as share_id, s.agent_id, a.email, ag.full_name as agent_name
+        select p.id, p.account_id, p.token, s.id as share_id, s.agent_id, a.email,
+          coalesce(nullif(btrim(ag.full_name), ''), (select v.first_name from visitors v where v.account_id = ag.id limit 1), '') as agent_name,
+          ag.role as agent_role
         from participants p
           join shares s on s.id = p.share_id
           join accounts a on a.id = p.account_id
@@ -77,12 +83,12 @@ export async function notifyClientAdded(participantId: string) {
         update participants set notified_at = now()
         where id = (select id from person) and exists (select 1 from claimed)
       )
-      select person.email, person.agent_name, person.token,
+      select person.email, person.agent_name, person.agent_role, person.token,
         (select count(*)::int from share_listings sl where sl.share_id = person.share_id and sl.removed_at is null) as homes
       from person
       where exists (select 1 from claimed)`;
     if (!row) return;
-    const who = row.agent_name.trim() || "Your agent";
+    const who = row.agent_name.trim() || (row.agent_role === "agent" ? "Your agent" : "Someone");
     const what = row.homes === 1 ? "1 home" : `${row.homes} homes`;
     const subject = `${who} sent you ${what} on Porchcard`;
     await sendEmail(

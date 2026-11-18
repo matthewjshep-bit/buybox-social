@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { clientRow, signedIn, createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, openMore, signInAgent } from "./helpers";
+import { clientRow, signedIn, createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, openMore, pickHome, signInAgent } from "./helpers";
 
 test("an agent's client page: what they want, remove and restore, add homes, private only", async ({
   browser,
@@ -94,7 +94,7 @@ test("an agent's client page: what they want, remove and restore, add homes, pri
   await agent.getByRole("link", { name: "Send more homes" }).click();
   await expect(agent.getByRole("heading", { name: "Add homes for Joe" })).toBeVisible();
   await expect(agent.getByRole("button", { name: /10421 Halvard/ })).toHaveCount(0);
-  await agent.getByRole("button", { name: /812 N Corbel/ }).click();
+  await pickHome(agent, "812 N Corbel");
   await agent.getByRole("button", { name: "Add 1 home to Joe's link" }).click();
   await agent.waitForURL("**/dashboard/shares/*");
   await expect(agent.getByRole("region", { name: "812 N Corbel St" })).toBeVisible();

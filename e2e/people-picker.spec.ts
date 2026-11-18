@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, linkMade, signInAgent, signUpBuyer, toFirstHome, toWho } from "./helpers";
+import { createShare, heartOf, homeIn, joinAs, linkMade, signInAgent, signUpBuyer, toFirstHome, toWho, pickHome } from "./helpers";
 
 // A link is named for the people it's for, and the people come from one
 // picker: a first name typed in, or someone on Porchcard, found by their
@@ -31,7 +31,7 @@ test("a link is named for its people, in the order they were added, and follows 
   test.setTimeout(90_000);
   const agent = await signInAgent(browser, "nora-names@example.com", "Nora Names");
   await agent.goto("/dashboard/new");
-  await agent.getByRole("button", { name: /1204 Quillan/ }).click();
+  await pickHome(agent, "1204 Quillan");
   await toWho(agent);
 
   // Nobody yet: a link anyone can use.
@@ -109,7 +109,7 @@ test("someone who's already a client is picked from the list, by first name only
 
   // On a new link, two letters find her: her name and how Pia knows her, never her email.
   await agent.goto("/dashboard/new");
-  await agent.getByRole("button", { name: /4127 Larkmoor/ }).click();
+  await pickHome(agent, "4127 Larkmoor");
   await toWho(agent);
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
   await who.fill("Xi");
@@ -163,7 +163,7 @@ test("someone Pia's never met: found only from two letters, never by email, told
   const beaPage = await pageOf(agent);
 
   await agent.goto("/dashboard/new");
-  await agent.getByRole("button", { name: /1204 Quillan/ }).click();
+  await pickHome(agent, "1204 Quillan");
   await toWho(agent);
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
   const status = agent.getByRole("status").filter({ hasText: /found/ });
@@ -212,7 +212,7 @@ test("someone Pia's never met: found only from two letters, never by email, told
   // A second link from Bea: she's Bea's client now, isn't emailed again the
   // same day, and opening it doesn't start following Bea again.
   await agent.goto("/dashboard/new");
-  await agent.getByRole("button", { name: /4127 Larkmoor/ }).click();
+  await pickHome(agent, "4127 Larkmoor");
   await toWho(agent);
   await who.fill("Yv");
   await suggestions(agent)
@@ -237,7 +237,7 @@ test("nobody is on a link twice: the same name, the same person, or an email", a
 
   // In the builder, a name typed twice is one person.
   await agent.goto("/dashboard/new");
-  await agent.getByRole("button", { name: /1204 Quillan/ }).click();
+  await pickHome(agent, "1204 Quillan");
   await toWho(agent);
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
   await who.fill("Ottoline");
@@ -379,7 +379,7 @@ test("the picker works from the keyboard and says what it finds", async ({ brows
 
   // Who it's for is a step of its own, ready to type.
   await agent.goto("/dashboard/new");
-  await agent.getByRole("button", { name: /1204 Quillan/ }).click();
+  await pickHome(agent, "1204 Quillan");
   await toWho(agent);
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
   await expect(who).toBeFocused();

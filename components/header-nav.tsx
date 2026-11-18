@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, House, BriefcaseBusiness, LogOut, Shield, UserRound, Users } from "lucide-react";
+import { Bell, House, BriefcaseBusiness, ChevronDown, LogOut, Shield, UserRound, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
@@ -193,7 +193,10 @@ export function AccountMenu({
         aria-expanded={open}
         onBlur={leave}
         onKeyDown={arrows}
-        className="flex size-11 shrink-0 items-center justify-center rounded-full [anchor-name:--account-menu]"
+        className={cn(
+          "flex h-14 min-w-11 shrink-0 flex-col items-center justify-center gap-0.5 px-1.5 text-[12px] font-medium leading-none max-md:*:first:size-8 [anchor-name:--account-menu] md:min-w-[4.25rem]",
+          overlay ? "text-white/85 hover:text-white [text-shadow:0_1px_3px_rgb(0_0_0/0.5)]" : "text-stone-600 hover:text-ink",
+        )}
       >
         {/* The face you have everywhere: a buyer's in the brand's colour, an
             agent's in ink. */}
@@ -201,8 +204,14 @@ export function AccountMenu({
           name={initial}
           tone={agent ? "agent" : "person"}
           photo={photo}
+          size={6}
           className={cn("[text-shadow:none]", overlay && "ring-1 ring-white/30")}
         />
+        {/* Under your face, as the other places have their names. */}
+        <span aria-hidden className="hidden items-center md:flex">
+          Me
+          <ChevronDown size={12} className="ml-0.5" />
+        </span>
       </button>
       <div
         ref={menu}
@@ -239,7 +248,7 @@ export function AccountMenu({
               )
             }
           >
-            Activity
+            Notifications
             {unread > 0 && <span className="sr-only">{`, ${unread} new`}</span>}
           </MenuLink>
           {links.map((link) => (
@@ -252,7 +261,7 @@ export function AccountMenu({
               agent sets up their agent's account from here. */}
           {agent && (
             <MenuLink href="/dashboard" section icon={<Users aria-hidden size={18} />} onGo={close}>
-              Clients
+              Dashboard
             </MenuLink>
           )}
           {!agent && (

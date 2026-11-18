@@ -49,10 +49,12 @@ test("signed in, you're one button: your places and Sign out are behind your ini
   await page.goto("/search");
   const header = page.getByRole("banner");
   const me = header.getByRole("button", { name: "Account menu" });
-  await expect(me).toHaveText("H");
+  await expect(me).toContainText("H");
   // Clients are an agent's: not in a buyer's header.
   await expect(header.getByRole("link", { name: "Clients" })).toHaveCount(0);
-  expect(await size(page, "Account menu", "button")).toEqual({ width: 44, height: 44 });
+  const meBox = await size(page, "Account menu", "button");
+  expect(meBox.width).toBeGreaterThanOrEqual(44);
+  expect(meBox.height).toBeGreaterThanOrEqual(44);
   // No Sign out beside it.
   await expect(header.getByRole("button", { name: "Sign out" })).toBeHidden();
   await expect(header.getByRole("link", { name: "Your profile" })).toBeHidden();
@@ -62,7 +64,8 @@ test("signed in, you're one button: your places and Sign out are behind your ini
   await expect(me).toHaveAttribute("aria-expanded", "true");
   const profile = header.getByRole("link", { name: "Your profile" });
   await expect(profile).toBeVisible();
-  await expect(header.getByRole("link", { name: "Activity", exact: true })).toBeVisible();
+  const inMenu = page.locator("#account-menu");
+  await expect(inMenu.getByRole("link", { name: "Notifications", exact: true })).toBeVisible();
   await expect(header.getByRole("link", { name: "Dashboard" })).toHaveCount(0);
   await expect(header.getByRole("button", { name: "Sign out" })).toBeVisible();
   const [menu, button] = await Promise.all([profile.boundingBox(), me.boundingBox()]);
@@ -75,7 +78,7 @@ test("signed in, you're one button: your places and Sign out are behind your ini
   await expect(header.getByText("hollis-header@example.com")).toBeVisible();
   await expect(profile).toBeFocused();
   await page.keyboard.press("ArrowDown");
-  await expect(header.getByRole("link", { name: "Activity", exact: true })).toBeFocused();
+  await expect(inMenu.getByRole("link", { name: "Notifications", exact: true })).toBeFocused();
   await page.keyboard.press("ArrowUp");
   await expect(profile).toBeFocused();
   await page.keyboard.press("Escape");
@@ -151,17 +154,18 @@ test("an agent's dashboard is in their colour, and the header is just Search, Cl
   await agent.setViewportSize({ width: 360, height: 640 });
   await agent.goto("/dashboard");
   const header = agent.getByRole("banner");
-  // No Home (the logo is the way home), no Map, no Dashboard or Admin in the bar.
-  for (const name of ["Home", "Map", "Dashboard", "Admin"]) {
+  // Home, as the logo is too; no Map or Admin in the bar.
+  await expect(header.getByRole("link", { name: "Home", exact: true })).toHaveAttribute("href", "/");
+  for (const name of ["Map", "Admin"]) {
     await expect(header.getByRole("link", { name, exact: true })).toHaveCount(0);
   }
   await expect(header.getByRole("link", { name: "Search", exact: true })).toHaveAttribute("href", "/search");
   // Their clients, a tap from anywhere, a fingertip wide even as just an
   // icon, and marked as where they are anywhere in the dashboard.
-  const clients = header.getByRole("link", { name: "Clients", exact: true });
+  const clients = header.getByRole("link", { name: "Dashboard", exact: true }).first();
   await expect(clients).toHaveAttribute("href", "/dashboard");
   await expect(clients).toHaveAttribute("aria-current", "page");
-  const clientsBox = await size(agent, "Clients", "link");
+  const clientsBox = await size(agent, "Dashboard", "link");
   expect(clientsBox.width).toBeGreaterThanOrEqual(44);
   expect(clientsBox.height).toBeGreaterThanOrEqual(44);
   expect(await background(agent)).toBe("rgb(122, 46, 59)");
@@ -173,12 +177,11 @@ test("an agent's dashboard is in their colour, and the header is just Search, Cl
   // Dashboard there.
   await header.getByRole("button", { name: "Account menu" }).click();
   await expect(header.getByRole("link", { name: "Your profile" })).toBeVisible();
-  await expect(header.getByRole("link", { name: "Dashboard" })).toHaveCount(0);
-  const named = agent.locator("#account-menu").getByRole("link", { name: "Clients", exact: true });
+  const named = agent.locator("#account-menu").getByRole("link", { name: "Dashboard", exact: true });
   await expect(named).toBeVisible();
   await expect(named).toHaveAttribute("href", "/dashboard");
   await expect(named).toHaveAttribute("aria-current", "page");
-  await expect(header.getByRole("link", { name: "Clients", exact: true })).toHaveCount(2);
+  await expect(header.getByRole("link", { name: "Dashboard", exact: true })).toHaveCount(2);
   await agent.keyboard.press("Escape");
   await agent.goto("/dashboard/listings");
   await expect(clients).toHaveAttribute("aria-current", "true");
@@ -195,7 +198,7 @@ test("an agent's dashboard is in their colour, and the header is just Search, Cl
   await agent.waitForURL(/\/people\/me\/edit#details$/);
   await agent.getByRole("button", { name: "Plum" }).click();
   await saveDetails(agent);
-  await agent.getByRole("link", { name: "Clients", exact: true }).first().click();
+  await agent.getByRole("banner").getByRole("link", { name: "Dashboard", exact: true }).first().click();
   await agent.waitForURL("**/dashboard");
   await expect.poll(() => background(agent)).toBe("rgb(75, 59, 120)");
 });

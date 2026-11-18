@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import type { Listing } from "../lib/listings/types";
 import { mediaKeyOf } from "../lib/photos";
 import { describeReaction, spotPlace } from "../lib/reactions";
-import { clientRow, commentIn, createShare, detailsForm, heartOf, homeIn, joinAs, likeInPhoto, missedTaps, openComments, openMore, pick, settle, signedIn, signInAgent, tapPhoto, toFirstHome, toWho } from "./helpers";
+import { clientRow, commentIn, createShare, detailsForm, heartOf, homeIn, joinAs, likeInPhoto, missedTaps, openComments, openMore, pick, settle, signedIn, signInAgent, tapPhoto, toFirstHome, toWho, pickHome } from "./helpers";
 
 const emailsTo = (address: string) =>
   readFileSync("test-results-server.log", "utf8")
@@ -87,7 +87,7 @@ test("an agent's phone and email for clients: checked, kept as digits, and never
 test("a home that has sold can't go on a new link, and nothing is made", async ({ browser }) => {
   const agent = await signInAgent(browser, "gone-agent@example.com", "Gale Agent");
   await agent.goto("/dashboard/new");
-  await agent.getByRole("button", { name: /812 N Corbel/ }).click();
+  await pickHome(agent, "812 N Corbel");
   await toWho(agent);
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
   await who.fill("Zuri");
@@ -875,10 +875,11 @@ test("on a phone, picked homes stay in view whatever the search, and a bar leads
   const next = agent.getByRole("button", { name: "Next", exact: true });
   const tray = agent.getByRole("list", { name: "Picked homes" });
   const pageWidth = () => agent.evaluate(() => document.documentElement.scrollWidth);
-  await expect(cards.first()).toBeVisible();
+  // New here, with no listings and nothing liked or sent: no homes listed until they type.
+  await expect(cards).toHaveCount(0);
   await expect(next).toHaveCount(0);
 
-  await cards.filter({ hasText: "1204 Quillan" }).click();
+  await pickHome(agent, "1204 Quillan");
   await expect(agent.getByText("1 of 3 picked")).toBeVisible();
   await expect(next).toBeVisible();
 
@@ -900,7 +901,7 @@ test("on a phone, picked homes stay in view whatever the search, and a bar leads
   // and Next goes to who it's for, ready to type.
   await box.fill("");
   await expect(offered).toHaveCount(0);
-  for (const i of [0, 1, 2]) await cards.nth(i).click();
+  for (const address of ["1204 Quillan", "719 Saltmarsh", "812 N Corbel"]) await pickHome(agent, address);
   await expect(agent.getByText("3 of 3 picked")).toBeVisible();
   await expect(tray.getByRole("listitem")).toHaveCount(3);
   expect(await pageWidth()).toBeLessThanOrEqual(393);

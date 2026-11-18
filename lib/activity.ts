@@ -190,7 +190,8 @@ const eventsOf = (visitorId: string) => sql`
   -- said (but not the words an ask posts, which are the ask)...
   select 'client-comment:' || c.id, 'client_comment', p.first_name, coalesce(pv.id::text, 'participant:' || p.id),
     pv.id::text, c.body, p.id || ':' || c.listing_key, c.listing_key, c.media_key, c.id::text,
-    '/dashboard/shares/' || s.id, null, c.created_at
+    case when (select o.role from accounts o where o.id = s.agent_id) = 'agent'
+      then '/dashboard/shares/' || s.id else '/send/' || s.id end, null, c.created_at
   from self
   join shares s on s.agent_id = self.account_id
   join comments c on c.share_id = s.id
@@ -204,7 +205,8 @@ const eventsOf = (visitorId: string) => sql`
   -- ...the homes they liked, or something in them...
   select 'client-like:' || x.id, 'client_like', p.first_name, coalesce(pv.id::text, 'participant:' || p.id),
     pv.id::text, '', p.id || ':' || x.listing_key, x.listing_key, x.media_key, null,
-    '/dashboard/shares/' || s.id, null, x.at
+    case when (select o.role from accounts o where o.id = s.agent_id) = 'agent'
+      then '/dashboard/shares/' || s.id else '/send/' || s.id end, null, x.at
   from self
   join shares s on s.agent_id = self.account_id
   join (
@@ -227,7 +229,8 @@ const eventsOf = (visitorId: string) => sql`
       where c.share_id = k.share_id and c.listing_key = k.listing_key
         and c.participant_id = k.participant_id and c.created_at = k.asked_at
       limit 1),
-    '/dashboard/shares/' || s.id, null, k.asked_at
+    case when (select o.role from accounts o where o.id = s.agent_id) = 'agent'
+      then '/dashboard/shares/' || s.id else '/send/' || s.id end, null, k.asked_at
   from self
   join shares s on s.agent_id = self.account_id
   join share_asks k on k.share_id = s.id

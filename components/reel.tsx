@@ -63,6 +63,7 @@ import {
 import { photoFoot, photoPlace, ReelPhotos, STAGE_BAND, stageBlock, stageFoot } from "@/components/reel-photos";
 import { TakeCard, type TakeEyebrow } from "@/components/reel-take";
 import { ScorecardBody } from "@/components/scorecard";
+import { useSignedIn } from "@/components/session";
 import { Sheet } from "@/components/sheet";
 import { NudgeHint, useNudges, type Nudge } from "@/components/walkthrough";
 import { Tour, tourSteps, useTour, type TourKind } from "@/components/tour";
@@ -174,6 +175,7 @@ export function ReelFeed({
   prompt,
   header,
   intro,
+  introLabel = "Welcome",
   end,
   infinite = false,
   embedded = false,
@@ -207,6 +209,8 @@ export function ReelFeed({
   header?: ReactNode;
   // A first screen before the homes (an agent's note).
   intro?: ReactNode;
+  // What that first screen is, for a screen reader.
+  introLabel?: string;
   // The last screen, after the homes.
   end?: ReactNode;
   // Loads more homes as you near the end.
@@ -360,6 +364,7 @@ export function ReelFeed({
         myName={myName}
         header={header}
         intro={intro}
+        introLabel={introLabel}
         end={end}
         embedded={embedded}
         contained={contained}
@@ -400,6 +405,7 @@ function Feed({
   myName,
   header,
   intro,
+  introLabel = "Welcome",
   end,
   embedded,
   contained,
@@ -431,6 +437,8 @@ function Feed({
   myName: string | null;
   header?: ReactNode;
   intro?: ReactNode;
+  // What that first screen is, for a screen reader.
+  introLabel?: string;
   end?: ReactNode;
   embedded: boolean;
   contained: boolean;
@@ -942,7 +950,7 @@ function Feed({
         className="h-full snap-y snap-mandatory overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {intro && (
-          <section data-panel={0} aria-label="Welcome" className="relative h-full snap-start snap-always">
+          <section data-panel={0} aria-label={introLabel} className="relative h-full snap-start snap-always">
             {intro}
           </section>
         )}
@@ -1121,6 +1129,8 @@ function Feed({
         post={sheet?.kind === "more" ? (sheetPost ?? null) : null}
         state={sheetPost ? (reactions.states[sheetPost.listing.ListingKey] ?? NO_REACTION) : NO_REACTION}
         agentName={agentName}
+        // Anyone but an agent (whose rail has Send): the steps for sending homes, this one picked.
+        canSend={mode === "public" && !onSend && Boolean(sheetPost && isForSale(sheetPost))}
         // On a phone, what the home is beyond its price and size is here
         // (side by side, the panel beside the photo already says it).
         about={!wide}
@@ -3363,10 +3373,13 @@ function MoreSheet({
   anchor,
   returnTo,
   about = false,
+  canSend = false,
 }: {
   post: FeedPost | null;
   state: ReactionState;
   agentName?: string;
+  // Signed in, it offers "Send to someone": the steps for sending homes, with this one picked.
+  canSend?: boolean;
   // Say what the home is, under the rest: its description whole, and the
   // details there's no room for under a phone's photo.
   about?: boolean;
@@ -3379,6 +3392,7 @@ function MoreSheet({
   onClose: () => void;
 }) {
   const passed = state.reaction === "dislike";
+  const signedIn = useSignedIn();
   return (
     <Sheet open={Boolean(post)} onClose={onClose} label="More" title="More" anchor={anchor} returnTo={returnTo}>
       {post && (
@@ -3413,6 +3427,15 @@ function MoreSheet({
               className="-my-3 inline-flex min-h-11 items-center self-start text-sm font-semibold text-brand underline-offset-2 hover:underline"
             >
               Map of {post.listing.City}
+            </Link>
+          )}
+          {canSend && signedIn && (
+            <Link
+              href={`/send?home=${encodeURIComponent(post.listing.ListingKey)}`}
+              className={cn(button({ kind: "ghost", flush: true }), "-mt-1 self-start text-ink")}
+            >
+              <Send aria-hidden size={17} />
+              Send to someone
             </Link>
           )}
           <button

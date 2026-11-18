@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { clientRow, createShare, enterCode, heartOf, homeIn, joinAs, signInAgent, signUpBuyer, toFirstHome, toLinkReady, toWho } from "./helpers";
+import { clientRow, createShare, enterCode, heartOf, homeIn, joinAs, signInAgent, signUpBuyer, toFirstHome, toLinkReady, toWho, pickHome } from "./helpers";
 
 type Shared = { title?: string; text?: string; url?: string; inTap: boolean };
 type Stubbed = { shared: Shared[]; shareAnswer: "send" | "cancel"; inTap: boolean };
@@ -457,13 +457,12 @@ test("the longer way to send one home starts with it picked, and keeps it in vie
   const cards = agent.getByRole("button", { name: /^\$/ });
   await expect(cards.first()).toContainText("96 Fernhollow Ln");
   await expect(cards.first()).toHaveAttribute("aria-pressed", "true");
-  const larkmoor = cards.filter({ hasText: "4127 Larkmoor" });
-  await larkmoor.click();
+  await pickHome(agent, "4127 Larkmoor");
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send these homes");
   // What's picked shows above the homes, each able to come off again.
   const tray = agent.getByRole("list", { name: "Picked homes" });
   await expect(tray.getByRole("listitem")).toHaveCount(2);
-  await larkmoor.click();
+  await tray.getByRole("button", { name: "Remove 4127 Larkmoor Ave NE" }).click();
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send this home");
   await expect(tray.getByRole("listitem")).toHaveCount(1);
 

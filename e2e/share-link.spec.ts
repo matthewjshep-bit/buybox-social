@@ -70,7 +70,7 @@ test("one home: the link opens on a word from the agent, then the home, in the a
   for (const name of ["Map", "Sign in", "Sign up"]) {
     await expect(page.getByRole("link", { name, exact: true })).toHaveCount(0);
   }
-  await expect(page.getByRole("link", { name: /^Activity/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /^Notifications/ })).toHaveCount(0);
 
   // Contact: text and call from the phone they chose to show, as digits.
   await header.getByRole("button", { name: "Contact" }).click();

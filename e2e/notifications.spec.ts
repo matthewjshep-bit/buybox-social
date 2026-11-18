@@ -67,7 +67,7 @@ test("a link's people and its agent hear about each other, and each line opens t
   // a way straight to it on her page about the link.
   await expect(async () => {
     await fern.goto("/dashboard");
-    await expect(fern.getByRole("link", { name: /^Activity, [1-9]\d* new$/ })).toBeVisible({ timeout: 1000 });
+    await expect(fern.getByRole("link", { name: /^Notifications, [1-9]\d* new$/ })).toBeVisible({ timeout: 1000 });
   }).toPass({ timeout: 20_000 });
   await fern.goto("/activity");
   const asked = lineOf(fern, `Jo commented on ${QUILLAN}`);
@@ -128,7 +128,7 @@ test("a new follower is news to the one they follow, who can follow them back ri
   // Ana's bell says so, and the line opens his page.
   await expect(async () => {
     await ana.goto("/");
-    await expect(ana.getByRole("link", { name: "Activity, 1 new" })).toBeVisible({ timeout: 1000 });
+    await expect(ana.getByRole("link", { name: "Notifications, 1 new" })).toBeVisible({ timeout: 1000 });
   }).toPass({ timeout: 20_000 });
   await ana.goto("/activity");
   const line = lineOf(ana, "Bo started following you");

@@ -70,7 +70,6 @@ export function ShareHeader({
   onOpenChange,
   preview,
   notes = null,
-  onReuse,
   account = null,
   extras,
 }: {
@@ -89,8 +88,6 @@ export function ShareHeader({
   // `step`: it's the last step of sending homes, and the header says so
   // (Skip until they've `added` something; their `earlier` take to bring over).
   notes?: LinkAgent["notes"];
-  // Brings their take from an earlier link onto this one.
-  onReuse?: () => Promise<unknown>;
   // Someone signed in (never the agent previewing): their menu and the bell.
   account?: LinkAccount | null;
   extras?: ContactExtras;
@@ -134,7 +131,7 @@ export function ShareHeader({
               // The last step of sending homes: what to do here, in a line.
               <>
                 <p className="truncate text-meta font-semibold">Step 3 of 3</p>
-                <p className="truncate text-body font-semibold">Like or comment</p>
+                <p className="truncate text-body font-semibold">Add your feedback</p>
               </>
             ) : (
               <>
@@ -199,7 +196,7 @@ export function ShareHeader({
               >
                 <Bell aria-hidden size={18} className="drop-shadow-[0_1px_2px_rgb(0_0_0/0.45)]" />
                 <span className="sr-only">
-                  Activity{account.unread > 0 && `, ${account.unread} new`}
+                  Notifications{account.unread > 0 && `, ${account.unread} new`}
                 </span>
                 {account.unread > 0 && (
                   <span
@@ -214,10 +211,6 @@ export function ShareHeader({
             </div>
           )}
         </div>
-        {/* What they said about these homes on an earlier link, a tap from being here too. */}
-        {notes?.step && onReuse && (notes.earlier ?? 0) > 0 && (
-          <ReuseTake homes={notes.earlier ?? 0} of={homesCount} onReuse={onReuse} />
-        )}
       </header>
       <Sheet
         open={open}
@@ -482,30 +475,5 @@ export function LeaveLink({
         </div>
       </dialog>
     </>
-  );
-}
-
-// On the last step of sending homes: they've given their take on this home
-// (or some of these) before, on another link. One tap brings it here: their
-// likes, dislikes and notes, as they wrote them.
-function ReuseTake({ homes, of, onReuse }: { homes: number; of: number; onReuse: () => Promise<unknown> }) {
-  const [pending, startTransition] = useTransition();
-  return (
-    <div className="mx-auto flex max-w-6xl items-center gap-3 px-3 pb-2 sm:px-6 split:max-w-none">
-      <p className="min-w-0 flex-1 text-meta font-semibold leading-snug [text-shadow:0_1px_3px_rgb(0_0_0/0.5)]">
-        {of <= 1 ? "You've shared your take on this home before." : `You've shared your take on ${homes} of these before.`}
-      </p>
-      <button
-        type="button"
-        disabled={pending}
-        onClick={() => startTransition(async () => void (await onReuse()))}
-        className={cn(
-          "flex min-h-11 shrink-0 items-center rounded-full bg-white/15 px-4 text-sm font-semibold backdrop-blur-md hover:bg-white/25 disabled:opacity-60",
-          focusOnDark,
-        )}
-      >
-        {pending ? "Adding…" : "Use it here"}
-      </button>
-    </div>
   );
 }
