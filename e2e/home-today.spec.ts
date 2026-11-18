@@ -25,7 +25,7 @@ test("an agent's home is calm: their clients as people, what each did as big car
   // the top; nothing wider than the screen; and no list of things to do.
   await agent.setViewportSize({ width: 390, height: 844 });
   await agent.goto("/");
-  await expect(agent.getByRole("link", { name: "Send homes to a client" })).toHaveAttribute("href", "/dashboard/new?focus=to");
+  await expect(agent.getByRole("link", { name: "Send homes to a client" })).toHaveAttribute("href", "/dashboard/new");
   const clients = agent.getByRole("region", { name: "Your clients" });
   const kitThere = clients.getByRole("link", { name: /^Kit\b/ });
   await expect(kitThere).toContainText("“Does it get afternoon sun?”");

@@ -175,10 +175,10 @@ export async function createShare(input: {
   if (await tooManyStrangers(sql, agent.id, resolved.people)) return { error: TOO_MANY_STRANGERS };
 
   const made = await sql.begin(async (tx) => {
-    const [share] = await tx<{ id: string }[]>`
+    const [share] = await tx<{ id: string; token: string }[]>`
       insert into shares (token, agent_id, note)
       values (${newShareToken()}, ${agent.id}, ${parsed.data.note})
-      returning id`;
+      returning id, token`;
     // Everyone gets their own link, so what each of them likes is theirs, in
     // the order the agent added them (which is the order the link names them).
     const bound: string[] = [];
@@ -191,13 +191,21 @@ export async function createShare(input: {
         insert into share_listings (share_id, listing_key, position)
         values (${share.id}, ${key}, ${position})`;
     }
-    return { shareId: share.id, bound };
+    // The link the agent goes through next: the first person's, or the one anyone can use.
+    const [first] = await tx<{ token: string }[]>`
+      select token from participants
+      where share_id = ${share.id} and token is not null
+      order by invited_at nulls last, position nulls last, created_at, first_name
+      limit 1`;
+    return { shareId: share.id, bound, token: first?.token ?? share.token };
   });
   // The agent's own profile, so their face is on their notes and their
   // clients can follow them.
   await ensureAgentProfile(agent.id);
   await letThemKnow(agent.id, made.bound);
-  redirect(`/dashboard/shares/${made.shareId}`);
+  // On to the link as their client will see it, to like and say what they
+  // think (the last step), and from there to the link, ready to copy.
+  redirect(`/s/${made.token}?step=thoughts`);
 }
 
 const uuid = z.uuid();

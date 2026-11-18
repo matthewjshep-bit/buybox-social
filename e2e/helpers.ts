@@ -29,6 +29,31 @@ export async function signInAgent(browser: Browser, email: string, name: string)
   return page;
 }
 
+// Sending homes goes a step at a time: the homes, who it's for, then (on the
+// link itself) what the agent thinks of them. From the homes (one picked), on
+// to who it's for.
+export async function toWho(page: Page) {
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Who's it for?" })).toBeVisible();
+}
+
+// Who it's for is said: Next makes the link and opens it for the agent's own
+// thoughts (the last step), which Done skips; then the link, ready to copy.
+export async function toLinkReady(page: Page) {
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page.waitForURL(/\/s\/[\w-]+\?step=thoughts$/);
+  // (Skip, with nothing said on it; Done, once there is.)
+  await page.getByRole("banner").getByRole("link", { name: /^(Skip|Done)$/ }).click();
+  await page.waitForURL(/\/dashboard\/shares\/[\w-]+\/sent$/);
+}
+
+// The same, and then Done again: on to the link's own page.
+export async function linkMade(page: Page) {
+  await toLinkReady(page);
+  await page.getByRole("link", { name: "Done", exact: true }).click();
+  await page.waitForURL(/\/dashboard\/shares\/[\w-]+\?tab=/);
+}
+
 // A package of homes for one or more people. Each person gets their own link.
 // (With nobody, it's a link anyone can join: packageLink, in share-link.spec.ts.)
 export async function createShare(page: Page, addresses: string[], people: string[] = ["Jamie"]) {
@@ -36,6 +61,7 @@ export async function createShare(page: Page, addresses: string[], people: strin
   for (const address of addresses) {
     await page.getByRole("button", { name: new RegExp(address) }).click();
   }
+  await toWho(page);
   // Who it's for: each first name typed, then Enter, as someone new.
   const who = page.getByRole("combobox", { name: "Who's it for?" });
   for (const name of people) {
@@ -43,13 +69,15 @@ export async function createShare(page: Page, addresses: string[], people: strin
     await who.press("Enter");
     await expect(page.getByRole("list", { name: "Who it's for" }).getByText(name, { exact: true })).toBeVisible();
   }
-  await page.getByLabel("Note (optional)").fill("This one has the yard you mentioned.");
-  await page.getByRole("button", { name: /Create link/ }).click();
-  await page.waitForURL("**/dashboard/shares/*");
+  // The link's made, the agent's own thoughts skipped, and it's ready: each person's, to copy.
+  await toLinkReady(page);
   const urls: Record<string, string> = {};
   for (const name of people) urls[name] = await page.getByLabel(`${name}'s link`).inputValue();
-  // (The client's page itself, without which part of it: that's up to the page.)
-  return { url: urls[people[0]], urls, dashboardUrl: page.url().split("?")[0] };
+  const dashboardUrl = page.url().replace(/\/sent$/, "");
+  // On to the link's own page, where everything after carries on.
+  await page.getByRole("link", { name: "Done", exact: true }).click();
+  await page.waitForURL(/\/dashboard\/shares\/[\w-]+\?tab=/);
+  return { url: urls[people[0]], urls, dashboardUrl };
 }
 
 // A buyer signs up the way buyers do: the form at the foot of the home page,

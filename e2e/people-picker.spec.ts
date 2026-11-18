@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, signInAgent, signUpBuyer, toFirstHome } from "./helpers";
+import { createShare, heartOf, homeIn, joinAs, linkMade, signInAgent, signUpBuyer, toFirstHome, toWho } from "./helpers";
 
 // A link is named for the people it's for, and the people come from one
 // picker: a first name typed in, or someone on Porchcard, found by their
@@ -32,11 +32,10 @@ test("a link is named for its people, in the order they were added, and follows 
   const agent = await signInAgent(browser, "nora-names@example.com", "Nora Names");
   await agent.goto("/dashboard/new");
   await agent.getByRole("button", { name: /1204 Quillan/ }).click();
+  await toWho(agent);
 
-  // Nobody yet: anyone with it can join.
-  await expect(
-    agent.getByText("No name: anyone with the link can join."),
-  ).toBeVisible();
+  // Nobody yet: a link anyone can use.
+  await expect(agent.getByText("Leave it empty for a link anyone can use.")).toBeVisible();
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
   for (const name of ["Joe", "Ana", "Sam", "Lee"]) {
     await who.fill(name);
@@ -46,8 +45,7 @@ test("a link is named for its people, in the order they were added, and follows 
   await expect(chips.getByRole("listitem")).toHaveCount(4);
   const preview = agent.getByText(/^This link will be called /);
   await expect(preview).toHaveText("This link will be called Joe, Ana, Sam & 1 more.");
-  await agent.getByRole("button", { name: /Create link/ }).click();
-  await agent.waitForURL("**/dashboard/shares/*");
+  await linkMade(agent);
 
   // The page's title is the same, and there's no title to type.
   const title = agent.getByRole("heading", { level: 1 });
@@ -112,6 +110,7 @@ test("someone who's already a client is picked from the list, by first name only
   // On a new link, two letters find her: her name and how Pia knows her, never her email.
   await agent.goto("/dashboard/new");
   await agent.getByRole("button", { name: /4127 Larkmoor/ }).click();
+  await toWho(agent);
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
   await who.fill("Xi");
   const her = suggestions(agent).getByRole("option", { name: "Xiomara, Your client · 1 link" });
@@ -129,8 +128,7 @@ test("someone who's already a client is picked from the list, by first name only
   await expect(agent.getByRole("list", { name: "Who it's for" })).toContainText("Xiomara");
   await expect(agent.getByText("We'll let Xiomara know on Porchcard.")).toBeVisible();
   await expect(agent.getByText(/^This link will be called /)).toHaveText("This link will be called Xiomara.");
-  await agent.getByRole("button", { name: /Create link/ }).click();
-  await agent.waitForURL("**/dashboard/shares/*");
+  await linkMade(agent);
 
   // She's on Porchcard already, so her profile is right there, and she's told.
   const people = agent.getByRole("region", { name: "People on this link" });
@@ -166,6 +164,7 @@ test("someone Pia's never met: found only from two letters, never by email, told
 
   await agent.goto("/dashboard/new");
   await agent.getByRole("button", { name: /1204 Quillan/ }).click();
+  await toWho(agent);
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
   const status = agent.getByRole("status").filter({ hasText: /found/ });
 
@@ -191,8 +190,7 @@ test("someone Pia's never met: found only from two letters, never by email, told
   await onPorchcard.getByRole("option", { name: "Yvaine, On Porchcard" }).click();
   await expect(agent.getByRole("list", { name: "Who it's for" })).toContainText("Yvaine");
   await expect(who).toBeFocused();
-  await agent.getByRole("button", { name: /Create link/ }).click();
-  await agent.waitForURL("**/dashboard/shares/*");
+  await linkMade(agent);
   const people = agent.getByRole("region", { name: "People on this link" });
   await expect(people.getByRole("link", { name: "View profile of Yvaine" })).toBeVisible();
   await expect.poll(() => emailsTo(email).length).toBe(1);
@@ -215,13 +213,13 @@ test("someone Pia's never met: found only from two letters, never by email, told
   // same day, and opening it doesn't start following Bea again.
   await agent.goto("/dashboard/new");
   await agent.getByRole("button", { name: /4127 Larkmoor/ }).click();
+  await toWho(agent);
   await who.fill("Yv");
   await suggestions(agent)
     .getByRole("group", { name: "Your clients" })
     .getByRole("option", { name: "Yvaine, Your client · 1 link" })
     .click();
-  await agent.getByRole("button", { name: /Create link/ }).click();
-  await agent.waitForURL("**/dashboard/shares/*");
+  await linkMade(agent);
   const secondLink = await people.getByLabel("Yvaine's link").inputValue();
   expect(secondLink).not.toBe(firstLink);
   await yv.goto(secondLink);
@@ -239,6 +237,8 @@ test("nobody is on a link twice: the same name, the same person, or an email", a
 
   // In the builder, a name typed twice is one person.
   await agent.goto("/dashboard/new");
+  await agent.getByRole("button", { name: /1204 Quillan/ }).click();
+  await toWho(agent);
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
   await who.fill("Ottoline");
   await who.press("Enter");
@@ -377,11 +377,12 @@ test("the picker works from the keyboard and says what it finds", async ({ brows
   test.setTimeout(60_000);
   const agent = await signInAgent(browser, "ari-aria@example.com", "Ari Aria");
 
-  // From "Send homes to…": who it's for comes first, ready to type.
-  await agent.goto("/dashboard/new?focus=to");
+  // Who it's for is a step of its own, ready to type.
+  await agent.goto("/dashboard/new");
+  await agent.getByRole("button", { name: /1204 Quillan/ }).click();
+  await toWho(agent);
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
   await expect(who).toBeFocused();
-  expect((await who.boundingBox())!.y).toBeLessThan((await agent.getByRole("searchbox").boundingBox())!.y);
   await expect(who).toHaveAttribute("aria-autocomplete", "list");
   await expect(who).toHaveAttribute("aria-expanded", "false");
 
@@ -422,9 +423,7 @@ test("the picker works from the keyboard and says what it finds", async ({ brows
   await chips.getByRole("button", { name: "Remove Rosamund" }).click();
   await expect(chips).toHaveCount(0);
   await expect(who).toBeFocused();
-  await expect(
-    agent.getByText("No name: anyone with the link can join."),
-  ).toBeVisible();
+  await expect(agent.getByText("Leave it empty for a link anyone can use.")).toBeVisible();
 
   // Tab leaves without picking anything.
   await who.fill("Tamsin");

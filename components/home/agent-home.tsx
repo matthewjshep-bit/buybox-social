@@ -18,18 +18,18 @@ import { button, card } from "@/lib/ui";
 // wants something first. Nothing to tick off: what a client is waiting for is
 // said beside their name, and its card's Reply is the filled button.
 
-// "Send homes to…": shaped like a box to type in, as a post box is, and opening
-// the builder with the people picker ready.
+// "Send homes…": shaped like a box to type in, as a post box is, and opening
+// the steps for sending homes at the first: which home.
 function Composer({ me }: { me: { name: string; photo: string | null } }) {
   return (
     <div className={cn(card, "flex items-center gap-3 p-3")}>
       <Avatar name={me.name} tone="agent" photo={me.photo} size={10} />
       <Link
-        href="/dashboard/new?focus=to"
+        href="/dashboard/new"
         aria-label="Send homes to a client"
         className="flex h-11 min-w-0 flex-1 items-center rounded-full border border-stone-300 px-4 text-body hover:border-stone-400 hover:bg-stone-50"
       >
-        <span className="text-stone-600">Send homes to…</span>
+        <span className="text-stone-600">Send homes…</span>
       </Link>
     </div>
   );

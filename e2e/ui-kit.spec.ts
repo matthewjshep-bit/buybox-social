@@ -100,7 +100,7 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
 
   // Picking homes for a link: the search box, and each home's price.
   await agent.goto("/dashboard/new");
-  const search = await expectFieldFocus(agent, "Search by address, city, ZIP or MLS number");
+  const search = await expectFieldFocus(agent, "Address, MLS number, or a link to the home");
   expect(search.height).toBe(48);
   const heading = await agent.getByRole("heading", { level: 1 }).evaluate((el) => getComputedStyle(el).fontFamily);
   const price = agent.getByRole("button", { name: /812 N Corbel/ }).getByText("$724,900");

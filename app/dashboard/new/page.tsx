@@ -20,7 +20,7 @@ export default async function NewSharePage({
   const agent = await requireAgent();
   if (!agent.full_name) redirect("/dashboard/profile");
 
-  const { q, share: shareId, home: homeKey, focus } = await searchParams;
+  const { q, share: shareId, home: homeKey } = await searchParams;
   let addTo: { shareId: string; clientName: string; title: string } | undefined;
   let onLink: string[] = [];
   if (shareId) {
@@ -82,7 +82,6 @@ export default async function NewSharePage({
       initialQuery={query}
       addTo={addTo}
       start={start?.data}
-      whoFirst={!addTo && focus === "to"}
     />
   );
 }

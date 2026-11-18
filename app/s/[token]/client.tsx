@@ -27,7 +27,7 @@ import { agentFirstName, cn } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
 import type { ShareAgent } from "@/lib/shares";
 import { button, card, focusOnDark } from "@/lib/ui";
-import { recordHomeTime, recordOpen, type AskResult } from "./actions";
+import { recordHomeTime, recordOpen, reuseTake, type AskResult } from "./actions";
 
 type ReelProps = ComponentProps<typeof ReelFeed>;
 
@@ -391,6 +391,7 @@ export function ShareReel({
             onOpenChange={setContact}
             preview={preview}
             notes={notes ?? null}
+            onReuse={notes?.step ? () => reuseTake(token) : undefined}
             account={account}
             extras={extras}
           />

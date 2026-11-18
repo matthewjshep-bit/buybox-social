@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { earlierTakeHomes, takeCount } from "@/lib/agent-take";
 import { notFound } from "next/navigation";
 import { homeFacts } from "@/app/homes/[key]/preview";
 import type { LinkAccount } from "@/components/agent-card";
@@ -99,6 +100,15 @@ export default async function SharePage({ params, searchParams }: Props) {
   const agentViewing = viewer?.id === share.agent_id;
   const client = person?.first_name || share.client_name || "your client";
   const preview = agentViewing ? `Viewing as ${client}` : undefined;
+  // The agent, just having made the link: the last step of sending homes is
+  // here, on the homes themselves, liking and saying what they think. Then
+  // Done goes to the link, ready to copy.
+  const adding = agentViewing && query.step === "thoughts";
+  // Whether they've said anything on it yet (Skip, until they have), and
+  // whether they said it before, on an earlier link, to bring over.
+  const [saidSoFar, earlierHomes] = adding
+    ? await Promise.all([takeCount(share.id), earlierTakeHomes(share.agent_id, share.id)])
+    : [0, 0];
   // Someone's own link is them; otherwise whoever's signed in, by their place
   // on it, or whoever this browser joined as before signing in. (The agent is
   // never anyone on it, even on someone's own link.)
@@ -233,7 +243,16 @@ export default async function SharePage({ params, searchParams }: Props) {
           leave: canLeave ? leaveLink.bind(null, token) : null,
         }}
         preview={preview}
-        notes={agentViewing ? { for: client, done: `/dashboard/shares/${share.id}` } : undefined}
+        notes={
+          agentViewing
+            ? {
+                for: client,
+                done: adding ? `/dashboard/shares/${share.id}/sent` : `/dashboard/shares/${share.id}`,
+                step: adding,
+                ...(adding && { added: saidSoFar > 0, earlier: saidSoFar > 0 ? 0 : earlierHomes }),
+              }
+            : undefined
+        }
         // (No name: the feed says "your agent".)
         agentName={agent.full_name || undefined}
         // A personal link opens as its owner, so it isn't one to pass around.
@@ -255,7 +274,8 @@ export default async function SharePage({ params, searchParams }: Props) {
         // Every link starts with a word from the agent over the first home's
         // photo, then the homes below it.
         intro={
-          count > 0 ? (
+          // (Straight to the homes for the agent adding their thoughts: the welcome is their client's.)
+          count > 0 && !adding ? (
             <ShareWelcome
               key="welcome"
               agent={agent}

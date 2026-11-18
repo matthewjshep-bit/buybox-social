@@ -23,7 +23,7 @@ test("an agent's home: their client as a person, what she said on her card with 
   // Plainly the agent's dashboard, in few words: no greeting to read past.
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Agent dashboard");
   await expect(agent.getByRole("main")).not.toContainText("Hi Fern");
-  await expect(agent.getByRole("link", { name: "Send homes to a client" })).toHaveAttribute("href", "/dashboard/new?focus=to");
+  await expect(agent.getByRole("link", { name: "Send homes to a client" })).toHaveAttribute("href", "/dashboard/new");
   const clients = agent.getByRole("region", { name: "Your clients" });
   await expect(clients.getByRole("link", { name: /^Jo\b/ })).toHaveAttribute("href", /^\/dashboard\/clients\/acct%3A[\w-]+$/);
   // None of a buyer's home: nothing picked for them, nobody to follow.

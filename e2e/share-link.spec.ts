@@ -48,12 +48,11 @@ test("one home: the link opens on a word from the agent, then the home, in the a
   await page.goto(url);
 
   // A word from the agent first, as on any link: the greeting, with Owen's
-  // name (the page's one heading), and their note. No photo hangs below it.
+  // name (the page's one heading). No photo hangs below it.
   const welcome = page.getByRole("region", { name: "Welcome" });
   await expect(welcome).toBeInViewport();
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(welcome.getByRole("heading", { level: 1 })).toHaveText("Owen, I picked this home for you");
-  await expect(welcome.getByText("This one has the yard you mentioned.")).toBeVisible();
   // (Only the agent's own face is drawn from data; the one photo is the home's.)
   await expect(welcome.locator('img:not([src^="data:"])')).toHaveCount(1);
   // Then the home, one tap (or a swipe) away, with its own description.

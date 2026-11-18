@@ -3,22 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import type { Listing } from "../lib/listings/types";
 import { mediaKeyOf } from "../lib/photos";
 import { describeReaction, spotPlace } from "../lib/reactions";
-import { signedIn, toFirstHome,
-  commentIn,
-  createShare,
-  heartOf,
-  homeIn,
-  joinAs,
-  likeInPhoto,
-  missedTaps,
-  openComments,
-  openMore,
-  pick,
-  settle,
-  signInAgent,
-  tapPhoto,
-  clientRow,
-} from "./helpers";
+import { clientRow, commentIn, createShare, heartOf, homeIn, joinAs, likeInPhoto, missedTaps, openComments, openMore, pick, settle, signedIn, signInAgent, tapPhoto, toFirstHome, toWho } from "./helpers";
 
 const emailsTo = (address: string) =>
   readFileSync("test-results-server.log", "utf8")
@@ -103,6 +88,7 @@ test("a home that has sold can't go on a new link, and nothing is made", async (
   const agent = await signInAgent(browser, "gone-agent@example.com", "Gale Agent");
   await agent.goto("/dashboard/new");
   await agent.getByRole("button", { name: /812 N Corbel/ }).click();
+  await toWho(agent);
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
   await who.fill("Zuri");
   await who.press("Enter");
@@ -113,7 +99,7 @@ test("a home that has sold can't go on a new link, and nothing is made", async (
     if (route.request().method() !== "POST" || !body?.includes("SAMPLE-1003")) return route.continue();
     await route.continue({ postData: body.replace("SAMPLE-1003", "SAMPLE-SOLD") });
   });
-  await agent.getByRole("button", { name: /Create link/ }).click();
+  await agent.getByRole("button", { name: "Next", exact: true }).click();
   await expect(agent.getByText("One of those homes is no longer available.")).toHaveAttribute("role", "alert");
   await expect(agent).toHaveURL(/\/dashboard\/new$/);
   await agent.unroute("**/dashboard/new");
@@ -916,10 +902,11 @@ test("on a phone, picked homes stay in view whatever the search, and a bar leads
   await expect(tray.getByRole("listitem")).toHaveCount(3);
   expect(await pageWidth()).toBeLessThanOrEqual(393);
   await next.click();
+  await expect(agent.getByText("Step 2 of 3")).toBeVisible();
   const name = agent.getByRole("combobox", { name: "Who's it for?" });
   await expect(name).toBeFocused();
   await expect(name).toBeInViewport();
-  await expect(next).toHaveCount(0);
+  await expect(agent.getByText("3 of 3 picked")).toHaveCount(0);
 });
 
 test("Remove and Restore keep the keyboard with the home, and each person's link buttons say whose they are", async ({

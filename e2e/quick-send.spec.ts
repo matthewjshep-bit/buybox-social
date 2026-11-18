@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { clientRow, enterCode, toFirstHome, createShare, heartOf, homeIn, joinAs, signInAgent, signUpBuyer } from "./helpers";
+import { clientRow, createShare, enterCode, heartOf, homeIn, joinAs, signInAgent, signUpBuyer, toFirstHome, toLinkReady, toWho } from "./helpers";
 
 type Shared = { title?: string; text?: string; url?: string; inTap: boolean };
 type Stubbed = { shared: Shared[]; shareAnswer: "send" | "cancel"; inTap: boolean };
@@ -449,7 +449,7 @@ test("the longer way to send one home starts with it picked, and keeps it in vie
   await expect(picked).toHaveCount(1);
   await expect(picked).toContainText("96 Fernhollow Ln");
   await expect(agent.getByRole("searchbox")).toHaveCount(0);
-  await expect(agent.getByRole("button", { name: "Create link for 1 home" })).toBeVisible();
+  await expect(agent.getByRole("button", { name: "Next", exact: true })).toBeVisible();
 
   // Adding another: the first stays first, and the heading follows.
   await agent.getByRole("button", { name: "Add another home" }).click();
@@ -467,12 +467,14 @@ test("the longer way to send one home starts with it picked, and keeps it in vie
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send this home");
   await expect(tray.getByRole("listitem")).toHaveCount(1);
 
+  await toWho(agent);
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
   await who.fill("Pat");
   await who.press("Enter");
   await expect(agent.getByText("This link will be called Pat.")).toBeVisible();
-  await agent.getByRole("button", { name: "Create link for 1 home" }).click();
-  await agent.waitForURL("**/dashboard/shares/*");
+  // Made, their own thoughts skipped: the link, ready to copy, and nothing else to do.
+  await toLinkReady(agent);
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Your link is ready");
   await expect(agent.getByLabel("Pat's link")).toHaveValue(/\/s\/[\w-]{32}$/);
 
   // A home that isn't for sale: the usual way to start.
