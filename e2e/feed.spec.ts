@@ -13,6 +13,7 @@ import { signedIn, enterCode,
   settle,
   signInAgent,
   signUpBuyer,
+  passOn,
 } from "./helpers";
 
 async function expectLogoGoesHome(page: Page) {
@@ -66,8 +67,9 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   const evergreens = await pick(post, "the evergreens");
   await expect(evergreens.getByRole("button", { name: "Like the evergreens, 1 like", exact: true })).toBeVisible();
   await evergreens.getByRole("button", { name: "Close" }).click();
-  // No more Hinge-style Pass and Like buttons.
-  await expect(buyer.getByRole("button", { name: /^(Pass|Dislike)$/ })).toHaveCount(0);
+  // Yes or no to the home itself is one tap, in the photo's corners.
+  await expect(post.getByRole("button", { name: "Pass on this home" })).toBeVisible();
+  await expect(heartOf(post)).toBeVisible();
   await expect(buyer.getByText("Toby")).toHaveCount(0);
 
   // The heart likes it; the account supplies the name.
@@ -115,11 +117,9 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   // ...or "not for me", and why.
   await buyer.goto("/homes/SAMPLE-1005");
   const other = homeIn(buyer, "10421 Halvard Way NE");
-  more = await openMore(buyer, other);
-  await more.getByRole("button", { name: "Not for me" }).click();
-  await expect(more.getByRole("button", { name: "Not for me" })).toHaveAttribute("aria-pressed", "true");
+  more = await passOn(buyer, other);
   await more.getByRole("group", { name: "What made you pass?" }).getByRole("button", { name: "Price" }).click();
-  await more.getByRole("button", { name: "Next home" }).click();
+  await buyer.keyboard.press("Escape");
   await expect(more).toBeHidden();
 
   // ↓ moves to the next home.
@@ -151,9 +151,8 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   const heart = (await heartOf(again).boundingBox())!;
   const panel = (await again.locator("[data-words]").boundingBox())!;
   expect(price.x).toBeGreaterThan(1000);
-  // The heart is in the panel, in its row of things to do at the foot, under the price.
-  expect(heart.x).toBeGreaterThanOrEqual(panel.x);
-  expect(heart.x + heart.width).toBeLessThanOrEqual(panel.x + panel.width);
+  // The heart is on the photo, in its bottom right corner, not in the panel beside it.
+  expect(heart.x + heart.width).toBeLessThanOrEqual(panel.x);
   expect(heart.y).toBeGreaterThan(price.y);
 
   // Buyers don't get the agent dashboard.

@@ -434,12 +434,12 @@ export function ActivityTicker({
       "spot-comments": "See the comments about it",
       comment: "See it in the comments",
       fact: `Show ${event.spot ? `the ${event.spot.toLowerCase()}` : "it"}`,
-      home: about === "porchcard" ? "See the Porchcard" : "See the comments",
+      home: about === "porchcard" ? "See the feedback" : "See the comments",
     };
     const where = words.elsewhere ? `, in photo ${words.index + 1}` : words.where ? `, in ${words.where}` : "";
     name = `${ended(`${words.sentence}${where}${event.body ? `: ${event.body}` : ""}`)} ${spokenAgo(ago)}. ${what[words.tap]}.`;
   } else if (now?.kind === "rest") {
-    name = `${now.text}. ${about === "porchcard" ? "See the Porchcard" : "See the comments"}.`;
+    name = `${now.text}. ${about === "porchcard" ? "See the feedback" : "See the comments"}.`;
   }
 
   const multi = cycle.length > 1 && !readOnly;

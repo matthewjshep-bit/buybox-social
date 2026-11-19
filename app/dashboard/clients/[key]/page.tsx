@@ -1,6 +1,7 @@
 import { ArrowLeft, Plus } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ClientFeedbackButton } from "@/components/client-feedback";
 import { factsOf, LinkRow, lookAlikes, StatusSentence } from "@/components/client-list";
 import { CopyLink } from "@/components/copy-link";
 import { ClientFeed } from "@/components/home/client-feed";
@@ -8,6 +9,7 @@ import { LiveRefresh } from "@/components/live-refresh";
 import { Avatar } from "@/components/ui";
 import { requireAgent } from "@/lib/auth";
 import { getClientCards } from "@/lib/client-feed";
+import { getClientFeedback } from "@/lib/client-feedback";
 import { getClientBook, replyHref } from "@/lib/clients";
 import { cn } from "@/lib/format";
 import { photoUrl, photoVersion } from "@/lib/person-photo";
@@ -46,9 +48,11 @@ export default async function ClientPage({ params }: Props) {
   const { agent, client } = await clientOf(params);
   if (!client) notFound();
 
-  const [cards, mine] = await Promise.all([
+  const [cards, mine, feedback] = await Promise.all([
     getClientCards(agent.id, { participantIds: client.participantIds, most: 10 }),
     ensureAccountVisitor(agent),
+    // What they like and don't, across every home they've been sent.
+    getClientFeedback(agent.id, client.participantIds),
   ]);
   const me = {
     name: agent.full_name.trim() || agent.email,
@@ -102,9 +106,10 @@ export default async function ClientPage({ params }: Props) {
           </div>
         </div>
         <div className="mt-6 flex flex-wrap gap-3">
-          {/* Three at most. While they're waiting, Reply is the one filled
-              button, and goes down the page to what they said; otherwise the
-              thing to do is send them more. Their link, to send again, always. */}
+          {/* While they're waiting, Reply is the one filled button, and goes
+              down the page to what they said; otherwise the thing to do is
+              send them more. Their feedback, once there is any: what they like
+              and don't, across every home. Their link, to send again, always. */}
           {client.reply && (
             <Link href={did ? "#did" : replyHref(client.reply)} className={button({ kind: "primary", size: "lg" })}>
               Reply<span className="sr-only"> to {client.name}</span>
@@ -117,6 +122,7 @@ export default async function ClientPage({ params }: Props) {
           >
             <Plus aria-hidden size={20} /> Send more homes
           </Link>
+          {feedback.any && <ClientFeedbackButton name={client.name} feedback={feedback} />}
           <CopyLink path={client.linkPath} name={client.name} />
         </div>
       </section>

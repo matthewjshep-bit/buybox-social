@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { clientRow, signedIn, createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, openMore, pickHome, signInAgent } from "./helpers";
+import { clientRow, signedIn, createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, pickHome, signInAgent, passOn } from "./helpers";
 
 test("an agent's client page: what they want, remove and restore, add homes, private only", async ({
   browser,
@@ -22,10 +22,8 @@ test("an agent's client page: what they want, remove and restore, add homes, pri
   await likeInPhoto(kirkland, "the floating staircase");
 
   const olympia = homeIn(joe, "1204 Quillan St SE");
-  // No Tinder-style buttons: passing is "Not for me", under More.
-  await expect(olympia.getByRole("button", { name: /^(Pass|Dislike)$/ })).toHaveCount(0);
-  const more = await openMore(joe, olympia);
-  await more.getByRole("button", { name: "Not for me" }).click();
+  // Passing is the X on the photo; why, for anyone who'd like to say, is under More.
+  const more = await passOn(joe, olympia);
   const why = more.getByRole("group", { name: "What made you pass?" });
   await why.getByRole("button", { name: "Exterior" }).click();
   await expect(why.getByRole("button", { name: "Exterior" })).toHaveAttribute("aria-pressed", "true");
@@ -119,4 +117,29 @@ test("an agent's client page: what they want, remove and restore, add homes, pri
   await expect(agent.getByRole("main")).toContainText(/Liked 1 of 3/);
   await expect(agent.getByRole("main")).toContainText("Passed on 1");
   await expect(agent.getByRole("main")).not.toContainText("Stella");
+
+  // Feedback, for the client as a whole: what he likes and doesn't across
+  // every home he was sent, then each home with what he made of it.
+  await agent.getByRole("button", { name: "Feedback from Joe" }).click();
+  const feedback = agent.getByRole("dialog", { name: "Feedback from Joe" });
+  await expect(feedback.getByRole("heading", { name: "Joe's feedback" })).toBeVisible();
+  await expect(feedback).toContainText("Liked 1 of 3 · passed on 1");
+  await expect(feedback.getByRole("region", { name: "Liked", exact: true })).toContainText(/floating staircase/i);
+  await expect(feedback.getByRole("region", { name: "Didn't like" })).toContainText("Exterior");
+  const byHome = feedback.getByRole("region", { name: "Home by home" }).getByRole("listitem");
+  await expect(byHome).toHaveCount(3);
+  await expect(byHome.filter({ hasText: "10421 Halvard Way NE" })).toContainText("Liked");
+  const passed = byHome.filter({ hasText: "1204 Quillan St SE" });
+  await expect(passed).toContainText("Passed");
+  await expect(passed).toContainText("Didn't like: Exterior");
+  await expect(passed).toContainText(/1\s*comment/);
+  // (What he said stays on the home; the summary only counts it.)
+  await expect(feedback).not.toContainText("farmhouse sinks");
+  await expect(byHome.filter({ hasText: "812 N Corbel St" })).toContainText("Nothing yet");
+  // Nothing of anyone else's, and each home is a tap from its own feedback.
+  await expect(feedback).not.toContainText("Stella");
+  await expect(byHome.filter({ hasText: "1204 Quillan St SE" }).getByRole("link")).toHaveAttribute(
+    "href",
+    /\/reel\?from=client%3A[\w-]+&home=SAMPLE-1009$/,
+  );
 });

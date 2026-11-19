@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import type { Listing } from "../lib/listings/types";
 import { mediaKeyOf } from "../lib/photos";
 import { describeReaction, spotPlace } from "../lib/reactions";
-import { clientRow, commentIn, createShare, detailsForm, heartOf, homeIn, joinAs, likeInPhoto, missedTaps, openComments, openMore, pick, settle, signedIn, signInAgent, tapPhoto, toFirstHome, toWho, pickHome } from "./helpers";
+import { clientRow, commentIn, createShare, detailsForm, heartOf, homeIn, joinAs, likeInPhoto, missedTaps, openComments, openMore, pick, settle, signedIn, signInAgent, tapPhoto, toFirstHome, toWho, pickHome, passOn } from "./helpers";
 
 const emailsTo = (address: string) =>
   readFileSync("test-results-server.log", "utf8")
@@ -154,9 +154,7 @@ test("the dashboard leads with what's new, and says when each link was opened, n
   const quillan = homeIn(owen, "1204 Quillan St SE");
   await heartOf(quillan).click();
   await expect(heartOf(quillan)).toHaveAttribute("aria-pressed", "true");
-  const more = await openMore(owen, homeIn(owen, "719 Saltmarsh Ln"));
-  await more.getByRole("button", { name: "Not for me" }).click();
-  await expect(more.getByRole("button", { name: "Not for me" })).toHaveAttribute("aria-pressed", "true");
+  await passOn(owen, homeIn(owen, "719 Saltmarsh Ln"));
   await owen.keyboard.press("Escape");
   const chat = await openComments(owen, quillan);
   await chat.getByLabel("Add a comment").fill("Love the porch.");
@@ -307,8 +305,7 @@ test("the agent's page about a client reads like the product: a card per home, s
   // Christopher passes on the first, for its price.
   const chris = await signedIn(browser);
   await chris.goto(urls.Christopher);
-  const more = await openMore(chris, homeIn(chris, "5902 Lakeview Terrace SE"));
-  await more.getByRole("button", { name: "Not for me" }).click();
+  const more = await passOn(chris, homeIn(chris, "5902 Lakeview Terrace SE"));
   const why = more.getByRole("group", { name: "What made you pass?" });
   // (Saved before the agent looks.)
   const priceSaved = chris.waitForResponse(
@@ -514,8 +511,7 @@ test("the agent's Porchcard on a home: what each person thinks, the exact spot t
   // Cal passes on it, for its price. Pat hasn't looked yet.
   const cal = await signedIn(browser);
   await cal.goto(urls.Cal);
-  const more = await openMore(cal, homeIn(cal, SALTMARSH));
-  await more.getByRole("button", { name: "Not for me" }).click();
+  const more = await passOn(cal, homeIn(cal, SALTMARSH));
   const why = more.getByRole("group", { name: "What made you pass?" });
   // (Saved before the agent looks.)
   const priceSaved = cal.waitForResponse(
@@ -532,10 +528,10 @@ test("the agent's Porchcard on a home: what each person thinks, the exact spot t
   await agent.setViewportSize({ width: 393, height: 852 });
   await agent.goto(dashboardUrl);
   const home = agent.getByRole("region", { name: SALTMARSH });
-  const open = home.getByRole("button", { name: `Porchcard for ${SALTMARSH}` });
+  const open = home.getByRole("button", { name: `Feedback on ${SALTMARSH}` });
   expect((await open.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await open.click();
-  const card = agent.getByRole("dialog", { name: "Porchcard" });
+  const card = agent.getByRole("dialog", { name: "Feedback" });
   await expect(card).toBeVisible();
   expect(await card.evaluate((el) => el.matches(":modal"))).toBe(true);
   await expect(card).toContainText("Only people on this link see this");
@@ -605,7 +601,7 @@ test("the agent's Porchcard on a home: what each person thinks, the exact spot t
     await open.click();
     await expect(card).toBeVisible();
     expect(await card.evaluate((el) => el.matches(":modal"))).toBe(false);
-    await expect(card.getByRole("heading", { name: "Porchcard", exact: true })).toBeFocused();
+    await expect(card.getByRole("heading", { name: "Feedback", exact: true })).toBeFocused();
     await settle(card);
     const panel = (await card.boundingBox())!;
     expect(panel.x + panel.width).toBeGreaterThan(width - 40);
@@ -632,13 +628,13 @@ test("the agent's Porchcard on a home: what each person thinks, the exact spot t
   // Another home's Porchcard while one is open: the keyboard goes to it, and
   // back to that home's button when it closes.
   await open.click();
-  await expect(card.getByRole("heading", { name: "Porchcard", exact: true })).toBeFocused();
+  await expect(card.getByRole("heading", { name: "Feedback", exact: true })).toBeFocused();
   const quillan = agent.getByRole("region", { name: "1204 Quillan St SE" });
-  const other = quillan.getByRole("button", { name: "Porchcard for 1204 Quillan St SE" });
+  const other = quillan.getByRole("button", { name: "Feedback on 1204 Quillan St SE" });
   await other.focus();
   await agent.keyboard.press("Enter");
-  await expect(agent.getByRole("dialog", { name: "Porchcard for 1204 Quillan St SE" })).toBeVisible();
-  await expect(card.getByRole("heading", { name: "Porchcard", exact: true })).toBeFocused();
+  await expect(agent.getByRole("dialog", { name: "Feedback on 1204 Quillan St SE" })).toBeVisible();
+  await expect(card.getByRole("heading", { name: "Feedback", exact: true })).toBeFocused();
   await agent.keyboard.press("Escape");
   await expect(card).toBeHidden();
   await expect(other).toBeFocused();
@@ -659,7 +655,7 @@ test("the agent's Porchcard on a home: what each person thinks, the exact spot t
   const response = await stranger.goto(dashboardUrl);
   expect(response?.status()).toBe(404);
   await expect(stranger.getByText(BEA_SAYS)).toHaveCount(0);
-  await expect(stranger.getByRole("button", { name: /^Porchcard/ })).toHaveCount(0);
+  await expect(stranger.getByRole("button", { name: /^Feedback/ })).toHaveCount(0);
 });
 
 test("something liked in one home and passed on in another depends on the home, and is agreed only where they both liked it", async ({
@@ -692,8 +688,7 @@ test("something liked in one home and passed on in another depends on the home, 
   const bob = await signedIn(browser);
   await bob.goto(urls.Bob);
   await likeLayout(bob, CORBEL);
-  const more = await openMore(bob, homeIn(bob, HALVARD));
-  await more.getByRole("button", { name: "Not for me" }).click();
+  const more = await passOn(bob, homeIn(bob, HALVARD));
   const why = more.getByRole("group", { name: "What made you pass?" });
   await why.getByRole("button", { name: "Layout" }).click();
   await expect(why.getByRole("button", { name: "Layout" })).toHaveAttribute("aria-pressed", "true");

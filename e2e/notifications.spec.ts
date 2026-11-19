@@ -3,7 +3,7 @@
 // their link, and anyone hears who started following them. Each line goes
 // straight to the thing it's about, and nobody else ever sees it.
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, openComments, openMore, signInAgent, signUpBuyer, toFirstHome } from "./helpers";
+import { createShare, heartOf, homeIn, joinAs, openComments, signInAgent, signUpBuyer, toFirstHome, passOn } from "./helpers";
 
 const QUILLAN = "1204 Quillan St SE";
 const SALTMARSH = "719 Saltmarsh Ln";
@@ -49,9 +49,7 @@ test("a link's people and its agent hear about each other, and each line opens t
   await Promise.all([saved(jo), heartOf(quillan).click()]);
   await expect(heartOf(quillan)).toHaveAttribute("aria-pressed", "true");
   // And she passes on the other one, which is for Fern's dashboard, never her bell.
-  const more = await openMore(jo, homeIn(jo, SALTMARSH));
-  await more.getByRole("button", { name: "Not for me" }).click();
-  await expect(more.getByRole("button", { name: "Not for me" })).toHaveAttribute("aria-pressed", "true");
+  await passOn(jo, homeIn(jo, SALTMARSH));
   await jo.keyboard.press("Escape");
 
   // Jo's bell: the link Fern sent her, from Fern (her photo, her name to her

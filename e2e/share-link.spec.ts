@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { commentIn, createShare, heartOf, homeIn, joinAs, linkPorchcard, openComments, openMore, pick, saveDetails, signedIn, signInAgent, toFirstHome } from "./helpers";
+import { commentIn, createShare, heartOf, homeIn, joinAs, linkPorchcard, openComments, pick, saveDetails, signedIn, signInAgent, toFirstHome } from "./helpers";
 
 // The link anyone can join, when no one was named.
 async function packageLink(agent: Page, addresses: string[]) {
@@ -109,7 +109,7 @@ test("one home: the link opens on a word from the agent, then the home, in the a
 
   // The end of the one home.
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("heading", { name: "That's all" })).toBeAttached();
+  await expect(page.getByRole("heading", { name: /^(That's all|What did you think\?)$/ })).toBeAttached();
   await expect(page.getByText("Jordan Rivera sees your likes and comments.")).toBeAttached();
   // A personal link isn't one to pass on.
   await expect(page.getByRole("button", { name: "Invite someone" })).toHaveCount(0);
@@ -345,7 +345,7 @@ test("the agent's Porchcard for the link says who on it hasn't weighed in yet; t
   test.setTimeout(60_000);
   const agent = await signInAgent(browser, "notyet-agent@example.com", "Jordan Rivera");
   const { urls, dashboardUrl } = await createShare(agent, ["812 N Corbel"], ["Owen", "Pat"]);
-  const noPorchcard = (page: Page) => expect(page.getByRole("button", { name: /Porchcard/ })).toHaveCount(0);
+  const noFeedback = (page: Page) => expect(page.getByRole("button", { name: /Feedback/ })).toHaveCount(0);
 
   const owen = await signedIn(browser);
   await owen.goto(urls.Owen);
@@ -356,9 +356,9 @@ test("the agent's Porchcard for the link says who on it hasn't weighed in yet; t
   await heartOf(home).click();
   await expect(heartOf(home)).toHaveAttribute("aria-pressed", "true");
   await liked;
-  // Like, Comments and More on his link: the Porchcard is the agent's.
-  await expect(home.locator("[data-rail]").getByRole("button")).toHaveCount(3);
-  await noPorchcard(owen);
+  // Comments and More on his link (the heart and the X are on the photo): the Porchcard is the agent's.
+  await expect(home.locator("[data-rail]").getByRole("button")).toHaveCount(2);
+  await noFeedback(owen);
   // Two people on it: never "only you".
   const chat = await openComments(owen, home);
   await expect(chat.getByText("Only Jordan Rivera and people on this link see this.")).toBeVisible();
@@ -369,7 +369,7 @@ test("the agent's Porchcard for the link says who on it hasn't weighed in yet; t
   const pat = await (await browser.newContext()).newPage();
   await pat.goto(urls.Pat);
   await expect(homeIn(pat, "812 N Corbel St")).toBeVisible();
-  await noPorchcard(pat);
+  await noFeedback(pat);
 
   // The agent's, on the link's own page: Owen's take, and Pat still to come.
   const card = await linkPorchcard(agent, dashboardUrl, "812 N Corbel St");
@@ -392,8 +392,7 @@ test("one person on two devices is one person: on the agent's Porchcard once, an
     await toFirstHome(page);
     const home = homeIn(page, ADDRESS);
     await expect(home).toBeInViewport({ ratio: 0.9 });
-    const more = await openMore(page, home);
-    const pass = more.getByRole("button", { name: "Not for me" });
+    const pass = home.getByRole("button", { name: "Pass on this home" });
     await pass.click();
     await joinAs(page, name);
     await expect(pass).toHaveAttribute("aria-pressed", "true");
@@ -401,8 +400,6 @@ test("one person on two devices is one person: on the agent's Porchcard once, an
       await pass.click();
       await expect(pass).toHaveAttribute("aria-pressed", "false");
     }
-    await page.keyboard.press("Escape");
-    await expect(more).toBeHidden();
     return page;
   };
   // Owen passes on his phone, then joins on his laptop too; Pat joins and
@@ -415,7 +412,7 @@ test("one person on two devices is one person: on the agent's Porchcard once, an
   for (const page of [phone, laptop, pat]) {
     await page.reload();
     await expect(homeIn(page, ADDRESS)).toBeVisible();
-    await expect(page.getByRole("button", { name: /Porchcard/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Feedback/ })).toHaveCount(0);
   }
   // On the agent's, for the link: Owen's pass, once, and only Pat still to
   // come (no second Owen, from the laptop, who hasn't weighed in).
@@ -451,7 +448,7 @@ test("'only you' is said only when nobody else can read it: not once the package
   await owen.keyboard.press("Escape");
   await expect(chat).toBeHidden();
   // (The Porchcard, which said so too, is the agent's now: not on the link.)
-  await expect(owen.getByRole("button", { name: /Porchcard/ })).toHaveCount(0);
+  await expect(owen.getByRole("button", { name: /Feedback/ })).toHaveCount(0);
   await expect(owen.getByText(/only you and/i)).toHaveCount(0);
   expect(await (await owen.request.get(owenUrl)).text()).not.toContain("Only you and");
 });

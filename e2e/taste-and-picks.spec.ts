@@ -45,10 +45,11 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
   // not just shown, before the reload below.)
   const saved = () =>
     pia.waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
-  const pass = await openMore(pia, homes.nth(3));
   let save = saved();
-  await pass.getByRole("button", { name: "Not for me" }).click();
+  await homes.nth(3).getByRole("button", { name: "Pass on this home" }).click();
   await save;
+  await homes.nth(3).scrollIntoViewIfNeeded();
+  const pass = await openMore(pia, homes.nth(3));
   const why = pass.getByRole("group", { name: "What made you pass?" });
   save = saved();
   await why.getByRole("button", { name: "Exterior" }).click();
@@ -134,7 +135,7 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   await expect(devChat.getByText("Cleo liked the three-car garage")).toBeVisible();
   await dev.keyboard.press("Escape");
   // (Counted up, it's in the Porchcard, which is an agent's: e2e/public.spec.ts.)
-  await expect(dev.getByRole("button", { name: "Porchcard", exact: true })).toHaveCount(0);
+  await expect(dev.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
   devChat = await openComments(dev, devHome);
 
   // Dev likes Cleo's comment and replies to it.

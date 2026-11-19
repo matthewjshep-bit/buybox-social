@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, Check, ChevronDown, Heart, Home, Mail, MessageSquare, Phone, Send, UserPlus } from "lucide-react";
+import { ArrowDown, Check, ChevronDown, Heart, Home, Mail, MessageSquare, Phone, Send, UserPlus, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
@@ -22,9 +22,10 @@ import { LinkAgentProvider, type LinkAgent } from "@/components/agent-notes";
 import { LeaveLink, looksLikeEmail, ShareHeader, type ContactExtras, type LinkAccount } from "@/components/agent-card";
 import { Backdrop } from "@/components/join";
 import type { MapHome } from "@/components/listing-map";
-import { ReelFeed } from "@/components/reel";
+import { ReelFeed, useEndHomes } from "@/components/reel";
+import { HomeThumb } from "@/components/ui";
 import { phoneDigits } from "@/lib/contact";
-import { agentFirstName, cn } from "@/lib/format";
+import { agentFirstName, cn, formatPrice } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
 import type { ShareAgent } from "@/lib/shares";
 import { button, card, focusOnDark } from "@/lib/ui";
@@ -463,7 +464,7 @@ export function ShareWelcome({
   return (
     <div className="relative flex h-full flex-col">
       <Backdrop photo={photo} priority blurred tinted />
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-6 pt-[calc(env(safe-area-inset-top)+4.5rem)] sm:px-10">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pt-[calc(env(safe-area-inset-top)+4.5rem)] sm:px-10">
         <div
           className={cn(
             "mx-auto my-auto w-full max-w-2xl py-6 [@media(max-height:44rem)]:py-4",
@@ -512,6 +513,9 @@ export function ShareWelcome({
                 hoveredKey={hovered}
                 onHover={setHovered}
                 onSelect={goToHome}
+                // The wheel over the map scrolls on down to the homes, as it
+                // does anywhere else on this screen; the buttons zoom it.
+                cooperative
               />
             </section>
           )}
@@ -559,7 +563,7 @@ export function ThoughtsIntro({
   return (
     <div className="relative flex h-full flex-col">
       <Backdrop photo={photo} priority blurred tinted />
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-6 pt-[calc(env(safe-area-inset-top)+4.5rem)] sm:px-10">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pt-[calc(env(safe-area-inset-top)+4.5rem)] sm:px-10">
         <div className="mx-auto my-auto flex w-full max-w-md flex-col items-center py-6 text-center">
           <p className="text-meta font-semibold uppercase tracking-wider text-white/85">Step 3 of 3</p>
           <h1 className="mt-2 text-balance font-display text-4xl leading-tight sm:text-5xl">Add your feedback</h1>
@@ -612,11 +616,78 @@ export function ShareEnd({
   token: string;
 }) {
   const tools = useContext(ContactAgent);
+  const end = useEndHomes();
   if (count === 0) return <EmptyLink />;
+  const homes = end?.homes ?? [];
+  // Still something they haven't said yes or no to: the screen asks.
+  const asking = !tools.preview && homes.some((home) => !home.reaction);
   return (
-    <div className="w-full max-w-md">
-      <h2 className="text-balance font-display text-3xl">That&apos;s all</h2>
-      <p className="mt-2 text-white/85">{agentName} sees your likes and comments.</p>
+    <div className="flex w-full flex-col items-center">
+      <h2 className="text-balance font-display text-3xl">{asking ? "What did you think?" : "That's all"}</h2>
+      <p className="mt-2 text-white/85">
+        {tools.preview ? "Here they can like or pass on each home." : `${agentName} sees your likes and comments.`}
+      </p>
+      {/* Every home on the link, small: a heart and an X on each, saying what
+          they made of it already, a tap from saying it now. The photo goes
+          back to that home. (The agent, looking at their own link, sees the
+          homes without the buttons.) */}
+      {end && homes.length > 0 && (
+        <ul
+          aria-label="The homes"
+          className={cn(
+            "mt-6 grid w-full gap-3 text-left",
+            homes.length === 1 ? "max-w-xs grid-cols-1" : homes.length === 2 ? "max-w-xl grid-cols-2" : "max-w-3xl grid-cols-2 sm:grid-cols-3",
+          )}
+        >
+          {homes.map((home) => (
+            <li key={home.key} className="min-w-0">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => tools.goToHome(home.key)}
+                  aria-label={`See ${home.address}`}
+                  className={cn("block w-full rounded-2xl", focusOnDark)}
+                >
+                  <HomeThumb src={home.photo} sizes="(min-width: 640px) 256px, 50vw" className="aspect-[4/3] w-full rounded-2xl" />
+                </button>
+                {!tools.preview && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label={`${home.address}: pass`}
+                      aria-pressed={home.reaction === "dislike"}
+                      onClick={() => end.choose(home.key, "dislike")}
+                      className={cn(
+                        "absolute bottom-2 left-2 flex size-11 items-center justify-center rounded-full ring-1 ring-white/25 backdrop-blur-md transition-colors",
+                        home.reaction === "dislike" ? "bg-amber-600 text-white" : "bg-black/50 text-white hover:bg-black/70",
+                        focusOnDark,
+                      )}
+                    >
+                      <X aria-hidden size={22} strokeWidth={2.5} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`${home.address}: like`}
+                      aria-pressed={home.reaction === "like"}
+                      onClick={() => end.choose(home.key, "like")}
+                      className={cn(
+                        "absolute bottom-2 right-2 flex size-11 items-center justify-center rounded-full ring-1 ring-white/25 backdrop-blur-md transition-colors",
+                        home.reaction === "like" ? "bg-rose-600 text-white" : "bg-black/50 text-white hover:bg-black/70",
+                        focusOnDark,
+                      )}
+                    >
+                      <Heart aria-hidden size={22} strokeWidth={2.5} className={home.reaction === "like" ? "fill-white" : undefined} />
+                    </button>
+                  </>
+                )}
+              </div>
+              <p className="mt-1.5 font-display text-lg leading-tight">{formatPrice(home.price)}</p>
+              <p className="truncate text-sm text-white/80">{home.address}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="w-full max-w-md">
       {!tools.preview && <WhatsNext />}
       {!personal ? (
         <div data-light className={cn(card, "mt-8 p-5 text-ink")}>
@@ -634,6 +705,7 @@ export function ShareEnd({
         )
       )}
       {tools.leave && !tools.preview && <LeaveLink first={tools.first} leave={tools.leave} onDark className="mt-6" />}
+      </div>
     </div>
   );
 }
@@ -642,7 +714,7 @@ export function ShareEnd({
 // to each; a word with the agent; asking them for more like these; and, signed
 // in, back to their own Porchcard home.
 function WhatsNext() {
-  const { open, first, liked, goToHome, askHref, signedIn } = useContext(ContactAgent);
+  const { open, first, askHref, signedIn } = useContext(ContactAgent);
   const id = useId();
   const ask = (
     <>
@@ -655,25 +727,6 @@ function WhatsNext() {
       <h3 id={id} className="font-semibold">
         What&apos;s next
       </h3>
-      {liked.length > 0 && (
-        <>
-          <p className="mt-1 text-sm text-muted">You liked</p>
-          <ul className="mt-2 flex flex-wrap gap-2">
-            {liked.map((home) => (
-              <li key={home.listingKey} className="min-w-0 max-w-full">
-                <button
-                  type="button"
-                  onClick={() => goToHome(home.listingKey)}
-                  className="flex min-h-11 max-w-full items-center gap-1.5 rounded-full bg-stone-100 px-3.5 text-sm font-medium hover:bg-stone-200"
-                >
-                  <Heart aria-hidden size={14} className="shrink-0 fill-rose-600 text-rose-600" />
-                  <span className="truncate">{home.address}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
       <div className="mt-4 flex flex-col gap-2">
         <button type="button" aria-haspopup="dialog" onClick={open} className={button({ kind: "primary", block: true })}>
           <MessageSquare aria-hidden size={18} />

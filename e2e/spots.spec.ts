@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { signedIn, createShare, homeIn, joinAs, pick, settle, signInAgent, tapPhoto } from "./helpers";
+import { signedIn, createShare, homeIn, joinAs, pick, settle, signInAgent, tapPhoto, heartOf } from "./helpers";
 
 // The phone settings carry over to new contexts, touch included; a desktop has none.
 const DESKTOP = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, isMobile: false, hasTouch: false };
@@ -186,7 +186,7 @@ test("a tap on the words or the buttons isn't a tap on the photo, but just besid
   const CORBEL = "812 N Corbel St";
   const SHINGLED = "Shingled home with a wraparound porch and green lawn";
   // On a phone the words sit below the photo, and the buttons in a row
-  // under them: nothing is on the photo's bottom corner.
+  // under them: in the photo's two bottom corners, only the X and the heart.
   await page.goto("/homes/SAMPLE-1003");
   const home = homeIn(page, CORBEL);
   // Scrolled all the way to it, so where things are stays put.
@@ -196,9 +196,12 @@ test("a tap on the words or the buttons isn't a tap on the photo, but just besid
   const photoBottom = photo.y + photo.height;
   expect(rail.y).toBeGreaterThanOrEqual(photoBottom);
 
-  // The photo's bottom right corner is the photo: a tap there opens a card
-  // about that spot.
-  const [x, y] = [photo.x + photo.width - 40, photoBottom - 40];
+  // Just above the heart in its bottom right corner is the photo: a tap
+  // there opens a card about that spot. (A tap on the heart itself likes the home.)
+  const heart = (await heartOf(home).boundingBox())!;
+  expect(heart.x + heart.width).toBeGreaterThan(photo.x + photo.width - 20);
+  expect(heart.y + heart.height).toBeLessThanOrEqual(photoBottom + 1);
+  const [x, y] = [photo.x + photo.width - 40, heart.y - 24];
   await page.mouse.click(x, y);
   const card = home.getByRole("group").and(home.locator("[data-spot-card]"));
   await expect(card).toBeVisible();
@@ -236,7 +239,7 @@ test("a tap on the words or the buttons isn't a tap on the photo, but just besid
   await expect(home.getByRole("button", { name: "more", exact: true })).toHaveCount(0);
   await expect(home.locator('[data-fact="Description"]')).toHaveText(/\.$/);
   await expect(home.locator('[data-fact="Description"]')).toBeInViewport();
-  await expect(home.getByRole("button", { name: "Porchcard", exact: true })).toHaveCount(0);
+  await expect(home.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
   // Still nothing drawn on the photo where Sky liked it.
   await expect(home.locator("[data-pin], [data-pins-toggle]")).toHaveCount(0);
 });

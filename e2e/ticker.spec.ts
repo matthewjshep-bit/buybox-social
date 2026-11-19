@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import type { Listing } from "../lib/listings/types";
-import { signedIn, toFirstHome, createShare, heartOf, homeIn, joinAs, openComments, openMore, pick, settle, signInAgent, signUpBuyer, tapPhoto } from "./helpers";
+import { signedIn, toFirstHome, createShare, heartOf, homeIn, joinAs, openComments, pick, settle, signInAgent, signUpBuyer, tapPhoto, passOn } from "./helpers";
 
 // The line at the photo's foot: what people did on the photo on screen, one
 // at a time, each with a hotspot on the spot where they did it. Timers run on
@@ -450,8 +450,7 @@ test("isolation: what's private on an agent's link never reaches the public line
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByText(SECRET)).toBeVisible();
   await yara.keyboard.press("Escape");
-  const more = await openMore(yara, yaraHome);
-  await more.getByRole("button", { name: "Not for me" }).click();
+  const more = await passOn(yara, yaraHome);
   await more.getByRole("group", { name: "What made you pass?" }).getByRole("button", { name: "Price" }).click();
   await expect(
     more.getByRole("group", { name: "What made you pass?" }).getByRole("button", { name: "Price" }),

@@ -194,7 +194,7 @@ test("the year built, the description and who listed it are each something to li
   await expect(onPhone.locator("[data-photo-caption]")).toBeHidden();
   await card.getByRole("button", { name: "Close" }).click();
   // (No Porchcard there for a visitor.)
-  await expect(phone.getByRole("button", { name: "Porchcard", exact: true })).toHaveCount(0);
+  await expect(phone.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
 
   // An agent, going through a link's homes on a phone, has the Porchcard, and
   // its facts open their cards too.

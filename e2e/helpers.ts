@@ -203,6 +203,7 @@ export async function toFirstHome(page: Page) {
 
 // The heart on a home's rail (photo hearts are named "Like the kitchen").
 // The home's own heart on the rail (not a heart on a comment, in the feed beside the photo).
+// (It's in the photo's bottom right corner, opposite the X that passes.)
 export const heartOf = (home: Locator) => home.getByRole("button", { name: /^Like (?!the )(?!.*\bcomment\b)/ });
 
 // One comment in a thread: who wrote it, and what it says.
@@ -233,8 +234,8 @@ export async function linkHomes(agent: Page, dashboardUrl: string, listingKey: s
 // A home's Porchcard: what everyone thinks of it, from the button on its rail
 // (an agent's alone, in a link's homes or a client's: linkHomes).
 export async function openScorecard(page: Page, home: Locator) {
-  await home.getByRole("button", { name: "Porchcard", exact: true }).click();
-  const sheet = page.getByRole("dialog", { name: "Porchcard" });
+  await home.getByRole("button", { name: "Feedback", exact: true }).click();
+  const sheet = page.getByRole("dialog", { name: "Feedback" });
   await expect(sheet).toBeVisible();
   return sheet;
 }
@@ -243,8 +244,8 @@ export async function openScorecard(page: Page, home: Locator) {
 // each person on the link thinks of a home, by name.
 export async function linkPorchcard(agent: Page, dashboardUrl: string, address: string) {
   await agent.goto(dashboardUrl);
-  await agent.getByRole("region", { name: address }).getByRole("button", { name: `Porchcard for ${address}` }).click();
-  const card = agent.getByRole("dialog", { name: "Porchcard" });
+  await agent.getByRole("region", { name: address }).getByRole("button", { name: `Feedback on ${address}` }).click();
+  const card = agent.getByRole("dialog", { name: "Feedback" });
   await expect(card).toBeVisible();
   return card;
 }
@@ -254,6 +255,18 @@ export async function openMore(page: Page, home: Locator) {
   const sheet = page.getByRole("dialog", { name: "More" });
   await expect(sheet).toBeVisible();
   return sheet;
+}
+
+// Pass on a home, the way anyone does: the X in its photo's corner, which
+// goes on to the next home. Then back on the one passed on, with More open,
+// where "What made you pass?" is for anyone who'd like to say.
+export async function passOn(page: Page, home: Locator) {
+  const x = home.getByRole("button", { name: "Pass on this home" });
+  await x.click();
+  await expect(x).toHaveAttribute("aria-pressed", "true");
+  await home.scrollIntoViewIfNeeded();
+  await expect.poll(async () => Math.abs((await home.boundingBox())?.y ?? 99)).toBeLessThan(1);
+  return openMore(page, home);
 }
 
 // Scrolls the feed to the very end, loading every home on the way.

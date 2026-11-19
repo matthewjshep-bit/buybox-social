@@ -12,7 +12,6 @@ import {
   homeIn,
   likeInPhoto,
   openComments,
-  openMore,
   pick,
   signedIn,
   signInAgent,
@@ -330,9 +329,7 @@ test("privacy: hidden passes stay out, only the owner sees what they didn't like
   await Promise.all([saved(otto), heartOf(homeIn(otto, TAMSEN)).click()]);
   await expect(heartOf(homeIn(otto, TAMSEN))).toHaveAttribute("aria-pressed", "true");
   await otto.goto("/homes/SAMPLE-1013");
-  const more = await openMore(otto, homeIn(otto, LAKEVIEW));
-  await Promise.all([saved(otto), more.getByRole("button", { name: "Not for me" }).click()]);
-  await otto.keyboard.press("Escape");
+  await Promise.all([saved(otto), homeIn(otto, LAKEVIEW).getByRole("button", { name: "Pass on this home" }).click()]);
   await otto.goto("/homes/SAMPLE-1003");
   const thread = await openComments(otto, homeIn(otto, CORBEL));
   await thread.getByLabel("Add a comment").fill(OTTO_SAID);

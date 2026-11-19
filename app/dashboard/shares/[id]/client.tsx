@@ -2,6 +2,7 @@
 
 import {
   Check,
+  ClipboardList,
   Copy,
   ExternalLink,
   Heart,
@@ -34,7 +35,6 @@ import { flushSync } from "react-dom";
 import { PeoplePicker, type Chosen } from "@/components/people-picker";
 import { ScorecardBody } from "@/components/scorecard";
 import { Sheet } from "@/components/sheet";
-import { PorchcardIcon } from "@/components/porchcard-logo";
 import type { FeedPost } from "@/lib/feed";
 import { cn } from "@/lib/format";
 import { firstNameSchema } from "@/lib/people-picker";
@@ -916,8 +916,8 @@ export function HomeScorecards({
           key={shown?.key}
           open={Boolean(open && post)}
           onClose={close}
-          label={post ? `Porchcard for ${post.listing.UnparsedAddress}` : "Porchcard"}
-          title="Porchcard"
+          label={post ? `Feedback on ${post.listing.UnparsedAddress}` : "Feedback"}
+          title="Feedback"
           anchor={wide ? dock : undefined}
           docked={wide}
           bodyRef={body}
@@ -956,9 +956,9 @@ export function ScorecardButton({ listingKey, address }: { listingKey: string; a
       onClick={() => open(listingKey)}
       className={button({ kind: "secondary" })}
     >
-      <PorchcardIcon aria-hidden size={16} />
-      Porchcard
-      <span className="sr-only"> for {address}</span>
+      <ClipboardList aria-hidden size={16} />
+      Feedback
+      <span className="sr-only"> on {address}</span>
     </button>
   );
 }

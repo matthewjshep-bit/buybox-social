@@ -22,6 +22,7 @@ import {
   pick,
   settle,
   signInAgent,
+  passOn,
 } from "./helpers";
 
 // The Porchcard: everything people think of a home in one place. On the
@@ -56,14 +57,16 @@ test("a quiet home, for an agent going through a link's homes: the rail's Porchc
 
   // Like, Comments, Porchcard, Send, More, down the rail.
   const rail = home.locator("[data-rail]");
-  const names = [/^Like 88 Heron Bluff Rd/, /^Comments/, "Porchcard", "Send to a client", "More options"];
+  const names = [/^Comments/, "Feedback", "Send to a client", "More options"];
   await expect(rail.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(rail.getByRole("button").nth(i)).toHaveAccessibleName(name);
 
   // Nobody's said or liked anything: one card for it all, then the rest in order.
   const card = await openScorecard(agent, home);
   await expect(card.getByText("Nothing yet", { exact: true })).toBeVisible();
-  await expect(card.getByRole("heading", { level: 3 })).toHaveText(["Your take", "The facts", "About this home"]);
+  // (It's for reading: nothing in it says yes or no to the home. That's the heart and the X on the photo.)
+  await expect(card.getByRole("heading", { level: 3 })).toHaveText(["The facts", "About this home"]);
+  await expect(card.getByRole("button", { name: /I like it|Not for me|Change your take/ })).toHaveCount(0);
   await expect(card.getByText("88 Heron Bluff Rd, Port Townsend")).toBeVisible();
   // Price per square foot: the price over the living area, rounded.
   const perFoot = card.locator("dl > div").filter({ hasText: "Price per sq ft" });
@@ -75,24 +78,21 @@ test("a quiet home, for an agent going through a link's homes: the rail's Porchc
   // No passes, no activity line to speak of.
   await expect(card.getByText("People pass on")).toHaveCount(0);
 
-  // "I like it", right there: your take says so, and the heart agrees.
-  await card.getByRole("button", { name: "I like it" }).click();
-  await expect(card.getByText("You liked this")).toBeVisible();
-  await expect(card.getByLabel("1 person liked it")).toBeVisible();
-  // Changing your mind is More's job.
-  await card.getByRole("button", { name: "Change your take" }).click();
-  const more = agent.getByRole("dialog", { name: "More" });
-  await expect(more).toBeVisible();
-  await expect(card).toBeHidden();
+  // The heart on the photo, and the card then counts it.
   await agent.keyboard.press("Escape");
-  await expect(more).toBeHidden();
+  await expect(card).toBeHidden();
+  await heartOf(home).click();
   await expect(heartOf(home)).toHaveAttribute("aria-pressed", "true");
+  const again = await openScorecard(agent, home);
+  await expect(again.getByLabel("1 person liked it")).toBeVisible();
+  await agent.keyboard.press("Escape");
+  await expect(again).toBeHidden();
 
   // The line above the price, about the home as a whole, opens the Porchcard.
   const line = home.getByRole("group", { name: "Recent activity" }).getByRole("button").last();
-  await expect(line).toHaveAccessibleName(/^You liked this\. .+\. See the Porchcard\.$/);
+  await expect(line).toHaveAccessibleName(/^You liked this\. .+\. See the feedback\.$/);
   await line.click();
-  await expect(agent.getByRole("dialog", { name: "Porchcard" })).toBeVisible();
+  await expect(agent.getByRole("dialog", { name: "Feedback" })).toBeVisible();
   await agent.keyboard.press("Escape");
   expect(pageErrors).toEqual([]);
 });
@@ -107,12 +107,12 @@ test("for everyone else there's no Porchcard: Save is in its place, and the line
   const home = homeIn(page, HERON);
   await settled(home);
 
-  // Like, Comments, Save, Share, More, down the rail.
+  // Comments, Save, Share, More, down the rail. (The heart and the X are on the photo.)
   const rail = home.locator("[data-rail]");
-  const names = [/^Like 88 Heron Bluff Rd/, /^Comments/, `Save ${HERON}`, "Share", "More options"];
+  const names = [/^Comments/, `Save ${HERON}`, "Share", "More options"];
   await expect(rail.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(rail.getByRole("button").nth(i)).toHaveAccessibleName(name);
-  await expect(page.getByRole("button", { name: "Porchcard", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
 
   // A like, and the line above the price says so: about the home as a whole,
   // it opens the comments, which have no way on to a Porchcard.
@@ -125,20 +125,20 @@ test("for everyone else there's no Porchcard: Save is in its place, and the line
   const comments = page.getByRole("dialog", { name: "Comments" });
   await expect(comments).toBeVisible();
   await expect(comments.getByText("What people think")).toHaveCount(0);
-  await expect(comments.getByRole("button", { name: /Porchcard/ })).toHaveCount(0);
-  await expect(page.getByRole("dialog", { name: "Porchcard" })).toHaveCount(0);
+  await expect(comments.getByRole("button", { name: /Feedback/ })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Feedback" })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(comments).toBeHidden();
   // Signed in now, as on the page before: still Save, still no Porchcard.
   await page.reload();
   await expect(homeIn(page, HERON).getByRole("button", { name: `Save ${HERON}`, exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Porchcard", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
 
   // Beside the map, a home is just a look: no Porchcard there.
   const map = await page$(browser, { viewport: { width: 1400, height: 900 } });
   await map.goto("/search");
   await expect(map.getByRole("article").first()).toBeInViewport();
-  await expect(map.getByRole("button", { name: "Porchcard", exact: true })).toHaveCount(0);
+  await expect(map.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
   expect(pageErrors).toEqual([]);
 });
 
@@ -175,8 +175,7 @@ test("public and private: a link's people, passes and words stay on the link, an
   await lawn.getByRole("button", { name: /^Dislike / }).click();
   await expect(lawn.getByRole("button", { name: /^Dislike / })).toHaveAttribute("aria-pressed", "true");
   await lawn.getByRole("button", { name: "Close" }).click();
-  const vicMore = await openMore(vic, vicHome);
-  await vicMore.getByRole("button", { name: "Not for me" }).click();
+  const vicMore = await passOn(vic, vicHome);
   await vicMore.getByRole("group", { name: "What made you pass?" }).getByRole("button", { name: "Price" }).click();
   await expect(
     vicMore.getByRole("group", { name: "What made you pass?" }).getByRole("button", { name: "Price" }),
@@ -204,14 +203,14 @@ test("public and private: a link's people, passes and words stay on the link, an
   // opens the rest right there.
   const wesRail = wesHome.locator("[data-rail]");
   // (Signed in now, having said something: Send where a visitor has Share.)
-  const inPublic = [/^Like 16420 NE Alder Crest Way/, /^Comments/, `Save ${ALDER}`, "Send to someone", "More options"];
+  const inPublic = [/^Comments/, `Save ${ALDER}`, "Send to someone", "More options"];
   await expect(wesRail.getByRole("button")).toHaveCount(inPublic.length);
   for (const [i, name] of inPublic.entries()) await expect(wesRail.getByRole("button").nth(i)).toHaveAccessibleName(name);
   const wesMore = wesHome.getByRole("button", { name: "more", exact: true });
   await expect(wesMore).toHaveAttribute("aria-expanded", "false");
   await wesMore.click();
   await expect(wesHome.getByRole("button", { name: "less", exact: true })).toHaveAttribute("aria-expanded", "true");
-  await expect(wes.getByRole("dialog", { name: "Porchcard" })).toHaveCount(0);
+  await expect(wes.getByRole("dialog", { name: "Feedback" })).toHaveCount(0);
   for (const path of ["/", "/homes/SAMPLE-1011"]) {
     const html = await (await wes.request.get(path)).text();
     expect(html).not.toContain(UMA_SAYS);
@@ -230,8 +229,8 @@ test("public and private: a link's people, passes and words stay on the link, an
   const card = await openScorecard(tess, tessHome);
   await expect(card.getByLabel("3 people liked it")).toBeVisible();
   await expect(card.getByLabel(/passed$/)).toHaveCount(0);
-  await expect(card.getByText("What people didn't like")).toHaveCount(0);
-  await expect(card.getByText("Gave people pause")).toHaveCount(0);
+  await expect(card.getByText("Didn't like", { exact: true })).toHaveCount(0);
+  await expect(card.getByText("Didn't like in the photos")).toHaveCount(0);
   await expect(card.getByText("and 1 more comment in private chats")).toBeVisible();
   await expect(card).not.toContainText(/pass/i);
   await expect(card).not.toContainText(/Uma|Vic|Saturday/);
@@ -249,7 +248,7 @@ test("public and private: a link's people, passes and words stay on the link, an
   await expect(comments.getByText(WES_SAYS)).toBeVisible();
   await expect(comments).not.toContainText(/\bUma\b|\bVic\b|Saturday/);
   // ...and back: what everyone thinks.
-  await comments.getByRole("button", { name: /^See the Porchcard/ }).click();
+  await comments.getByRole("button", { name: /^See the feedback/ }).click();
   await expect(card).toBeVisible();
 
   // A spot in the photos goes to the photo, its card open.
@@ -271,10 +270,10 @@ test("public and private: a link's people, passes and words stay on the link, an
   // of one's own, nothing to save, and no Porchcard).
   await uma.reload();
   const umaRail = homeIn(uma, ALDER).locator("[data-rail]");
-  const onLink = [/^Like 16420 NE Alder Crest Way/, /^Comments/, "More options"];
+  const onLink = [/^Comments/, "More options"];
   await expect(umaRail.getByRole("button")).toHaveCount(onLink.length);
   for (const [i, name] of onLink.entries()) await expect(umaRail.getByRole("button").nth(i)).toHaveAccessibleName(name);
-  await expect(uma.getByRole("button", { name: "Porchcard", exact: true })).toHaveCount(0);
+  await expect(uma.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
   // [P] What she said is in the link's comments; Wes's public words never are.
   const umaComments = await openComments(uma, homeIn(uma, ALDER));
   await expect(umaComments.getByText(UMA_SAYS)).toBeVisible();
@@ -334,7 +333,7 @@ test("on a desktop, the panel says what the home is and what people said, and fo
   // That row, for anyone but an agent in a link's homes: Save, no Porchcard;
   // and, signed in, Send, with its word beside the paper plane.
   const actions = panel.locator("[data-actions]");
-  const inPublic = [/^Like 16420 NE Alder Crest Way/, /^Comments/, `Save ${ALDER}`, "Send to someone", "More options"];
+  const inPublic = [/^Comments/, `Save ${ALDER}`, "Send to someone", "More options"];
   await expect(actions.getByRole("button")).toHaveCount(inPublic.length);
   await expect(actions.getByRole("button", { name: "Send to someone", exact: true })).toHaveText("Send");
   // Each a fingertip tall.
@@ -351,7 +350,7 @@ test("on a desktop, the panel says what the home is and what people said, and fo
   await expect(said.getByRole("heading", { name: "Comments" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(said).toBeHidden();
-  await expect(page.getByRole("button", { name: "Porchcard", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
 
   // An agent, going through a link's homes with this one on it: what people
   // think is the Porchcard, from the buttons beside the photo; what the home
@@ -363,16 +362,16 @@ test("on a desktop, the panel says what the home is and what people said, and fo
   agent.on("pageerror", (error) => pageErrors.push(error.message));
   const theirs = await linkHomes(agent, dashboardUrl, "SAMPLE-1011", ALDER);
   await settled(theirs);
-  await theirs.getByRole("button", { name: "Porchcard", exact: true }).click();
-  const card = agent.getByRole("dialog", { name: "Porchcard" });
+  await theirs.getByRole("button", { name: "Feedback", exact: true }).click();
+  const card = agent.getByRole("dialog", { name: "Feedback" });
   await expect(card).toBeVisible();
   await expect(card.getByLabel(/^\d+ (person|people) liked it$/)).toBeVisible();
   await expect(card.getByRole("heading", { name: "The facts" })).toHaveCount(0);
   // Beside the photo, not over it, and the tab that's showing has the keyboard.
   expect(await card.evaluate((el) => el.matches(":modal"))).toBe(false);
   const tabs = card.getByRole("tablist");
-  await expect(tabs.getByRole("tab", { name: "Porchcard" })).toHaveAttribute("aria-selected", "true");
-  await expect(tabs.getByRole("tab", { name: "Porchcard" })).toBeFocused();
+  await expect(tabs.getByRole("tab", { name: "Feedback" })).toHaveAttribute("aria-selected", "true");
+  await expect(tabs.getByRole("tab", { name: "Feedback" })).toBeFocused();
 
   // The tabs switch in place: one panel, its name following the tab.
   await tabs.getByRole("tab", { name: /^Comments/ }).click();
@@ -383,20 +382,20 @@ test("on a desktop, the panel says what the home is and what people said, and fo
   await comments.getByRole("tab", { name: /^Comments/ }).focus();
   await agent.keyboard.press("ArrowRight");
   await expect(card).toBeVisible();
-  await expect(card.getByRole("tab", { name: "Porchcard" })).toBeFocused();
+  await expect(card.getByRole("tab", { name: "Feedback" })).toBeFocused();
   await agent.keyboard.press("ArrowLeft");
   await expect(comments).toBeVisible();
   await agent.keyboard.press("Escape");
   await expect(comments).toBeHidden();
 
   // The panel's own Porchcard button opens it too.
-  await theirs.locator("[data-words]").getByRole("button", { name: "Porchcard", exact: true }).click();
+  await theirs.locator("[data-words]").getByRole("button", { name: "Feedback", exact: true }).click();
   await expect(card).toBeVisible();
   // The comments from the keyboard: there, with the keyboard on their tab.
   await card.getByRole("button", { name: /^See the \d+ comments?$/ }).press("Enter");
   await expect(comments).toBeVisible();
   await expect(comments.getByRole("tab", { name: /^Comments/ })).toBeFocused();
-  await comments.getByRole("tab", { name: "Porchcard" }).click();
+  await comments.getByRole("tab", { name: "Feedback" }).click();
   await expect(card).toBeVisible();
   // A spot in the photos: the photo shows it, the Porchcard stays. From the
   // keyboard, the spot's card takes it, and gives it back to the row.
@@ -423,12 +422,16 @@ test("on a link with more than one home, the agent's Porchcard sets this one bes
   const { urls, dashboardUrl } = await createShare(agent, ["1204 Quillan", "5902 Lakeview"], ["Ana", "Bo"]);
   // (Each tap shows at once and saves behind it: wait for each to be saved,
   // not just shown, since another page reads them straight after.)
-  const pass = async (more: Locator, aspect: string) => {
+  const pass = async (home: Locator, aspect: string) => {
+    const page = home.page();
     const saved = () =>
-      more.page().waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
+      page.waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
+    // The X on the photo (which goes on to the next home), then back on it, and More to say why.
     let save = saved();
-    await more.getByRole("button", { name: "Not for me" }).click();
+    await home.getByRole("button", { name: "Pass on this home" }).click();
     await save;
+    await home.scrollIntoViewIfNeeded();
+    const more = await openMore(page, home);
     const why = more.getByRole("group", { name: "What made you pass?" });
     save = saved();
     await why.getByRole("button", { name: aspect }).click();
@@ -447,8 +450,7 @@ test("on a link with more than one home, the agent's Porchcard sets this one bes
   const door = await likeInPhoto(zedQuillan, "the red front door");
   await door.getByRole("button", { name: "Close" }).click();
   await zed.goto("/homes/SAMPLE-1013");
-  const zedMore = await openMore(zed, homeIn(zed, LAKEVIEW));
-  await pass(zedMore, "Price");
+  await pass(homeIn(zed, LAKEVIEW), "Price");
   await zed.keyboard.press("Escape");
 
   // Ana likes the first for where it is, and passes on the second's price.
@@ -457,24 +459,22 @@ test("on a link with more than one home, the agent's Porchcard sets this one bes
   const quillan = homeIn(ana, QUILLAN);
   await heartOf(quillan).click();
   await expect(heartOf(quillan)).toHaveAttribute("aria-pressed", "true");
-  let more = await openMore(ana, quillan);
+  const more = await openMore(ana, quillan);
   const likes = more.getByRole("group", { name: "What else do you like?" });
   await likes.getByRole("button", { name: "Location" }).click();
   await expect(likes.getByRole("button", { name: "Location" })).toHaveAttribute("aria-pressed", "true");
   await ana.keyboard.press("Escape");
   await expect(more).toBeHidden();
-  more = await openMore(ana, homeIn(ana, LAKEVIEW));
-  await pass(more, "Price");
+  await pass(homeIn(ana, LAKEVIEW), "Price");
   await ana.keyboard.press("Escape");
   await expect(more).toBeHidden();
   // (No Porchcard for her on the link: it's the agent's.)
-  await expect(ana.getByRole("button", { name: "Porchcard", exact: true })).toHaveCount(0);
+  await expect(ana.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
 
   // Bo passes on the first, for its price too.
   const bo = await signedIn(browser);
   await bo.goto(urls.Bo);
-  more = await openMore(bo, homeIn(bo, QUILLAN));
-  await pass(more, "Price");
+  await pass(homeIn(bo, QUILLAN), "Price");
 
   // The first home's Porchcard, on the agent's page for the link: each home a
   // column, this one first; whether people liked it, then each aspect anyone
@@ -486,7 +486,7 @@ test("on a link with more than one home, the agent's Porchcard sets this one bes
     const opened = await linkPorchcard(agent, dashboardUrl, QUILLAN);
     await expect(price(opened).first()).toHaveText(/^\s*1 pass$/, { timeout: 1000 });
   }).toPass({ timeout: 20_000 });
-  const card = agent.getByRole("dialog", { name: "Porchcard" });
+  const card = agent.getByRole("dialog", { name: "Feedback" });
   await expect(card.getByRole("heading", { name: "Compare with the other home" })).toBeVisible();
   const table = card.getByRole("table", { name: /^This home beside the other home/ });
   await expect(table.getByRole("columnheader")).toHaveText(["Aspect", `This home, ${QUILLAN}`, LAKEVIEW]);
@@ -502,12 +502,10 @@ test("on a link with more than one home, the agent's Porchcard sets this one bes
   await expect(card).not.toContainText(/\bZed\b/);
 
   // Ana changes her mind on the link: it counts, in this home's column.
-  more = await openMore(ana, homeIn(ana, QUILLAN));
   const changed = ana.waitForResponse(
     (res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]),
   );
-  await more.getByRole("button", { name: "Not for me" }).click();
-  await expect(more.getByRole("button", { name: "Not for me" })).toHaveAttribute("aria-pressed", "true");
+  await homeIn(ana, QUILLAN).getByRole("button", { name: "Pass on this home" }).click();
   await changed;
   await expect(async () => {
     const again = await linkPorchcard(agent, dashboardUrl, QUILLAN);

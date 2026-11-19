@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
-import { signedIn,
+import {
+  signedIn,
   commentIn,
   createShare,
   heartOf,
@@ -8,11 +9,12 @@ import { signedIn,
   likeInPhoto,
   linkHomes,
   openComments,
-  openMore,
   openScorecard,
   pickHome,
   signInAgent,
   signUpBuyer,
+  passOn,
+  openMore,
 } from "./helpers";
 
 const SECRET = "We could go 50k over asking.";
@@ -60,8 +62,7 @@ test("public pages show activity, never private words, and private threads share
   // A second person on the package passes on the yard, from their own link. That stays private.
   const quinn = await signedIn(browser);
   await quinn.goto(urls.Quinn);
-  const quinnMore = await openMore(quinn, homeIn(quinn, BRACKENFIELD));
-  await quinnMore.getByRole("button", { name: "Not for me" }).click();
+  const quinnMore = await passOn(quinn, homeIn(quinn, BRACKENFIELD));
   const quinnWhy = quinnMore.getByRole("group", { name: "What made you pass?" });
   await quinnWhy.getByRole("button", { name: "Yard" }).click();
   await expect(quinnWhy.getByRole("button", { name: "Yard" })).toHaveAttribute("aria-pressed", "true");
@@ -92,14 +93,14 @@ test("public pages show activity, never private words, and private threads share
   await expect(page.getByText(/Riley|Quinn/)).toHaveCount(0);
   await page.keyboard.press("Escape");
   // (No Porchcard for a visitor: Save is where it was.)
-  await expect(page.getByRole("button", { name: "Porchcard", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
   await expect(post.getByRole("button", { name: `Save ${BRACKENFIELD}`, exact: true })).toBeVisible();
   // ...nor in the Porchcard the other agent has, which has what people like
   // and the quiet signals.
   let card = await porchcard();
-  await expect(card.getByText("What people liked", { exact: true })).toBeVisible();
+  await expect(card.getByText("Liked", { exact: true })).toBeVisible();
   await expect(card.getByRole("button", { name: /^Exterior 1 person/ })).toBeVisible();
-  await expect(card.getByText("What people didn't like")).toHaveCount(0);
+  await expect(card.getByText("Didn't like", { exact: true })).toHaveCount(0);
   await expect(card.getByLabel(/passed$/)).toHaveCount(0);
   await expect(card).not.toContainText(/pass/i);
   const buzz = card.getByLabel("Activity");
@@ -148,9 +149,12 @@ test("public pages show activity, never private words, and private threads share
   await other.keyboard.press("Escape");
 
   // Passes made in public do show, with their specifics.
-  const otherMore = await openMore(other, otherPost);
-  await otherMore.getByRole("button", { name: "Not for me" }).click();
+  // (Asked who they are first, once; then the X has passed, and gone on to the next home.)
+  await otherPost.getByRole("button", { name: "Pass on this home" }).click();
   await joinAs(other, "Drew");
+  await expect(otherPost.getByRole("button", { name: "Pass on this home" })).toHaveAttribute("aria-pressed", "true");
+  await otherPost.scrollIntoViewIfNeeded();
+  const otherMore = await openMore(other, otherPost);
   // (Saved before the page is loaded again.)
   const priceSaved = other.waitForResponse(
     (res) =>
@@ -169,7 +173,7 @@ test("public pages show activity, never private words, and private threads share
   await other.keyboard.press("Escape");
   // In the Porchcard too: the public pass and why, and still nobody from the link.
   card = await porchcard();
-  await expect(card.getByText("What people didn't like")).toBeVisible();
+  await expect(card.getByText("Didn't like", { exact: true })).toBeVisible();
   await expect(card.getByRole("button", { name: /^Price 1 person/ })).toBeVisible();
   await expect(card.getByRole("button", { name: /^Yard/ })).toHaveCount(0);
   await expect(card.getByText(/Riley|Quinn/)).toHaveCount(0);

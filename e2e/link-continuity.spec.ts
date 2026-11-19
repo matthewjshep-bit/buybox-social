@@ -14,7 +14,9 @@ async function saveContact(agent: Page, { phone, email }: { phone?: string; emai
 }
 
 // Down to the end of the link, past every home.
-async function toEnd(page: Page, heading: string) {
+// (Its heading asks while there's a home they haven't said yes or no to.)
+const END = /^(That's all|What did you think\?)$/;
+async function toEnd(page: Page, heading: string | RegExp = END) {
   await expect(async () => {
     await page.evaluate(() => {
       const reel = document.querySelector<HTMLElement>("[data-reel]")!;
@@ -81,10 +83,12 @@ test("signed in on their own link, a client has their menu and the bell, the age
   await expect(contact).toBeHidden();
 
   // The end of the link: what's next, never a dead end.
-  await toEnd(page, "That's all");
+  await toEnd(page);
   const next = page.getByRole("region", { name: "What's next" });
   await expect(next).toBeVisible();
-  await expect(next).toContainText("You liked");
+  // Every home on the link is there, small, with what they made of it: the one they liked says so.
+  const homes = page.getByRole("list", { name: "The homes" });
+  await expect(homes.getByRole("button", { name: "4127 Larkmoor Ave NE: like" })).toHaveAttribute("aria-pressed", "true");
   // Ask for more: a text to the agent, about the home they liked.
   await expect(next.getByRole("link", { name: "Ask for more like these" })).toHaveAttribute(
     "href",
@@ -97,7 +101,7 @@ test("signed in on their own link, a client has their menu and the bell, the age
   await page.keyboard.press("Escape");
   await expect(contact).toBeHidden();
   // Back to the home they liked, in one tap.
-  await next.getByRole("button", { name: "4127 Larkmoor Ave NE" }).click();
+  await homes.getByRole("button", { name: "See 4127 Larkmoor Ave NE" }).click();
   await expect(larkmoor).toBeInViewport({ ratio: 0.9 });
   await expect(larkmoor).toBeFocused();
 
@@ -113,7 +117,7 @@ test("signed in on their own link, a client has their menu and the bell, the age
   const stranger = await (await browser.newContext()).newPage();
   await saveContact(agent, { phone: "", email: "lena@marsh.example" });
   await stranger.goto(urls.Jamie);
-  await toEnd(stranger, "That's all");
+  await toEnd(stranger);
   const theirs = stranger.getByRole("region", { name: "What's next" });
   // No phone now: an email, the same words.
   await expect(theirs.getByRole("link", { name: "Ask for more like these" })).toHaveAttribute(

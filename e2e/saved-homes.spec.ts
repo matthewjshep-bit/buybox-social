@@ -13,7 +13,7 @@ const CORBEL = "812 N Corbel St";
 const filterOf = (page: Page) => page.locator("main [data-feed-filter]");
 const saveOf = (home: Locator, address: string) => home.getByRole("button", { name: `Save ${address}`, exact: true });
 const savedOf = (home: Locator, address: string) => home.getByRole("button", { name: `Saved ${address}`, exact: true });
-const porchcardOf = (where: Page | Locator) => where.getByRole("button", { name: "Porchcard", exact: true });
+const porchcardOf = (where: Page | Locator) => where.getByRole("button", { name: "Feedback", exact: true });
 // Saved on the server, not just shown.
 const kept = (page: Page) =>
   page.waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
@@ -34,9 +34,9 @@ test("a buyer saves a home where the Porchcard was; it's under Saved on their ow
   let home = homeIn(sasha, TAMSEN);
   await expect(home).toBeInViewport({ ratio: 0.9 });
 
-  // Like, Comments, Save, Send, More: no Porchcard for a buyer.
+  // Comments, Save, Send, More: no Porchcard for a buyer. (The heart and the X are on the photo.)
   const rail = home.locator("[data-rail]");
-  const names = [/^Like 1880 Tamsen Ridge Pl SE/, /^Comments/, `Save ${TAMSEN}`, "Send to someone", "More options"];
+  const names = [/^Comments/, `Save ${TAMSEN}`, "Send to someone", "More options"];
   await expect(rail.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(rail.getByRole("button").nth(i)).toHaveAccessibleName(name);
   await expect(porchcardOf(sasha)).toHaveCount(0);
@@ -222,7 +222,7 @@ test("the Porchcard is an agent's, going through a link's homes or a client's: n
   await agent.waitForURL(/\/reel\?from=share(:|%3A)[0-9a-f-]{36}&home=SAMPLE-1002/);
   let home = homeIn(agent, TAMSEN);
   await expect(home).toBeInViewport({ ratio: 0.9 });
-  const names = [/^Like 1880 Tamsen Ridge Pl SE/, /^Comments/, "Porchcard", "Send to a client", "More options"];
+  const names = [/^Comments/, "Feedback", "Send to a client", "More options"];
   const rail = home.locator("[data-rail]");
   await expect(rail.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(rail.getByRole("button").nth(i)).toHaveAccessibleName(name);
@@ -236,7 +236,7 @@ test("the Porchcard is an agent's, going through a link's homes or a client's: n
   const jamie = await signedIn(browser);
   await jamie.goto(url);
   const onLink = homeIn(jamie, TAMSEN);
-  const linkNames = [/^Like 1880 Tamsen Ridge Pl SE/, /^Comments/, "More options"];
+  const linkNames = [/^Comments/, "More options"];
   await expect(onLink.locator("[data-rail]").getByRole("button")).toHaveCount(linkNames.length);
   for (const [i, name] of linkNames.entries()) {
     await expect(onLink.locator("[data-rail]").getByRole("button").nth(i)).toHaveAccessibleName(name);

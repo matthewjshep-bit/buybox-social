@@ -263,7 +263,7 @@ export function tourSteps(
 ): TourStep[] {
   const facts = { target: '[data-tour="facts"]', at: '[data-fact="Price"]' };
   const photo = { target: '[aria-roledescription="carousel"] [data-photo-frame]', spot: true };
-  const heart = { target: "[data-rail] [aria-pressed], [data-actions] [aria-pressed]" };
+  const heart = { target: '[data-tour="heart"]' };
   const Agent = agent.charAt(0).toUpperCase() + agent.slice(1);
   if (kind === "notes") {
     const who = notesFor ?? "your client";

@@ -5,6 +5,7 @@ import {
   ArrowUp,
   ChevronDown,
   ChevronRight,
+  ClipboardList,
   ChevronUp,
   Bookmark,
   Ellipsis,
@@ -20,12 +21,14 @@ import {
   MessageCircle,
   Send,
   Share2,
-  ThumbsDown,
   UserPlus,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -68,7 +71,6 @@ import { useSignedIn } from "@/components/session";
 import { Sheet } from "@/components/sheet";
 import { NudgeHint, useNudges, type Nudge } from "@/components/walkthrough";
 import { Tour, tourSteps, useTour, type TourKind } from "@/components/tour";
-import { PorchcardIcon } from "@/components/porchcard-logo";
 import type { FeedPost } from "@/lib/feed";
 import { cn, formatPrice } from "@/lib/format";
 import { isSampleListing, type Listing, type ListingMedia } from "@/lib/listings/types";
@@ -88,9 +90,9 @@ import {
 import { placeIn, type HomeContext, type ReelContext } from "@/lib/reel-context";
 import { eventsFromHeadline, eventsFromTimeline, onFact, onPhoto, type TickerEvent, type TickerTap } from "@/lib/ticker";
 import type { TimelineComment, TimelineItem } from "@/lib/timeline";
-import { NO_REACTION, publicSideOf, type Aspect, type ReactionState } from "@/lib/reactions";
+import { NO_REACTION, publicSideOf, type Aspect, type ReactionState, type Sentiment } from "@/lib/reactions";
 import { homeDetails, type ScorecardViewer } from "@/lib/scorecard";
-import { button, glass, pill } from "@/lib/ui";
+import { button, glass } from "@/lib/ui";
 
 // The feed: one home per screen, scrolled up like a reel, for as long as you
 // keep going. On a phone the whole photo sits right on top of a block of words
@@ -598,6 +600,57 @@ function Feed({
     root.scrollTo({ top: target * root.clientHeight, behavior: instant || reducedMotion() ? "auto" : "smooth" });
   };
 
+  // A mouse's wheel, a notch at a time, never gets a whole screen past where
+  // the feed snaps back to: left to the browser, a wheel can't reach the next
+  // home at all (a trackpad's glide can). So once a turn of the wheel stops,
+  // if the feed hasn't already gone most of the way there itself, it goes on
+  // one screen the way the wheel turned. One screen for each turn, however
+  // many notches. Not over something that scrolls on its own and still has
+  // further to go (the words beside the photo), nor for a pinch or a sideways swipe.
+  const wheelTo = useRef(goTo);
+  useLayoutEffect(() => {
+    wheelTo.current = goTo;
+  });
+  useEffect(() => {
+    const root = scroller.current;
+    if (!root) return;
+    let turned = 0;
+    let from = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const scrollsOn = (target: Element, down: boolean) => {
+      for (let el: Element | null = target; el && el !== root; el = el.parentElement) {
+        if (el.scrollHeight <= el.clientHeight + 1) continue;
+        const overflow = getComputedStyle(el).overflowY;
+        if (overflow !== "auto" && overflow !== "scroll") continue;
+        if (down ? el.scrollTop + el.clientHeight < el.scrollHeight - 1 : el.scrollTop > 0) return true;
+      }
+      return false;
+    };
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX) || root.clientHeight === 0) return;
+      if (event.target instanceof Element && scrollsOn(event.target, event.deltaY > 0)) return;
+      if (turned === 0) from = Math.round(root.scrollTop / root.clientHeight);
+      // (Counted in pixels, whether the wheel reports those or lines.)
+      turned += event.deltaY * (event.deltaMode === 1 ? 32 : 1);
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const way = Math.sign(turned);
+        const far = Math.abs(turned);
+        turned = 0;
+        // (One slow notch of some mice is only a few pixels: that still counts.)
+        if (far < 4) return;
+        // Already most of the way to the next one (or past it): it gets there itself.
+        if (way * (root.scrollTop / root.clientHeight - from) > 0.5) return;
+        wheelTo.current(from + way);
+      }, 140);
+    };
+    root.addEventListener("wheel", onWheel, { passive: true });
+    return () => {
+      root.removeEventListener("wheel", onWheel);
+      clearTimeout(timer);
+    };
+  }, []);
+
   // Tell the page which home is showing.
   const activeKey = activePost?.listing.ListingKey ?? null;
   const report = useRef(onActiveChange);
@@ -1009,6 +1062,12 @@ function Feed({
               base={reactions.base[key] ?? NO_REACTION}
               error={reactions.errors[key]}
               onLike={() => reactions.choose(key, "like")}
+              // Passed with the X: on to the next home (or, after the last, the
+              // end). Tapped again on a home already passed on, it's taken back.
+              onPass={async () => {
+                const was = state.reaction === "dislike";
+                if ((await reactions.choose(key, "dislike")) && !was) goTo(offset + i + 1);
+              }}
               onDoubleTapLike={() => reactions.like(key)}
               onComments={() => openComments(key)}
               onCompose={() => openComments(key, true)}
@@ -1062,7 +1121,21 @@ function Feed({
                     {reviewed} of {posts.length} rated
                   </p>
                 )}
-                {end}
+                <EndHomes
+                  value={{
+                    homes: posts.map((post) => ({
+                      key: post.listing.ListingKey,
+                      address: post.listing.UnparsedAddress,
+                      city: post.listing.City,
+                      price: post.listing.ListPrice,
+                      photo: post.listing.Media[0]?.MediaURL ?? null,
+                      reaction: reactions.states[post.listing.ListingKey]?.reaction ?? null,
+                    })),
+                    choose: (key, sentiment) => void reactions.choose(key, sentiment),
+                  }}
+                >
+                  {end}
+                </EndHomes>
                 {!embedded && posts.length > 0 && (
                   <button
                     type="button"
@@ -1132,17 +1205,6 @@ function Feed({
           if (!stays) flushSync(() => setSheet(null));
           setGoToSpot((current) => ({ key, spot, n: (current?.n ?? 0) + 1, keyboard, back }));
         }}
-        onLike={(key) => reactions.choose(key, "like")}
-        // "Not for me", then More, to say why.
-        onPass={async (key) => {
-          if (!(await reactions.choose(key, "dislike"))) return;
-          dock.current = wordsOf(key);
-          setSheet((now) => (now?.key === key ? { kind: "more", key } : now));
-        }}
-        onOpenMore={(key) => {
-          dock.current = wordsOf(key);
-          setSheet({ kind: "more", key });
-        }}
       />
       <MoreSheet
         post={sheet?.kind === "more" ? (sheetPost ?? null) : null}
@@ -1167,12 +1229,7 @@ function Feed({
         // Turned to from the Porchcard ("Change your take"), the keyboard
         // goes back to the Porchcard's button on the rail.
         returnTo={() => (sheetPost ? railButton(sheetPost.listing.ListingKey, "scorecard") : null)}
-        onPass={() => sheetPost && reactions.choose(sheetPost.listing.ListingKey, "dislike")}
         onToggle={(aspect) => sheetPost && reactions.toggle(sheetPost.listing.ListingKey, aspect)}
-        onNext={() => {
-          setSheet(null);
-          goTo(active + 1);
-        }}
         onPhotoOnly={() => {
           setSheet(null);
           if (sheetPost) setBare(offset + posts.indexOf(sheetPost));
@@ -1182,6 +1239,22 @@ function Feed({
     </div>
   );
 }
+
+// The feed's homes, for whatever is on its last screen: each with what the
+// one looking made of it (liked, passed on, or nothing yet), and a way to say
+// so from there.
+export type EndHome = {
+  key: string;
+  address: string;
+  city: string;
+  price: number;
+  photo: string | null;
+  reaction: Sentiment | null;
+};
+type EndHomesValue = { homes: EndHome[]; choose: (key: string, sentiment: Sentiment) => void };
+const EndHomesContext = createContext<EndHomesValue | null>(null);
+const EndHomes = EndHomesContext.Provider;
+export const useEndHomes = () => useContext(EndHomesContext);
 
 // Whether the feed is wide enough (64rem) to lay each home out side by side,
 // as its own layout decides by the same measure (`wide`), and whether it's
@@ -1272,6 +1345,7 @@ function Panel({
   base,
   error,
   onLike,
+  onPass,
   onDoubleTapLike,
   onComments,
   onCompose,
@@ -1329,6 +1403,8 @@ function Panel({
   base: ReactionState;
   error?: string;
   onLike: () => void;
+  // The X on the photo: pass on the home and go on to the next (taken back, it stays put).
+  onPass: () => void;
   onDoubleTapLike: () => void;
   onComments: () => void;
   // The comment bar: comments open with the cursor in the box.
@@ -1767,6 +1843,59 @@ function Panel({
     setPicked((now) => (now?.tag === spot.tag && now.mediaKey === spot.mediaKey ? null : spot));
   };
 
+  // Yes or no to the home itself, in a tap: an X at the photo's bottom left
+  // (pass, and on to the next home), a heart at its bottom right (like: the
+  // one heart a home has; held, or under a pointer, it lists what's in the
+  // photo to like). Small and see-through, in the corners, so the photo stays
+  // the photo. There from the start, before the photos themselves load, so a
+  // home further down has them too. Not on a phone on its side, where the
+  // words sit over the photo's foot: there, both are on the rail instead. An
+  // agent adding their own feedback to a link has the heart and no X.
+  const yesNo = !hidden && !bare && !onOpen && (
+    <>
+      {!notes && (
+        <button
+            type="button"
+            data-keep-clear
+            aria-label="Pass on this home"
+            aria-pressed={state.reaction === "dislike"}
+            onClick={onPass}
+            style={{ top: `calc(${photoFoot(current)} - 0.75rem)`, left: `calc(${photoPlace(current).left} + 0.75rem)` }}
+            className={cn(
+              "absolute z-10 flex size-12 -translate-y-full items-center justify-center rounded-full ring-1 ring-white/25 backdrop-blur-md transition-colors short:hidden",
+              state.reaction === "dislike" ? "bg-amber-600 text-white" : "bg-black/45 text-white hover:bg-black/65",
+            )}
+          >
+            <X aria-hidden size={24} strokeWidth={2.5} />
+          </button>
+      )}
+      <LikeWithList
+        things={things}
+        corner
+        style={{
+          top: `calc(${photoFoot(current)} - 0.75rem)`,
+          left: `calc(${photoPlace(current).left} + ${photoPlace(current).width} - 0.75rem)`,
+        }}
+        className="absolute z-10 -translate-x-full -translate-y-full short:hidden"
+      >
+        <button
+          type="button"
+          data-keep-clear
+          aria-label={`Like ${listing.UnparsedAddress}${likes ? `, ${likes} ${likes === 1 ? "like" : "likes"}` : ""}`}
+          aria-pressed={liked}
+          data-tour="heart"
+          onClick={onLike}
+          className={cn(
+            "flex size-12 items-center justify-center rounded-full ring-1 ring-white/25 backdrop-blur-md transition-colors",
+            liked ? "bg-rose-600 text-white" : "bg-black/45 text-white hover:bg-black/65",
+          )}
+        >
+          <Heart aria-hidden size={24} strokeWidth={2.5} className={liked ? "fill-white" : undefined} />
+        </button>
+      </LikeWithList>
+    </>
+  );
+
   return (
     <article
       ref={home}
@@ -1820,6 +1949,7 @@ function Panel({
         } as CSSProperties
       }
     >
+      {!loaded && yesNo}
       {loaded && (
         <ReelPhotos
           media={listing.Media}
@@ -1866,7 +1996,8 @@ function Panel({
                     picked && "invisible",
                     "short:left-(--cap-left) short:right-auto short:top-[calc(100cqh-var(--words-height,0px)-0.5rem)] short:-translate-y-full",
                     onOpen ? "short:w-(--cap-width)" : "short:w-[min(var(--cap-width),100cqw-var(--cap-left)-5.25rem)]",
-                    "split:left-(--cap-left) split:right-auto split:top-[calc(var(--cap-foot)-1.5rem)] split:w-(--cap-width) split:-translate-y-full split:justify-center",
+                    // (Clear of the X and the heart in the photo's corners.)
+                    "split:left-(--cap-left) split:right-auto split:top-[calc(var(--cap-foot)-1.5rem)] split:w-(--cap-width) split:-translate-y-full split:justify-center split:px-16",
                   )}
                 >
                   <ActivityTicker
@@ -1887,6 +2018,7 @@ function Panel({
                   />
                 </div>
               )}
+              {yesNo}
               {bare && (
                 // Never stuck with nothing to tap: one way back, at the foot
                 // of the photo (with the words gone, its own bottom edge).
@@ -1966,6 +2098,8 @@ function Panel({
               comments={comments}
               shareAs={shareAs}
               onLike={onLike}
+              passed={state.reaction === "dislike"}
+              onPass={notes ? undefined : onPass}
               onComments={onComments}
               onScorecard={onScorecard && (() => onScorecard())}
               saved={saved}
@@ -2171,11 +2305,8 @@ function Panel({
             {!onOpen && (
               <PanelActions
                 address={listing.UnparsedAddress}
-                liked={liked}
-                likes={likes}
                 comments={comments}
                 shareAs={shareAs}
-                onLike={onLike}
                 onComments={onComments}
                 onScorecard={onScorecard && (() => onScorecard())}
                 saved={saved}
@@ -2352,6 +2483,8 @@ function Rail({
   comments,
   shareAs,
   onLike,
+  passed,
+  onPass,
   onComments,
   onScorecard,
   saved,
@@ -2367,6 +2500,9 @@ function Rail({
   comments: number;
   shareAs: ShareKind | null;
   onLike: () => void;
+  // On a phone on its side: the X, here beside the heart (elsewhere it's on the photo).
+  passed: boolean;
+  onPass?: () => void;
   onComments: () => void;
   // The Porchcard (an agent's), or else Save.
   onScorecard?: () => void;
@@ -2392,22 +2528,33 @@ function Rail({
         "split:hidden",
       )}
     >
-      <LikeWithList things={things}>
-        <RailButton
-          name={`Like ${address}${likes ? `, ${likes} ${likes === 1 ? "like" : "likes"}` : ""}`}
-          label="Like"
-          count={likes ? countLabel(likes) : "Like"}
-          pressed={liked}
-          onClick={onLike}
-        >
-          <Heart
-            aria-hidden
-            size={30}
-            strokeWidth={2}
-            className={cn(liked ? "fill-rose-500 text-rose-500" : "text-white", "drop-shadow")}
-          />
-        </RailButton>
-      </LikeWithList>
+      {/* The heart and the X are in the photo's corners. Only on a phone on
+          its side, where the words cover those corners, are they here. */}
+      <div className="hidden short:block">
+        <LikeWithList things={things}>
+          <RailButton
+            name={`Like ${address}${likes ? `, ${likes} ${likes === 1 ? "like" : "likes"}` : ""}`}
+            label="Like"
+            count={likes ? countLabel(likes) : "Like"}
+            pressed={liked}
+            onClick={onLike}
+          >
+            <Heart
+              aria-hidden
+              size={30}
+              strokeWidth={2}
+              className={cn(liked ? "fill-rose-500 text-rose-500" : "text-white", "drop-shadow")}
+            />
+          </RailButton>
+        </LikeWithList>
+      </div>
+      {onPass && (
+        <div className="hidden short:block">
+          <RailButton name="Pass on this home" label="Pass" pressed={passed} onClick={onPass}>
+            <X size={28} {...icon} />
+          </RailButton>
+        </div>
+      )}
       <RailButton
         name={`Comments${comments ? `, ${comments}` : ""}`}
         label="Comments"
@@ -2417,8 +2564,8 @@ function Rail({
         <MessageCircle size={28} {...icon} />
       </RailButton>
       {onScorecard && (
-        <RailButton name="Porchcard" label="Porchcard" onClick={onScorecard} follow="scorecard">
-          <PorchcardIcon size={26} {...icon} />
+        <RailButton name="Feedback" label="Feedback" onClick={onScorecard} follow="scorecard">
+          <ClipboardList size={26} {...icon} />
         </RailButton>
       )}
       {!onScorecard && onSave && (
@@ -2784,11 +2931,8 @@ function FactButton({
 // keyboard and screen readers meet the same buttons either way.
 function PanelActions({
   address,
-  liked,
-  likes,
   comments,
   shareAs,
-  onLike,
   onComments,
   onScorecard,
   saved,
@@ -2797,11 +2941,8 @@ function PanelActions({
   onMore,
 }: {
   address: string;
-  liked: boolean;
-  likes: number;
   comments: number;
   shareAs: ShareKind | null;
-  onLike: () => void;
   onComments: () => void;
   // The Porchcard (an agent's), or else Save.
   onScorecard?: () => void;
@@ -2817,29 +2958,15 @@ function PanelActions({
   const sending = shareAs === "sending";
   return (
     <div data-actions className="-mx-1 mb-2 hidden items-center gap-0.5 split:flex">
-      <button
-        type="button"
-        aria-label={`Like ${address}${likes ? `, ${likes} ${likes === 1 ? "like" : "likes"}` : ""}`}
-        aria-pressed={liked}
-        onClick={onLike}
-        className={action}
-      >
-        <Heart
-          aria-hidden
-          size={22}
-          strokeWidth={2}
-          className={cn("transition-transform active:scale-90", liked ? "fill-rose-500 text-rose-500" : "text-white")}
-        />
-        {likes > 0 && <span className="tabular-nums">{countLabel(likes)}</span>}
-      </button>
+      {/* (The heart is on the photo, opposite the X.) */}
       <button type="button" aria-label={`Comments${comments ? `, ${comments}` : ""}`} onClick={onComments} className={action}>
         <MessageCircle aria-hidden size={21} />
         {comments > 0 && <span className="tabular-nums">{countLabel(comments)}</span>}
       </button>
       {onScorecard && (
-        <button type="button" aria-label="Porchcard" data-follow="scorecard" onClick={onScorecard} className={action}>
-          <PorchcardIcon aria-hidden size={20} />
-          Porchcard
+        <button type="button" aria-label="Feedback" data-follow="scorecard" onClick={onScorecard} className={action}>
+          <ClipboardList aria-hidden size={20} />
+          Feedback
         </button>
       )}
       {!onScorecard && onSave && (
@@ -3133,9 +3260,6 @@ function HomeSheet({
   onPostedSpot,
   onShowSpot,
   onScorecardSpot,
-  onLike,
-  onPass,
-  onOpenMore,
 }: {
   post: FeedPost | null;
   // Whether the Porchcard is theirs to open (an agent's): its tab, and the way to it from the comments.
@@ -3167,9 +3291,6 @@ function HomeSheet({
   onShowSpot: (listingKey: string, spot: SpotRef) => void;
   // To a spot in the photos, or one of the facts (`keyboard`: pressed with a key).
   onScorecardSpot: (listingKey: string, spot: SpotRef, keyboard?: boolean) => void;
-  onLike: (listingKey: string) => void;
-  onPass: (listingKey: string) => void;
-  onOpenMore: (listingKey: string) => void;
 }) {
   const notes = useNotesMode();
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
@@ -3228,7 +3349,7 @@ function HomeSheet({
   // Beside the photo: "Comments 9 | Porchcard", arrows move between them.
   const tab = (which: "comments" | "scorecard") => `${tabsId}-${which}`;
   const tabs = tabbed && key && (
-    <div role="tablist" aria-label="Comments and Porchcard" className="flex gap-1">
+    <div role="tablist" aria-label="Comments and Feedback" className="flex gap-1">
       {(["comments", "scorecard"] as const).map((which) => {
         const selected = kind === which;
         return (
@@ -3254,7 +3375,7 @@ function HomeSheet({
               selected ? "bg-ink text-white" : "text-muted hover:bg-stone-100 hover:text-ink",
             )}
           >
-            {which === "comments" ? "Comments" : "Porchcard"}
+            {which === "comments" ? "Comments" : "Feedback"}
             {which === "comments" && comments > 0 && (
               <span className={cn("tabular-nums", selected ? "text-white/80" : "text-muted")}>{comments.toLocaleString("en-US")}</span>
             )}
@@ -3268,10 +3389,10 @@ function HomeSheet({
     <Sheet
       open={Boolean(post)}
       onClose={close}
-      label={scorecard ? "Porchcard" : "Comments"}
+      label={scorecard ? "Feedback" : "Comments"}
       title={
         scorecard
-          ? "Porchcard"
+          ? "Feedback"
           : name
             ? `On ${name}`
             : comments
@@ -3341,9 +3462,6 @@ function HomeSheet({
               onOpenFact={(tag, keyboard) => onScorecardSpot(post.listing.ListingKey, { mediaKey: FACTS, tag }, keyboard)}
               onAllComments={() => onSwitch(post.listing.ListingKey, "comments")}
               onCompose={() => onCompose(post.listing.ListingKey)}
-              onLike={() => onLike(post.listing.ListingKey)}
-              onPass={() => onPass(post.listing.ListingKey)}
-              onOpenMore={() => onOpenMore(post.listing.ListingKey)}
             />
           ) : (
             <>
@@ -3354,10 +3472,10 @@ function HomeSheet({
                   <button
                     type="button"
                     onClick={() => onSwitch(post.listing.ListingKey, "scorecard")}
-                    aria-label="See the Porchcard: what people think of this home"
+                    aria-label="See the feedback: what people think of this home"
                     className="-mx-2 flex min-h-11 w-[calc(100%+1rem)] items-center gap-2.5 rounded-xl px-2 py-1 text-left hover:bg-stone-50"
                   >
-                    <PorchcardIcon aria-hidden size={18} className="shrink-0 text-brand" />
+                    <ClipboardList aria-hidden size={18} className="shrink-0 text-brand" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-body font-semibold leading-5 text-ink">What people think</span>
                     </span>
@@ -3411,9 +3529,7 @@ function MoreSheet({
   post,
   state,
   agentName,
-  onPass,
   onToggle,
-  onNext,
   onPhotoOnly,
   onClose,
   anchor,
@@ -3431,40 +3547,16 @@ function MoreSheet({
   about?: boolean;
   anchor: RefObject<HTMLElement | null>;
   returnTo?: () => HTMLElement | null;
-  onPass: () => void;
   onToggle: (aspect: Aspect) => void;
-  onNext: () => void;
   onPhotoOnly: () => void;
   onClose: () => void;
 }) {
-  const passed = state.reaction === "dislike";
   return (
     <Sheet open={Boolean(post)} onClose={onClose} label="More" title="More" anchor={anchor} returnTo={returnTo}>
       {post && (
         <div className="flex flex-col gap-5">
-          <button
-            type="button"
-            aria-pressed={passed}
-            onClick={onPass}
-            className={cn(
-              pill("lg"),
-              "border",
-              passed ? "border-amber-800 bg-amber-800 text-white" : "border-stone-300 bg-white hover:border-stone-500",
-            )}
-          >
-            <ThumbsDown aria-hidden size={18} />
-            Not for me
-          </button>
+          {/* Liked, or passed on with the X on the photo: what about it, if they'd like to say. */}
           {state.reaction && <AspectChips state={state} onToggle={onToggle} />}
-          {passed && (
-            <button
-              type="button"
-              onClick={onNext}
-              className={button({ kind: "neutral", size: "lg" })}
-            >
-              Next home
-            </button>
-          )}
           {!agentName && (
             <Link
               href={`/search?q=${encodeURIComponent(post.listing.City)}`}
@@ -3518,7 +3610,21 @@ function MoreSheet({
 
 // Hovering the heart (or pressing and holding it on a phone) slides out
 // everything in the photo on screen, each with its own heart.
-function LikeWithList({ things, children }: { things: Thing[]; children: ReactNode }) {
+function LikeWithList({
+  things,
+  children,
+  corner = false,
+  className,
+  style,
+}: {
+  things: Thing[];
+  children: ReactNode;
+  // In the photo's bottom right corner: the list opens up from it, along the
+  // right edge, rather than from the left of a row.
+  corner?: boolean;
+  className?: string;
+  style?: CSSProperties;
+}) {
   const [open, setOpen] = useState(false);
   const wrapper = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -3544,7 +3650,8 @@ function LikeWithList({ things, children }: { things: Thing[]; children: ReactNo
     <div
       ref={wrapper}
       data-open={open || undefined}
-      className="group/like relative"
+      style={style}
+      className={cn("group/like", className ?? "relative")}
       onPointerDown={(event) => {
         held.current = false;
         if (event.pointerType === "mouse" || things.length === 0) return;
@@ -3574,9 +3681,18 @@ function LikeWithList({ things, children }: { things: Thing[]; children: ReactNo
           role="group"
           aria-label="Like what's in this photo"
           // Up from the heart, at the left of a phone's row (on its side, out to its left).
-          className="invisible absolute bottom-full left-0 pb-2 opacity-0 short:bottom-auto short:left-auto short:right-full short:top-1/2 short:-translate-y-1/2 short:pb-0 short:pr-2 transition-[opacity,visibility] duration-150 group-hover/like:visible group-hover/like:opacity-100 group-has-focus-visible/like:visible group-has-focus-visible/like:opacity-100 group-data-open/like:visible group-data-open/like:opacity-100"
+          className={cn(
+            "invisible absolute bottom-full pb-2 opacity-0 short:bottom-auto short:left-auto short:right-full short:top-1/2 short:-translate-y-1/2 short:pb-0 short:pr-2 transition-[opacity,visibility] duration-150 group-hover/like:visible group-hover/like:opacity-100 group-has-focus-visible/like:visible group-has-focus-visible/like:opacity-100 group-data-open/like:visible group-data-open/like:opacity-100",
+            corner ? "right-0" : "left-0",
+          )}
         >
-          <ul className="flex flex-col items-start gap-1.5 short:items-end">
+          <ul
+            className={cn(
+              "flex flex-col gap-1.5 short:items-end",
+              // (From the photo's corner there's only the photo's height above it.)
+              corner ? "max-h-56 items-end overflow-y-auto overscroll-contain p-1 [scrollbar-width:none]" : "items-start",
+            )}
+          >
             {things.map((thing, i) => (
               <li
                 key={thing.tag}

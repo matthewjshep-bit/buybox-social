@@ -101,18 +101,28 @@ test("on a phone, the whole photo sits at the top, nothing on it, the activity l
   }
 });
 
-test("the buttons in a row: like, comments, save, share, more, each with its label, just over the comment bar", async ({
+test("the buttons in a row: comments, save, share, more, each with its label, just over the comment bar; the heart and the X are on the photo", async ({
   page,
 }) => {
   await page.goto("/homes/SAMPLE-1013");
   const home = homeIn(page, "5902 Lakeview Terrace SE");
   await settled(home);
   const rail = home.locator("[data-rail]");
-  const names = [/^Like 5902 Lakeview Terrace SE/, /^Comments/, "Save 5902 Lakeview Terrace SE", "Share", "More options"];
+  const names = [/^Comments/, "Save 5902 Lakeview Terrace SE", "Share", "More options"];
   await expect(rail.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(rail.getByRole("button").nth(i)).toHaveAccessibleName(name);
+  // The one heart is in the photo's bottom right corner, opposite the X that passes.
+  const frame = (await home.locator("[data-photo-frame]").first().boundingBox())!;
+  const heart = (await heartOf(home).boundingBox())!;
+  const x = (await home.getByRole("button", { name: "Pass on this home" }).boundingBox())!;
+  expect(heart.x + heart.width).toBeLessThanOrEqual(frame.x + frame.width);
+  expect(heart.x).toBeGreaterThan(frame.x + frame.width / 2);
+  expect(x.x).toBeGreaterThanOrEqual(frame.x);
+  expect(x.x).toBeLessThan(frame.x + frame.width / 2);
+  expect(Math.abs(heart.y - x.y)).toBeLessThan(2);
+  expect(heart.y + heart.height).toBeLessThanOrEqual(frame.y + frame.height + 1);
   // (The Porchcard is an agent's, in a client's homes: not here.)
-  await expect(rail).not.toContainText("Porchcard");
+  await expect(rail).not.toContainText("Feedback");
   await expect(rail).toContainText("Save");
   await expect(rail).toContainText("Share");
   await expect(rail).toContainText("More");
@@ -269,7 +279,7 @@ test("the description: two lines, then more right after the last word, which ope
   const less = home.getByRole("button", { name: "less", exact: true });
   await expect(less).toHaveAttribute("aria-expanded", "true");
   await expect(less).toBeFocused();
-  await expect(page.getByRole("dialog", { name: "Porchcard" })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Feedback" })).toHaveCount(0);
   await expect(home.getByText(/^A warm Ravenna-area Craftsman.+a short walk away\.$/)).toBeInViewport({ ratio: 0.5 });
   const opened = await box(text.locator("xpath=../.."));
   expect(opened.height).toBeGreaterThan(caption.height);
@@ -441,7 +451,7 @@ test("on a desktop, the photo has a stage of its own with nothing on it but the 
   await expect(home.locator("[data-rail]")).toBeHidden();
   const panelWords = home.locator("[data-words]");
   const actions = panelWords.locator("[data-actions]");
-  const names = [/^Like 1880 Tamsen Ridge Pl SE/, /^Comments/, "Save 1880 Tamsen Ridge Pl SE", "Share", "More options"];
+  const names = [/^Comments/, "Save 1880 Tamsen Ridge Pl SE", "Share", "More options"];
   await expect(actions.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(actions.getByRole("button").nth(i)).toHaveAccessibleName(name);
   for (const name of names) await expect(home.getByRole("button", { name })).toHaveCount(1);

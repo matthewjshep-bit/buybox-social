@@ -1,6 +1,6 @@
 "use client";
 
-import { EyeOff, Hand, Heart, Lock, MapPin, MessageCircle, Sparkles, Tag, ThumbsDown } from "lucide-react";
+import { EyeOff, Hand, Heart, Lock, MapPin, MessageCircle, Tag, ThumbsDown } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
@@ -23,7 +23,7 @@ import {
   type SpotRow,
 } from "@/lib/scorecard";
 import type { TimelineComment } from "@/lib/timeline";
-import { button, pill } from "@/lib/ui";
+import { button } from "@/lib/ui";
 
 // The Porchcard: what everyone thinks of a home, then the home itself, in one
 // place, for the sheet (phones), the panel beside the photo (wide) and the
@@ -47,9 +47,6 @@ export function ScorecardBody({
   onOpenFact,
   onAllComments,
   onCompose,
-  onOpenMore,
-  onLike,
-  onPass,
   onReply,
 }: {
   post: FeedPost;
@@ -75,11 +72,6 @@ export function ScorecardBody({
   onAllComments?: () => void;
   // The comments, with the cursor in the box.
   onCompose?: () => void;
-  // More: to say why, or change your mind.
-  onOpenMore?: () => void;
-  // "I like it" and "Not for me", as the heart and More do them.
-  onLike?: () => void;
-  onPass?: () => void;
   // The agent's dashboard: reply to the client.
   onReply?: () => void;
 }) {
@@ -148,8 +140,8 @@ export function ScorecardBody({
             <Section title="What stands out">
               <AspectSummary
                 variant="rows"
-                likeLabel="What people liked"
-                dislikeLabel="What people didn't like"
+                likeLabel="Liked"
+                dislikeLabel="Didn't like"
                 liked={Object.fromEntries(card.aspects.liked.map((row) => [row.aspect, row.count]))}
                 disliked={Object.fromEntries((card.aspects.disliked ?? []).map((row) => [row.aspect, row.count]))}
                 you={{
@@ -188,14 +180,14 @@ export function ScorecardBody({
             <Section title="In the photos">
               <div className="flex flex-col gap-4">
                 {card.photos.loved.length > 0 && (
-                  <SpotList title="Loved in the photos" rows={card.photos.loved} share={share} agent={mode === "agent"} onShowSpot={showSpot} />
+                  <SpotList title="Liked in the photos" rows={card.photos.loved} share={share} agent={mode === "agent"} onShowSpot={showSpot} />
                 )}
                 {card.photos.pause && (
-                  <SpotList title="Gave people pause" rows={card.photos.pause} share={share} agent={mode === "agent"} onShowSpot={showSpot} />
+                  <SpotList title="Didn't like in the photos" rows={card.photos.pause} share={share} agent={mode === "agent"} onShowSpot={showSpot} />
                 )}
                 {card.photos.pauseNone && (
                   <div>
-                    <h4 className="text-meta font-semibold text-amber-900">Gave people pause</h4>
+                    <h4 className="text-meta font-semibold text-amber-900">Didn&apos;t like in the photos</h4>
                     <p className="mt-1 text-body text-muted">{card.photos.pauseNone}</p>
                   </div>
                 )}
@@ -226,19 +218,15 @@ export function ScorecardBody({
         </>
       )}
 
-      {mode === "agent" && card.people ? (
-        card.people.length > 0 && (
-          <Section title="What each person thinks">
-            <ul className="flex flex-col divide-y divide-stone-100">
-              {card.people.map((person) => (
-                <PersonRow key={person.key} person={person} />
-              ))}
-            </ul>
-          </Section>
-        )
-      ) : (
-        <Section title="Your take">
-          <Take card={card} onLike={onLike} onPass={onPass} onOpenMore={onOpenMore} />
+      {/* Feedback is for reading: what people made of the home. Saying yes or
+          no to it is the heart and the X on its photo, nowhere in here. */}
+      {mode === "agent" && card.people && card.people.length > 0 && (
+        <Section title="What each person thinks">
+          <ul className="flex flex-col divide-y divide-stone-100">
+            {card.people.map((person) => (
+              <PersonRow key={person.key} person={person} />
+            ))}
+          </ul>
         </Section>
       )}
 
@@ -862,80 +850,6 @@ function AgentSpotChip({ listing, spot, who }: { listing: FeedPost["listing"]; s
       </button>
       {open && <Peek id={id} photo={photo} index={index} dots={at ? [at] : []} tone="comment" who={[who]} />}
     </>
-  );
-}
-
-function Take({
-  card,
-  onLike,
-  onPass,
-  onOpenMore,
-}: {
-  card: Scorecard;
-  onLike?: () => void;
-  onPass?: () => void;
-  onOpenMore?: () => void;
-}) {
-  const { verdict, liked, disliked, reacted, forYou } = card.take;
-  // The first button stays the same button as it changes from "I like it"
-  // to "Change your take", so the keyboard stays on it.
-  const first = reacted ? onOpenMore : onLike;
-  return (
-    <div className="flex flex-col gap-3">
-      {verdict || liked.length > 0 || disliked.length > 0 ? (
-        <div className="flex flex-col gap-1 text-body leading-6">
-          {verdict && <p>{verdict}</p>}
-          {liked.length > 0 && (
-            <p>
-              <span className="font-semibold">What you liked:</span> {liked.join(" · ")}
-            </p>
-          )}
-          {disliked.length > 0 && (
-            <p>
-              <span className="font-semibold">What you didn&apos;t like:</span> {disliked.join(" · ")}
-            </p>
-          )}
-        </div>
-      ) : (
-        <p className="text-body leading-6 text-muted">You haven&apos;t weighed in yet.</p>
-      )}
-      {forYou && (
-        <p className="flex items-start gap-1.5 text-body font-semibold leading-6 text-stone-800">
-          <Sparkles aria-hidden size={15} className="mt-1 shrink-0 text-brand" />
-          For you: {forYou.join(" · ")}
-        </p>
-      )}
-      {(first || (!reacted && onPass)) && (
-        <div className="flex flex-wrap gap-2">
-          {first && (
-            <button
-              type="button"
-              onClick={first}
-              className={
-                reacted
-                  ? button({ kind: "secondary" })
-                  : // A like, in the colour of liking.
-                    cn(pill(), "bg-rose-50 text-rose-800 ring-1 ring-rose-200 hover:bg-rose-100")
-              }
-            >
-              {reacted ? (
-                "Change your take"
-              ) : (
-                <>
-                  <Heart aria-hidden size={17} />I like it
-                </>
-              )}
-            </button>
-          )}
-          {!reacted && onPass && (
-            <button type="button" onClick={onPass} className={button({ kind: "secondary" })}>
-              <ThumbsDown aria-hidden size={17} />
-              Not for me
-            </button>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
 

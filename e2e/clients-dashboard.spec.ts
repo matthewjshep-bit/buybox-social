@@ -97,7 +97,9 @@ test("whoever wants a showing leads the Clients page, with Reply, until the agen
   await expect(top.getByRole("link", { name: "Reply to Jo" })).toHaveClass(/bg-brand/);
   await expect(top.getByRole("link", { name: "Send more homes" })).not.toHaveClass(/bg-brand/);
   await expect(top.getByRole("button", { name: "Copy link for Jo" })).toBeVisible();
-  await expect(top.getByRole("link").or(top.getByRole("button"))).toHaveCount(4);
+  // And her feedback as a whole, once she's done anything: what she likes and doesn't.
+  await expect(top.getByRole("button", { name: "Feedback from Jo" })).toBeVisible();
+  await expect(top.getByRole("link").or(top.getByRole("button"))).toHaveCount(5);
   await expect(fern.getByRole("link", { name: "Their profile" })).toHaveCount(0);
 
   // What she did, on this page: her asking to see the home first, said

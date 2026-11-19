@@ -126,11 +126,11 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   await agent.goto(`${dashboardUrl}?tab=homes`);
   await expectKitButtons(agent, "client page's homes at 360px");
   // ...and in the home's Porchcard, open beside it.
-  await home.getByRole("button", { name: "Porchcard for 812 N Corbel St" }).click();
-  await expect(agent.getByRole("dialog", { name: "Porchcard" })).toBeVisible();
+  await home.getByRole("button", { name: "Feedback on 812 N Corbel St" }).click();
+  await expect(agent.getByRole("dialog", { name: "Feedback" })).toBeVisible();
   await expectKitButtons(agent, "Porchcard");
   await agent.keyboard.press("Escape");
-  await expect(agent.getByRole("dialog", { name: "Porchcard" })).toBeHidden();
+  await expect(agent.getByRole("dialog", { name: "Feedback" })).toBeHidden();
   if (wide) await agent.setViewportSize(wide);
 
   // The agent's own words in the thread, under their face: the photo they

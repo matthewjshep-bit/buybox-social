@@ -46,6 +46,7 @@ import { enterCode,
   settle,
   signInAgent,
   signUpBuyer,
+  passOn,
 } from "./helpers";
 import { takeBackAll } from "./own-page";
 
@@ -362,8 +363,7 @@ test("what someone does on an agent's link never shows on their page", async ({ 
     "true",
   );
   await again.getByRole("button", { name: "Close" }).click();
-  const more = await openMore(rowan, quillan);
-  await more.getByRole("button", { name: "Not for me" }).click();
+  const more = await passOn(rowan, quillan);
   const why = more.getByRole("group", { name: "What made you pass?" });
   await why.getByRole("button", { name: "Yard" }).click();
   await expect(why.getByRole("button", { name: "Yard" })).toHaveAttribute("aria-pressed", "true");
@@ -376,7 +376,7 @@ test("what someone does on an agent's link never shows on their page", async ({ 
     const saved = homeIn(rowan, QUILLAN);
     // The pass and why, as More has them from the server.
     const take = await openMore(rowan, saved);
-    await expect(take.getByRole("button", { name: "Not for me" })).toHaveAttribute("aria-pressed", "true", { timeout: 2000 });
+    await expect(saved.getByRole("button", { name: "Pass on this home" })).toHaveAttribute("aria-pressed", "true", { timeout: 2000 });
     await expect(
       take.getByRole("group", { name: "What made you pass?" }).getByRole("button", { name: "Yard" }),
     ).toHaveAttribute("aria-pressed", "true", { timeout: 2000 });
@@ -912,8 +912,7 @@ test("the taste story is written from the data, and what someone switches off st
   ]) {
     await nadia.goto(`/homes/${key}`);
     const home = homeIn(nadia, address);
-    const more = await openMore(nadia, home);
-    await more.getByRole("button", { name: "Not for me" }).click();
+    const more = await passOn(nadia, home);
     const why = more.getByRole("group", { name: "What made you pass?" });
     for (const aspect of ["Layout", "Price"]) {
       await why.getByRole("button", { name: aspect }).click();
