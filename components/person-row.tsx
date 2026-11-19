@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Avatar, RoleChip } from "@/components/ui";
+import { cn } from "@/lib/format";
 
 // Someone in a list of people, the same wherever people are listed (Search,
 // followers, following): their face, their name to their page, "Agent"
@@ -16,6 +17,7 @@ export function PersonRow({
   agent,
   line,
   action,
+  rank,
 }: {
   // Their page.
   href: string;
@@ -27,9 +29,17 @@ export function PersonRow({
   line?: ReactNode;
   // The control at the end of the row: Follow.
   action?: ReactNode;
+  // Their place in a ranked list (Popular), before their face.
+  rank?: number;
 }) {
   return (
     <li className="flex items-center gap-3 p-3">
+      {rank !== undefined && (
+        <span className={cn("w-7 shrink-0 text-center font-display text-2xl tabular-nums", rank <= 3 ? "text-ink" : "text-stone-500")}>
+          <span className="sr-only">Number </span>
+          {rank}
+        </span>
+      )}
       <Avatar name={face} tone={agent ? "agent" : "person"} size={10} photo={photo} href={href} />
       {/* Their name and its line are one link, a fingertip tall. */}
       <Link href={href} className="group flex min-h-11 min-w-0 flex-1 flex-col justify-center">

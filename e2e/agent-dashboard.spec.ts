@@ -322,11 +322,11 @@ test("the agent's page about a client reads like the product: a card per home, s
   // off, not even a long name; folded away at first, since each home further
   // down says the same.
   await agent.setViewportSize({ width: 393, height: 852 });
-  // (The Dashboard's three tabs are on its three main pages, each a fingertip
+  // (Clients' two tabs are on its two main pages, each a fingertip
   // tall, the one you're on marked. A link's page has its way back instead.)
   await agent.goto("/dashboard");
-  const nav = agent.getByRole("navigation", { name: "Dashboard" });
-  await expect(nav.getByRole("link")).toHaveText(["Clients", "Links", "Listings"]);
+  const nav = agent.getByRole("navigation", { name: "Clients" });
+  await expect(nav.getByRole("link")).toHaveText(["Clients", "Links"]);
   await expect(nav.getByRole("link", { name: "Clients" })).toHaveAttribute("aria-current", "page");
   await expect(nav.getByRole("link", { name: "Links" })).not.toHaveAttribute("aria-current");
   for (const tab of await nav.getByRole("link").all()) {

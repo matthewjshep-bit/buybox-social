@@ -275,7 +275,7 @@ test("an empty page says what will show up there", async ({ browser }) => {
   await jo.waitForURL(/\/people\/[0-9a-f-]{36}$/);
   await expect(jo.getByRole("heading", { level: 1 })).toHaveText("Jo (you)");
   await expect(jo.getByText("Nothing here yet")).toBeVisible();
-  await expect(jo.getByRole("link", { name: "Browse homes" })).toHaveAttribute("href", "/browse");
+  await expect(jo.getByRole("link", { name: "Search homes" })).toHaveAttribute("href", "/search");
   await expect(jo.getByRole("link", { name: "Comments", exact: true })).toHaveCount(0);
   // Nothing yet says itself: no row of zeros above it.
   await expect(jo.locator("main")).not.toContainText("0 liked");
@@ -1255,7 +1255,7 @@ test("on your own page you can take back a like or a comment, and nobody else ca
   await expect(pia.getByRole("status").filter({ hasText: "Comment deleted" })).toBeVisible();
   // With the last of it gone, the card goes, and focus moves on rather than off the page.
   await expect(pia.getByText("Nothing here yet")).toBeVisible();
-  await expect(pia.getByRole("link", { name: "Browse homes" })).toBeFocused();
+  await expect(pia.getByRole("link", { name: "Search homes" })).toBeFocused();
   expect(pageErrors).toEqual([]);
 
   // And off the home, for everyone.

@@ -41,7 +41,7 @@ test("whoever wants a showing leads the Clients page, with Reply, until the agen
   // opened yet, with his link to copy. Those two groups and no other: the
   // link with nobody on it isn't a client.
   await fern.goto("/dashboard");
-  await expect(fern).toHaveTitle("Dashboard · Porchcard");
+  await expect(fern).toHaveTitle("Clients · Porchcard");
   await expect(fern.getByRole("heading", { level: 1 })).toHaveText("Clients");
   await expect(fern.getByRole("heading", { level: 2 })).toHaveText([
     /^Waiting for you\s*1$/,
@@ -85,8 +85,9 @@ test("whoever wants a showing leads the Clients page, with Reply, until the agen
   const joPage = new URL(fern.url()).pathname;
   await expect(fern).toHaveTitle("Jo · Porchcard");
   await expect(fern.getByRole("heading", { level: 1 })).toHaveText("Jo");
-  // Her name is the way to her public page; three buttons at most, and while
-  // she's waiting Reply is the filled one, going down the page to what she asked.
+  // Her name is the way to her public page (and "View profile" under it says
+  // so in words); few buttons, and while she's waiting Reply is the filled
+  // one, going down the page to what she asked.
   await expect(fern.getByRole("heading", { level: 1 }).getByRole("link", { name: "Jo" })).toHaveAttribute(
     "href",
     /^\/people\/[\w-]+$/,
@@ -99,8 +100,9 @@ test("whoever wants a showing leads the Clients page, with Reply, until the agen
   await expect(top.getByRole("button", { name: "Copy link for Jo" })).toBeVisible();
   // And her feedback as a whole, once she's done anything: what she likes and doesn't.
   await expect(top.getByRole("button", { name: "Feedback from Jo" })).toBeVisible();
-  await expect(top.getByRole("link").or(top.getByRole("button"))).toHaveCount(5);
-  await expect(fern.getByRole("link", { name: "Their profile" })).toHaveCount(0);
+  // And her own profile, now she's signed up: a link to it, under her name.
+  await expect(top.getByRole("link", { name: "View profile", exact: true })).toHaveAttribute("href", /^\/people\/[\w-]+$/);
+  await expect(top.getByRole("link").or(top.getByRole("button"))).toHaveCount(6);
 
   // What she did, on this page: her asking to see the home first, said
   // across the top of its card, with a box to answer her right there.

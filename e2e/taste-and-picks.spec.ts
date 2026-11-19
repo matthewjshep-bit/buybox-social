@@ -74,30 +74,11 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
   await expect(ownTaste).not.toContainText(/ · |beds/);
   await own.close();
 
-  // Her home, following nobody yet, opens on more homes picked for her taste
-  // (the picks that used to sit beside the feed), each opening them all in
-  // that order, then the way to every home.
+  // Her home has no homes picked for her any more: one feed, and Search.
   await pia.goto("/");
-  await expect(pia.getByRole("group", { name: "Show" }).getByRole("button", { name: "For you" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(pia.getByRole("group", { name: "Show" })).toHaveCount(0);
+  await expect(pia.getByRole("region", { name: "Homes for you" })).toHaveCount(0);
   await expect(pia.getByRole("heading", { name: "Picked for you" })).toHaveCount(0);
-  const picks = pia.getByRole("region", { name: "Homes for you" });
-  await expect(picks.getByRole("listitem").first().getByRole("link")).toHaveAttribute(
-    "href",
-    /^\/reel\?from=picks&home=SAMPLE-\d+$/,
-  );
-  await expect(picks.getByRole("link", { name: "Browse homes" })).toHaveAttribute("href", "/browse");
-  // Homes that match her taste say why: on the pick, and on the home it opens.
-  const fit = picks.getByRole("listitem").filter({ hasText: "Why this: " }).first().getByRole("link");
-  const reason = (await fit.textContent())!.split("Why this: ")[1].trim();
-  expect(reason).not.toBe("");
-  const href = (await fit.getAttribute("href"))!;
-  await pia.goto(href);
-  const picked = pia.locator(`[data-home="${new URL(href, "http://localhost").searchParams.get("home")}"]`);
-  await expect(picked).toBeInViewport({ ratio: 0.9 });
-  await expect(picked.getByRole("region", { name: "Why it's here" })).toContainText(`Picked for you · ${reason}`);
   expect(pageErrors).toEqual([]);
 });
 

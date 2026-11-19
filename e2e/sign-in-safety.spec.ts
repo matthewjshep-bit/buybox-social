@@ -43,7 +43,7 @@ test("someone else typing your email on the agents' form never makes your accoun
   await emailAndCode(vic, email);
   await vic.waitForURL((url) => url.pathname === "/");
   await expect(vic.getByRole("banner").getByRole("button", { name: "Account menu" })).toBeVisible();
-  await expect(vic.getByRole("banner").getByRole("link", { name: "Dashboard" })).toHaveCount(0);
+  await expect(vic.getByRole("banner").getByRole("link", { name: "Clients", exact: true })).toHaveCount(0);
   await vic.goto("/dashboard");
   await expect(vic).toHaveURL(/localhost:\d+\/$/);
 
@@ -54,7 +54,7 @@ test("someone else typing your email on the agents' form never makes your accoun
   await emailAndCode(nia, newcomer);
   await pastNameStep(nia, "Nia");
   await nia.waitForURL((url) => url.pathname === "/");
-  await expect(nia.getByRole("banner").getByRole("link", { name: "Dashboard" })).toHaveCount(0);
+  await expect(nia.getByRole("banner").getByRole("link", { name: "Clients", exact: true })).toHaveCount(0);
   await nia.goto("/dashboard");
   await expect(nia).toHaveURL(/localhost:\d+\/$/);
 

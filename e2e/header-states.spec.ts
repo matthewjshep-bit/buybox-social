@@ -132,7 +132,7 @@ test("signed in, you're one button: your places and Sign out are behind your ini
   await expect(inMenu.getByRole("link", { name: /Notifications/ })).toHaveCount(0);
   await expect(header.getByRole("link", { name: /^Notifications/ })).toHaveCount(1);
   await expect(header.getByRole("link", { name: /^Notifications/ })).toHaveAttribute("href", "/activity");
-  await expect(header.getByRole("link", { name: "Dashboard" })).toHaveCount(0);
+  await expect(header.getByRole("link", { name: "Clients", exact: true })).toHaveCount(0);
   await expect(header.getByRole("button", { name: "Sign out" })).toBeVisible();
   // Two places the bar has no room for: the homes you saved, and people by name.
   const savedHomes = inMenu.getByRole("link", { name: "Saved homes", exact: true });
@@ -265,12 +265,12 @@ test("an agent's dashboard is in their colour, and the header is just Search, Cl
   // Their clients, a tap from anywhere, by name even on a small phone (the
   // word under its icon), a fingertip wide, and marked as where they are
   // anywhere in the dashboard. One link, not two.
-  const clients = header.getByRole("link", { name: "Dashboard", exact: true });
+  const clients = header.getByRole("link", { name: "Clients", exact: true });
   await expect(clients).toHaveCount(1);
-  await expect(clients.getByText("Dashboard", { exact: true })).toBeInViewport({ ratio: 1 });
+  await expect(clients.getByText("Clients", { exact: true })).toBeInViewport({ ratio: 1 });
   await expect(clients).toHaveAttribute("href", "/dashboard");
   await expect(clients).toHaveAttribute("aria-current", "page");
-  const clientsBox = await size(agent, "Dashboard", "link");
+  const clientsBox = await size(agent, "Clients", "link");
   expect(clientsBox.width).toBeGreaterThanOrEqual(44);
   expect(clientsBox.height).toBeGreaterThanOrEqual(44);
   expect(await background(agent)).toBe("rgb(122, 46, 59)");
@@ -278,20 +278,28 @@ test("an agent's dashboard is in their colour, and the header is just Search, Cl
   expect(await agent.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
 
   // It isn't repeated under their face, and nor is the bell: the bar has
-  // both by name. Their own places are there, and no "I'm an agent".
+  // both by name. Their own places are there (their listings among them:
+  // those are theirs, not their clients'), and no "I'm an agent".
   const me = header.getByRole("button", { name: "Account menu" });
   await expect(me).not.toHaveAttribute("aria-current");
   await me.click();
   const inMenu = agent.locator("#account-menu");
   await expect(inMenu.getByRole("link").first()).toHaveText("Your profile");
-  await expect(inMenu.getByRole("link", { name: "Dashboard" })).toHaveCount(0);
+  await expect(inMenu.getByRole("link", { name: "Clients" })).toHaveCount(0);
   await expect(inMenu.getByRole("link", { name: /Notifications/ })).toHaveCount(0);
   await expect(inMenu.getByRole("link", { name: "I'm an agent" })).toHaveCount(0);
-  await expect(inMenu.getByRole("link")).toHaveText(["Your profile", "Saved homes", "Find people"]);
-  await expect(header.getByRole("link", { name: "Dashboard", exact: true })).toHaveCount(1);
+  await expect(inMenu.getByRole("link")).toHaveText(["Your profile", "Listings", "Saved homes", "Find people"]);
+  await expect(inMenu.getByRole("link", { name: "Listings" })).toHaveAttribute("href", "/dashboard/listings");
+  await expect(header.getByRole("link", { name: "Clients", exact: true })).toHaveCount(1);
   await agent.keyboard.press("Escape");
-  await agent.goto("/dashboard/listings");
+  await agent.goto("/dashboard/links");
   await expect(clients).toHaveAttribute("aria-current", "true");
+  // Their listings aren't part of Clients: there, it isn't where they are,
+  // and its tabs aren't over the page.
+  await agent.goto("/dashboard/listings");
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Listings");
+  await expect(clients).not.toHaveAttribute("aria-current");
+  await expect(agent.getByRole("navigation", { name: "Clients" })).toHaveCount(0);
 
   // Anywhere else, the site's own colour, and Search is where you are on the map.
   await agent.goto("/search");
@@ -303,7 +311,7 @@ test("an agent's dashboard is in their colour, and the header is just Search, Cl
   // (Their colour is among their details, on Edit profile.)
   await agent.goto("/dashboard/profile");
   await agent.waitForURL(/\/people\/me\/edit#details$/);
-  // (Edit profile is theirs: "Me" is where they are, not the Dashboard.)
+  // (Edit profile is theirs: "Me" is where they are, not Clients.)
   await expect(me).toHaveAttribute("aria-current", "true");
   await expect(clients).not.toHaveAttribute("aria-current");
   await agent.getByRole("button", { name: "Plum" }).click();
@@ -314,7 +322,7 @@ test("an agent's dashboard is in their colour, and the header is just Search, Cl
     "rgb(36, 115, 188)",
   );
   await saveDetails(agent);
-  await agent.getByRole("banner").getByRole("link", { name: "Dashboard", exact: true }).click();
+  await agent.getByRole("banner").getByRole("link", { name: "Clients", exact: true }).click();
   await agent.waitForURL("**/dashboard");
   await expect.poll(() => background(agent)).toBe("rgb(75, 59, 120)");
 });
@@ -323,11 +331,11 @@ test("on a phone every place in the bar has its name under its icon, in one row,
   browser,
 }) => {
   test.setTimeout(90_000);
-  // An agent, on a small phone: Dashboard in place of Send.
+  // An agent, on a small phone: Clients in place of Send.
   const agent = await signInAgent(browser, "nell-names@example.com", "Nell Names");
   await agent.setViewportSize({ width: 360, height: 640 });
-  const hers = ["Home", "Dashboard", "Browse", "Search", "Notifications", "Me"];
-  // (Home, their Dashboard, Search and its people side, their own page, and
+  const hers = ["Home", "Clients", "Popular", "Search", "Notifications", "Me"];
+  // (Home, their Clients, Search and its people side, their own page, and
   // over the homes full screen, where the bar is white on the dark.)
   for (const path of ["/", "/dashboard", "/search", "/search/people", "/people/me/edit", "/browse"]) {
     await agent.goto(path);
@@ -340,10 +348,10 @@ test("on a phone every place in the bar has its name under its icon, in one row,
     expect((await header.getByRole("navigation", { name: "Main" }).boundingBox())!.height).toBe(56);
   }
 
-  // A buyer: Send in place of Dashboard.
+  // A buyer: Send in place of Clients.
   const buyer = await signUpBuyer(browser, "ned-names@example.com", "Ned Names");
   await buyer.setViewportSize({ width: 390, height: 780 });
-  const his = ["Home", "Browse", "Search", "Send", "Notifications", "Me"];
+  const his = ["Home", "Popular", "Search", "Send", "Notifications", "Me"];
   for (const path of ["/", "/search", "/send", "/activity", "/browse"]) {
     await buyer.goto(path);
     await expectNamedPlaces(buyer, his, `for a buyer on ${path}`);
@@ -368,54 +376,47 @@ test("on a phone every place in the bar has its name under its icon, in one row,
   expect((await places(buyer)).map((place) => place.word)).toEqual(["Porchcard", ...his]);
 });
 
-test("Browse in the bar opens the homes as a page, with the bar still there: no pop-out to close first", async ({ browser }) => {
+test("the bar has no Browse: Search is where homes are found; the homes full screen are still a page, with the bar there", async ({
+  browser,
+}) => {
   test.setTimeout(90_000);
   const page = await signUpBuyer(browser, "bree-browse@example.com", "Bree Browse");
   await page.setViewportSize({ width: 1280, height: 900 });
-  // From Home, where a home tapped in the feed opens a pop-out: Browse doesn't.
   await page.goto("/");
   const header = page.getByRole("banner");
-  const browse = header.getByRole("link", { name: "Browse", exact: true });
-  await expect(browse).toHaveAttribute("href", "/browse");
-  await browse.click();
-  await page.waitForURL(/\/browse$/);
+  await expect(header.getByRole("link", { name: "Browse", exact: true })).toHaveCount(0);
+  await expect(header.getByRole("link", { name: "Search", exact: true })).toHaveAttribute("href", "/search");
+  // Every home full screen, at its own address: a page, not a pop-out, with
+  // the bar over it and the other places one tap away.
+  await page.goto("/browse");
   await expect(page).toHaveTitle("Browse · Porchcard");
   await expect(page.getByRole("article").first()).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Homes" })).toHaveCount(0);
-  // The bar is over the homes, with Browse marked as where you are, and the
-  // other places one tap away.
-  await expect(browse).toHaveAttribute("aria-current", "page");
-  for (const name of ["Home", "Search"]) {
-    await expect(header.getByRole("link", { name, exact: true })).toBeVisible();
-  }
+  await expect(header.getByRole("link", { name: "Home", exact: true })).toBeVisible();
   await expect(header.getByRole("link", { name: /^Notifications/ })).toBeVisible();
   await header.getByRole("link", { name: "Search", exact: true }).click();
   await page.waitForURL(/\/search$/);
-  // (Back is Browse again, not whatever was behind a pop-out.)
   await page.goBack();
   await page.waitForURL(/\/browse$/);
   await expect(page.getByRole("article").first()).toBeVisible();
 
   // On a phone too.
   await page.setViewportSize({ width: 390, height: 780 });
-  await page.goto("/");
-  await header.getByRole("link", { name: "Browse", exact: true }).click();
-  await page.waitForURL(/\/browse$/);
+  await page.goto("/browse");
   await expect(page.getByRole("dialog", { name: "Homes" })).toHaveCount(0);
   await expect(header.getByRole("link", { name: "Home", exact: true })).toBeVisible();
   await expect(header.getByRole("link", { name: "Search", exact: true })).toBeVisible();
 
-  // The old address, with no home asked for, is the same place: one address for Browse.
+  // The old address, with no home asked for, is the same place.
   await page.goto("/reel");
   await expect(page).toHaveURL(/\/browse$/);
-  await expect(header.getByRole("link", { name: "Browse", exact: true })).toHaveAttribute("aria-current", "page");
   // With a home asked for it stays as it was: that home, first.
   await page.goto("/reel?home=SAMPLE-1002");
   await expect(page).toHaveURL(/\/reel\?home=SAMPLE-1002$/);
   await expect(page.locator("article[data-home]").first()).toHaveAttribute("data-home", "SAMPLE-1002");
 });
 
-test("on someone's link, which has no bar, an agent's Dashboard is under their face", async ({ browser }) => {
+test("on someone's link, which has no bar, an agent's Clients is under their face", async ({ browser }) => {
   test.setTimeout(90_000);
   const sender = await signInAgent(browser, "sal-sender-header@example.com", "Sal Sender");
   const { url } = await createShare(sender, ["4127 Larkmoor"], ["Robin"]);
@@ -427,7 +428,7 @@ test("on someone's link, which has no bar, an agent's Dashboard is under their f
   await expect(header.getByRole("link", { name: /^Notifications/ })).toHaveAttribute("href", "/activity");
   await header.getByRole("button", { name: "Account menu" }).click();
   const inMenu = agent.locator("#account-menu");
-  await expect(inMenu.getByRole("link", { name: "Dashboard", exact: true })).toHaveAttribute("href", "/dashboard");
+  await expect(inMenu.getByRole("link", { name: "Clients", exact: true })).toHaveAttribute("href", "/dashboard");
   await expect(inMenu.getByRole("link", { name: /Notifications/ })).toHaveCount(0);
   expect(await agent.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

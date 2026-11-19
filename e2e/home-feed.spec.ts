@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, openComments, signInAgent, signUpBuyer } from "./helpers";
+import { clientRow, createShare, heartOf, homeIn, joinAs, openComments, signInAgent, signUpBuyer } from "./helpers";
 
 const saved = (page: Page) =>
   page.waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
@@ -42,19 +42,19 @@ test("an agent's home is everyone's home, with their clients under the box to se
   await expect(joThere).toHaveAttribute("href", /^\/dashboard\/clients\/acct%3A[\w-]+$/);
   // Theirs alone to see, and it says so.
   await expect(clients).toContainText("Only you see this");
-  // And all of a buyer's home under it: the pills, people to follow, homes picked for them.
+  // And a buyer's home under it, with two ways to look at the feed: the
+  // people she follows, or her clients. No homes picked for her.
   await expect(agent.getByText("Picked for you")).toHaveCount(0);
   const lenses = agent.getByRole("group", { name: "Show" });
-  await expect(lenses.getByRole("button", { name: "Following" })).toBeVisible();
-  await expect(lenses.getByRole("button", { name: "For you" })).toBeVisible();
+  await expect(lenses.getByRole("button")).toHaveText(["Following", "Clients"]);
+  await expect(lenses.getByRole("button", { name: "Following" })).toHaveAttribute("aria-pressed", "true");
+  await expect(agent.getByRole("region", { name: "Homes for you" })).toHaveCount(0);
   const people = agent.getByRole("region", { name: "People to follow" });
   await expect(people).toHaveCount(1);
   await expect(people.getByRole("listitem").first()).toContainText("Prudence");
   await expect(people.getByRole("listitem").first()).toContainText("Follows you");
   // (Her own client isn't someone to follow: she follows her already.)
   await expect(people.getByRole("link", { name: /^Jo\b/ })).toHaveCount(0);
-  const picked = agent.getByRole("region", { name: "Homes for you" });
-  expect(await picked.getByRole("listitem").count()).toBeGreaterThanOrEqual(6);
 
   // Jo asks something.
   const chat = await openComments(jo, quillan);
@@ -67,9 +67,15 @@ test("an agent's home is everyone's home, with their clients under the box to se
   await expect(joThere).toContainText("“Is the basement finished?”");
   await expect(joThere).toContainText("new since you last looked");
   await expect(clients).toContainText("1 waiting");
-  // [P] What she said on her link is in her agent's clients card and nowhere
-  // else on the page: never in the feed.
-  await expect(agent.getByRole("region", { name: "What's new" })).not.toContainText("Is the basement finished?");
+  // [P] What she said on her link is in her agent's clients card, and under
+  // Clients (hers alone to see): never under Following.
+  const stream = agent.getByRole("region", { name: "What's new" });
+  await expect(stream.getByText("Is the basement finished?").filter({ visible: true })).toHaveCount(0);
+  await stream.getByRole("group", { name: "Show" }).getByRole("button", { name: "Clients" }).click();
+  await expect(stream.getByText("Is the basement finished?").filter({ visible: true })).toHaveCount(1);
+  await expect(stream.getByRole("listitem").filter({ hasText: "Is the basement finished?" }).first()).toContainText("Only you see this");
+  await stream.getByRole("group", { name: "Show" }).getByRole("button", { name: "Following" }).click();
+  await expect(stream.getByText("Is the basement finished?").filter({ visible: true })).toHaveCount(0);
   await expect(agent.getByRole("heading", { name: "Client activity" })).toHaveCount(0);
   // Reply opens the box right there, ready to type in.
   const replyTo = clients.getByRole("button", { name: "Reply to Jo" });
@@ -128,6 +134,31 @@ test("an agent's home is everyone's home, with their clients under the box to se
   await jo.goto(`${joPage}/followers`);
   await expect(jo.getByRole("list", { name: "Your followers" }).getByRole("link", { name: /Fern/ })).toBeVisible();
 
+  // What Jo likes in public is in Fern's Following feed, as anyone's is, and
+  // marked as her client's: "Your client" beside her name.
+  await jo.goto("/homes/SAMPLE-1001");
+  const publicHeart = heartOf(jo.getByRole("article").first());
+  await Promise.all([saved(jo), publicHeart.click()]);
+  await expect(publicHeart).toHaveAttribute("aria-pressed", "true");
+  await agent.goto("/?lens=following");
+  const hers = agent.getByRole("region", { name: "What's new" }).getByRole("listitem").filter({ hasText: "Jo" }).first();
+  await expect(hers).toContainText("Your client");
+
+  // A client and her profile are one person, a tap apart either way. Jo
+  // signed up, so on the Clients page her profile is right there; on her
+  // client page it's a button; and her profile sends her agent back to her
+  // client page.
+  await agent.goto("/dashboard");
+  const toProfile = clientRow(agent, "Jo").getByRole("link", { name: /^View profile\b.*\bJo$/ });
+  await expect(toProfile).toHaveAttribute("href", joPage);
+  expect((await toProfile.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await agent.goto(joClientPage);
+  await expect(agent.getByRole("link", { name: "View profile", exact: true })).toHaveAttribute("href", joPage);
+  await agent.getByRole("link", { name: "View profile", exact: true }).click();
+  await agent.waitForURL((u) => u.pathname === joPage);
+  await expect(agent.getByText("Your client", { exact: true })).toBeVisible();
+  await expect(agent.getByRole("link", { name: "Client page", exact: true })).toHaveAttribute("href", joClientPage);
+
   // Jo's own home: the homes Fern sent her first, the one she hasn't rated
   // yet waiting, a tap from her own link.
   await jo.goto("/");
@@ -144,15 +175,7 @@ test("an agent's home is everyone's home, with their clients under the box to se
   await expect(banner.getByRole("link", { name: "Homes from Fern" })).toHaveAttribute("href", link);
   await jo.keyboard.press("Escape");
 
-  // Then homes picked for her: the first opens them in the same order.
-  const more = jo.getByRole("region", { name: "Homes for you" });
-  const pin = more.getByRole("listitem").first().getByRole("link");
-  // On a phone, one column: each photo as wide as the page, and nothing runs off its side.
-  const page = jo.viewportSize()!.width;
-  expect((await pin.locator("img").boundingBox())!.width).toBeGreaterThan(page - 40);
-  expect(await jo.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page);
-  await expect(pin).toHaveAttribute("href", /^\/reel\?from=picks&home=SAMPLE-\d+$/);
-  await pin.click();
-  await jo.waitForURL(/\/reel\?from=picks&home=SAMPLE-/);
-  await expect(jo.getByRole("article").first()).toBeInViewport({ ratio: 0.9 });
+  // No homes picked for her under it: nothing here is a recommendation.
+  await expect(jo.getByRole("region", { name: "Homes for you" })).toHaveCount(0);
+  await expect(jo.getByRole("group", { name: "Show" })).toHaveCount(0);
 });

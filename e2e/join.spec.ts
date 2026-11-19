@@ -94,8 +94,8 @@ test("signed out, the home page says what this is; See homes shows three homes s
   await expect(page.getByRole("form", { name: "Sign up" })).toHaveCount(0);
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Hi, Robin");
-  await page.getByRole("link", { name: "Browse homes" }).first().click();
-  await page.waitForURL(/\/browse$/);
+  await expect(page.getByRole("banner").getByRole("link", { name: "Search", exact: true })).toHaveAttribute("href", "/search");
+  await page.goto("/browse");
   await expect(page.getByRole("article").first()).toBeVisible();
   await scrollToEnd(page);
   await expect(page.getByRole("article")).toHaveCount(13);
@@ -188,19 +188,19 @@ test("the page for agents tells the home page's pitch, and its button says what 
   const buyer = await signUpBuyer(browser, "bea-becomes@example.com", "Bea");
   await buyer.goto("/for-agents");
   const become = buyer.getByRole("main").getByRole("button", { name: "Make my account an agent's" });
-  await expect(become).toHaveAccessibleDescription("You'll get a Dashboard for your clients. Your likes and follows stay.");
-  await expect(buyer.getByRole("main").getByText("You'll get a Dashboard for your clients. Your likes and follows stay.")).toBeVisible();
+  await expect(become).toHaveAccessibleDescription("You'll get a Clients page for the people you send homes to. Your likes and follows stay.");
+  await expect(buyer.getByRole("main").getByText("You'll get a Clients page for the people you send homes to. Your likes and follows stay.")).toBeVisible();
   await expect(buyer.getByRole("main").getByRole("link")).toHaveCount(0);
   // It does what it says: an agent's account, by the name they have. Their
   // details are among their profile settings.
   await become.click();
   await buyer.waitForURL("**/dashboard");
-  await expect(buyer.getByRole("banner").getByRole("link", { name: "Dashboard", exact: true })).toBeVisible();
+  await expect(buyer.getByRole("banner").getByRole("link", { name: "Clients", exact: true })).toBeVisible();
 
   // An agent: their dashboard, by its name.
   await buyer.goto("/for-agents");
-  await expect(buyer.getByRole("main").getByRole("link")).toHaveText(["Go to your dashboard"]);
-  await expect(buyer.getByRole("main").getByRole("link", { name: "Go to your dashboard" })).toHaveAttribute("href", "/dashboard");
+  await expect(buyer.getByRole("main").getByRole("link")).toHaveText(["Go to your clients"]);
+  await expect(buyer.getByRole("main").getByRole("link", { name: "Go to your clients" })).toHaveAttribute("href", "/dashboard");
 });
 
 test("each sign-in form has a quiet way to the other, and a new agent's first screen asks only who they are", async ({ page }) => {
@@ -242,7 +242,7 @@ test("each sign-in form has a quiet way to the other, and a new agent's first sc
     await expect(first.getByLabel(label)).toHaveCount(0);
   }
   // No tabs to places that would only send them back here.
-  await expect(page.getByRole("navigation", { name: "Dashboard" })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Clients" })).toHaveCount(0);
   await first.getByLabel("Full name").fill("Fay Firstrun");
   await first.getByRole("button", { name: "Save" }).click();
   await page.waitForURL("**/dashboard");

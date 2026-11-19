@@ -182,6 +182,7 @@ export function ReelFeed({
   intro,
   introLabel = "Welcome",
   end,
+  endBackdrop,
   infinite = false,
   embedded = false,
   contained = false,
@@ -219,6 +220,8 @@ export function ReelFeed({
   introLabel?: string;
   // The last screen, after the homes.
   end?: ReactNode;
+  // Behind the last screen, edge to edge (a link's wash of colour, as its first screen has).
+  endBackdrop?: ReactNode;
   // Loads more homes as you near the end.
   infinite?: boolean;
   // One home inside a pop-out rather than filling the screen.
@@ -382,6 +385,7 @@ export function ReelFeed({
         intro={intro}
         introLabel={introLabel}
         end={end}
+        endBackdrop={endBackdrop}
         embedded={embedded}
         contained={contained}
         onOpen={onOpen}
@@ -423,6 +427,7 @@ function Feed({
   intro,
   introLabel = "Welcome",
   end,
+  endBackdrop,
   embedded,
   contained,
   onOpen,
@@ -456,6 +461,8 @@ function Feed({
   // What that first screen is, for a screen reader.
   introLabel?: string;
   end?: ReactNode;
+  // Behind the last screen, edge to edge (a link's wash of colour, as its first screen has).
+  endBackdrop?: ReactNode;
   embedded: boolean;
   contained: boolean;
   onOpen?: (listingKey: string) => void;
@@ -1118,8 +1125,13 @@ function Feed({
         <section
           data-panel={offset + posts.length}
           aria-label="The end"
-          className="relative flex h-full snap-start snap-always flex-col items-center overflow-y-auto px-6 py-24 text-center"
+          className="relative h-full snap-start snap-always overflow-hidden"
         >
+          {/* What's behind it, if anything: the whole screen, staying put
+              while what's on it scrolls over it. */}
+          {endBackdrop}
+          {/* (What scrolls, when it's taller than the screen.) */}
+          <div className="relative flex h-full flex-col items-center overflow-y-auto px-6 py-24 text-center">
           {/* Centred when it fits; taller than the screen (a short phone), it
               starts under the header and scrolls, rather than running up
               out of reach behind it. */}
@@ -1163,6 +1175,7 @@ function Feed({
                 )}
               </>
             )}
+          </div>
           </div>
         </section>
       </div>

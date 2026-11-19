@@ -1,10 +1,7 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import { createShare, heartOf, homeIn, joinAs, openComments, signInAgent, signUpBuyer } from "./helpers";
 
-const saved = (page: Page) =>
-  page.waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
-
-test("an agent's home is calm: their clients near the top, whoever is waiting with Reply right there; then the feed and homes, as anyone has; and what a client did is on her own page", async ({
+test("an agent's home is calm: their clients near the top, whoever is waiting with Reply right there; then the feed, Following or Clients; and what a client did is on her own page", async ({
   browser,
 }) => {
   test.setTimeout(120_000);
@@ -44,12 +41,14 @@ test("an agent's home is calm: their clients near the top, whoever is waiting wi
   await expect(agent.getByRole("heading", { name: "Client activity" })).toHaveCount(0);
   await expect(agent.getByRole("listitem").filter({ hasText: "Does it get afternoon sun?" })).toHaveCount(1);
   await expect(agent.getByRole("region", { name: "Waiting for you" })).toHaveCount(0);
-  // Under her clients, on the same phone: the pills, then homes.
+  // Under her clients, on the same phone: two ways to look at the feed, and
+  // it opens on Following. No homes picked for her.
   const lenses = agent.getByRole("group", { name: "Show" });
-  const picked = agent.getByRole("region", { name: "Homes for you" });
   const top = async (part: Locator) => (await part.boundingBox())!.y;
   expect(await top(clients)).toBeLessThan(await top(lenses));
-  expect(await top(lenses)).toBeLessThan(await top(picked));
+  await expect(lenses.getByRole("button")).toHaveText(["Following", "Clients"]);
+  await expect(lenses.getByRole("button", { name: "Following" })).toHaveAttribute("aria-pressed", "true");
+  await expect(agent.getByRole("region", { name: "Homes for you" })).toHaveCount(0);
 
   // On a desktop: them down the left, with only the places the bar doesn't
   // have; their clients once, in the middle; and what a buyer's home has.
@@ -69,7 +68,6 @@ test("an agent's home is calm: their clients near the top, whoever is waiting wi
     agent.getByRole("complementary", { name: "Beside your feed" }).getByRole("region", { name: "Your clients" }),
   ).toHaveCount(0);
   await expect(clients.getByRole("link", { name: "See all clients", exact: true })).toHaveAttribute("href", "/dashboard");
-  expect(await picked.getByRole("listitem").count()).toBeGreaterThanOrEqual(6);
   await expect(lenses.getByRole("button", { name: "Following" })).toBeVisible();
 
   // Reply, beside her name while she's waiting, opens the box under it,
@@ -91,6 +89,15 @@ test("an agent's home is calm: their clients near the top, whoever is waiting wi
   await expect(kitThere).toContainText("Liked 1 of 2 homes");
   await expect(clients.getByRole("textbox")).toHaveCount(0);
 
+  // Clients, beside Following: everything her clients did on the homes she
+  // sent, what Kit asked and her answer among it.
+  const stream = agent.getByRole("region", { name: "What's new" });
+  await expect(stream.getByText("Does it get afternoon sun?").filter({ visible: true })).toHaveCount(0);
+  await lenses.getByRole("button", { name: "Clients" }).click();
+  await expect(lenses.getByRole("button", { name: "Clients" })).toHaveAttribute("aria-pressed", "true");
+  await expect(stream.getByText("Does it get afternoon sun?").filter({ visible: true })).toHaveCount(1);
+  await expect(stream.getByRole("list", { name: "Your replies" })).toContainText("Plenty: it faces west.");
+
   // Her own page, from her name: her day as a card with the home's photo
   // large, what she said, the answer under it, and Reply for more.
   await agent.setViewportSize({ width: 390, height: 844 });
@@ -105,7 +112,7 @@ test("an agent's home is calm: their clients near the top, whoever is waiting wi
   await expect(agent.getByRole("region", { name: "Waiting for you" })).toHaveCount(0);
 });
 
-test("a quiet day on an agent's home: first the one thing to do, send homes; then where their newest clients stand, the pills, and homes", async ({
+test("a quiet day on an agent's home: first the one thing to do, send homes; then where their newest clients stand, and the pills", async ({
   browser,
 }) => {
   test.setTimeout(150_000);
@@ -118,11 +125,14 @@ test("a quiet day on an agent's home: first the one thing to do, send homes; the
   await expect(send).toHaveAttribute("href", "/dashboard/new");
   expect((await send.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await expect(agent.getByRole("region", { name: "Your clients" })).toHaveCount(0);
-  // Never an empty page: the pills and homes are there from the first day.
+  // The pills are there from the first day, on Following; and following
+  // nobody yet, it says what to do about that.
   const lenses = agent.getByRole("group", { name: "Show" });
-  const picked = agent.getByRole("region", { name: "Homes for you" });
-  await expect(lenses.getByRole("button", { name: "For you" })).toHaveAttribute("aria-pressed", "true");
-  expect(await picked.getByRole("listitem").count()).toBeGreaterThanOrEqual(6);
+  await expect(lenses.getByRole("button", { name: "Following" })).toHaveAttribute("aria-pressed", "true");
+  const stream = agent.getByRole("region", { name: "What's new" });
+  await expect(stream.getByRole("link", { name: "Find people", exact: true })).toHaveAttribute("href", "/search/people");
+  await expect(stream.getByRole("link", { name: "Search homes", exact: true })).toHaveAttribute("href", "/search");
+  await expect(agent.getByRole("region", { name: "Homes for you" })).toHaveCount(0);
 
   // Four clients, none of whom has opened anything.
   for (const name of ["Ansel", "Blythe", "Cosmo", "Delphine"]) await createShare(agent, ["1204 Quillan"], [name]);
@@ -140,12 +150,14 @@ test("a quiet day on an agent's home: first the one thing to do, send homes; the
   await expect(clients).not.toContainText("waiting");
   await expect(clients.getByRole("button")).toHaveCount(0);
   await expect(clients.getByRole("link", { name: "See all clients", exact: true })).toHaveAttribute("href", "/dashboard");
-  // Then the pills, then at least six homes.
+  // Then the pills.
   const top = async (part: Locator) => (await part.boundingBox())!.y;
   expect(await top(clients)).toBeLessThan(await top(lenses));
-  expect(await top(lenses)).toBeLessThan(await top(picked));
-  expect(await picked.getByRole("listitem").count()).toBeGreaterThanOrEqual(6);
-  await expect(picked.getByRole("link", { name: "Browse homes" })).toHaveAttribute("href", "/browse");
+  // None of the four has signed up, so none has a profile to go to: on the
+  // Clients page they're as they were, by the name she gave them.
+  await agent.goto("/dashboard");
+  await expect(agent.getByRole("main").getByRole("heading", { name: "Delphine", exact: true })).toBeVisible();
+  await expect(agent.getByRole("link", { name: /^View profile/ })).toHaveCount(0);
 });
 
 test("everyone who's waiting shows on an agent's home, past the usual three; one answered stays put, still saying it was sent, until the page is left", async ({
@@ -212,41 +224,7 @@ test("everyone who's waiting shows on an agent's home, past the usual three; one
   await expect(clients.getByRole("button", { name: /^Reply to / })).toHaveCount(3);
 });
 
-test("homes for you are never fewer than six, however many the people you follow have liked", async ({ browser }) => {
-  test.setTimeout(150_000);
-  // Hesper likes eight of the thirteen homes in public. (Not SAMPLE-1006:
-  // e2e/public.spec.ts, which runs after this in the same database, counts
-  // that home's likes.)
-  const hesper = await signUpBuyer(browser, "hesper-today@example.com", "Hesper Today");
-  for (const n of [1001, 1002, 1003, 1004, 1005, 1007, 1008, 1009]) {
-    await hesper.goto(`/homes/SAMPLE-${n}`);
-    const heart = heartOf(hesper.getByRole("article").first());
-    await Promise.all([saved(hesper), heart.click()]);
-    await expect(heart).toHaveAttribute("aria-pressed", "true");
-  }
-  await hesper.goto("/people/me");
-  await hesper.waitForURL(/\/people\/[\w-]+$/);
-  const hesperPage = new URL(hesper.url()).pathname;
-
-  // Ivo follows her: all eight are in his feed, which leaves five to pick from.
-  const ivo = await signUpBuyer(browser, "ivo-today@example.com", "Ivo Today");
-  await ivo.goto(hesperPage);
-  await Promise.all([saved(ivo), ivo.getByRole("button", { name: "Follow Hesper" }).click()]);
-  await expect(ivo.getByRole("button", { name: "Following Hesper" })).toHaveAttribute("aria-pressed", "true");
-  await ivo.goto("/?lens=following");
-  await expect(ivo.getByRole("region", { name: "What's new" }).getByRole("listitem").first()).toContainText("Hesper");
-  // Still six homes for him, each once.
-  const pins = ivo.getByRole("region", { name: "Homes for you" }).getByRole("listitem").getByRole("link");
-  expect(await pins.count()).toBeGreaterThanOrEqual(6);
-  const hrefs = await pins.evaluateAll((links) => links.map((link) => link.getAttribute("href")));
-  expect(new Set(hrefs).size).toBe(hrefs.length);
-  // And the first opens them full screen, as before.
-  await pins.first().click();
-  await ivo.waitForURL(/\/reel\?from=picks&home=SAMPLE-/);
-  await expect(ivo.getByRole("article").first()).toBeInViewport({ ratio: 0.9 });
-});
-
-test("someone who follows nobody yet starts on homes picked for them, with people to follow over them on a phone; Following waits a tap away, with the way to find people", async ({
+test("someone who follows nobody yet: one feed, no homes picked for them; what to do about it, with people to follow under it on a phone", async ({
   browser,
 }) => {
   test.setTimeout(90_000);
@@ -263,18 +241,18 @@ test("someone who follows nobody yet starts on homes picked for them, with peopl
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Hi, Una");
-  const lenses = page.getByRole("group", { name: "Show" });
-  await expect(lenses.getByRole("button", { name: "For you" })).toHaveAttribute("aria-pressed", "true");
-  await expect(lenses.getByRole("button", { name: "Following" })).toHaveAttribute("aria-pressed", "false");
-  const picks = page.getByRole("region", { name: "Homes for you" });
-  await expect(picks.getByRole("listitem").first().getByRole("link")).toHaveAttribute(
-    "href",
-    /^\/reel\?from=picks&home=SAMPLE-\d+$/,
-  );
-  await expect(picks.getByRole("link", { name: "Browse homes" })).toHaveAttribute("href", "/browse");
+  // One feed: nothing to choose between, and no homes picked for her.
+  await expect(page.getByRole("group", { name: "Show" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Homes for you" })).toHaveCount(0);
+  // Nobody followed yet, and what to do about it: people, or homes.
+  const stream = page.getByRole("region", { name: "What's new" });
+  await expect(stream.getByText("Follow people to see what they like.")).toBeVisible();
+  const find = stream.getByRole("link", { name: "Find people", exact: true });
+  await expect(find).toHaveAttribute("href", "/search/people");
+  expect((await find.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await expect(stream.getByRole("link", { name: "Search homes", exact: true })).toHaveAttribute("href", "/search");
   // On a phone there's no rail beside the feed: people to follow are in the
-  // middle, once, under the pills and above the homes picked for her. Whoever
-  // follows her is first, and it says so.
+  // middle, once, under it. Whoever follows her is first, and it says so.
   const people = page.getByRole("region", { name: "People to follow" });
   await expect(people).toHaveCount(1);
   await expect(people.getByRole("listitem").first()).toContainText("Ottoline");
@@ -285,18 +263,6 @@ test("someone who follows nobody yet starts on homes picked for them, with peopl
     "/search/people",
   );
   const top = async (part: Locator) => (await part.boundingBox())!.y;
-  expect(await top(people)).toBeGreaterThan(await top(lenses));
-  expect(await top(people)).toBeLessThan(await top(picks));
-  // Following: nobody yet, and what to do about it: one button, to people.
-  await lenses.getByRole("button", { name: "Following" }).click();
-  const stream = page.getByRole("region", { name: "What's new" });
-  await expect(stream.getByText("Follow people to see what they like.")).toBeVisible();
-  const find = stream.getByRole("link", { name: "Find people", exact: true });
-  await expect(find).toHaveAttribute("href", "/search/people");
-  expect((await find.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-  // The people to follow are still there, under it.
-  await expect(people).toHaveCount(1);
   expect(await top(people)).toBeGreaterThan(await top(find));
-  expect(await top(people)).toBeLessThan(await top(picks));
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });

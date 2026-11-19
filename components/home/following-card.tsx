@@ -30,12 +30,15 @@ function Names({ who }: { who: FeedWho[] }) {
   const others = who.length - named.length;
   const link = (person: FeedWho) =>
     person.profileId ? (
-      <Link
-        href={`/people/${person.profileId}`}
-        className="relative z-20 font-semibold underline-offset-2 before:absolute before:-inset-x-1 before:-inset-y-[13px] hover:underline"
-      >
-        {person.name}
-      </Link>
+      <>
+        <Link
+          href={`/people/${person.profileId}`}
+          className="relative z-20 font-semibold underline-offset-2 before:absolute before:-inset-x-1 before:-inset-y-[13px] hover:underline"
+        >
+          {person.name}
+        </Link>
+        {person.client && <YourClient />}
+      </>
     ) : (
       <strong className="font-semibold">{person.name}</strong>
     );
@@ -49,6 +52,15 @@ function Names({ who }: { who: FeedWho[] }) {
       ))}
       {others > 0 && ` and ${others} ${others === 1 ? "other" : "others"}`}
     </>
+  );
+}
+
+// Beside a name, in an agent's own feed: this one is their client.
+function YourClient() {
+  return (
+    <span className="ml-1.5 inline-flex rounded-full bg-ink px-1.5 py-px align-[1px] text-[10px] font-bold uppercase tracking-wide text-white">
+      Your client
+    </span>
   );
 }
 
@@ -177,7 +189,8 @@ export function StripCard({ entries }: { entries: HomeFeedEntry[] }) {
             </Link>
           ) : (
             <strong className="font-semibold">{who.name}</strong>
-          )}{" "}
+          )}
+          {who.client && <YourClient />}{" "}
           liked {entries.length} homes{where}
           <span className="whitespace-nowrap text-meta text-muted">
             {" · "}

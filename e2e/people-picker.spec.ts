@@ -335,7 +335,7 @@ test("a home from Send named for Toby: whoever opens it as Toby is Toby, once; a
   await forWhom.fill("Toby");
   await forWhom.press("Enter");
   // (Where it is on the dashboard, once it's made.)
-  const inDashboard = sheet.getByRole("link", { name: "Open in Dashboard" });
+  const inDashboard = sheet.getByRole("link", { name: "Open in Clients" });
   await expect(inDashboard).toHaveAttribute("href", /^\/dashboard\/shares\/[\w-]+$/);
   const dashboardUrl = (await inDashboard.getAttribute("href"))!;
   await sheet.getByRole("button", { name: "Save" }).click();

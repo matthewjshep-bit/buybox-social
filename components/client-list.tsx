@@ -1,3 +1,4 @@
+import { UserRound } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Sent } from "@/app/dashboard/opened";
@@ -73,6 +74,16 @@ export function ClientListRow({ client }: { client: Client }) {
           {client.unread && <p className="sr-only">New since you last looked</p>}
           <StatusSentence status={client.status} className="mt-1" />
           <p className="mt-1 text-base text-stone-600">{factsOf(client)}</p>
+          {/* Signed up, so they have a page of their own: it's a tap away.
+              (Someone known only by the name the agent gave them has none.) */}
+          {client.profileId && (
+            <Link
+              href={`/people/${client.profileId}`}
+              className="-ml-1 inline-flex min-h-11 items-center gap-1.5 rounded-lg px-1 text-base font-semibold text-brand hover:underline"
+            >
+              <UserRound aria-hidden size={16} /> View profile<span className="sr-only">, {client.name}</span>
+            </Link>
+          )}
         </div>
       </div>
       <div className="flex shrink-0 pl-14 sm:justify-end sm:pl-0">

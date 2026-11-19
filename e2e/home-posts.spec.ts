@@ -52,7 +52,6 @@ test("someone posts about a home from their page; a follower sees it in their fe
 
   // Ravi's feed has it, and a box right under it, his face beside it.
   await ravi.goto("/");
-  await ravi.getByRole("group", { name: "Show" }).getByRole("button", { name: "Following" }).click();
   const inFeed = ravi.getByRole("listitem").filter({ hasText: WORDS }).first();
   await expect(inFeed).toContainText(LARKMOOR);
   const box = inFeed.getByRole("textbox", { name: `Comment on ${LARKMOOR}` });

@@ -101,8 +101,8 @@ export default async function ActivityPage() {
           title="Nothing yet"
           className="mt-6"
           action={
-            <Link href="/browse" className={button({ kind: "primary" })}>
-              Browse homes
+            <Link href="/search" className={button({ kind: "primary" })}>
+              Search homes
             </Link>
           }
         >

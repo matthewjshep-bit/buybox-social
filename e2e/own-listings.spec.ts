@@ -283,7 +283,8 @@ test("an MLS listing of theirs is changed through their own copy, which takes it
 
   // Her two listings from the MLS, each with Edit.
   await agent.goto("/dashboard/listings");
-  await expect(agent.getByText("Agent dashboard")).toBeVisible();
+  // (Her listings are a place of their own, under her face: not a tab of Clients.)
+  await expect(agent.getByRole("navigation", { name: "Clients" })).toHaveCount(0);
   const fromMls = agent.getByRole("list", { name: "Listings from the MLS" });
   await expect(fromMls.getByRole("listitem")).toHaveCount(2);
   // Each can be sent as it is, and what the star does is said once above them.

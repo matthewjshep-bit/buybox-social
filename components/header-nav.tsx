@@ -4,6 +4,7 @@ import {
   Bookmark,
   BriefcaseBusiness,
   ChevronDown,
+  Building2,
   House,
   LogOut,
   Shield,
@@ -21,9 +22,11 @@ import { cn } from "@/lib/format";
 
 // Which page a link is: the one you're on, or the part of the site it's in
 // (a client's page is in the dashboard).
-function useCurrent(href: string, section: boolean) {
+function useCurrent(href: string, section: boolean, except?: string) {
   const pathname = usePathname();
   if (pathname === href) return "page" as const;
+  // (`except`: a part of it that is a place of its own, with its own link.)
+  if (except && (pathname === except || pathname.startsWith(`${except}/`))) return undefined;
   if (section && pathname.startsWith(`${href}/`)) return "true" as const;
   return undefined;
 }
@@ -64,16 +67,18 @@ export function SignInLink({ className }: { className?: string }) {
 export function NavLink({
   href,
   section = false,
+  except,
   className,
   children,
 }: {
   href: string;
   section?: boolean;
+  except?: string;
   className?: string;
   children: ReactNode;
 }) {
   return (
-    <Link href={href} aria-current={useCurrent(href, section)} className={className}>
+    <Link href={href} aria-current={useCurrent(href, section, except)} className={className}>
       {children}
     </Link>
   );
@@ -268,6 +273,13 @@ export function AccountMenu({
           <MenuLink href={profile} icon={<UserRound aria-hidden size={18} />} onGo={close}>
             Your profile
           </MenuLink>
+          {/* An agent's own listings: theirs to add to and change, like
+              their profile, so here with it and not among their clients. */}
+          {agent && (
+            <MenuLink href="/dashboard/listings" section icon={<Building2 aria-hidden size={18} />} onGo={close}>
+              Listings
+            </MenuLink>
+          )}
           {/* Two places the bar has no room for: the homes you saved (only
               you see them), and people, by name (Search's other side). */}
           <MenuLink href="/people/me?show=saved" icon={<Bookmark aria-hidden size={18} />} onGo={close}>
@@ -281,13 +293,13 @@ export function AccountMenu({
               {link.label}
             </MenuLink>
           ))}
-          {/* (Notifications and an agent's Dashboard aren't repeated here:
+          {/* (Notifications and an agent's Clients aren't repeated here:
               the bar has them by name at every width. Only on someone's
-              link, which has no bar, is the Dashboard here.) A buyer who is
+              link, which has no bar, is Clients here.) A buyer who is
               an agent sets up their agent's account from here. */}
           {agent && dashboard && (
             <MenuLink href="/dashboard" section icon={<Users aria-hidden size={18} />} onGo={close}>
-              Dashboard
+              Clients
             </MenuLink>
           )}
           {!agent && (

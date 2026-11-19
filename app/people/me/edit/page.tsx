@@ -1,4 +1,4 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Building2 } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { EditAbout } from "@/app/people/[id]/about";
@@ -15,7 +15,7 @@ import { cn } from "@/lib/format";
 import { getListingsLook } from "@/lib/own-listings";
 import { getProfilePerson } from "@/lib/profile";
 import { ensureAccountVisitor } from "@/lib/public";
-import { backLink, card, pageColumn, pageTitle } from "@/lib/ui";
+import { backLink, button, card, pageColumn, pageTitle } from "@/lib/ui";
 
 export const metadata = { title: "Edit profile · Porchcard" };
 
@@ -112,10 +112,17 @@ export default async function EditProfilePage() {
       {/* An agent's listings on their profile: one featured, two or three across, or a list. */}
       {look && (
         <section id="layout" aria-labelledby="layout-title" className={cn(card, "mt-4 scroll-mt-4 p-5")}>
-          <h2 id="layout-title" className="text-lg font-semibold">
-            Listings layout
-          </h2>
-          <div className="mt-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="layout-title" className="text-lg font-semibold">
+              Listings
+            </h2>
+            {/* Adding one, changing one: their own page for it. */}
+            <Link href="/dashboard/listings" className={button({ kind: "secondary" })}>
+              <Building2 aria-hidden size={16} /> Manage listings
+            </Link>
+          </div>
+          <p className="mt-3 text-body font-semibold">Layout on your profile</p>
+          <div className="mt-2">
             <LayoutPicker layout={look.layout} />
           </div>
         </section>

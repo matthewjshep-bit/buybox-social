@@ -321,11 +321,6 @@ test("people to follow on a buyer's home: whoever follows them first, with why; 
   await expect(inFeed.getByRole("listitem").first()).toContainText("Leocadia");
   const top = async (part: Locator) => (await part.boundingBox())!.y;
   expect(await top(inFeed)).toBeGreaterThan(await top(caughtUp));
-  expect(await top(inFeed)).toBeLessThan(await top(thisbe.getByRole("region", { name: "Homes for you" })));
-  // And under For you, the same: one card, over the homes picked for her.
-  await thisbe.getByRole("group", { name: "Show" }).getByRole("button", { name: "For you" }).click();
-  await expect(inFeed).toHaveCount(1);
   await expect(inFeed.getByRole("link", { name: "See all people to follow", exact: true })).toBeVisible();
-  expect(await top(inFeed)).toBeLessThan(await top(thisbe.getByRole("region", { name: "Homes for you" })));
   expect(await thisbe.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });

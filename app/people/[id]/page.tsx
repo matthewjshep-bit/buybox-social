@@ -254,7 +254,10 @@ export default async function ProfilePage({ params, searchParams }: Props) {
           client
             ? {
                 homes: `/reel?from=client:${client.participantId}`,
-                link: `/dashboard/shares/${client.shareId}`,
+                // (Signed up, or they'd have no page: so their client page is their account's.)
+                page: person.accountId
+                  ? `/dashboard/clients/${encodeURIComponent(`acct:${person.accountId}`)}`
+                  : `/dashboard/shares/${client.shareId}`,
               }
             : undefined
         }
@@ -394,8 +397,8 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                 icon={Home}
                 title="Nothing here yet"
                 action={
-                  <Link href="/browse" data-empty-action className={button({ kind: "primary" })}>
-                    Browse homes
+                  <Link href="/search" data-empty-action className={button({ kind: "primary" })}>
+                    Search homes
                   </Link>
                 }
               />

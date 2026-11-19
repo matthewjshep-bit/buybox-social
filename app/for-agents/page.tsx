@@ -40,7 +40,7 @@ export default async function ForAgentsPage() {
               </>
             ) : user.role === "agent" ? (
               <Link href="/dashboard" className={start}>
-                Go to your dashboard
+                Go to your clients
               </Link>
             ) : (
               // Signed in as a buyer: one tap changes the account itself, and
@@ -50,7 +50,7 @@ export default async function ForAgentsPage() {
                   Make my account an agent&apos;s
                 </button>
                 <p id="become-agent-note" className="mt-3 max-w-sm text-body leading-relaxed text-stone-700">
-                  You&apos;ll get a Dashboard for your clients. Your likes and follows stay.
+                  You&apos;ll get a Clients page for the people you send homes to. Your likes and follows stay.
                 </p>
               </form>
             )}

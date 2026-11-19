@@ -1,4 +1,4 @@
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Plus, UserRound } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ClientFeedbackButton } from "@/components/client-feedback";
@@ -103,6 +103,16 @@ export default async function ClientPage({ params }: Props) {
             <StatusSentence status={client.status} className="mt-2" />
             <p className="mt-1 text-lg text-stone-600">{factsOf(client)}</p>
             {tally && <p className="mt-1 text-lg text-stone-600">{tally}</p>}
+            {/* Their own page, once they've signed up: said in words, as on
+                the Clients page (a link, so the buttons under stay few). */}
+            {profile && (
+              <Link
+                href={profile}
+                className="-ml-1 mt-1 inline-flex min-h-11 items-center gap-1.5 rounded-lg px-1 text-lg font-semibold text-brand hover:underline"
+              >
+                <UserRound aria-hidden size={18} /> View profile
+              </Link>
+            )}
           </div>
         </div>
         <div className="mt-6 flex flex-wrap gap-3">

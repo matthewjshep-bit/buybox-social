@@ -407,11 +407,14 @@ test("a client's homes are their agent's alone: on their page the agent sees who
   await expect(heartOf(home)).toHaveAttribute("aria-pressed", "true");
 
   // Her agent, on her page: the name they gave her (she has none of her own
-  // yet), that she's theirs, and her homes and her link a tap away.
+  // yet), that she's theirs, and her homes and her client page a tap away.
   await agent.goto(jennyPage);
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Jenny");
   await expect(agent.getByText("Your client", { exact: true })).toBeVisible();
-  await expect(agent.getByRole("link", { name: "Their link" })).toHaveAttribute("href", /^\/dashboard\/shares\/[0-9a-f-]{36}$/);
+  await expect(agent.getByRole("link", { name: "Client page" })).toHaveAttribute(
+    "href",
+    /^\/dashboard\/clients\/acct%3A[0-9a-f-]{36}$/,
+  );
   const theirHomes = agent.getByRole("link", { name: "See their homes" });
   const href = (await theirHomes.getAttribute("href"))!;
   expect(href).toMatch(/^\/reel\?from=client:[0-9a-f-]{36}$/);

@@ -279,9 +279,9 @@ test("Undo send takes back an unopened link, and a home meant for an existing cl
   await sheet.getByRole("button", { name: "Undo send" }).click();
   await expect(sheet.getByText("The link will stop working.")).toBeVisible();
   await sheet.getByRole("button", { name: "Undo send" }).click();
-  await expect(sheet.getByText("Opened, so it can't be undone. Remove the home in your dashboard.")).toBeVisible();
+  await expect(sheet.getByText("Opened, so it can't be undone. Remove the home on the link, in Clients.")).toBeVisible();
   // The buttons went, so the cursor is on the answer rather than lost.
-  await expect(sheet.getByText("Opened, so it can't be undone. Remove the home in your dashboard.")).toBeFocused();
+  await expect(sheet.getByText("Opened, so it can't be undone. Remove the home on the link, in Clients.")).toBeFocused();
   expect((await request.get(kept)).status()).toBe(200);
 });
 
@@ -469,7 +469,7 @@ test("a link held for a day is never handed out: Send this home makes a new one 
   expect((await request.get(url)).status()).toBe(200);
   expect((await request.get(`/s/${token}`)).status()).toBe(404);
   // (Where it is from now on, by the bar's name for the place.)
-  await expect(draft.getByRole("link", { name: "Open in Dashboard" })).toHaveAttribute("href", /^\/dashboard\/shares\/[\w-]+$/);
+  await expect(draft.getByRole("link", { name: "Open in Clients" })).toHaveAttribute("href", /^\/dashboard\/shares\/[\w-]+$/);
   await draft.getByRole("button", { name: "Close" }).click();
   await expect(draft).toBeHidden();
 

@@ -140,7 +140,7 @@ test("someone who isn't an agent sends a home in three steps, and hears back in 
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Links");
 });
 
-test("Send on a home goes on to the three steps with that home picked: in Browse, over the home feed, and on an agent's own listing", async ({
+test("Send on a home goes on to the three steps with that home picked: in Browse, over their own page, and on an agent's own listing", async ({
   browser,
 }) => {
   test.setTimeout(150_000);
@@ -157,13 +157,17 @@ test("Send on a home goes on to the three steps with that home picked: in Browse
   await expect(noor.getByRole("main")).toContainText(QUILLAN);
   await expect(noor.getByRole("button", { name: "Add another home" })).toBeVisible();
 
-  // A home opened from her feed, in the pop-out over it: the same button,
-  // and the pop-out is gone once she's on Send homes.
-  await noor.goto("/");
-  const pin = noor.locator('a[href^="/reel?from=picks&home="]').first();
+  // A home opened from her own page (one she liked), in the pop-out over
+  // it: the same button, and the pop-out is gone once she's on Send homes.
+  await noor.goto("/homes/SAMPLE-1009");
+  await heartOf(homeIn(noor, QUILLAN)).click();
+  await expect(heartOf(homeIn(noor, QUILLAN))).toHaveAttribute("aria-pressed", "true");
+  await noor.goto("/people/me");
+  await noor.waitForURL(/\/people\/[\w-]+$/);
+  const pin = noor.locator('a[href^="/reel?from="][href*="home=SAMPLE-1009"]').first();
   const picked = new URL((await pin.getAttribute("href"))!, "http://x").searchParams.get("home")!;
   await pin.click();
-  await noor.waitForURL(/\/reel\?from=picks&home=/);
+  await noor.waitForURL(/\/reel\?from=[\w-]+&home=SAMPLE-1009/);
   const stage = noor.getByRole("dialog", { name: "Homes" });
   const open = stage.locator(`[data-home="${picked}"]`);
   await expect(open).toBeInViewport({ ratio: 0.9 });

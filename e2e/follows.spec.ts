@@ -38,12 +38,10 @@ test("following: from someone's page, what they like comes first in your feed, a
   await expect(bo.getByRole("button", { name: "Following Ana" })).toHaveAttribute("aria-pressed", "true");
   await expect(bo.getByRole("link", { name: "1 follower" })).toBeVisible();
 
-  // What she liked is in his Following stream (one person followed, so his
-  // home opens on homes picked for him: Following is a tap away), by her
+  // What she liked is in his feed (the one feed a buyer's home has), by her
   // name, to her page.
   await bo.goto("/");
-  await bo.getByRole("group", { name: "Show" }).getByRole("button", { name: "Following" }).click();
-  await expect(bo).toHaveURL(/\?lens=following$/);
+  await expect(bo.getByRole("group", { name: "Show" })).toHaveCount(0);
   const card = bo.getByRole("link", { name: `${address}: Ana liked this home`, exact: true });
   await expect(card).toBeVisible();
   const item = bo.getByRole("listitem").filter({ has: card });

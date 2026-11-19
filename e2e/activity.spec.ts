@@ -63,7 +63,7 @@ test("activity shows people and homes, with repeats on one comment on one line",
   await expect(ana.getByRole("heading", { level: 1 })).toHaveText("Notifications");
   await expect(ana.getByText("Nothing yet")).toBeVisible();
   await expect(ana.getByText("Replies and likes show up here.")).toBeVisible();
-  await expect(ana.getByRole("link", { name: "Browse homes" })).toHaveAttribute("href", "/browse");
+  await expect(ana.getByRole("link", { name: "Search homes" })).toHaveAttribute("href", "/search");
   await expect(ana.getByText("React to today's picks")).toHaveCount(0);
 
   await ana.goto("/homes/SAMPLE-1013");

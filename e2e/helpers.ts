@@ -126,7 +126,7 @@ export async function signUpBuyer(browser: Browser, email: string, name: string,
   await enterCode(page.getByRole("form", { name: "Sign up" }).first());
   await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
   await expect(page.getByRole("form", { name: "Sign up" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Browse homes" }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "Send homes to someone" })).toBeVisible();
   await page.goto("/browse");
   await expect(page.getByRole("article").first()).toBeVisible();
   return page;

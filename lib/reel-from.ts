@@ -8,6 +8,7 @@ import { namesOrOthers } from "./format";
 import { feedKeys, getHomeFeed, getPicks, type FeedWho } from "./home-feed";
 import type { Listing } from "./listings/types";
 import { photoUrl } from "./person-photo";
+import { isPeriod, popularKeys } from "./popular";
 import { FACTS, mediaKeyOf, spotName, tagPhrase } from "./photos";
 import {
   buildCards,
@@ -55,6 +56,8 @@ import { yourClient } from "./your-client";
 // - "share:<link>": the homes on one of an agent's links (the agent only);
 // - "listings:<page id>": an agent's own listings, as their page shows them (anyone).
 // - "saved": the homes you saved, newest first (yours alone, signed in);
+// - "popular:<week|month|all>": the homes on Popular, the most liked and
+//   talked about first (anyone).
 // Null for anything else, or anything this viewer may not open.
 
 // The page's filters as an address has them, before they're checked.
@@ -109,6 +112,7 @@ export async function homesFrom(from: string, filters: ReelFilters = {}): Promis
   if (from.startsWith("share:")) return viewer?.role === "agent" ? shareScope(viewer, from.slice(6)) : null;
   if (from.startsWith("listings:")) return listingsScope(from.slice(9), viewer, visitorId);
   if (from === "saved") return viewer && visitorId ? savedScope(visitorId) : null;
+  if (from.startsWith("popular:")) return popularScope(from.slice(8));
   return personScope(from, filters ?? {}, viewer, visitorId);
 }
 
@@ -145,6 +149,30 @@ async function listingsScope(id: string, viewer: Account | null, visitorId: stri
     host: person.id,
     // (And what they marked and noted on their own links, as their page shows it.)
     ...(person.accountId && { agent: { account: person.accountId, profile: person.id } }),
+  };
+}
+
+// Popular's homes, in its order: number one first. Public: each home as
+// anyone sees it.
+async function popularScope(asked: string): Promise<ReelScope | null> {
+  if (!isPeriod(asked)) return null;
+  const keys = await popularKeys(asked);
+  if (keys.length === 0) return null;
+  const href = `/popular?period=${asked}`;
+  return {
+    keys,
+    back: { href, label: "Back to Popular" },
+    context: {
+      kind: "pick",
+      title: "Popular",
+      who: null,
+      filter: null,
+      keys,
+      homes: Object.fromEntries(keys.map((key) => [key, { takes: [], photo: null }])),
+      href,
+    },
+    query: new URLSearchParams({ from: `popular:${asked}` }).toString(),
+    filters: ALL,
   };
 }
 

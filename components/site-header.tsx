@@ -1,4 +1,4 @@
-import { Bell, House, Images, Search as SearchIcon, Send, Users } from "lucide-react";
+import { Bell, Flame, House, Search as SearchIcon, Send, Users } from "lucide-react";
 import { signOut } from "@/app/login/actions";
 import { AccountMenu, NavLink, SignInLink, SiteLogo } from "@/components/header-nav";
 import { countUnreadActivity } from "@/lib/activity";
@@ -11,9 +11,9 @@ import { getPublicIdentity } from "@/lib/public";
 import { button } from "@/lib/ui";
 
 // On every page, one bar across the top: the logo, then the same few places
-// for everyone signed in (Home, the homes, Search, the bell, and you: your
+// for everyone signed in (Home, Popular, Search, the bell, and you: your
 // face, opening your places and Sign out), each an icon over its name, the
-// one you're on underlined. An agent has Dashboard (their clients) there;
+// one you're on underlined. An agent has Clients (everyone they've sent homes to) there;
 // anyone else, Send. Signed out: For agents, and Sign in. On a phone the
 // names are there too, small, under their icons, and the logo steps aside
 // for them (Home does its job). Over the full-screen feed it floats on the
@@ -70,8 +70,10 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
           <SiteLogo overlay={overlay} />
         </div>
         {/* Signed in, the same few places for everyone, across the top: Home,
-            the homes, Search, the bell, and you. An agent has their
-            Dashboard (their clients) in place of Send, which is in it. */}
+            Popular, Search, the bell, and you. An agent has Clients
+            (everyone they've sent homes to, and the links they went on) in
+            place of Send, which is in it. Their listings aren't part of it:
+            those are under their face. */}
         {user?.role ? (
           <div className="flex min-w-0 items-center max-md:flex-1 max-md:justify-between md:gap-1">
             <NavLink href="/" className={navItem}>
@@ -79,16 +81,18 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
               <span className={name}>Home</span>
             </NavLink>
             {agent && (
-              <NavLink href="/dashboard" section className={navItem}>
+              <NavLink href="/dashboard" section except="/dashboard/listings" className={navItem}>
                 <Users aria-hidden size={20} />
-                <span className={name}>Dashboard</span>
+                <span className={name}>Clients</span>
               </NavLink>
             )}
-            <NavLink href="/browse" className={navItem}>
-              <Images aria-hidden size={20} />
-              <span className={name}>Browse</span>
+            {/* What everyone likes most: homes, and the people liking them. */}
+            <NavLink href="/popular" section className={navItem}>
+              <Flame aria-hidden size={20} />
+              <span className={name}>Popular</span>
             </NavLink>
-            {/* (Homes on the map, and people: both are Search.) */}
+            {/* (The one way to find a home: on the map, by its filters, or
+                one at a time full screen from there. And people too.) */}
             <NavLink href="/search" section className={navItem}>
               <SearchIcon aria-hidden size={20} />
               <span className={name}>Search</span>

@@ -1,16 +1,16 @@
 import { Bookmark, Building2, House, Send, UserRoundSearch } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { ClientFeed } from "@/components/home/client-feed";
 import { ClientsRail } from "@/components/home/clients-rail";
 import { HomeShell, ProfileRail, type RailLink } from "@/components/home/home-shell";
 import { Lenses } from "@/components/home/lens-pills";
 import { PeopleCard } from "@/components/home/people-card";
-import { PicksMasonry } from "@/components/home/picks-masonry";
 import { FollowingFeed } from "@/components/home-feed";
 import { Avatar } from "@/components/ui";
 import type { BannerChoice } from "@/lib/banner";
+import type { ClientCard } from "@/lib/client-feed";
 import type { ClientBook } from "@/lib/clients";
-import type { FeedPost } from "@/lib/feed";
 import type { FollowCounts } from "@/lib/follows";
 import { cn } from "@/lib/format";
 import type { HomeFeedEntry } from "@/lib/home-feed";
@@ -22,14 +22,15 @@ import { button, card } from "@/lib/ui";
 // Home, one page for everyone. Down the left, them: their card and the places
 // the bar at the top doesn't have. In the middle: the box to send homes; the
 // homes their agent sent, when there are any; then what the people they
-// follow liked (or, a tap away, homes picked for them), until "You're all
-// caught up"; then homes picked by their taste. People to follow: down the
-// right on a wide screen; on a narrower one, in the middle, between the feed
-// and the homes picked for them.
-// An agent's is the same page with one thing more, straight under the box to
-// send homes: "Your clients", theirs alone to see (ClientsRail). What a
-// client did on their link is only ever there and on that client's own page:
-// never in the feed, which is built from what people did in public.
+// follow did, until "You're all caught up". (No homes picked for them, for
+// now: nothing here is a recommendation.) People to follow: down the right
+// on a wide screen; on a narrower one, in the middle, in the feed.
+// An agent's is the same page with their clients besides. Straight under the
+// box to send homes: "Your clients", whoever is waiting first (ClientsRail).
+// And two ways to look at the feed: Following (what the people they follow
+// did in public, a client among them marked "Your client") or Clients
+// (everything their clients did on the homes they were sent, theirs alone to
+// see).
 
 // "Bellevue · Kirkland · 3 of 9 rated"
 function metaOf(link: MyLink) {
@@ -102,7 +103,6 @@ export function Home({
   feed,
   mine,
   seenAt,
-  picks,
   lens,
   agent,
 }: {
@@ -117,17 +117,18 @@ export function Home({
   feed: HomeFeedEntry[];
   mine: Record<string, ReactionState>;
   seenAt: string | null;
-  picks: FeedPost[];
   lens: { initial: string; fromUrl: boolean };
-  // An agent, and so their clients too: everything else is anyone's home.
-  agent?: { book: ClientBook; brokerage: string; brandColor: string };
+  // An agent, and so their clients too (and what those clients did on the
+  // homes they were sent): everything else is anyone's home.
+  agent?: { book: ClientBook; cards: ClientCard[]; brokerage: string; brandColor: string };
 }) {
-  // Following first for someone with people to follow along with, or on an
-  // agent's link; otherwise homes picked for them.
-  const fallback = follows.following >= 3 || links.length > 0 ? "following" : "foryou";
-  const initial = lens.initial === "following" || lens.initial === "foryou" ? lens.initial : fallback;
+  // An agent's feed opens on Following, the same every time (whoever is
+  // waiting is in "Your clients", straight over it). Whichever they last
+  // chose here, on this device, wins.
+  const asked = lens.initial === "following" || lens.initial === "clients";
+  const initial = lens.initial === "clients" ? "clients" : "following";
   const agentName = links[0] && (links[0].agent.firstName || links[0].agent.name);
-  // Only what the bar at the top doesn't have (it has Browse, Search, Send,
+  // Only what the bar at the top doesn't have (it has Search, Send,
   // the Dashboard, and their own page under their face).
   const saved: RailLink = { href: "/people/me?show=saved", label: "Saved homes", icon: <Bookmark size={18} /> };
   const people: RailLink = { href: "/search/people", label: "Find people", icon: <UserRoundSearch size={18} /> };
@@ -141,15 +142,39 @@ export function Home({
   const listOf = (which: "following" | "followers") =>
     profileHref.endsWith("/me") ? profileHref : `${profileHref}/${which}`;
   // People to follow where there's no rail beside the feed (a phone, a
-  // tablet): the same card, in the middle. Whichever of Following and For you
-  // is showing, it's under it: in a feed with cards in it, after the
-  // caught-up line (or the third card), so a long feed doesn't bury it, and
-  // again under For you; with no feed yet, once, under the pills and whatever
-  // they show. (Only one is ever showing; each has a heading of its own.)
+  // tablet): the same card, in the middle. In a feed with cards in it, after
+  // the caught-up line (or the third card), so a long feed doesn't bury it;
+  // with no feed yet, once, under it.
   const peopleInline = (where: string) => (
     <PeopleCard people={suggestions} id={`people-${where}`} className="lg:hidden" />
   );
   const quiet = feed.length === 0;
+  const following = (
+    <FollowingFeed
+      entries={feed}
+      mine={mine}
+      me={{ name: me.name, photo: me.photo, agent: Boolean(agent) }}
+      seenAt={seenAt}
+      among={peopleInline("following")}
+      empty={
+        follows.following === 0 ? (
+          <>
+            <p>Follow people to see what they like.</p>
+            <span className="mt-3 flex flex-wrap justify-center gap-2">
+              <Link href="/search/people" className={button({ kind: "secondary" })}>
+                Find people
+              </Link>
+              <Link href="/search" className={button({ kind: "secondary" })}>
+                Search homes
+              </Link>
+            </span>
+          </>
+        ) : (
+          "Nothing new yet."
+        )
+      }
+    />
+  );
   return (
     <HomeShell
       // (No greeting for an agent: it's their place of work.)
@@ -200,42 +225,26 @@ export function Home({
         <h2 id="stream-title" className="sr-only">
           What&apos;s new
         </h2>
-        <Lenses
-          label="Show"
-          lenses={[
-            { key: "following", label: "Following" },
-            { key: "foryou", label: "For you" },
-          ]}
-          initial={initial}
-          fromUrl={lens.fromUrl && (lens.initial === "following" || lens.initial === "foryou")}
-          panels={{
-            following: (
-              <FollowingFeed
-                entries={feed}
-                mine={mine}
-                me={{ name: me.name, photo: me.photo, agent: Boolean(agent) }}
-                seenAt={seenAt}
-                among={peopleInline("following")}
-                empty={
-                  follows.following === 0 ? (
-                    <>
-                      <p>Follow people to see what they like.</p>
-                      <Link href="/search/people" className={cn(button({ kind: "secondary" }), "mt-3")}>
-                        Find people
-                      </Link>
-                    </>
-                  ) : (
-                    "Nothing new yet."
-                  )
-                }
-              />
-            ),
-            foryou: quiet ? null : peopleInline("foryou"),
-          }}
-        />
+        {agent ? (
+          <Lenses
+            label="Show"
+            lenses={[
+              { key: "following", label: "Following" },
+              { key: "clients", label: "Clients" },
+            ]}
+            initial={initial}
+            fromUrl={lens.fromUrl && asked}
+            panels={{
+              following,
+              // Everything their clients did on the homes they were sent, each with Reply. Only theirs to see.
+              clients: <ClientFeed cards={agent.cards} me={me} asks={agent.book.clients.flatMap((client) => client.asks)} />,
+            }}
+          />
+        ) : (
+          following
+        )}
       </section>
       {quiet && peopleInline("inline")}
-      <PicksMasonry picks={picks} />
     </HomeShell>
   );
 }

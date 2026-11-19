@@ -4,10 +4,11 @@ import { PEOPLE_SHOWN } from "@/components/home/people-card";
 import { MarketingHome } from "@/components/marketing-home";
 import { getBanner } from "@/lib/banner";
 import { devLoginEnabled, firstName, getCurrentUser, getViewAs } from "@/lib/auth";
+import { getClientCards } from "@/lib/client-feed";
 import { getClientBook } from "@/lib/clients";
 import { readDevice } from "@/lib/engagement";
 import { getFollowCounts } from "@/lib/follows";
-import { feedKeys, getHomeFeed, getHomeSeen, getPicks, markHomeSeen, myReactions } from "@/lib/home-feed";
+import { feedKeys, getHomeFeed, getHomeSeen, markHomeSeen, myReactions, type FeedWho } from "@/lib/home-feed";
 import { getMyLinks } from "@/lib/my-links";
 import { suggestPeopleFor } from "@/lib/people";
 import { photoUrl, photoVersion } from "@/lib/person-photo";
@@ -16,9 +17,10 @@ import { ensureAccountVisitor, getPublicIdentity } from "@/lib/public";
 // The home page. Signed out: what Porchcard is, for agents and for buyers,
 // and a way to start (MarketingHome). Signed in, it's one page for everyone
 // (Home): their card down the left; in the middle the box to send homes, the
-// homes their agent sent, the people they follow and homes picked for them;
-// people to follow down the right. An agent's has one thing more, under the
-// box to send homes: their clients, whoever is waiting first.
+// homes their agent sent, and what the people they follow did; people to
+// follow down the right. An agent's has their clients besides: under the box
+// to send homes, whoever is waiting first; and beside Following, everything
+// their clients did on the homes they were sent.
 export default async function HomePage({
   searchParams,
 }: {
@@ -58,17 +60,28 @@ export default async function HomePage({
   const noFollows = { followers: 0, following: 0 };
 
   // The same reads for everyone; an agent's clients besides.
-  const [banner, feed, links, seenAt, picks, suggestions, follows, book] = await Promise.all([
+  const [banner, everyone, links, seenAt, suggestions, follows, book, cards] = await Promise.all([
     getBanner(visitorId),
     getHomeFeed(user, visitorId),
     getMyLinks(user.id),
     getHomeSeen(visitorId),
-    getPicks(user, device, visitorId),
     suggestPeopleFor({ visitorId, accountId: user.id, agent }, PEOPLE_SHOWN),
     // (Their own numbers, to them: all of them. None yet for someone with no page.)
     visitorId ? getFollowCounts(visitorId, visitorId) : noFollows,
     agent ? getClientBook(user.id) : null,
+    // An agent's clients, on the homes they were sent: the newest of it.
+    agent ? getClientCards(user.id, { most: 20 }) : [],
   ]);
+  // In an agent's Following, whoever is their own client says so by their name.
+  const clientIds = new Set((book?.clients ?? []).flatMap((client) => (client.profileId ? [client.profileId] : [])));
+  const marked = (who: FeedWho): FeedWho => (who.profileId && clientIds.has(who.profileId) ? { ...who, client: true } : who);
+  const feed = clientIds.size
+    ? everyone.map((entry) => ({
+        ...entry,
+        why: { ...entry.why, who: entry.why.who.map(marked) },
+        said: entry.said.map((quote) => ({ ...quote, who: marked(quote.who) })),
+      }))
+    : everyone;
   const mine = await myReactions(visitorId, feedKeys(feed));
   return (
     <Home
@@ -81,9 +94,8 @@ export default async function HomePage({
       feed={feed}
       mine={mine}
       seenAt={seenAt}
-      picks={picks}
       lens={lens}
-      agent={book ? { book, brokerage: user.brokerage, brandColor: user.brand_color } : undefined}
+      agent={book ? { book, cards, brokerage: user.brokerage, brandColor: user.brand_color } : undefined}
     />
   );
 }

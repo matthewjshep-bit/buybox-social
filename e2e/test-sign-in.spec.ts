@@ -52,5 +52,5 @@ test("the test password signs in as an account already there, or a new one, and 
   await page.waitForURL((url) => url.pathname === "/");
   await me.click();
   await expect(page.getByRole("banner").getByText(`casey.${stamp}@example.com`)).toBeVisible();
-  await expect(page.getByRole("banner").getByRole("link", { name: "Dashboard" })).toHaveCount(0);
+  await expect(page.getByRole("banner").getByRole("link", { name: "Clients", exact: true })).toHaveCount(0);
 });

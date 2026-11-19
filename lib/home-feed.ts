@@ -19,7 +19,15 @@ import { getTaste } from "./taste";
 // screen, in the feed's order (`feedKeys`).
 
 // `photo`: their own, where they've added one, in place of their initial.
-export type FeedWho = { name: string; face: string; profileId: string | null; agent: boolean; photo: string | null };
+// (`client`: to an agent looking at their own feed, one of their own clients.)
+export type FeedWho = {
+  name: string;
+  face: string;
+  profileId: string | null;
+  agent: boolean;
+  photo: string | null;
+  client?: boolean;
+};
 
 // A home as a card shows it: the facts, and the photo it's about (the one
 // with the newest thing they liked, else the first), large.

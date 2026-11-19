@@ -3,7 +3,7 @@
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { cn } from "@/lib/format";
 
-// Two ways to look at the feed (Following or For you), as pills over it. The
+// Two ways to look at the feed (an agent's: Following or Clients), as pills over it. The
 // one picked is kept in the address (`?lens=`), so a link or a reload opens
 // on it, and on this device, so the home opens on it next time. Both are on
 // the page already: switching is instant and never reloads anything.

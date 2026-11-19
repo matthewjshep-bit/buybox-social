@@ -1,10 +1,10 @@
 import { requireAgent } from "@/lib/auth";
-import { pageColumn, pageLabel } from "@/lib/ui";
+import { pageColumn } from "@/lib/ui";
 import { DashboardNav } from "./nav";
 
 // What the bar calls this place. (A client's page, a link's and Send homes
 // say their own.)
-export const metadata = { title: "Dashboard · Porchcard" };
+export const metadata = { title: "Clients · Porchcard" };
 
 // The agent's own colour is set around this and the header together, so the
 // logo is theirs too (BrandScope, app/layout.tsx).
@@ -20,10 +20,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {/* The column every one-column page has. (Its foot is the short one:
           sending homes is under here, and ends in a bar held to the screen's.) */}
       <div className={pageColumn({ tray: true })}>
-        {/* The agent's side: said on every dashboard page and nowhere else
-            (Home is everyone's). Under it, on its three main pages only, the
-            tabs between them. */}
-        <p className={pageLabel}>Agent dashboard</p>
+        {/* On its two main pages (Clients and Links) only, the tabs between them. */}
         <DashboardNav />
         <main className="pt-5">{children}</main>
       </div>

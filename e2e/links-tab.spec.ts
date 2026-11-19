@@ -1,4 +1,4 @@
-// The Dashboard's Links tab: every link the agent has sent, newest first,
+// Clients' Links tab: every link the agent has sent, newest first,
 // whoever it went to. Each says who it's for ("No name yet", with nobody on
 // it), its homes and when it went (to the minute, when two would otherwise
 // read the same), and how it's gone, in a few words; with one button: the
@@ -59,14 +59,14 @@ test("every link sent, newest first: who it's for, how it's gone, one button, an
   await heartOf(halvard).click();
   await expect(heartOf(halvard)).toHaveAttribute("aria-pressed", "true");
 
-  // The Dashboard's second tab.
+  // Clients' second tab.
   await lina.goto("/dashboard");
   // (Jo's row there has the mark Home has: something new since Lina looked.)
   await expect(clientRow(lina, "Jo")).toContainText("New since you last looked");
-  const tabs = lina.getByRole("navigation", { name: "Dashboard" });
+  const tabs = lina.getByRole("navigation", { name: "Clients" });
   await tabs.getByRole("link", { name: "Links" }).click();
   await lina.waitForURL(/\/dashboard\/links$/);
-  await expect(lina).toHaveTitle("Dashboard · Porchcard");
+  await expect(lina).toHaveTitle("Clients · Porchcard");
   await expect(lina.getByRole("heading", { level: 1 })).toHaveText("Links");
   await expect(tabs.getByRole("link", { name: "Links" })).toHaveAttribute("aria-current", "page");
   await expect(lina.getByRole("main").getByRole("link", { name: "Send homes" })).toHaveAttribute("href", "/dashboard/new");

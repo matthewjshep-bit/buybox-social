@@ -1,4 +1,4 @@
-import { ExternalLink, Images, Link2, Lock, Pencil } from "lucide-react";
+import { ExternalLink, Images, Lock, Pencil, Users } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AddFirstName, ShareMyPage } from "@/app/people/[id]/client";
@@ -60,9 +60,9 @@ export function ProfileHeader({
   follow?: ReactNode;
   // Their own photo, where they've added one.
   photo?: string | null;
-  // To an agent, their own client: every home sent them (`homes`), and the
-  // link they're on (`link`).
-  client?: { homes: string; link: string };
+  // To an agent, their own client: every home sent them (`homes`), and
+  // their page among the agent's clients (`page`).
+  client?: { homes: string; page: string };
   // What they say about themselves, an agent's links, and their brokerage.
   bio?: string;
   links?: ProfileLink[];
@@ -130,8 +130,8 @@ export function ProfileHeader({
             <Link href={client.homes} className={button({ kind: "secondary" })}>
               <Images aria-hidden size={16} /> See their homes
             </Link>
-            <Link href={client.link} className={button({ kind: "ghost" })}>
-              <Link2 aria-hidden size={16} /> Their link
+            <Link href={client.page} className={button({ kind: "ghost" })}>
+              <Users aria-hidden size={16} /> Client page
             </Link>
           </div>
         )}
