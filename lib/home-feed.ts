@@ -76,7 +76,8 @@ const likedIt = (take: Take) => take.card.liked || take.card.loves.length > 0;
 async function takesOf(id: string): Promise<Take[]> {
   const person = await getProfilePerson(id);
   if (!person) return [];
-  const rows = await getProfileRows(id, false);
+  // (What they did in public: nothing from a link they were sent, which is on their own page only.)
+  const rows = await getProfileRows(id, false, false);
   const passed = new Set([...rows.standing].flatMap(([key, sentiment]) => (sentiment === "dislike" ? [key] : [])));
   const who: FeedWho = {
     name: nameOr(person.name, person.isAgent),

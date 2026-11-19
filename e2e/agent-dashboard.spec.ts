@@ -823,7 +823,7 @@ test("adding someone to a link whose one person was told it's private asks first
   const solo = await signedIn(browser);
   await solo.goto(url);
   let chat = await openComments(solo, homeIn(solo, "88 Heron Bluff Rd"));
-  await expect(chat.getByText("Only you and Alex Alpha see this.")).toBeVisible();
+  await expect(chat.getByText("Shown to Alex Alpha and on your profile.")).toBeVisible();
 
   // Adding Newbie says what that means, and adds nobody until Alex says so.
   const person = agent.getByRole("combobox", { name: "Add a person" });
@@ -861,7 +861,7 @@ test("adding someone to a link whose one person was told it's private asks first
   // Solo's link no longer says it's just the two of them.
   await solo.reload();
   chat = await openComments(solo, homeIn(solo, "88 Heron Bluff Rd"));
-  await expect(chat.getByText("Only Alex Alpha and people on this link see this.")).toBeVisible();
+  await expect(chat.getByText("Shown to everyone on this link and on your profile.")).toBeVisible();
 
   // Nobody on it now was told that, so the next person is added straight away.
   await person.fill("Third");

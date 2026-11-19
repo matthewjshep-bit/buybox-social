@@ -222,9 +222,11 @@ export const isVideo = (photo: ListingMedia) =>
 
 const names = namesList;
 
-export type ReactionRow = ReactionState & { listing_key: string; at: Date };
-// `link`: an agent's own, from one of their links, rather than in public. It
-// shows like the rest, but is taken back on the link, not from their page.
+// `link`: from a link rather than in public (an agent's own on their links;
+// anyone's on a link they were sent, which shows on their page unless they've
+// switched that off). It shows like the rest, but is taken back on the link,
+// not from their page.
+export type ReactionRow = ReactionState & { listing_key: string; at: Date; link?: boolean };
 export type SpotRow = {
   listing_key: string;
   media_key: string;
@@ -308,6 +310,32 @@ export const agentNotes = (account: string | null) => sql`
       where x.share_id = c.share_id and x.listing_key = c.listing_key
         and x.participant_id is not null and x.at < c.created_at))`;
 
+// Whose activity on links they were sent shows on their page, and from when:
+// their account, unless they have none or have switched it off.
+const sentLinksOf = cache(async (visitorId: string): Promise<{ account: string; from: Date } | null> => {
+  if (!isPageId(visitorId)) return null;
+  const [row] = await sql<{ account_id: string | null; hide_links: boolean; links_shown_from: Date }[]>`
+    select account_id, hide_links, links_shown_from from visitors where id = ${visitorId}`;
+  return row?.account_id && !row.hide_links ? { account: row.account_id, from: row.links_shown_from } : null;
+});
+
+// Rows of something they did (`table`, as `alias`) on a link someone else
+// sent them: theirs by their place on it. Never on a link of their own.
+const sentOn = (table: ReturnType<typeof sql>, alias: ReturnType<typeof sql>, account: string) => sql`
+  from ${table}
+    join participants p on p.id = ${alias}.participant_id
+    join shares s on s.id = p.share_id
+  where p.account_id = ${account} and s.agent_id <> ${account}`;
+
+// What they said about a home on such a link: their own words about it, not a
+// reply in the conversation there, and not the words an "ask to see it" posts.
+const sentSaid = (account: string) => sql`
+  ${sentOn(sql`comments c`, sql`c`, account)}
+    and c.parent_id is null and c.reply_to_participant is null
+    and not exists (
+      select 1 from share_asks k
+      where k.participant_id = c.participant_id and k.listing_key = c.listing_key and k.asked_at = c.created_at)`;
+
 // Each thing once: the first of each in `rows` (the public one, before the
 // same from a link), newest first.
 function onceEach<T extends { at: Date }>(rows: T[], key: (row: T) => string) {
@@ -322,10 +350,19 @@ const spotKey = (row: SpotRow) => `${row.listing_key}|${row.media_key}|${row.tag
 // Their public rows, newest first, from before `before` (when given), and an
 // agent's own from their links. Comment likes they gave only for their own
 // page (`mine`).
-const loadRows = cache(async (visitorId: string, before: string | null, mine: boolean): Promise<ProfileRows> => {
+// `links`: with what they did on links they were sent (their own page has it; a
+// follower's feed of what they did in public doesn't).
+const loadRows = cache(
+  async (visitorId: string, before: string | null, mine: boolean, links = true): Promise<ProfileRows> => {
   const until = before ? new Date(before) : null;
   const end = until && restOfDay(until);
   const account = await agentAccountOf(visitorId);
+  // What they did on links they were sent, which their page shows too: from
+  // when it began to (never what they did while a link was private to them and
+  // its agent), and not at all once they've switched it off.
+  const sent = links ? await sentLinksOf(visitorId) : null;
+  const onLinks = <Row>(query: (who: { account: string; from: Date }) => Promise<Row[]>) =>
+    sent ? query(sent) : Promise.resolve([] as Row[]);
   const linkMarks = (reaction: "like" | "dislike") =>
     account
       ? sql<SpotRow[]>`
@@ -334,8 +371,21 @@ const loadRows = cache(async (visitorId: string, before: string | null, mine: bo
           order by al.created_at desc
           limit ${PROFILE_ROW_LIMIT}`
       : Promise.resolve([] as SpotRow[]);
-  const [reactions, publicLikes, publicDislikes, publicComments, commentLikes, after, linkLikes, linkDislikes, notes] =
-    await Promise.all([
+  const [
+    publicReactions,
+    publicLikes,
+    publicDislikes,
+    publicComments,
+    commentLikes,
+    after,
+    linkLikes,
+    linkDislikes,
+    notes,
+    sentReactions,
+    sentLikes,
+    sentDislikes,
+    sentComments,
+  ] = await Promise.all([
     sql<ReactionRow[]>`
       select listing_key, reaction, liked, disliked, updated_at as at
       from public_reactions
@@ -408,6 +458,22 @@ const loadRows = cache(async (visitorId: string, before: string | null, mine: bo
             select c.listing_key, c.created_at, false ${agentNotes(account)}
               and c.created_at >= ${until} and c.created_at < ${end}
             ${
+              sent
+                ? sql`union all
+                    select r.listing_key, r.updated_at, r.reaction = 'dislike' ${sentOn(sql`reactions r`, sql`r`, sent.account)}
+                      and r.updated_at >= ${sent.from} and r.updated_at >= ${until} and r.updated_at < ${end}
+                    union all
+                    select pl.listing_key, pl.created_at, false ${sentOn(sql`photo_likes pl`, sql`pl`, sent.account)}
+                      and pl.created_at >= ${sent.from} and pl.created_at >= ${until} and pl.created_at < ${end}
+                    union all
+                    select pd.listing_key, pd.created_at, true ${sentOn(sql`photo_dislikes pd`, sql`pd`, sent.account)}
+                      and pd.created_at >= ${sent.from} and pd.created_at >= ${until} and pd.created_at < ${end}
+                    union all
+                    select c.listing_key, c.created_at, false ${sentSaid(sent.account)}
+                      and c.created_at >= ${sent.from} and c.created_at >= ${until} and c.created_at < ${end}`
+                : sql``
+            }
+            ${
               mine
                 ? sql`union all
                     select c.listing_key, cl.created_at, false from public_comment_likes cl
@@ -436,11 +502,49 @@ const loadRows = cache(async (visitorId: string, before: string | null, mine: bo
           order by at desc
           limit ${PROFILE_ROW_LIMIT}`
       : Promise.resolve([] as CommentRow[]),
+    onLinks(
+      ({ account: who, from }) => sql<ReactionRow[]>`
+        select r.listing_key, r.reaction, r.liked, r.disliked, r.updated_at as at, true as link
+        ${sentOn(sql`reactions r`, sql`r`, who)} and r.updated_at >= ${from}
+          ${until ? sql`and r.updated_at < ${until}` : sql``}
+        order by r.updated_at desc
+        limit ${PROFILE_ROW_LIMIT}`,
+    ),
+    onLinks(
+      ({ account: who, from }) => sql<SpotRow[]>`
+        select pl.listing_key, pl.media_key, pl.tag, pl.aspect, pl.created_at as at, true as link
+        ${sentOn(sql`photo_likes pl`, sql`pl`, who)} and pl.created_at >= ${from}
+          ${until ? sql`and pl.created_at < ${until}` : sql``}
+        order by pl.created_at desc
+        limit ${PROFILE_ROW_LIMIT}`,
+    ),
+    onLinks(
+      ({ account: who, from }) => sql<SpotRow[]>`
+        select pd.listing_key, pd.media_key, pd.tag, pd.created_at as at, true as link
+        ${sentOn(sql`photo_dislikes pd`, sql`pd`, who)} and pd.created_at >= ${from}
+          ${until ? sql`and pd.created_at < ${until}` : sql``}
+        order by pd.created_at desc
+        limit ${PROFILE_ROW_LIMIT}`,
+    ),
+    // What they said about a home there (not their replies in a conversation
+    // with the agent, nor an "ask to see it"). Nothing of what the agent
+    // answered: no reply count either.
+    onLinks(
+      ({ account: who, from }) => sql<CommentRow[]>`
+        select c.id, c.listing_key, c.body, c.created_at as at, c.media_key, c.spot,
+          null::uuid as reply_to_id, null::text as reply_to_name, 0 as likes, 0 as replies, 0 as others_replies,
+          true as link
+        ${sentSaid(who)} and c.created_at >= ${from} ${until ? sql`and c.created_at < ${until}` : sql``}
+        order by c.created_at desc
+        limit ${PROFILE_ROW_LIMIT}`,
+    ),
   ]);
+  // On each home, their like or pass as it last stood, in public or on a link.
+  const reactions = onceEach([...publicReactions, ...sentReactions], (row) => row.listing_key);
   // A thing liked in public and on a link (or on two links) is liked once.
-  const likes = onceEach([...publicLikes, ...linkLikes], spotKey);
-  const dislikes = onceEach([...publicDislikes, ...linkDislikes], spotKey);
-  const comments = [...publicComments, ...notes].sort((a, b) => +b.at - +a.at);
+  const likes = onceEach([...publicLikes, ...linkLikes, ...sentLikes], spotKey);
+  const dislikes = onceEach([...publicDislikes, ...linkDislikes, ...sentDislikes], spotKey);
+  const comments = [...publicComments, ...notes, ...sentComments].sort((a, b) => +b.at - +a.at);
 
   // Each home once, its photos in order, its status from the column, and
   // their like or pass on it as it stands.
@@ -465,7 +569,24 @@ const loadRows = cache(async (visitorId: string, before: string | null, mine: bo
     ]),
   );
   const standing = new Map(homes.flatMap((row) => (row.reaction ? [[row.listing_key, row.reaction] as const] : [])));
-  const floors = [reactions, publicLikes, publicDislikes, publicComments, commentLikes, linkLikes, linkDislikes, notes].flatMap((list) =>
+  // (A home they've only answered on a link stands as they left it there.)
+  for (const row of sentReactions) {
+    if (row.reaction && !standing.has(row.listing_key)) standing.set(row.listing_key, row.reaction);
+  }
+  const floors = [
+    publicReactions,
+    publicLikes,
+    publicDislikes,
+    publicComments,
+    commentLikes,
+    linkLikes,
+    linkDislikes,
+    notes,
+    sentReactions,
+    sentLikes,
+    sentDislikes,
+    sentComments,
+  ].flatMap((list) =>
     list.length >= PROFILE_ROW_LIMIT ? [+list.at(-1)!.at] : [],
   );
   const day = until && dayOf(until);
@@ -483,7 +604,8 @@ const loadRows = cache(async (visitorId: string, before: string | null, mine: bo
       after.filter((row) => row.kept_at && dayOf(row.kept_at) === day).map((row) => row.listing_key),
     ),
   };
-});
+  },
+);
 
 // Their rows as someone else sees them when they keep passes private: no
 // passes, nothing they did on a home they passed on (a like there would give
@@ -503,7 +625,7 @@ export function withoutPasses(rows: ProfileRows): ProfileRows {
 
 // Everything public they've done, newest first, for what their page says
 // about them overall (their taste). Read once per page, with the feed's first page.
-export const getProfileRows = (visitorId: string, mine: boolean) => loadRows(visitorId, null, mine);
+export const getProfileRows = (visitorId: string, mine: boolean, links = true) => loadRows(visitorId, null, mine, links);
 
 // The person behind a profile: only their first name, when they joined,
 // whether they're an agent (whose face is ink, as everywhere) and what they
@@ -516,6 +638,7 @@ export const getProfilePerson = cache(async (visitorId: string) => {
       first_name: string;
       created_at: Date;
       hide_passes: boolean;
+      hide_links: boolean;
       taste_hidden: unknown;
       is_agent: boolean;
       photo_v: string | null;
@@ -531,7 +654,7 @@ export const getProfilePerson = cache(async (visitorId: string) => {
       banner_frame: unknown;
     }[]
   >`
-    select v.id, v.created_at, v.hide_passes, v.taste_hidden, a.id as account_id, a.bio, a.profile_links, a.brokerage,
+    select v.id, v.created_at, v.hide_passes, v.hide_links, v.taste_hidden, a.id as account_id, a.bio, a.profile_links, a.brokerage,
       a.brand_color, a.mls_agent_id, a.full_name, a.banner, left(md5(a.banner_data_url), 10) as banner_v, a.banner_frame,
       -- An account with no name yet has none here either, even where an
       -- older visitor row stood in with "Someone".
@@ -549,6 +672,8 @@ export const getProfilePerson = cache(async (visitorId: string) => {
     // Their own photo, where they've added one.
     photo: photoUrl(visitor.id, visitor.photo_v),
     hidePasses: visitor.hide_passes,
+    // They keep what they do on links they were sent off their page.
+    hideLinks: visitor.hide_links,
     // Lower-case keys of the things their taste says that they've switched off.
     tasteHidden: hidden.filter((key): key is string => typeof key === "string").map((key) => key.toLowerCase()),
     // Their account, once they've signed up (whose links they're on).
@@ -852,7 +977,7 @@ export function buildCards(rows: ProfileRows): ProfileCard[] {
         likedComments: oldestFirst(b.commentLikes).map((like) => ({ author: like.author, body: like.body })),
         quiet: !b.reaction && !likes.length && !dislikes.length && !comments.length,
         controls: [
-          ...(b.reaction?.reaction ? [{ kind: "reaction" as const, sentiment: b.reaction.reaction }] : []),
+          ...(b.reaction?.reaction && !b.reaction.link ? [{ kind: "reaction" as const, sentiment: b.reaction.reaction }] : []),
           // (What's from a link is taken back there.)
           ...spotControls(listing, "like", likes.filter((row) => !row.link)),
           ...spotControls(listing, "dislike", dislikes.filter((row) => !row.link)),

@@ -118,10 +118,8 @@ test("a card on someone's page opens their highlights on a stage that takes the 
   // and the same homes on a page of their own.
   await expect(popout.getByRole("link", { name: "Ines's highlights" })).toHaveAttribute("href", inesPage);
   await expect(popout.getByText("· 1 of 3", { exact: true })).toBeVisible();
-  await expect(popout.getByRole("link", { name: "Open full page" })).toHaveAttribute(
-    "href",
-    /^\/reel\?from=[\w-]+&home=SAMPLE-1013$/,
-  );
+  // (No second way to see the same thing: the pop-out is the one view.)
+  await expect(popout.getByRole("link", { name: "Open full page" })).toHaveCount(0);
 
   // The homes before and after: beside the stage, not faint on each home.
   const previous = popout.getByRole("button", { name: "Previous home", exact: true });

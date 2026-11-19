@@ -90,13 +90,15 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   browser,
 }) => {
   const agent = await signInAgent(browser, "una-kit@example.com", "Una Kit");
+  // (Once the page itself is there, not its loading outline.)
+  await expect(agent.getByRole("main").getByRole("link", { name: /Send homes|Choose homes/ }).first()).toBeVisible();
   await expectKitButtons(agent, "dashboard");
 
   // Their own page: their face as it is in the header beside it, the photo
   // they added on signing up (without one, their initial in ink).
   await agent.goto("/people/me");
   await expect(agent.locator("#profile-name")).toHaveText("Una Kit (you)");
-  const big = agent.locator("#profile-name").locator("xpath=preceding-sibling::*[1]/*[1]");
+  const big = agent.locator("#profile-name").locator("xpath=../preceding-sibling::*[1]/*[1]");
   await expect(big).toHaveAttribute("src", /^\/people\/[\w-]+\/photo\?v=\w+$/);
   await expect(agent.getByRole("banner").getByRole("button", { name: "Account menu" }).locator("img")).toBeVisible();
 
@@ -217,7 +219,7 @@ test("a buyer's pages, sign-in and the admin are the same kit, and a buyer's fac
   await buyer.goto("/people/me");
   await expect(buyer.getByText("Nothing here yet")).toBeVisible();
   await expectKitButtons(buyer, "profile");
-  const big = buyer.locator("#profile-name").locator("xpath=preceding-sibling::*[1]/span[1]");
+  const big = buyer.locator("#profile-name").locator("xpath=../preceding-sibling::*[1]/span[1]");
   expect(await big.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(brand);
   await buyer.goto("/activity");
   await expect(buyer.getByText("Nothing yet")).toBeVisible();

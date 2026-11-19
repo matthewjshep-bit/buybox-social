@@ -136,16 +136,28 @@ test("on an agent's link the wheel leaves the welcome for the homes, and a clien
   await expect(agent.getByRole("main")).toContainText("Passed on 1");
   await expect(agent.getByRole("main")).toContainText(/Liked 1 of 2/);
 
-  // The agent, going through their own link, has no X of their own there, and
-  // on its last screen sees the homes without the buttons.
+  // The agent, looking at their own link, sees it as Quin does: the X and the
+  // heart on each home, and on the last screen. They're Quin's to tap: the
+  // agent's tap says so, and neither passes nor goes on.
   await agent.goto(url);
   await toFirstHome(agent).catch(() => {});
-  await expect(agent.getByRole("button", { name: "Pass on this home" })).toHaveCount(0);
+  const theirFirst = agent.getByRole("article").first();
+  await expect(theirFirst).toBeInViewport({ ratio: 0.9 });
+  const theirX = theirFirst.getByRole("button", { name: "Pass on this home" });
+  await expect(theirX).toBeVisible();
+  await expect(heartOf(theirFirst)).toBeVisible();
+  await theirX.click();
+  await expect(agent.getByRole("status").filter({ hasText: "That's for your client to tap." })).toBeVisible();
+  await expect(theirX).toHaveAttribute("aria-pressed", "false");
+  await expect(theirFirst).toBeInViewport({ ratio: 0.9 });
   await agent.evaluate(() => {
     const reel = document.querySelector<HTMLElement>("[data-reel]")!;
     reel.scrollTo({ top: reel.scrollHeight });
   });
   const theirs = agent.getByRole("list", { name: "The homes" });
   await expect(theirs.getByRole("listitem")).toHaveCount(2);
-  await expect(theirs.getByRole("button", { name: /: (pass|like)$/ })).toHaveCount(0);
+  await expect(theirs.getByRole("button", { name: /: (pass|like)$/ })).toHaveCount(4);
+  await theirs.getByRole("button", { name: "719 Saltmarsh Ln: pass" }).click();
+  await expect(agent.getByRole("status").filter({ hasText: "That's for your client to tap." })).toBeVisible();
+  await expect(theirs.getByRole("button", { name: "719 Saltmarsh Ln: pass" })).toHaveAttribute("aria-pressed", "false");
 });

@@ -188,6 +188,7 @@ export function ReelFeed({
   agentName,
   canInvite = true,
   alone = false,
+  onProfile = false,
   focus,
   onActiveChange,
   loadMore,
@@ -231,6 +232,10 @@ export function ReelFeed({
   // On an agent's link: the page knows nobody but you and the agent can read
   // what's said on it (so "only you" can be said).
   alone?: boolean;
+  // On an agent's link: what they like, pass on and say about a home there
+  // shows on their own profile too (unless they've switched that off), so the
+  // link says so rather than "only you".
+  onProfile?: boolean;
   // Brings a home into view: the map's pins pick a home this way. `n` counts
   // picks, so picking the same home again still moves to it.
   focus?: { key: string; n: number } | null;
@@ -347,9 +352,14 @@ export function ReelFeed({
       ? { text: "Public, with your first name.", private: false }
       : notes
         ? { text: "Everyone on this link sees your feedback.", private: true }
-        : alone
-        ? { text: `Only you and ${agent} see this.`, private: true }
-        : { text: `Only ${agent} and people on this link see this.`, private: true };
+        : onProfile
+          ? {
+              text: alone ? `Shown to ${agent} and on your profile.` : "Shown to everyone on this link and on your profile.",
+              private: false,
+            }
+          : alone
+            ? { text: `Only you and ${agent} see this.`, private: true }
+            : { text: `Only ${agent} and people on this link see this.`, private: true };
   // Where the name prompt rises from: side by side, the white panel's foot.
   const nameAnchor = useRef<HTMLElement | null>(null);
 
@@ -1064,10 +1074,16 @@ function Feed({
               onLike={() => reactions.choose(key, "like")}
               // Passed with the X: on to the next home (or, after the last, the
               // end). Tapped again on a home already passed on, it's taken back.
-              onPass={async () => {
-                const was = state.reaction === "dislike";
-                if ((await reactions.choose(key, "dislike")) && !was) goTo(offset + i + 1);
-              }}
+              // (The agent, looking at their own link, sees the X as their
+              // client will; it's the client's to tap.)
+              onPass={
+                notes
+                  ? () => say(THEIRS_TO_TAP)
+                  : async () => {
+                      const was = state.reaction === "dislike";
+                      if ((await reactions.choose(key, "dislike")) && !was) goTo(offset + i + 1);
+                    }
+              }
               onDoubleTapLike={() => reactions.like(key)}
               onComments={() => openComments(key)}
               onCompose={() => openComments(key, true)}
@@ -1131,7 +1147,7 @@ function Feed({
                       photo: post.listing.Media[0]?.MediaURL ?? null,
                       reaction: reactions.states[post.listing.ListingKey]?.reaction ?? null,
                     })),
-                    choose: (key, sentiment) => void reactions.choose(key, sentiment),
+                    choose: (key, sentiment) => (notes ? say(THEIRS_TO_TAP) : void reactions.choose(key, sentiment)),
                   }}
                 >
                   {end}
@@ -1239,6 +1255,9 @@ function Feed({
     </div>
   );
 }
+
+// What an agent is told when they tap, on their own link, something that's their client's to answer.
+const THEIRS_TO_TAP = "That's for your client to tap.";
 
 // The feed's homes, for whatever is on its last screen: each with what the
 // one looking made of it (liked, passed on, or nothing yet), and a way to say
@@ -1850,25 +1869,24 @@ function Panel({
   // the photo. There from the start, before the photos themselves load, so a
   // home further down has them too. Not on a phone on its side, where the
   // words sit over the photo's foot: there, both are on the rail instead. An
-  // agent adding their own feedback to a link has the heart and no X.
+  // agent on their own link sees both, as their client will; the X there is
+  // the client's to tap, and says so.
   const yesNo = !hidden && !bare && !onOpen && (
     <>
-      {!notes && (
-        <button
-            type="button"
-            data-keep-clear
-            aria-label="Pass on this home"
-            aria-pressed={state.reaction === "dislike"}
-            onClick={onPass}
-            style={{ top: `calc(${photoFoot(current)} - 0.75rem)`, left: `calc(${photoPlace(current).left} + 0.75rem)` }}
-            className={cn(
-              "absolute z-10 flex size-12 -translate-y-full items-center justify-center rounded-full ring-1 ring-white/25 backdrop-blur-md transition-colors short:hidden",
-              state.reaction === "dislike" ? "bg-amber-600 text-white" : "bg-black/45 text-white hover:bg-black/65",
-            )}
-          >
-            <X aria-hidden size={24} strokeWidth={2.5} />
-          </button>
-      )}
+      <button
+        type="button"
+        data-keep-clear
+        aria-label="Pass on this home"
+        aria-pressed={state.reaction === "dislike"}
+        onClick={onPass}
+        style={{ top: `calc(${photoFoot(current)} - 0.75rem)`, left: `calc(${photoPlace(current).left} + 0.75rem)` }}
+        className={cn(
+          "absolute z-10 flex size-12 -translate-y-full items-center justify-center rounded-full ring-1 ring-white/25 backdrop-blur-md transition-colors short:hidden",
+          state.reaction === "dislike" ? "bg-amber-600 text-white" : "bg-black/45 text-white hover:bg-black/65",
+        )}
+      >
+        <X aria-hidden size={24} strokeWidth={2.5} />
+      </button>
       <LikeWithList
         things={things}
         corner
@@ -2099,7 +2117,7 @@ function Panel({
               shareAs={shareAs}
               onLike={onLike}
               passed={state.reaction === "dislike"}
-              onPass={notes ? undefined : onPass}
+              onPass={onPass}
               onComments={onComments}
               onScorecard={onScorecard && (() => onScorecard())}
               saved={saved}

@@ -242,7 +242,8 @@ export default async function ProfilePage({ params, searchParams }: Props) {
         fullName={person.isAgent && !unnamed ? person.agentName || undefined : undefined}
         face={face}
         isMe={isMe}
-        onLink={onLink}
+        // (Said only while it's so: by default what they do there shows here.)
+        onLink={onLink && person.hideLinks}
         unnamed={unnamed}
         agent={person.isAgent}
         since={person.since}

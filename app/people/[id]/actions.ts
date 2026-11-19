@@ -78,6 +78,21 @@ export async function showPasses(shown: boolean): Promise<ActionResult> {
   return { ok: true };
 }
 
+// Whether what you do on links you were sent (likes, passes, what you say
+// about a home) shows on your page. Switched back on, it shows from then on:
+// never what you did while it was off.
+export async function showLinkActivity(shown: boolean): Promise<ActionResult> {
+  if (typeof shown !== "boolean") return fail("We couldn't save that.");
+  const visitor = await ownVisitor();
+  if (!visitor) return fail("Please add your name first.");
+  await sql`
+    update visitors set hide_links = ${!shown},
+      links_shown_from = case when ${shown} and hide_links then now() else links_shown_from end
+    where id = ${visitor.id}`;
+  refresh();
+  return { ok: true };
+}
+
 const listingKey = z.string().min(1).max(100);
 const sentiment = z.enum(["like", "dislike"]);
 // Which things in a home's photos (or which of its facts): as saved.

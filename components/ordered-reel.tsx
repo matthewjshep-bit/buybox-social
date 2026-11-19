@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Images, Link2, Maximize2, Send, X } from "lucide-react";
+import { ArrowLeft, Images, Link2, Send, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
@@ -98,19 +98,9 @@ export function OrderedReel({
         window.history.replaceState(null, "", addressOf(key));
       }
     },
-    // On the stage, wide: whose homes, and the same homes on a page of their
-    // own (a plain link, so the page loads whole rather than in the pop-out).
-    stageBar: contained ? (
-      <>
-        {chip}
-        <a
-          href={addressOf(shown)}
-          className="ml-auto flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-white/85 transition-colors hover:bg-white/10 hover:text-white"
-        >
-          <Maximize2 aria-hidden size={16} /> Open full page
-        </a>
-      </>
-    ) : undefined,
+    // On the stage, wide: whose homes. (No "Open full page": the page shows
+    // the same thing as the pop-out, so there's the one way to look.)
+    stageBar: contained ? chip : undefined,
     header: contained ? undefined : (
       <>
         {siteHeader}

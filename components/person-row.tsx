@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Avatar, Badge } from "@/components/ui";
+import { Avatar, RoleChip } from "@/components/ui";
 
 // Someone in a list of people, the same wherever people are listed (Search,
 // followers, following): their face, their name to their page, "Agent"
@@ -35,11 +35,7 @@ export function PersonRow({
       <Link href={href} className="group flex min-h-11 min-w-0 flex-1 flex-col justify-center">
         <span className="flex min-w-0 items-center gap-1.5">
           <span className="truncate font-semibold underline-offset-2 group-hover:underline">{name}</span>
-          {agent && (
-            <Badge tone="ink" small className="shrink-0">
-              Agent
-            </Badge>
-          )}
+          <RoleChip role={agent ? "agent" : null} small />
         </span>
         {line && <span className="block truncate text-sm text-muted">{line}</span>}
       </Link>

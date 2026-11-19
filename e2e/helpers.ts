@@ -257,6 +257,16 @@ export async function openMore(page: Page, home: Locator) {
   return sheet;
 }
 
+// Someone who'd rather what they do on homes they're sent stayed off their
+// profile: the one switch for it, in Edit profile, off. (It's on to start with.)
+export async function keepLinksPrivate(page: Page) {
+  await page.goto("/people/me/edit");
+  const shown = page.getByRole("switch", { name: "Show what I do on homes I'm sent" });
+  await expect(shown).toHaveAttribute("aria-checked", "true");
+  await shown.click();
+  await expect(shown).toHaveAttribute("aria-checked", "false");
+}
+
 // Pass on a home, the way anyone does: the X in its photo's corner, which
 // goes on to the next home. Then back on the one passed on, with More open,
 // where "What made you pass?" is for anyone who'd like to say.

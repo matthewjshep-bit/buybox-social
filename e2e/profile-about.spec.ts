@@ -102,6 +102,8 @@ test("an agent's page leads with what's between them and their client, and says 
   const stranger = await signUpBuyer(browser, "stan.about@example.com", "Stan About");
   await stranger.goto(taraPage);
   await expect(stranger.getByRole("heading", { level: 1 })).toHaveText("Tara About");
+  // Beside her name, what she is here: an agent. (Someone simply looking has no chip.)
+  await expect(stranger.getByRole("region", { name: "Tara About" }).getByText("Agent", { exact: true })).toBeVisible();
   await expect(stranger.getByRole("region", { name: /^Between you and / })).toHaveCount(0);
 });
 

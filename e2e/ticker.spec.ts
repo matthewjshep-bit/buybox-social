@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import type { Listing } from "../lib/listings/types";
-import { signedIn, toFirstHome, createShare, heartOf, homeIn, joinAs, openComments, pick, settle, signInAgent, signUpBuyer, tapPhoto, passOn } from "./helpers";
+import { signedIn, toFirstHome, createShare, heartOf, homeIn, joinAs, openComments, pick, settle, signInAgent, signUpBuyer, tapPhoto, passOn, keepLinksPrivate } from "./helpers";
 
 // The line at the photo's foot: what people did on the photo on screen, one
 // at a time, each with a hotspot on the spot where they did it. Timers run on
@@ -534,7 +534,7 @@ test("isolation: a comment on a spot shared from a link shows its words in publi
   expect(html).not.toContain(spotTag);
 });
 
-test("isolation: what you said on an agent's link reads \"You commented\" to you alone, on your own page, and nobody else gets it there", async ({
+test("isolation: kept private, what you said on an agent's link reads \"You commented\" to you alone, on your own page, and nobody else gets it there", async ({
   browser,
 }) => {
   test.setTimeout(150_000);
@@ -542,6 +542,8 @@ test("isolation: what you said on an agent's link reads \"You commented\" to you
   const agent = await signInAgent(browser, "tara.own@example.com", "Tara Agent");
   const { url } = await createShare(agent, ["719 Saltmarsh"], ["Wren"]);
   const wren = await signUpBuyer(browser, "wren.own@example.com", "Wren Own");
+  // (She'd rather what she does on homes she's sent stayed off her profile.)
+  await keepLinksPrivate(wren);
   await wren.goto(url);
   const linkHome = homeIn(wren, SALTMARSH);
   await linkHome.scrollIntoViewIfNeeded();

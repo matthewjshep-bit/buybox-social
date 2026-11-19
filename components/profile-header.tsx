@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { AddFirstName, ShareMyPage } from "@/app/people/[id]/client";
 import { Banner } from "@/components/banner";
-import { Avatar, Badge } from "@/components/ui";
+import { Avatar, Badge, RoleChip } from "@/components/ui";
 import { NO_BANNER, type BannerChoice } from "@/lib/banner";
 import { cn } from "@/lib/format";
 import { sinceLabel, type ProfileLink } from "@/lib/profile";
@@ -110,14 +110,16 @@ export function ProfileHeader({
             )}
           </div>
         </div>
-        {/* The keyboard comes here once you've said your name, as it changes. */}
-        <h1
-          id="profile-name"
-          tabIndex={-1}
-          className="mt-3 break-words font-display text-[30px] leading-tight outline-none sm:text-[34px]"
-        >
-          {isMe ? (unnamed ? "Your profile" : `${fullName || name} (you)`) : fullName || name}
-        </h1>
+        {/* Their name, and beside it what they are here: an agent has a chip;
+            someone simply looking has none. (Beside the heading, not in it, so
+            the heading is just their name.) */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+          {/* The keyboard comes here once you've said your name, as it changes. */}
+          <h1 id="profile-name" tabIndex={-1} className="min-w-0 break-words font-display text-[30px] leading-tight outline-none sm:text-[34px]">
+            {isMe ? (unnamed ? "Your profile" : `${fullName || name} (you)`) : fullName || name}
+          </h1>
+          <RoleChip role={agent ? "agent" : null} />
+        </div>
         {isMe && unnamed && <AddFirstName />}
         <p className="mt-1 text-body text-stone-700">
           {agent ? brokerage || "Real estate agent" : `Looking since ${sinceLabel(since)}`}

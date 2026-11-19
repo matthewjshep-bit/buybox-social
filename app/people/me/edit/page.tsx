@@ -5,6 +5,7 @@ import { EditAbout } from "@/app/people/[id]/about";
 import { PhotoControls, Toast } from "@/app/people/[id]/client";
 import { Avatar } from "@/components/ui";
 import { BannerPicker } from "./banner-picker";
+import { LinkPrivacy } from "./link-privacy";
 import { NameForm } from "./name-form";
 import { LayoutPicker } from "@/app/dashboard/listings/look";
 import { ProfileForm } from "@/app/dashboard/profile/form";
@@ -128,6 +129,13 @@ export default async function EditProfilePage() {
         <div className="mt-4">
           <EditAbout bio={person.bio} links={person.links} agent={person.isAgent} done={back} stay />
         </div>
+      </section>
+      {/* What others see of what they do on homes they're sent. */}
+      <section aria-labelledby="privacy-title" className={cn(card, "mt-4 p-5")}>
+        <h2 id="privacy-title" className="text-lg font-semibold">
+          Privacy
+        </h2>
+        <LinkPrivacy shown={!person.hideLinks} />
       </section>
       <Toast />
     </main>

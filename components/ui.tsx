@@ -175,6 +175,20 @@ const BADGE: Record<BadgeTone, string> = {
 
 // A word or two about something, in a pill. `small`: in capitals, beside a
 // name ("Agent").
+// What someone is on Porchcard, said beside their name wherever they're
+// named as a person: "Agent" today; an investor or a lender takes the same
+// chip when there are any. Someone who's simply looking has none.
+const ROLE_LABEL: Record<string, string> = { agent: "Agent", investor: "Investor", lender: "Lender" };
+export function RoleChip({ role, small = false, className }: { role?: string | null; small?: boolean; className?: string }) {
+  const label = role ? ROLE_LABEL[role] : undefined;
+  if (!label) return null;
+  return (
+    <Badge tone="ink" small={small} className={cn("shrink-0", className)}>
+      {label}
+    </Badge>
+  );
+}
+
 export function Badge({
   tone = "neutral",
   small = false,

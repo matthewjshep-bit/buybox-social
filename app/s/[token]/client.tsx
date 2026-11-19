@@ -608,9 +608,12 @@ export function ShareEnd({
   count,
   personal,
   token,
+  onProfile = false,
 }: {
   agentName: string;
   count: number;
+  // What they do here shows on their own profile too, so the screen says so.
+  onProfile?: boolean;
   // Someone's own link, which isn't one to pass on.
   personal: boolean;
   token: string;
@@ -625,12 +628,14 @@ export function ShareEnd({
     <div className="flex w-full flex-col items-center">
       <h2 className="text-balance font-display text-3xl">{asking ? "What did you think?" : "That's all"}</h2>
       <p className="mt-2 text-white/85">
-        {tools.preview ? "Here they can like or pass on each home." : `${agentName} sees your likes and comments.`}
+        {tools.preview
+          ? "Here they can like or pass on each home."
+          : `${agentName} sees your likes and comments.${onProfile ? " They show on your profile too." : ""}`}
       </p>
       {/* Every home on the link, small: a heart and an X on each, saying what
           they made of it already, a tap from saying it now. The photo goes
-          back to that home. (The agent, looking at their own link, sees the
-          homes without the buttons.) */}
+          back to that home. (The agent, looking at their own link, sees it
+          as their client will; the buttons there are the client's to tap.) */}
       {end && homes.length > 0 && (
         <ul
           aria-label="The homes"
@@ -650,9 +655,7 @@ export function ShareEnd({
                 >
                   <HomeThumb src={home.photo} sizes="(min-width: 640px) 256px, 50vw" className="aspect-[4/3] w-full rounded-2xl" />
                 </button>
-                {!tools.preview && (
-                  <>
-                    <button
+                <button
                       type="button"
                       aria-label={`${home.address}: pass`}
                       aria-pressed={home.reaction === "dislike"}
@@ -678,8 +681,6 @@ export function ShareEnd({
                     >
                       <Heart aria-hidden size={22} strokeWidth={2.5} className={home.reaction === "like" ? "fill-white" : undefined} />
                     </button>
-                  </>
-                )}
               </div>
               <p className="mt-1.5 font-display text-lg leading-tight">{formatPrice(home.price)}</p>
               <p className="truncate text-sm text-white/80">{home.address}</p>

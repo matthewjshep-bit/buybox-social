@@ -47,6 +47,7 @@ import { enterCode,
   signInAgent,
   signUpBuyer,
   passOn,
+  keepLinksPrivate,
 } from "./helpers";
 import { takeBackAll } from "./own-page";
 
@@ -332,13 +333,15 @@ test("a page with no name yet asks for one", async ({ browser }) => {
 // made on an agent's link never reach that person's public page, in words or
 // in the HTML. Each is checked as saved on the link first, so the absence
 // below means something.
-test("what someone does on an agent's link never shows on their page", async ({ browser }) => {
+test("with that switched off, what someone does on an agent's link never shows on their page", async ({ browser }) => {
   test.setTimeout(120_000);
   const agent = await signInAgent(browser, "profile-agent@example.com", "Avery Agent");
   const { url } = await createShare(agent, ["1204 Quillan"], ["Toby"]);
 
-  // In public, one like.
+  // In public, one like. (What they do on homes they're sent shows on their
+  // page unless they say otherwise: Rowan says otherwise, first.)
   const rowan = await signUpBuyer(browser, "rowan@example.com", "Rowan Vale");
+  await keepLinksPrivate(rowan);
   await rowan.goto("/homes/SAMPLE-1013");
   const lakeview = homeIn(rowan, LAKEVIEW);
   await heartOf(lakeview).click();

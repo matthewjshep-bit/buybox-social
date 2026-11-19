@@ -779,8 +779,8 @@ test("every comment box says who sees it, and signing up rises like a sheet, rig
     await clientHome.getByRole("button", { name: "Tell Lane what you think…" }).click();
     const private_ = client.getByRole("dialog", { name: "Comments" });
     await expect(private_.getByLabel("Add a comment")).toHaveAttribute("placeholder", "Tell Lane what you think…");
-    await expect(private_.getByText("Only Lane Agent and people on this link see this.")).toBeVisible();
-    await expect(private_.getByText(/Only you and/)).toHaveCount(0);
+    await expect(private_.getByText("Shown to everyone on this link and on your profile.")).toBeVisible();
+    await expect(private_.getByText(/Shown to Lane Agent/)).toHaveCount(0);
     await expect(private_.getByText(/Everyone can see/)).toHaveCount(0);
     if (name === "Pim") {
       // Liked, you may share it on the public page too: ticked, the line says so.
@@ -793,7 +793,7 @@ test("every comment box says who sees it, and signing up rises like a sheet, rig
       await expect(private_.getByText("Also public, without your name.")).toBeVisible();
       await expect(private_.getByText(/Only Lane Agent/)).toHaveCount(0);
       await private_.getByRole("checkbox").uncheck();
-      await expect(private_.getByText("Only Lane Agent and people on this link see this.")).toBeVisible();
+      await expect(private_.getByText("Shown to everyone on this link and on your profile.")).toBeVisible();
     }
     await client.context().close();
   }

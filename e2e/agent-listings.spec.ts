@@ -105,9 +105,12 @@ test("signed out, an agent's page is their listings, with Activity one tap away"
   await expect(anon.getByRole("link", { name: "Edit profile" })).toHaveCount(0);
   await expect(anon).toHaveTitle("Jordan Rivera · Porchcard");
   // Under them, where they are: a map, there on the listings and gone with Activity.
-  await expect(anon.getByRole("region", { name: "Map" })).toBeVisible();
+  // (The section, by its heading: once the map itself has drawn, its canvas is called "Map" too.)
+  const mapSection = anon.locator('section[aria-labelledby="listings-map-title"]');
+  await expect(mapSection).toBeVisible();
+  await expect(mapSection.getByRole("heading", { name: "Map" })).toBeVisible();
   await anon.goto(`${liaPage}?tab=activity`);
-  await expect(anon.getByRole("region", { name: "Map" })).toHaveCount(0);
+  await expect(mapSection).toHaveCount(0);
   await anon.goto(liaPage);
 
   // All four, to the end, with nothing asking them to sign up on the way; Follow is the way in.

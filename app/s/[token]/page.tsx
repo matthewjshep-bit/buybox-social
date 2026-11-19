@@ -169,6 +169,13 @@ export default async function SharePage({ params, searchParams }: Props) {
     timelines.get(key)?.find((item): item is TimelineReaction => item.kind === "reaction" && item.mine)?.state ??
     NO_REACTION;
   const agentName = agent.full_name || (agent.is_agent ? "Your agent" : "A friend");
+  // What someone does here shows on their own profile too, unless they've
+  // switched that off. (Doing anything here means signing in, so it's said to
+  // a visitor as well, before they do.) Never the agent on their own link.
+  const [keeps] = signedIn
+    ? await sql<{ hide_links: boolean }[]>`select hide_links from visitors where account_id = ${signedIn.id}`
+    : [];
+  const onProfile = !agentViewing && !keeps?.hide_links;
   const count = listings.length;
   // The welcome screen's headline: the agent's own words, or the standard line.
   const greeting =
@@ -263,6 +270,7 @@ export default async function SharePage({ params, searchParams }: Props) {
         // A personal link opens as its owner, so it isn't one to pass around.
         canInvite={!person}
         alone={alone}
+        onProfile={onProfile}
         actions={{
           join: joinThread.bind(null, token),
           react: setReaction.bind(null, token),
@@ -320,7 +328,7 @@ export default async function SharePage({ params, searchParams }: Props) {
         }
         // Keyed: the feed sets it among its own children, and a screen that
         // streams in later can't otherwise show React it was written in place.
-        end={<ShareEnd key="end" agentName={agentName} count={count} personal={!!person} token={token} />}
+        end={<ShareEnd key="end" agentName={agentName} count={count} personal={!!person} token={token} onProfile={onProfile} />}
       />
     </div>
   );
