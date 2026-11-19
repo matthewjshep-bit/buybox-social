@@ -12,8 +12,10 @@ import type { Listing } from "@/lib/listings/types";
 import { homesToSend } from "@/lib/send-search";
 import { BRAND_COLORS, escapeLike } from "@/lib/format";
 import { importMissing, runImportsAndContinue } from "@/lib/listings/imports";
-import { notifyClientAdded } from "@/lib/notify";
+import { notifyClientAdded, notifyClientMoreHomes } from "@/lib/notify";
+import { findable, NAME_LONGEST } from "@/lib/people";
 import { photoUrl } from "@/lib/person-photo";
+import { ensureAccountVisitor } from "@/lib/public";
 import {
   firstNameSchema,
   pickError,
@@ -124,6 +126,10 @@ export async function saveProfile(_: ProfileState, form: FormData): Promise<Prof
     if (isDuplicate(error)) return { error: "That MLS ID is on another profile.", field: "mlsAgentId", values };
     throw error;
   }
+  // Their public page, made now if they had none and named as they just
+  // named themselves: an agent with a name can be found (Search, People)
+  // from the moment they've said who they are.
+  await ensureAccountVisitor({ ...agent, full_name: parsed.data.fullName });
   // The frame around the page is drawn again too, so a new colour reaches the
   // header's logo straight away.
   refresh();
@@ -248,7 +254,8 @@ export async function suggestHomes(query: string, shareId?: string): Promise<Lis
 }
 
 const searchSchema = z.object({
-  query: z.string().max(200),
+  // (As long as a name to look for may be, here and in Search.)
+  query: z.string().max(NAME_LONGEST),
   shareId: z.uuid().optional(),
   exclude: z.array(z.uuid()).max(25).optional(),
 });
@@ -261,10 +268,11 @@ const clientLine = (links: number) => `Your client · ${links} ${links === 1 ? "
 
 // Who an agent might be sending homes to, for the people picker: first their
 // clients (anyone on their links), then people they follow or who follow
-// them, then, once two letters are typed, anyone on Porchcard. Matched only on
-// the start of a public first name, never an email or a last name, and only
-// what anyone could see on someone's page comes back: their first name and
-// photo. Anyone already on the link (`shareId`) or already picked (`exclude`)
+// them, then, once two letters are typed, anyone on Porchcard a stranger can
+// find (lib/people.ts `findable`, the same people Search finds: never someone
+// whose only presence is on another person's link). Matched only on the start
+// of a public first name, never an email or a last name, and only what anyone
+// could see on someone's page comes back: their first name and photo. Anyone already on the link (`shareId`) or already picked (`exclude`)
 // is left out. Nothing typed: their most recent clients.
 export async function searchPeople(input: {
   query: string;
@@ -275,7 +283,7 @@ export async function searchPeople(input: {
   const agent = await requireUser();
   const parsed = searchSchema.safeParse(input);
   if (!parsed.success) return [];
-  const query = parsed.data.query.trim().replace(/\s+/g, " ").slice(0, 40);
+  const query = parsed.data.query.trim().replace(/\s+/g, " ");
   // An email finds nobody, so typing one can't tell whether they're here.
   if (query.includes("@")) return [];
   const { shareId } = parsed.data;
@@ -332,7 +340,7 @@ export async function searchPeople(input: {
           select v.id as visitor_id, btrim(v.first_name) as name, left(md5(a.photo_data_url), 10) as photo_v, a.role
           from visitors v join accounts a on a.id = v.account_id
           where v.account_id is not null and lower(v.first_name) like ${prefix}
-            and a.role is not null and a.id <> ${agent.id} and btrim(v.first_name) <> ''
+            and ${findable()} and a.id <> ${agent.id}
             and a.id not in (${onLink})
           order by lower(btrim(v.first_name)) = ${query.toLowerCase()} desc, v.created_at desc
           limit 12`
@@ -506,9 +514,13 @@ export async function removePerson(shareId: string, personId: string): Promise<F
   return {};
 }
 
-// A suggested home, added straight to the package.
+// A suggested home, added straight to the package, from the link's own page:
+// the agent stays there.
 export async function addSuggestedHome(shareId: string, listingKey: string): Promise<void> {
-  await addHomesToShare(shareId, [listingKey]);
+  const agent = await requireAgent();
+  const result = await addHomes(agent.id, shareId, [listingKey]);
+  if ("error" in result) return;
+  redirect(`/dashboard/shares/${shareId}`);
 }
 
 const welcomeSchema = z.object({
@@ -539,18 +551,26 @@ export async function setHomeRemoved(shareId: string, listingKey: string, remove
   refresh();
 }
 
-export async function addHomesToShare(shareId: string, listingKeys: string[]): Promise<FormState> {
-  const agent = await requireAgent();
+// Homes onto a link the agent has already sent, after the ones there. What
+// went wrong, or how many of them weren't on it before.
+async function addHomes(
+  agentId: string,
+  shareId: string,
+  listingKeys: string[],
+): Promise<{ error: string } | { added: number }> {
   const keys = z.array(z.string().max(100)).min(1).max(3).safeParse(listingKeys);
   if (!keys.success) return { error: "Pick between 1 and 3 homes." };
-  if (!(await ownShare(agent.id, shareId))) return { error: "We couldn't find that client." };
+  if (!(await ownShare(agentId, shareId))) return { error: "We couldn't find that client." };
   const unique = [...new Set(keys.data)];
   if (await importMissing(unique)) after(() => runImportsAndContinue());
   const found = await sql`
     select listing_key from listings
     where listing_key in ${sql(unique)} and standard_status = 'Active'`;
   if (found.length !== unique.length) return { error: "One of those homes is no longer available." };
-  await sql.begin(async (tx) => {
+  const added = await sql.begin(async (tx) => {
+    const there = await tx<{ listing_key: string }[]>`
+      select listing_key from share_listings
+      where share_id = ${shareId} and removed_at is null and listing_key in ${sql(unique)}`;
     const [{ next }] = await tx<{ next: number }[]>`
       select coalesce(max(position), -1) + 1 as next from share_listings where share_id = ${shareId}`;
     for (const [offset, key] of unique.entries()) {
@@ -560,8 +580,28 @@ export async function addHomesToShare(shareId: string, listingKeys: string[]): P
         values (${shareId}, ${key}, ${next + offset})
         on conflict (share_id, listing_key) do update set removed_at = null`;
     }
+    return unique.length - there.length;
   });
-  redirect(`/dashboard/shares/${shareId}`);
+  return { added };
+}
+
+// "Send more homes": more homes onto a link, and then the link, ready to
+// copy or send again, as when it was first made. Whoever on it is on
+// Porchcard hears about the new homes from us (lib/notify.ts: once a day at
+// most from each agent, with being added), after the page has answered. Never
+// while an admin is looking at the site as the agent.
+export async function addHomesToShare(shareId: string, listingKeys: string[]): Promise<FormState> {
+  const agent = await requireAgent();
+  const result = await addHomes(agent.id, shareId, listingKeys);
+  if ("error" in result) return result;
+  const { added } = result;
+  if (added > 0 && !(await getViewAs())) {
+    const people = await sql<{ id: string }[]>`
+      select p.id from participants p
+      where p.share_id = ${shareId} and p.account_id is not null and p.account_id <> ${agent.id}`;
+    for (const person of people) after(() => notifyClientMoreHomes(person.id, added));
+  }
+  redirect(`/dashboard/shares/${shareId}/sent`);
 }
 
 // The agent's word in a home's conversation on their link. `to`: the client
@@ -587,6 +627,25 @@ export async function replyAsAgent(
     where sl.share_id = ${shareId} and sl.listing_key = ${listingKey} and s.agent_id = ${agent.id}
     returning id`;
   if (inserted.length === 0) return { error: "We couldn't find that conversation." };
+  // Answering is having seen it: the "new" dot beside them clears from Home
+  // too, where there's no page of the link to open. Only as far as what was
+  // answered (the newest thing they said or asked in this conversation; with
+  // no `to`, anyone on the link), as markShareSeen has it: whatever came
+  // after, or from someone else on the link, still counts as new.
+  await sql`
+    update shares s set agent_seen_at = greatest(s.agent_seen_at, answered.at)
+    from (
+      select max(x.at) as at from (
+        select c.created_at as at from comments c
+        where c.share_id = ${shareId} and c.listing_key = ${listingKey} and c.participant_id is not null
+          and (${to}::uuid is null or c.participant_id = ${to}::uuid)
+        union all
+        select a.asked_at from share_asks a
+        where a.share_id = ${shareId} and a.listing_key = ${listingKey}
+          and (${to}::uuid is null or a.participant_id = ${to}::uuid)
+      ) x
+    ) answered
+    where s.id = ${shareId} and s.agent_id = ${agent.id} and answered.at is not null`;
   refresh();
   return {};
 }
@@ -687,6 +746,27 @@ export async function releaseQuickShare(shareId: string): Promise<ReleaseResult>
     select not (${unopened()}) as opened from shares s
     where s.id = ${shareId} and s.agent_id = ${agent.id}`;
   return { released: false, opened: kept?.opened ?? false };
+}
+
+// Deletes a link sent by mistake, for good, from the Links page. Only the
+// agent's own, only with nobody named on it, and only while no one has opened
+// it, joined it or said anything on it: once a client has used a link it stays.
+export async function deleteShare(shareId: string): Promise<FormState> {
+  const agent = await requireAgent();
+  if (!uuid.safeParse(shareId).success) return { error: "We couldn't find that link." };
+  const deleted = await sql`
+    delete from shares s
+    where s.id = ${shareId} and s.agent_id = ${agent.id} and ${unopened()}
+      and not exists (select 1 from participants p where p.share_id = s.id)
+    returning s.id`;
+  if (deleted.length === 0) {
+    const [kept] = await sql<{ id: string }[]>`
+      select id from shares where id = ${shareId} and agent_id = ${agent.id}`;
+    // (Gone already, from another tab: the list catches up.)
+    if (kept) return { error: "This link has been opened or named, so it stays." };
+  }
+  refresh();
+  return {};
 }
 
 const quickNameSchema = z.object({

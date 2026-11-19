@@ -20,6 +20,7 @@ import { getBetween } from "@/lib/between";
 import { readDevice } from "@/lib/engagement";
 import { follows, getFollowCounts } from "@/lib/follows";
 import { cn } from "@/lib/format";
+import { getMyLinks } from "@/lib/my-links";
 import {
   getProfileFeed,
   getProfilePerson,
@@ -41,7 +42,7 @@ import { getSavedHomes } from "@/lib/saved";
 import { storyOf } from "@/lib/taste-story";
 import { ANONYMOUS_BUYER } from "@/lib/timeline";
 import { yourClient, type YourClient } from "@/lib/your-client";
-import { button, pageLabel, pill } from "@/lib/ui";
+import { button, link as linkClass, pageLabel, pill, tab as tabClass } from "@/lib/ui";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -124,12 +125,16 @@ export default async function ProfilePage({ params, searchParams }: Props) {
     person.isAgent ? getAgentListings(person.mlsAgentId, person.agentName, person.accountId) : [],
     tasteOf(person, isMe),
     getCurrentUser(),
-    // Who follows them, whom they follow, and whether that's whoever's looking.
-    getFollowCounts(person.id),
+    // Who follows them, whom they follow (as whoever's looking may know it:
+    // never an agent's clients), and whether that's whoever's looking.
+    getFollowCounts(person.id, visitor?.id ?? null),
     follows(visitor?.id, person.id),
     visitor ? follows(person.id, visitor.id) : false,
   ]);
   const { name, face, unnamed } = await nameOf(person, isMe, client);
+  // On their own page, someone an agent has sent homes to is told those stay
+  // private. (The bar at the top has already asked for the same links.)
+  const onLink = isMe && account?.role && account.role !== "agent" ? (await getMyLinks(account.id)).length > 0 : false;
   const show: ProfileShow = isProfileShow(query.show) ? query.show : "all";
   // The homes they saved: on their own profile only, and only ever theirs to see.
   const savedView = isMe && query.show === "saved";
@@ -237,6 +242,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
         fullName={person.isAgent && !unnamed ? person.agentName || undefined : undefined}
         face={face}
         isMe={isMe}
+        onLink={onLink}
         unnamed={unnamed}
         agent={person.isAgent}
         since={person.since}
@@ -278,10 +284,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                 href={`/people/${person.id}?tab=${key}`}
                 scroll={false}
                 aria-current={tab === key ? "page" : undefined}
-                className={cn(
-                  "flex min-h-12 items-center gap-1.5 border-b-2 px-4 text-body font-semibold",
-                  tab === key ? "border-stone-900 text-ink" : "border-transparent text-stone-600 hover:text-ink",
-                )}
+                className={tabClass(tab === key)}
               >
                 {key === "listings" ? "Listings" : "Activity"}
                 {key === "listings" && <span className="text-muted tabular-nums">{listings.length}</span>}
@@ -292,7 +295,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
           {isMe && (
             <Link
               href="/dashboard/listings"
-              className="ml-auto flex min-h-11 items-center gap-1.5 px-2 text-sm font-semibold text-brand underline-offset-2 hover:underline"
+              className={cn(linkClass, "ml-auto flex min-h-11 items-center gap-1.5 px-2 text-sm")}
             >
               <Pencil aria-hidden size={15} /> Edit listings
             </Link>
@@ -390,8 +393,8 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                 icon={Home}
                 title="Nothing here yet"
                 action={
-                  <Link href="/reel" data-empty-action className={button({ kind: "primary" })}>
-                    See homes
+                  <Link href="/browse" data-empty-action className={button({ kind: "primary" })}>
+                    Browse homes
                   </Link>
                 }
               />

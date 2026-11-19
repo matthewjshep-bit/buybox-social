@@ -200,7 +200,7 @@ test("the agent's own Preview is their first pass: what they like and say there 
   const agent = await signInAgent(browser, "own-preview@example.com", "Priya Shah");
   const { url, dashboardUrl } = await createShare(agent, ["1204 Quillan"], ["Dana"]);
   // Asked for before it's sent, and only asked.
-  await expect(agent.locator("[data-your-take]")).toContainText("Add your take before you send");
+  await expect(agent.locator("[data-your-take]")).toHaveText("Add your feedback");
 
   // Preview, on Dana's page, opens her link in a new tab, still signed in.
   const [preview] = await Promise.all([
@@ -211,7 +211,7 @@ test("the agent's own Preview is their first pass: what they like and say there 
   const home = homeIn(preview, "1204 Quillan St SE");
   await expect(home).toBeInViewport({ ratio: 0.9 });
   const banner = preview.getByRole("banner");
-  await expect(banner).toContainText("your notes for Dana");
+  await expect(banner).toContainText("your feedback for Dana");
   // Nothing to contact: Done, back to Dana's page.
   await expect(banner.getByRole("button", { name: "Contact" })).toHaveCount(0);
   await expect(banner.getByRole("link", { name: "Done" })).toHaveAttribute("href", new URL(dashboardUrl).pathname);

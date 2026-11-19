@@ -43,7 +43,8 @@ export function TestSignIn({ asAgent = false, next }: { asAgent?: boolean; next?
           });
           setState(result);
           if (result.done) {
-            router.replace(next ?? (result.done.agent ? "/dashboard" : "/"));
+            // (A new buyer, with no first name yet: the page asks it first.)
+            if (!result.done.needsName) router.replace(next ?? (result.done.agent ? "/dashboard" : "/"));
             router.refresh();
           }
         });

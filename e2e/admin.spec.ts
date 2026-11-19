@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { enterCode, homeIn, missedTaps, openComments, signInAgent, signUpBuyer } from "./helpers";
+import { enterCode, homeIn, missedTaps, openComments, pastNameStep, signInAgent, signUpBuyer } from "./helpers";
 
 // The phone settings carry over to new contexts, touch included; a desktop has none.
 const DESKTOP = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, isMobile: false, hasTouch: false };
@@ -13,6 +13,8 @@ async function signIn(browser: Browser, email: string, device: Parameters<Browse
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Continue" }).click();
   await enterCode(page);
+  // (Just an email, so no first name yet: asked, and skipped.)
+  await pastNameStep(page);
   await page.waitForURL((url) => url.pathname === "/");
   return page;
 }
@@ -32,7 +34,8 @@ test("admins see every person, home and comment, and can follow up, fix and remo
   // Not for everyone: signed out goes to sign in; anyone else finds nothing there.
   const anon = await (await browser.newContext()).newPage();
   await anon.goto("/admin");
-  await expect(anon).toHaveURL(/\/login$/);
+  // (And back to it, once they have.)
+  await expect(anon).toHaveURL(/\/login\?next=%2Fadmin$/);
   expect((await buyer.goto("/admin/people"))!.status()).toBe(404);
   expect((await buyer.request.get("/admin/people/export")).status()).toBe(404);
   await expect(buyer.getByRole("link", { name: "Admin" })).toHaveCount(0);

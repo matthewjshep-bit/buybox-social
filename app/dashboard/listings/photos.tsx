@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useId, useState, useTransition } from "react";
 import { cn } from "@/lib/format";
 import { listingPhoto } from "@/lib/resize-photo";
-import { button } from "@/lib/ui";
+import { button, field } from "@/lib/ui";
 import {
   addListingPhoto,
   addListingVideoLink,
@@ -274,10 +274,10 @@ export function ListingVideos({
                 placeholder="YouTube, Vimeo or Loom"
                 autoComplete="off"
                 maxLength={300}
-                className="mt-1 h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-body text-ink placeholder:text-stone-500 focus-visible:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                className={cn(field({ small: true }), "mt-1")}
               />
             </div>
-            <button type="submit" disabled={pending || !link.trim()} className={cn(button({ kind: "secondary" }), "shrink-0")}>
+            <button type="submit" disabled={pending || !link.trim()} className={cn(button({ kind: "secondary", size: "lg" }), "shrink-0")}>
               Add
             </button>
           </form>

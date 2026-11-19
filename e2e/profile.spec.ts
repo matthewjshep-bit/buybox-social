@@ -41,6 +41,7 @@ import { enterCode,
   likeInPhoto,
   openComments,
   openMore,
+  pastNameStep,
   pick,
   settle,
   signInAgent,
@@ -130,7 +131,8 @@ test("a profile is one card per home per day, with the photo and the spots picke
   await lena.goto(profileUrl);
   await expect(lena.getByRole("link", { name: "Edit profile" })).toHaveAttribute("href", "/people/me/edit");
   await expect(lena.getByText("Your public profile")).toBeVisible();
-  await expect(lena.getByText("Agent links stay private.")).toBeVisible();
+  // (Nobody's sent her homes on a link: nothing about links to read.)
+  await expect(lena.getByText(/stay private/)).toHaveCount(0);
   await expect(lena.getByRole("button", { name: "Share my profile" })).toBeVisible();
 
   // One card per home, newest first, under "Today".
@@ -187,7 +189,7 @@ test("a profile is one card per home per day, with the photo and the spots picke
   await visitor.goto(profileUrl);
   await expect(visitor.getByRole("heading", { level: 1 })).toHaveText("Lena");
   await expect(visitor.getByRole("button", { name: "Share my profile" })).toHaveCount(0);
-  await expect(visitor.getByText(/Agent links stay private/)).toHaveCount(0);
+  await expect(visitor.getByText(/stay private/)).toHaveCount(0);
   await expect(cardOf(visitor, `${CORBEL}: ${sentence}`)).toContainText(`Lena ${sentence}`);
   await expect(visitor.getByRole("link", { name: "Edit profile" })).toHaveCount(0);
   await visitor.goto(`${profileUrl}?show=comments`);
@@ -271,7 +273,7 @@ test("an empty page says what will show up there", async ({ browser }) => {
   await jo.waitForURL(/\/people\/[0-9a-f-]{36}$/);
   await expect(jo.getByRole("heading", { level: 1 })).toHaveText("Jo (you)");
   await expect(jo.getByText("Nothing here yet")).toBeVisible();
-  await expect(jo.getByRole("link", { name: "See homes" })).toHaveAttribute("href", "/reel");
+  await expect(jo.getByRole("link", { name: "Browse homes" })).toHaveAttribute("href", "/browse");
   await expect(jo.getByRole("link", { name: "Comments", exact: true })).toHaveCount(0);
   // Nothing yet says itself: no row of zeros above it.
   await expect(jo.locator("main")).not.toContainText("0 liked");
@@ -292,6 +294,8 @@ test("a page with no name yet asks for one", async ({ browser }) => {
   await cy.getByLabel("Email").fill("cy@example.com");
   await cy.getByRole("button", { name: "Continue" }).click();
   await enterCode(cy);
+  // (Asked their first name on the way in, and skipped it.)
+  await pastNameStep(cy);
   await cy.waitForURL((url) => !url.pathname.startsWith("/login"));
   await cy.goto("/people/me");
   await cy.waitForURL(/\/people\/[0-9a-f-]{36}$/);
@@ -399,6 +403,10 @@ test("what someone does on an agent's link never shows on their page", async ({ 
   const profileUrl = rowan.url();
   const anon = await (await browser.newContext()).newPage();
   await anon.goto(profileUrl);
+  // On a link, their own page says what's on it stays off this one; said to
+  // them alone.
+  await expect(rowan.getByText("Homes from your agent stay private.")).toBeVisible();
+  await expect(anon.getByText(/stay private/)).toHaveCount(0);
   for (const page of [rowan, anon]) {
     const main = page.locator("main");
     await expect(page.getByRole("link", { name: `${LAKEVIEW}: liked this` })).toBeVisible();
@@ -1245,7 +1253,7 @@ test("on your own page you can take back a like or a comment, and nobody else ca
   await expect(pia.getByRole("status").filter({ hasText: "Comment deleted" })).toBeVisible();
   // With the last of it gone, the card goes, and focus moves on rather than off the page.
   await expect(pia.getByText("Nothing here yet")).toBeVisible();
-  await expect(pia.getByRole("link", { name: "See homes" })).toBeFocused();
+  await expect(pia.getByRole("link", { name: "Browse homes" })).toBeFocused();
   expect(pageErrors).toEqual([]);
 
   // And off the home, for everyone.

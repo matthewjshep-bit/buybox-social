@@ -171,7 +171,7 @@ export function SentBody({
   }
 
   // Saves who it's for and the note, if any. Then, with `notes`, on to the
-  // link as they'll see it, for the agent's take on the home.
+  // link as they'll see it, for the agent's feedback on the home.
   const save = (notes = false) => {
     if (pending) return;
     startTransition(async () => {
@@ -306,7 +306,7 @@ export function SentBody({
         {/* What they'll read first when they open it: a note or a like from
             the agent on the price, a room, anything. */}
         <button type="button" onClick={() => save(true)} aria-disabled={pending || !shareId} className={cn(secondary, busy(pending))}>
-          <PenLine aria-hidden size={16} /> Add your take
+          <PenLine aria-hidden size={16} /> Add your feedback
         </button>
         <button type="button" onClick={() => onDone()} className={secondary}>
           Skip
@@ -315,11 +315,11 @@ export function SentBody({
             is made (on a slow connection that can take a moment). */}
         {shareId ? (
           <Link href={`/dashboard/shares/${shareId}`} className={cn(dashboardLink, "text-brand")}>
-            Open in Clients <ChevronRight aria-hidden size={16} />
+            Open in Dashboard <ChevronRight aria-hidden size={16} />
           </Link>
         ) : (
           <span role="link" aria-disabled="true" className={cn(dashboardLink, "text-stone-400")}>
-            Open in Clients <ChevronRight aria-hidden size={16} />
+            Open in Dashboard <ChevronRight aria-hidden size={16} />
           </span>
         )}
       </div>
@@ -420,7 +420,7 @@ export function SentBody({
         {undo && undo !== "ask" && (
           // The buttons are gone, so the cursor comes to the answer.
           <p ref={focusOnMount} tabIndex={-1} className="py-2 text-sm text-stone-700 outline-none">
-            {undo === "opened" ? "Opened, so it can't be undone." : "Too late to undo."} Remove the home in Clients.
+            {undo === "opened" ? "Opened, so it can't be undone." : "Too late to undo."} Remove the home in your dashboard.
           </p>
         )}
       </div>
@@ -542,7 +542,7 @@ export function DraftBody({ home, onNextToken }: { home: SendHome; onNextToken: 
               href={`/dashboard/shares/${link.shareId}`}
               className="mx-auto flex min-h-11 items-center gap-1 px-3 text-sm font-semibold text-brand"
             >
-              Open in Clients <ChevronRight aria-hidden size={16} />
+              Open in Dashboard <ChevronRight aria-hidden size={16} />
             </Link>
           </div>
         </div>

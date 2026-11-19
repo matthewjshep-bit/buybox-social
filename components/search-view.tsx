@@ -18,6 +18,7 @@ import type { ThreadActions } from "@/components/listing-thread";
 import type { MapHome } from "@/components/listing-map";
 import { QuickSendReel, SendPill, sendHomeFrom, useQuickSend } from "@/components/quick-send";
 import { ReelFeed } from "@/components/reel";
+import { SearchSwitch } from "@/components/search-switch";
 import { HomeThumb } from "@/components/ui";
 import type { FeedPost } from "@/lib/feed";
 import { cn, formatPrice } from "@/lib/format";
@@ -107,6 +108,7 @@ export function SearchView({
   myName,
   prompt,
   sender,
+  people = false,
 }: {
   filters: SearchFilters;
   count: number;
@@ -118,6 +120,8 @@ export function SearchView({
   prompt: string;
   // A signed-in agent, who can send the home showing to a client.
   sender: { profileComplete: boolean } | null;
+  // Signed in: Search finds people too, a tap away (Homes | People).
+  people?: boolean;
 }) {
   const router = useRouter();
   const pane = useRef<HTMLElement>(null);
@@ -207,10 +211,36 @@ export function SearchView({
     : undefined;
   const sending = sendable ? sendHomeFrom(sendable.listing) : null;
 
+  // Nothing found: what was looked for, said back when it was only words in
+  // the box ("No homes match “Dana”."), and the way out. A name is the
+  // likeliest thing to find no homes, so signed in (and with no number in
+  // it, which an address or a ZIP would have), people are one tap away.
+  const { q } = filters;
+  const onlyWords =
+    Boolean(q) && !filters.minPrice && !filters.maxPrice && !filters.beds && !filters.baths && !filters.type && !filters.liked;
+  // (Each way out a fingertip tall; `side`: lined up left beside the map, or centred in the pane.)
+  const none = (side: "items-start" | "items-center") => (
+    <div className={cn("flex flex-col", side)}>
+      <p className="font-semibold">{onlyWords ? `No homes match “${q}”.` : "No homes match those filters."}</p>
+      <Link href="/search" className="flex min-h-11 items-center font-semibold text-brand underline">
+        Clear all filters
+      </Link>
+      {people && q && !/\d/.test(q) && (
+        <Link
+          href={`/search/people?q=${encodeURIComponent(q)}`}
+          className="flex min-h-11 items-center font-semibold text-brand underline"
+        >
+          Search people for “{q}”
+        </Link>
+      )}
+    </div>
+  );
+
   return (
     // Phones: the filters, what was found, then the homes or the map. Wide
     // screens: the filters across the top; what was found over the map, one
     // home beside it. Wider still, a list of the homes between the two.
+    // Signed in, Homes | People is the first row of the filters, at every width.
     <div className="flex h-[calc(100dvh-3.5rem-1px)] flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_min(46rem,50%)] lg:grid-rows-[auto_auto_minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_18rem_min(44rem,44%)] xl:grid-rows-[auto_minmax(0,1fr)]">
       <form
         role="search"
@@ -219,18 +249,24 @@ export function SearchView({
           event.preventDefault();
           update({ q: String(new FormData(event.currentTarget).get("q") ?? "").trim() });
         }}
-        className="flex flex-wrap items-center gap-2 bg-white px-4 pb-1 pt-3 lg:col-span-2 lg:border-b lg:border-stone-200 lg:pb-3 xl:col-span-3"
+        className={cn(
+          "flex flex-wrap items-center gap-2 bg-white px-4 pb-1 lg:col-span-2 lg:border-b lg:border-stone-200 lg:pb-3 xl:col-span-3",
+          // (The switch brings its own room above the field.)
+          people ? "pt-0" : "pt-3",
+        )}
       >
+        {/* Homes or people: a row of its own, edge to edge, above the field. */}
+        {people && <SearchSwitch on="homes" className="-mx-4 w-[calc(100%+2rem)] px-4" />}
         <div className="relative w-full sm:w-72">
           <label htmlFor="search-q" className="sr-only">
-            City, ZIP or address
+            City, ZIP, address or MLS number
           </label>
           <input
             id="search-q"
             name="q"
             type="search"
             defaultValue={filters.q}
-            placeholder="City, ZIP or address"
+            placeholder="City, ZIP, address or MLS #"
             className={cn(field({ pill: true }), "w-full pr-11")}
           />
           <button
@@ -398,12 +434,7 @@ export function SearchView({
           </ol>
         ) : (
           // Beside the map, the way out is right under the count.
-          <div className="hidden border-t border-stone-200 px-4 py-6 xl:block">
-            <p className="font-semibold">No homes match those filters.</p>
-            <Link href="/search" className="mt-2 inline-block font-semibold text-brand underline">
-              Clear all filters
-            </Link>
-          </div>
+          <div className="hidden border-t border-stone-200 px-4 py-6 xl:block">{none("items-start")}</div>
         )}
       </div>
 
@@ -439,12 +470,7 @@ export function SearchView({
         {posts.length === 0 ? (
           // Said once: beside the map on the widest screens, here otherwise.
           <div className="flex h-full flex-col items-center justify-center bg-surface p-8 text-center">
-            <div className="xl:hidden">
-              <p className="font-semibold">No homes match those filters.</p>
-              <Link href="/search" className="mt-2 inline-block font-semibold text-brand underline">
-                Clear all filters
-              </Link>
-            </div>
+            <div className="xl:hidden">{none("items-center")}</div>
           </div>
         ) : (
           <ReelFeed
@@ -497,8 +523,9 @@ export function SearchView({
 }
 
 // The homes a map search found, full screen (`/homes?home=…`). The address
-// follows the home on screen, so the way back to the map, a reload and the
-// browser's Back all come back to it. Escape goes back to the map too.
+// follows the home on screen, so the way back to Search ("Back to search":
+// the page is Search; "Map" is only its list/map switch), a reload and the
+// browser's Back all come back to it. Escape goes back to Search too.
 export function SearchReel({
   query,
   start,
@@ -534,7 +561,7 @@ export function SearchReel({
   };
   const map = at("/search", shown);
 
-  // Escape goes back to the map, as the link at the top does, unless it's
+  // Escape goes back to Search, as the link at the top does, unless it's
   // for something open over the homes: a sheet, a menu, a card about a spot.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -575,7 +602,7 @@ export function SearchReel({
             "absolute left-3 top-[calc(env(safe-area-inset-top)_+_3.5rem)] split:left-auto split:right-[480px] split:top-[calc(var(--stage-top)+12px)] split-xl:right-[520px]",
           )}
         >
-          <ArrowLeft aria-hidden size={16} /> Back to map
+          <ArrowLeft aria-hidden size={16} /> Back to search
         </Link>
       </>
     ),
@@ -583,7 +610,7 @@ export function SearchReel({
       <div className="max-w-sm">
         <h2 className="font-display text-2xl">That&apos;s all</h2>
         <Link href={map} className={cn(button({ kind: "light", size: "lg" }), "mt-6")}>
-          <ArrowLeft aria-hidden size={17} /> Back to the map
+          <ArrowLeft aria-hidden size={17} /> Back to search
         </Link>
       </div>
     ),

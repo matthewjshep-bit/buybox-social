@@ -445,6 +445,8 @@ test("on a desktop, the photo has a stage of its own with nothing on it but the 
   await expect(actions.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(actions.getByRole("button").nth(i)).toHaveAccessibleName(name);
   for (const name of names) await expect(home.getByRole("button", { name })).toHaveCount(1);
+  // Share has its word beside it, as Save has.
+  await expect(actions.getByRole("button", { name: "Share", exact: true })).toHaveText("Share");
   const row = await box(actions);
   const compose = await box(panelWords.getByRole("button", { name: "Add a comment…" }));
   expect(row.y + row.height).toBeLessThanOrEqual(compose.y);

@@ -35,7 +35,8 @@ export type Headline =
   // `mediaKey`: the photo it's in, when known.
   | { kind: "photo"; who: "public" | "client"; name: string; tag: string; at: string; mediaKey?: string }
   | { kind: "photo"; who: "anonymous"; tag: string; at: string; mediaKey?: string }
-  | { kind: "sent"; who: "you" | "anonymous"; at: string };
+  // Only ever to whoever sent it. `agent`: they're an agent, so it went to a client.
+  | { kind: "sent"; who: "you"; agent: boolean; at: string };
 
 
 export type FeedPost = {
@@ -65,6 +66,9 @@ export type FeedPost = {
   // What people did lately, newest first, for the line above the price:
   // already only what this viewer may see.
   events?: TickerEvent[];
+  // The viewer's own photo, where they've added one: their face on what they
+  // do here, from the moment they do it.
+  myFace?: string;
 };
 
 type EventRow = {
@@ -189,10 +193,11 @@ export async function getReel(
           join shares s on s.id = c.share_id
           where c.listing_key = l.listing_key
           union all
-          select 'sent', null, '{}'::text[], '{}'::text[], null,
-            case when s.agent_id = ${agentId}::uuid then 'self' else 'private' end, s.created_at, null, null
+          -- (A home sent on a link is news only to whoever sent it, agent
+          -- or not: to anyone else the next newest thing leads.)
+          select 'sent', null, '{}'::text[], '{}'::text[], null, 'self', s.created_at, null, null
           from share_listings sl join shares s on s.id = sl.share_id
-          where sl.listing_key = l.listing_key
+          where sl.listing_key = l.listing_key and s.agent_id = ${viewer?.id ?? null}::uuid
         ) events
         order by at desc
         limit 1
@@ -363,11 +368,12 @@ export async function getReel(
           join shares s on s.id = c.share_id
           where c.listing_key in ${sql(keys)}
           union all
+          -- (Sent on a link: only ever to whoever sent it.)
           select sl.listing_key, 'sent', md5('s:' || sl.share_id || ':' || sl.listing_key), null,
-            case when s.agent_id = ${agentId}::uuid then 'self' else 'private' end, s.created_at,
+            'self', s.created_at,
             null, null, null, null, null, null, '{}'::text[], '{}'::text[], false, null
           from share_listings sl join shares s on s.id = sl.share_id
-          where sl.listing_key in ${sql(keys)}
+          where sl.listing_key in ${sql(keys)} and s.agent_id = ${viewer?.id ?? null}::uuid
           ${
             agent
               ? sql`
@@ -405,14 +411,20 @@ export async function getReel(
       order by listing_key, at desc, id`,
   ]);
 
-  // The faces of the people on the line, where they've added a photo.
-  const faces = await photosFor(events.flatMap((event) => (onPage(event) && event.profile_id ? [event.profile_id] : [])));
+  // The faces of the people on the line, where they've added a photo: and
+  // whoever's looking, whose own face goes on everything that says "You".
+  const faces = await photosFor([
+    ...events.flatMap((event) => (onPage(event) && event.profile_id ? [event.profile_id] : [])),
+    ...(visitorId ? [visitorId] : []),
+  ]);
+
+  const myFace = (visitorId && faces.get(visitorId)) || undefined;
 
   const toPost = ({ row, totals, match }: (typeof scored)[number]): FeedPost => {
     const key = row.data.ListingKey;
     return {
       listing: sortedMedia(row.data),
-      headline: toHeadline(row),
+      headline: toHeadline(row, agentId !== null),
       likes: likeCounts.find((count) => count.listing_key === key)?.n ?? 0,
       likers: likers.filter((l) => l.listing_key === key).map((l) => l.first_name),
       dislikes: totals.publicTotals.dislikes,
@@ -429,7 +441,10 @@ export async function getReel(
         new Set(followed),
         faces,
         host,
+        agentId !== null,
+        myFace,
       ),
+      ...(myFace && { myFace }),
     };
   };
 
@@ -441,10 +456,12 @@ const sortedMedia = (listing: Listing): Listing => ({
   Media: [...listing.Media].sort((a, b) => a.Order - b.Order),
 });
 
-function toHeadline(row: Row): Headline | null {
+// `asAgent`: whoever's looking is an agent (what they sent went to a client).
+function toHeadline(row: Row, asAgent: boolean): Headline | null {
   if (!row.h_kind || !row.h_at) return null;
   const at = row.h_at.toISOString();
-  if (row.h_kind === "sent") return { kind: "sent", who: row.h_source === "self" ? "you" : "anonymous", at };
+  // (The query only ever finds the viewer's own.)
+  if (row.h_kind === "sent") return { kind: "sent", who: "you", agent: asAgent, at };
   const named = (row.h_source === "public" || row.h_source === "client") && row.h_name;
   if (row.h_kind === "photo") {
     // A spot reads as the thing it's on ("the front door").
@@ -473,15 +490,19 @@ const onPage = (row: EventRow) => row.source === "public" || row.source === "age
 // One home's recent activity as the page gets it. What you did or said is
 // "You" (your public likes keyed so the one you just made matches what comes
 // back; what you did on an agent's link keeps its own key),
-// and a home an agent sent is "You" to them, with their face in ink. Several
-// strangers' plain likes this week fold into one: "4 buyers liked this home".
+// and a home you sent is "You" too (the rows hold only the viewer's own; an
+// agent's face in ink). Several strangers' plain likes this week fold into
+// one: "4 buyers liked this home".
 // `faces`: people's own photos by page id, so a face on the line is the one
-// their page shows.
+// their page shows. `asAgent`: whoever's looking is an agent. `myFace`: their
+// own photo, for what's theirs ("You").
 function toEvents(
   rows: EventRow[],
   followed: Set<string>,
   faces: Map<string, string> = new Map(),
   host?: string,
+  asAgent = false,
+  myFace?: string,
 ): TickerEvent[] {
   const events: TickerEvent[] = [];
   const folded: TickerEvent[] = [];
@@ -492,7 +513,7 @@ function toEvents(
     const hosts = Boolean(host && paged === host);
     const who: TickerEvent["who"] =
       row.mine
-        ? { tone: "you", name: null, ...(hosts && { host: true }) }
+        ? { tone: "you", name: null, ...(myFace && { photo: myFace }), ...(hosts && { host: true }) }
         : named
           ? {
               tone: row.source === "client" ? "client" : "person",
@@ -531,9 +552,7 @@ function toEvents(
     } else if (row.kind === "private-comment") {
       events.push({ id: row.id, kind: "private-comment", who: { tone: "anonymous", name: null }, at });
     } else if (row.kind === "sent") {
-      const sender: TickerEvent["who"] =
-        row.source === "self" ? { tone: "you", name: null, agent: true } : { tone: "anonymous", name: null };
-      events.push({ id: row.id, kind: "sent", who: sender, at });
+      events.push({ id: row.id, kind: "sent", who: { tone: "you", name: null, ...(myFace && { photo: myFace }), ...(asAgent && { agent: true }) }, at });
     }
   }
   if (folded.length >= 2) {

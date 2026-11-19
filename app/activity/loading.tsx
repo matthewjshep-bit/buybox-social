@@ -1,13 +1,13 @@
 import { Loading, Placeholder } from "@/components/route-state";
 import { cn } from "@/lib/format";
-import { card } from "@/lib/ui";
+import { card, pageColumn, pageTitle } from "@/lib/ui";
 
 // While the bell's page is read: its heading, then the shape of a few lines.
 export default function ActivityLoading() {
   return (
-    <main aria-busy className="mx-auto max-w-2xl px-4 pb-16 pt-6">
-      <h1 className="font-display text-3xl">Notifications</h1>
-      <Loading what="your activity" />
+    <main aria-busy className={pageColumn()}>
+      <h1 className={pageTitle}>Notifications</h1>
+      <Loading what="your notifications" />
       <Placeholder className="ml-1 mt-4 h-4 w-20" />
       <ul aria-hidden className="mt-3 flex flex-col gap-2">
         {[0, 1, 2].map((row) => (

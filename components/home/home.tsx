@@ -1,27 +1,35 @@
-import { House, Map as MapIcon, Plus, Send, UserRound } from "lucide-react";
+import { Bookmark, Building2, House, Send, UserRoundSearch } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { FollowText } from "@/components/home/follow-text";
+import { ClientsRail } from "@/components/home/clients-rail";
 import { HomeShell, ProfileRail, type RailLink } from "@/components/home/home-shell";
 import { Lenses } from "@/components/home/lens-pills";
+import { PeopleCard } from "@/components/home/people-card";
 import { PicksMasonry } from "@/components/home/picks-masonry";
 import { FollowingFeed } from "@/components/home-feed";
 import { Avatar } from "@/components/ui";
+import type { BannerChoice } from "@/lib/banner";
+import type { ClientBook } from "@/lib/clients";
 import type { FeedPost } from "@/lib/feed";
 import type { FollowCounts } from "@/lib/follows";
-import type { BannerChoice } from "@/lib/banner";
 import { cn } from "@/lib/format";
-import type { FeedWho, FollowedFace, HomeFeedEntry } from "@/lib/home-feed";
+import type { HomeFeedEntry } from "@/lib/home-feed";
 import type { MyLink } from "@/lib/my-links";
+import type { FoundPerson } from "@/lib/people";
 import type { ReactionState } from "@/lib/reactions";
 import { button, card } from "@/lib/ui";
 
-// Anyone else's home: discovery. Down the left, them: their card (who they
-// follow, who follows them) and their places. In the middle, the homes their
-// agent sent, when there are any; then what the people they follow liked (or,
-// a tap away, homes picked for them), until "You're all caught up"; then more
-// homes picked by their taste. Down the right on a wide screen, people worth
-// following. One filled button: their agent's homes.
+// Home, one page for everyone. Down the left, them: their card and the places
+// the bar at the top doesn't have. In the middle: the box to send homes; the
+// homes their agent sent, when there are any; then what the people they
+// follow liked (or, a tap away, homes picked for them), until "You're all
+// caught up"; then homes picked by their taste. People to follow: down the
+// right on a wide screen; on a narrower one, in the middle, between the feed
+// and the homes picked for them.
+// An agent's is the same page with one thing more, straight under the box to
+// send homes: "Your clients", theirs alone to see (ClientsRail). What a
+// client did on their link is only ever there and on that client's own page:
+// never in the feed, which is built from what people did in public.
 
 // "Bellevue · Kirkland · 3 of 9 rated"
 function metaOf(link: MyLink) {
@@ -30,7 +38,7 @@ function metaOf(link: MyLink) {
 }
 
 // The homes their agent sent, over a photo of one of them: how many are
-// waiting, and the agent's latest word. The page's one filled button.
+// waiting, and the agent's latest word.
 function FromYourAgent({ links }: { links: MyLink[] }) {
   const [link, ...others] = links;
   const first = link.agent.firstName || link.agent.name;
@@ -84,42 +92,19 @@ function FromYourAgent({ links }: { links: MyLink[] }) {
   );
 }
 
-// People worth following, beside the stream on a wide screen.
-function TastePeople({ people }: { people: (FeedWho & { profileId: string })[] }) {
-  if (people.length === 0) return null;
-  return (
-    <section aria-labelledby="taste-rail-title" className={cn(card, "p-4")}>
-      <h2 id="taste-rail-title" className="text-body font-semibold">
-        People with your taste
-      </h2>
-      <ul className="mt-1 divide-y divide-stone-200">
-        {people.slice(0, 3).map((person) => (
-          <li key={person.profileId} className="flex items-center gap-3 py-1.5">
-            <Link href={`/people/${person.profileId}`} className="group flex min-h-11 min-w-0 flex-1 items-center gap-3">
-              <Avatar name={person.face || person.name} tone={person.agent ? "agent" : "person"} photo={person.photo} size={9} />
-              <span className="truncate text-body group-hover:underline">{person.name}</span>
-            </Link>
-            <FollowText personId={person.profileId} name={person.name} />
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-export function BuyerHome({
+export function Home({
   firstName,
   me,
   follows,
   profileHref,
   links,
-  followed,
   suggestions,
   feed,
   mine,
   seenAt,
   picks,
   lens,
+  agent,
 }: {
   firstName: string;
   me: { id: string; name: string; photo: string | null; banner: BannerChoice };
@@ -127,62 +112,89 @@ export function BuyerHome({
   profileHref: string;
   // The links they're on, newest first.
   links: MyLink[];
-  followed: FollowedFace[];
-  suggestions: (FeedWho & { profileId: string })[];
+  // People to follow, the likeliest first: the card shows three.
+  suggestions: FoundPerson[];
   feed: HomeFeedEntry[];
   mine: Record<string, ReactionState>;
   seenAt: string | null;
   picks: FeedPost[];
   lens: { initial: string; fromUrl: boolean };
+  // An agent, and so their clients too: everything else is anyone's home.
+  agent?: { book: ClientBook; brokerage: string; brandColor: string };
 }) {
   // Following first for someone with people to follow along with, or on an
   // agent's link; otherwise homes picked for them.
-  const fallback = followed.length >= 3 || links.length > 0 ? "following" : "foryou";
+  const fallback = follows.following >= 3 || links.length > 0 ? "following" : "foryou";
   const initial = lens.initial === "following" || lens.initial === "foryou" ? lens.initial : fallback;
   const agentName = links[0] && (links[0].agent.firstName || links[0].agent.name);
-  const places: RailLink[] = [
-    ...(links[0]
-      ? [{ href: `/s/${links[0].token}`, label: `Homes from ${agentName}`, icon: <Send size={18} /> }]
-      : []),
-    { href: "/reel", label: "Browse homes", icon: <House size={18} /> },
-    { href: "/send", label: "Send homes", icon: <Plus size={18} /> },
-    { href: "/search", label: "Map", icon: <MapIcon size={18} /> },
-    { href: profileHref, label: "Your profile", icon: <UserRound size={18} /> },
-  ];
+  // Only what the bar at the top doesn't have (it has Browse, Search, Send,
+  // the Dashboard, and their own page under their face).
+  const saved: RailLink = { href: "/people/me?show=saved", label: "Saved homes", icon: <Bookmark size={18} /> };
+  const people: RailLink = { href: "/search/people", label: "Find people", icon: <UserRoundSearch size={18} /> };
+  const places: RailLink[] = agent
+    ? [{ href: "/dashboard/listings", label: "Listings", icon: <Building2 size={18} /> }, saved, people]
+    : [
+        ...(links[0] ? [{ href: `/s/${links[0].token}`, label: `Homes from ${agentName}`, icon: <House size={18} /> }] : []),
+        saved,
+        people,
+      ];
   const listOf = (which: "following" | "followers") =>
     profileHref.endsWith("/me") ? profileHref : `${profileHref}/${which}`;
+  // People to follow where there's no rail beside the feed (a phone, a
+  // tablet): the same card, in the middle. Whichever of Following and For you
+  // is showing, it's under it: in a feed with cards in it, after the
+  // caught-up line (or the third card), so a long feed doesn't bury it, and
+  // again under For you; with no feed yet, once, under the pills and whatever
+  // they show. (Only one is ever showing; each has a heading of its own.)
+  const peopleInline = (where: string) => (
+    <PeopleCard people={suggestions} id={`people-${where}`} className="lg:hidden" />
+  );
+  const quiet = feed.length === 0;
   return (
     <HomeShell
-      title={firstName ? `Hi, ${firstName}` : "Your home"}
+      // (No greeting for an agent: it's their place of work.)
+      title={!agent && firstName ? `Hi, ${firstName}` : "Your home"}
       left={
         <ProfileRail
           name={me.name}
           photo={me.photo}
           seed={me.id}
           banner={me.banner}
-          agent={false}
-          line={agentName ? `Looking with ${links[0].agent.name}` : ""}
+          agent={Boolean(agent)}
+          bandColor={agent?.brandColor}
+          line={
+            agent ? agent.brokerage.trim() || "Real estate agent" : agentName ? `Looking with ${links[0].agent.name}` : ""
+          }
           href={profileHref}
-          stats={[
-            { label: "Following", value: follows.following, href: listOf("following") },
-            { label: "Followers", value: follows.followers, href: listOf("followers") },
-          ]}
+          stats={
+            agent
+              ? // (Who follows them is on their public profile: this number is their clients.)
+                [{ label: "Clients", value: agent.book.clients.length, href: "/dashboard" }]
+              : [
+                  { label: "Following", value: follows.following, href: listOf("following") },
+                  { label: "Followers", value: follows.followers, href: listOf("followers") },
+                ]
+          }
           links={places}
         />
       }
-      right={<TastePeople people={suggestions} />}
+      right={<PeopleCard people={suggestions} id="people-rail" />}
     >
-      {/* Shaped like a box to type in, as a post box is: the steps for sending homes to someone. */}
+      {/* Shaped like a box to type in, with the bar's own paper plane in it:
+          the steps for sending homes (an agent's, to a client). */}
       <div className={cn(card, "flex items-center gap-3 p-3")}>
-        <Avatar name={me.name} photo={me.photo} size={10} />
+        <Avatar name={me.name} tone={agent ? "agent" : "person"} photo={me.photo} size={10} />
         <Link
-          href="/send"
-          aria-label="Send homes to someone"
-          className="flex h-11 min-w-0 flex-1 items-center rounded-full border border-stone-300 px-4 text-body hover:border-stone-400 hover:bg-stone-50"
+          href={agent ? "/dashboard/new" : "/send"}
+          aria-label={agent ? "Send homes to a client" : "Send homes to someone"}
+          className="flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-full border border-stone-300 px-4 text-body hover:border-stone-400 hover:bg-stone-50"
         >
+          <Send aria-hidden size={18} className="shrink-0 text-stone-500" />
           <span className="text-stone-600">Send homes…</span>
         </Link>
       </div>
+      {/* An agent's clients: once, here, at every width. */}
+      {agent && <ClientsRail book={agent.book} me={me} />}
       {links.length > 0 && <FromYourAgent links={links} />}
       <section aria-labelledby="stream-title">
         <h2 id="stream-title" className="sr-only">
@@ -201,20 +213,28 @@ export function BuyerHome({
               <FollowingFeed
                 entries={feed}
                 mine={mine}
-                me={me}
+                me={{ name: me.name, photo: me.photo, agent: Boolean(agent) }}
                 seenAt={seenAt}
-                suggestions={suggestions}
+                among={peopleInline("following")}
                 empty={
-                  followed.length === 0
-                    ? "Follow people to see what they like."
-                    : "Nothing new yet."
+                  follows.following === 0 ? (
+                    <>
+                      <p>Follow people to see what they like.</p>
+                      <Link href="/search/people" className={cn(button({ kind: "secondary" }), "mt-3")}>
+                        Find people
+                      </Link>
+                    </>
+                  ) : (
+                    "Nothing new yet."
+                  )
                 }
               />
             ),
-            foryou: null,
+            foryou: quiet ? null : peopleInline("foryou"),
           }}
         />
       </section>
+      {quiet && peopleInline("inline")}
       <PicksMasonry picks={picks} />
     </HomeShell>
   );

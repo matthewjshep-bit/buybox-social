@@ -78,7 +78,7 @@ export function FollowingCard({
   entry: HomeFeedEntry;
   mine: ReactionState | null;
   // Who's looking, for the box to comment in under it.
-  me?: { name: string; photo: string | null } | null;
+  me?: { name: string; photo: string | null; agent?: boolean } | null;
 }) {
   const { home, why } = entry;
   const label = `${home.address}: ${namesText(why.who)} ${why.sentence}`;
@@ -152,7 +152,7 @@ export function FollowingCard({
           ))}
         </ul>
       )}
-      {me && <InlineComment me={me} listingKey={home.key} address={home.address} />}
+      {me && <InlineComment me={me} agent={me.agent} listingKey={home.key} address={home.address} />}
       <div className="h-3.5" />
     </li>
   );

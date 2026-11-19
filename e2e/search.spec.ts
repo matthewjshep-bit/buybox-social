@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { heartOf, homeIn, joinAs, settle } from "./helpers";
+import { heartOf, homeIn, joinAs, settle, signUpBuyer } from "./helpers";
 
 const pins = (page: Page) => page.getByRole("button", { name: /\$\d[\d,]*$/ });
 // Pins can sit on top of each other when zoomed out; this picks one by name.
@@ -15,8 +15,11 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   });
 
   await page.goto("/search");
+  await expect(page).toHaveTitle("Search homes · Porchcard");
   await expect(page.getByRole("heading", { name: "Washington homes for sale" })).toBeVisible();
   await expect(page.getByText("13 homes")).toBeVisible();
+  // Signed out, Search is only the homes: no Homes | People above the field.
+  await expect(page.getByRole("group", { name: "Search for" })).toHaveCount(0);
   // The map draws, with a pin for every home, and the home pane beside it.
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
   await page.waitForTimeout(1500);
@@ -74,8 +77,8 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await expect(homeIn(page, "3518 Wexford Ave N")).toBeAttached();
 
   await page.getByLabel("Home type").selectOption("");
-  await page.getByLabel("City, ZIP or address").fill("Seattle");
-  await page.getByLabel("City, ZIP or address").press("Enter");
+  await page.getByLabel("City, ZIP, address or MLS number").fill("Seattle");
+  await page.getByLabel("City, ZIP, address or MLS number").press("Enter");
   await expect(page).toHaveURL(/q=Seattle/);
   await expect(page.getByRole("heading", { name: "Homes matching “Seattle”" })).toBeVisible();
   await expect(page.getByText("2 homes")).toBeVisible();
@@ -122,7 +125,7 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await joinAs(page, "Remy");
   await expect(heartOf(full)).toHaveAttribute("aria-pressed", "true");
 
-  // On to another home: the address, and the way back to the map, follow it.
+  // On to another home: the address, and the way back to Search, follow it.
   const order = await page.locator("article[data-home]").evaluateAll((homes) => homes.map((home) => home.getAttribute("data-home")!));
   const at = order.indexOf("SAMPLE-1005");
   const down = at < order.length - 1;
@@ -130,7 +133,8 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await page.keyboard.press(down ? "ArrowDown" : "ArrowUp");
   await expect(page.locator(`article[data-home="${next}"]`)).toBeInViewport({ ratio: 0.9 });
   await expect(page).toHaveURL(new RegExp(`/homes\\?beds=4&home=${next}$`));
-  await expect(page.getByRole("link", { name: "Back to map" })).toHaveAttribute("href", `/search?beds=4&home=${next}`);
+  // (The one at the top; the last screen has the same link, under "That's all".)
+  await expect(page.getByRole("link", { name: "Back to search" }).first()).toHaveAttribute("href", `/search?beds=4&home=${next}`);
   // Escape goes back to the map, on that home.
   await page.keyboard.press("Escape");
   await expect(page).toHaveURL(new RegExp(`/search\\?beds=4&home=${next}$`));
@@ -157,10 +161,14 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   }).toPass({ timeout: 20_000 });
   await expect(page.getByRole("article")).toHaveCount(found);
 
-  // Back to the map, on the last home shown.
+  // Back to Search, on the last home shown.
   const last = new URL(page.url()).searchParams.get("home");
   expect(last).toMatch(/^SAMPLE-\d+$/);
-  await page.getByRole("link", { name: "Back to map" }).click();
+  await expect(page.getByRole("region", { name: "The end" }).getByRole("link", { name: "Back to search" })).toHaveAttribute(
+    "href",
+    `/search?beds=4&home=${last}`,
+  );
+  await page.getByRole("link", { name: "Back to search" }).first().click();
   await expect(page).toHaveURL(new RegExp(`/search\\?beds=4&home=${last}$`));
   await expect(page.locator(`article[data-home="${last}"]`)).toBeInViewport({ ratio: 0.9 });
 
@@ -189,13 +197,25 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   // doesn't cut it off halfway.)
   await page.waitForLoadState("networkidle");
   await page.goto("/search?q=Spokane");
-  const none = page.getByText("No homes match those filters.").filter({ visible: true });
+  // (Only words in the box: it says them back.)
+  const none = page.getByText("No homes match “Spokane”.").filter({ visible: true });
   await expect(none).toHaveCount(1);
   const zero = (await page.getByText("0 homes", { exact: true }).boundingBox())!;
   const said = (await none.boundingBox())!;
   expect(said.y).toBeGreaterThan(zero.y);
   expect(Math.abs(said.x - zero.x)).toBeLessThan(2);
   await expect(page.getByRole("link", { name: "Clear all filters" })).toHaveAttribute("href", "/search");
+  // (Signed in since the like above: a word that finds no homes may be a
+  // name, so people by it are a tap away.)
+  await expect(page.getByRole("link", { name: "Search people for “Spokane”" }).filter({ visible: true })).toHaveAttribute(
+    "href",
+    "/search/people?q=Spokane",
+  );
+  // With a filter on as well, it's the filters that found nothing.
+  await page.waitForLoadState("networkidle");
+  await page.goto("/search?q=Spokane&beds=3");
+  await expect(page.getByText("No homes match those filters.").filter({ visible: true })).toHaveCount(1);
+  await expect(page.getByText("No homes match “Spokane”.")).toHaveCount(0);
 
   // A little narrower, the list makes way for the map: the map and one home
   // share the width, and what was found sits over the map on one line.
@@ -209,6 +229,49 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   expect(Math.abs(heading.y + heading.height / 2 - (sorted.y + sorted.height / 2))).toBeLessThan(4);
 
   expect(pageErrors).toEqual([]);
+});
+
+test("an address typed the way the app prints it finds the home: street and city, a few words of each, a ZIP with a street", async ({
+  browser,
+}) => {
+  const page = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
+  const LAKEVIEW = "5902 Lakeview Terrace SE";
+  await page.goto("/search");
+  const field = page.getByLabel("City, ZIP, address or MLS number");
+  // The box says what it takes.
+  await expect(field).toHaveAttribute("placeholder", "City, ZIP, address or MLS #");
+  // Typed in the box as a home's card has it (street, comma, city), and in
+  // the page's address: the words in any order, capitals or not, with the
+  // state or the MLS number among them.
+  await field.fill(`${LAKEVIEW}, Mercer Island`);
+  await field.press("Enter");
+  await expect(page).toHaveURL(/q=5902\+Lakeview\+Terrace\+SE%2C\+Mercer\+Island/);
+  await expect(page.getByText("1 home", { exact: true })).toBeVisible();
+  await expect(homeIn(page, LAKEVIEW)).toBeAttached();
+  for (const typed of [
+    "lakeview mercer",
+    "98040 lakeview",
+    `${LAKEVIEW}, Mercer Island, WA 98040`,
+    "mercer island wa",
+    "SAMPLE-1013",
+  ]) {
+    await page.waitForLoadState("networkidle");
+    await page.goto(`/search?q=${encodeURIComponent(typed)}`);
+    await expect(page.getByText("1 home", { exact: true }), typed).toBeVisible();
+    await expect(homeIn(page, LAKEVIEW), typed).toBeAttached();
+    await expect(page.getByRole("list", { name: "Homes found" }).getByRole("link"), typed).toHaveCount(1);
+  }
+  // Every word has to be the home's: a street in another city finds nothing,
+  // and neither does punctuation on its own.
+  for (const typed of ["lakeview seattle", "98105 lakeview", ","]) {
+    await page.waitForLoadState("networkidle");
+    await page.goto(`/search?q=${encodeURIComponent(typed)}`);
+    await expect(page.getByText("0 homes", { exact: true }), typed).toBeVisible();
+  }
+  // A city alone still finds all of its homes.
+  await page.waitForLoadState("networkidle");
+  await page.goto("/search?q=seattle");
+  await expect(page.getByText("2 homes")).toBeVisible();
 });
 
 test("on a phone, homes and the map are a tap apart, and a pin opens its home", async ({ page }) => {
@@ -259,4 +322,62 @@ test("on a phone, homes and the map are a tap apart, and a pin opens its home", 
   await homeIn(page, "4127 Larkmoor Ave NE").getByRole("button", { name: /^Open full screen/ }).click();
   await expect(page).toHaveURL(/\/homes\?home=SAMPLE-1001$/);
   await expect(homeIn(page, "4127 Larkmoor Ave NE")).toBeInViewport({ ratio: 0.9 });
+});
+
+test("signed in, Search is homes or people: the switch sits above the field on a phone and the home keeps its button; a name with no homes leads to people", async ({
+  browser,
+}) => {
+  test.setTimeout(90_000);
+  const page = await signUpBuyer(browser, "sorrel.search@example.com", "Sorrel Mapper");
+  // On a phone, and a small one: Homes | People in a row of its own above the
+  // field, and under the filters the home still has "Open full screen" in
+  // view, with Map clear of it.
+  for (const size of [
+    { width: 390, height: 780 },
+    { width: 360, height: 640 },
+  ]) {
+    await page.setViewportSize(size);
+    await page.goto("/search");
+    const form = page.getByRole("search", { name: "Filter homes" });
+    const which = form.getByRole("group", { name: "Search for" });
+    await expect(which.getByRole("link", { name: "Homes", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(which.getByRole("link", { name: "People", exact: true })).toHaveAttribute("href", "/search/people");
+    const [tabs, field] = await Promise.all([which.boundingBox(), page.getByLabel("City, ZIP, address or MLS number").boundingBox()]);
+    expect(tabs!.y + tabs!.height).toBeLessThanOrEqual(field!.y);
+    expect((await which.getByRole("link", { name: "People", exact: true }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    const open = page.getByRole("article").first().getByRole("button", { name: /^Open full screen/ });
+    await expect(open).toBeInViewport({ ratio: 1 });
+    const [button, map] = await Promise.all([open.boundingBox(), page.getByRole("button", { name: "Map", exact: true }).boundingBox()]);
+    expect(button!.y + button!.height, `${size.width}x${size.height}`).toBeLessThanOrEqual(map!.y);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
+  }
+
+  // A name finds no homes: it says the name back, and people by that name
+  // are a tap away. Both ways out are a fingertip tall.
+  await page.goto("/search?q=Zzyzx");
+  await expect(page.getByText("No homes match “Zzyzx”.").filter({ visible: true })).toHaveCount(1);
+  const people = page.getByRole("link", { name: "Search people for “Zzyzx”" }).filter({ visible: true });
+  await expect(people).toHaveAttribute("href", "/search/people?q=Zzyzx");
+  for (const link of [people, page.getByRole("link", { name: "Clear all filters" }).filter({ visible: true })]) {
+    expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
+  // A number in it is an address or a ZIP, not a person.
+  await page.goto("/search?q=99999");
+  await expect(page.getByText("No homes match “99999”.").filter({ visible: true })).toHaveCount(1);
+  await expect(page.getByRole("link", { name: /^Search people for/ })).toHaveCount(0);
+  // With a filter on as well, it's the filters that found nothing; the name still leads to people.
+  await page.goto("/search?q=Zzyzx&beds=3");
+  await expect(page.getByText("No homes match those filters.").filter({ visible: true })).toHaveCount(1);
+  await expect(page.getByRole("link", { name: "Search people for “Zzyzx”" }).filter({ visible: true })).toBeVisible();
+
+  // Wide, the same switch is across the top, and the map still starts right under the filters.
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto("/search");
+  await expect(page.locator(".maplibregl-canvas")).toBeVisible();
+  const filters = (await page.getByRole("search", { name: "Filter homes" }).boundingBox())!;
+  const map = (await page.locator(".maplibregl-map").boundingBox())!;
+  expect(Math.abs(map.y - (filters.y + filters.height))).toBeLessThan(2);
+  await page.getByRole("group", { name: "Search for" }).getByRole("link", { name: "People", exact: true }).click();
+  await page.waitForURL((url) => url.pathname === "/search/people");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Find people");
 });

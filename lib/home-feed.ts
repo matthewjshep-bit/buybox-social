@@ -3,7 +3,6 @@ import type { Account } from "./auth";
 import { sql } from "./db";
 import { getReel, type FeedPost } from "./feed";
 import { getFollowedIds } from "./follows";
-import { photoUrl } from "./person-photo";
 import { buildCards, getProfilePerson, getProfileRows, withoutPasses, type ProfileCard } from "./profile";
 import type { ReactionState } from "./reactions";
 import { getTaste } from "./taste";
@@ -14,9 +13,10 @@ import { getTaste } from "./taste";
 // each of their pages shows a stranger, and only the good parts: likes, spot
 // likes and comments. Never a pass, a dislike or a "but not", whatever they
 // keep public, because a feed puts it in front of people who didn't go
-// looking. An agent's clients and what's happened around your own comments
-// live elsewhere (the agent home, the bell). Any home in it opens the homes
-// full screen, in the feed's order (`feedKeys`).
+// looking. What an agent's clients did on their links and what's happened
+// around your own comments live elsewhere (the agent's "Your clients" card
+// and each client's page; the bell). Any home in it opens the homes full
+// screen, in the feed's order (`feedKeys`).
 
 // `photo`: their own, where they've added one, in place of their initial.
 export type FeedWho = { name: string; face: string; profileId: string | null; agent: boolean; photo: string | null };
@@ -58,8 +58,10 @@ const FOLLOWED_MOST = 100;
 const CARDS_PER_PERSON = 20;
 const FEED_MOST = 60;
 const QUOTES = 2;
-// Homes picked for someone, after the feed.
+// Homes picked for someone, after the feed: this many, and never fewer than
+// PICKS_LEAST while there are homes to show.
 const PICKS = 12;
+const PICKS_LEAST = 6;
 
 const nameOr = (name: string, agent: boolean) => name.trim() || (agent ? "An agent" : "A buyer");
 
@@ -154,10 +156,18 @@ export const feedKeys = (entries: HomeFeedEntry[]) => [...new Set(entries.map((e
 
 // Homes picked for someone by their taste, none of them already in their
 // feed: the masonry under it, and the reel's `from=picks`, in the same order.
+// The more people someone follows, the more homes their feed has taken; so
+// when fewer than six are left, it's made up to six with the best of the
+// homes that are in their feed, after the ones that aren't.
 export const getPicks = cache(
   async (viewer: Account, device: string | undefined, visitorId: string | null): Promise<FeedPost[]> => {
     const [taste, entries] = await Promise.all([getTaste(visitorId), getHomeFeed(viewer, visitorId)]);
-    return getReel(viewer, device, taste, { limit: PICKS, exclude: feedKeys(entries) });
+    const exclude = feedKeys(entries);
+    const picks = await getReel(viewer, device, taste, { limit: PICKS, exclude });
+    if (picks.length >= PICKS_LEAST || exclude.length === 0) return picks;
+    const have = new Set(picks.map((post) => post.listing.ListingKey));
+    const any = await getReel(viewer, device, taste, { limit: PICKS });
+    return [...picks, ...any.filter((post) => !have.has(post.listing.ListingKey))].slice(0, PICKS_LEAST);
   },
 );
 
@@ -171,62 +181,6 @@ export async function myReactions(visitorId: string | null, keys: string[]): Pro
   return Object.fromEntries(
     rows.map((row) => [row.listing_key, { reaction: row.reaction, liked: row.liked, disliked: row.disliked }]),
   );
-}
-
-// The faces along the top of a buyer's home: the people they follow, those
-// with something new in public lately first. Only likes and comments count
-// as news, so a ring never gives away a pass.
-export type FollowedFace = FeedWho & { profileId: string; lastAt: string | null };
-export async function getFollowedFaces(visitorId: string | null, most = 15): Promise<FollowedFace[]> {
-  if (!visitorId) return [];
-  const rows = await sql<{ id: string; name: string; is_agent: boolean; photo_v: string | null; last_at: Date | null }[]>`
-    select v.id,
-      case when a.id is not null and btrim(a.full_name) = '' then '' else v.first_name end as name,
-      coalesce(a.role = 'agent', false) as is_agent, left(md5(a.photo_data_url), 10) as photo_v,
-      greatest(
-        (select max(r.updated_at) from public_reactions r where r.visitor_id = v.id and r.reaction = 'like'),
-        (select max(pl.created_at) from public_photo_likes pl where pl.visitor_id = v.id),
-        (select max(c.created_at) from public_comments c where c.visitor_id = v.id)
-      ) as last_at
-    from follows f
-    join visitors v on v.id = f.followed_id
-    left join accounts a on a.id = v.account_id
-    where f.follower_id = ${visitorId}
-    order by last_at desc nulls last, f.created_at desc
-    limit ${most}`;
-  return rows.map((row) => ({
-    name: nameOr(row.name, row.is_agent),
-    face: row.name,
-    profileId: row.id,
-    agent: row.is_agent,
-    photo: photoUrl(row.id, row.photo_v),
-    lastAt: row.last_at?.toISOString() ?? null,
-  }));
-}
-
-// Who's worth following: people busy in public lately, most first, never
-// yourself or anyone you follow already, and only people with a name.
-export async function suggestPeople(visitorId: string | null, most = 5): Promise<(FeedWho & { profileId: string })[]> {
-  const rows = await sql<{ id: string; name: string; is_agent: boolean; photo_v: string | null }[]>`
-    select v.id, v.first_name as name, coalesce(a.role = 'agent', false) as is_agent,
-      left(md5(a.photo_data_url), 10) as photo_v
-    from visitors v
-    left join accounts a on a.id = v.account_id
-    join (
-      select visitor_id, updated_at as at from public_reactions
-      union all select visitor_id, created_at from public_comments
-      union all select visitor_id, created_at from public_photo_likes
-    ) x on x.visitor_id = v.id
-    where x.at > now() - interval '60 days'
-      and btrim(v.first_name) <> '' and (a.id is null or btrim(a.full_name) <> '')
-      and v.id is distinct from ${visitorId}::uuid
-      and not exists (
-        select 1 from follows f where f.follower_id = ${visitorId}::uuid and f.followed_id = v.id)
-    group by v.id, a.id
-    order by count(*) desc, max(x.at) desc, v.id
-    limit ${most}`;
-  return rows
-    .map((row) => ({ name: row.name, face: row.name, profileId: row.id, agent: row.is_agent, photo: photoUrl(row.id, row.photo_v) }));
 }
 
 // Where "new" starts on their home page: the last time they had it open

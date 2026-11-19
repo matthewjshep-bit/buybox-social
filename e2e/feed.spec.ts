@@ -160,8 +160,8 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await buyer.goto("/dashboard");
   await expect(buyer).toHaveURL(/localhost:\d+\/$/);
 
-  // Signed out, the home page says what this is, Browse homes opens on a way
-  // to sign up, then homes, and there's a page for agents.
+  // Signed out, the home page says what this is, Browse homes opens on a
+  // home, and there's a page for agents, with the home page's words to them.
   const anon = await (await browser.newContext()).newPage();
   await anon.goto("/");
   await expect(anon.getByRole("heading", { level: 1 })).toHaveText("The social way to shop for homes.");
@@ -171,16 +171,25 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await anon.goto("/");
   await expect(anon.getByRole("banner").getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
   await anon.goto("/for-agents");
-  await expect(anon.getByRole("heading", { level: 1 })).toHaveText("Know what your clients think of every home.");
+  await expect(anon.getByRole("heading", { level: 1 })).toHaveText("Send a few homes. Learn exactly what they want.");
 
-  // The logo is on every page and always goes home.
+  // The logo is on every page (all but the site's bar on a signed-in phone,
+  // below) and always goes home.
   await expectLogoGoesHome(anon);
   await anon.goto("/login");
   await expectLogoGoesHome(anon);
   await anon.goto("/homes/SAMPLE-1004");
   await expectLogoGoesHome(anon);
   await expectLogoGoesHome(client);
+  // Signed in on a phone, the site's bar gives the logo's room to the
+  // places' names: Home, first among them, goes where the logo went. From a
+  // tablet up the logo is back.
   await agent.goto("/dashboard");
+  const bar = agent.getByRole("banner");
+  await expect(bar.getByRole("link", { name: "Porchcard", exact: true })).toBeHidden();
+  await expect(bar.getByRole("link", { name: "Home", exact: true })).toHaveAttribute("href", "/");
+  await expect(bar.getByRole("link", { name: "Home", exact: true })).toBeVisible();
+  await agent.setViewportSize({ width: 1024, height: 768 });
   await expectLogoGoesHome(agent);
   await client.getByRole("link", { name: "Porchcard", exact: true }).click();
   await expect(client).toHaveURL(/localhost:\d+\/$/);

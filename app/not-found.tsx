@@ -1,4 +1,4 @@
-import { Home, Map as MapIcon, MapPinOff } from "lucide-react";
+import { Home, MapPinOff, Search } from "lucide-react";
 import Link from "next/link";
 import { FullScreenOnly } from "@/components/header-gate";
 import { RouteState, routeAction } from "@/components/route-state";
@@ -7,7 +7,7 @@ import { SiteHeader } from "@/components/site-header";
 export const metadata = { title: "Page not found · Porchcard" };
 
 // Any address that isn't a page here, and anything that's gone (someone who
-// isn't here): back home, or to the map to look around. (Where the feed
+// isn't here): back home, or to Search to look around. (Where the feed
 // would have drawn the header, this page brings it.)
 export default function NotFound() {
   return (
@@ -25,8 +25,8 @@ export default function NotFound() {
               Go home
             </Link>
             <Link href="/search" className={routeAction.secondary}>
-              <MapIcon aria-hidden size={18} />
-              Open the map
+              <Search aria-hidden size={18} />
+              Search homes
             </Link>
           </>
         }

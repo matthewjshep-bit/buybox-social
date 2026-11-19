@@ -96,7 +96,11 @@ test("an agent's client page: what they want, remove and restore, add homes, pri
   await expect(agent.getByRole("button", { name: /10421 Halvard/ })).toHaveCount(0);
   await pickHome(agent, "812 N Corbel");
   await agent.getByRole("button", { name: "Add 1 home to Joe's link" }).click();
-  await agent.waitForURL("**/dashboard/shares/*");
+  // Then his link again, ready to send, as when it was first made; Done is the link's page.
+  await agent.waitForURL(/\/dashboard\/shares\/[\w-]+\/sent$/);
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Your link is ready");
+  await agent.getByRole("link", { name: "Done", exact: true }).click();
+  await agent.waitForURL(/\/dashboard\/shares\/[\w-]+(\?tab=\w+)?$/);
   await expect(agent.getByRole("region", { name: "812 N Corbel St" })).toBeVisible();
   await joe.reload();
   await expect(homeIn(joe, "812 N Corbel St")).toBeVisible();

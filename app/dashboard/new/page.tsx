@@ -8,14 +8,14 @@ import type { Listing } from "@/lib/listings/types";
 import { linkTitle } from "@/lib/people-picker";
 import { ShareBuilder } from "./builder";
 
+export const metadata = { title: "Send homes · Porchcard" };
+
 // Picks homes for a new client link, or (with ?share=) adds homes to an existing one.
 // With ?home=, that home is already picked: the longer way to send one home.
-// With ?focus=to (from "Send homes to…" on the home page), who it's for comes
-// first, ready to type.
 export default async function NewSharePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; share?: string; home?: string; focus?: string }>;
+  searchParams: Promise<{ q?: string; share?: string; home?: string }>;
 }) {
   const agent = await requireAgent();
   if (!agent.full_name) redirect("/dashboard/profile");
@@ -71,7 +71,7 @@ export default async function NewSharePage({
       results={results}
       groups={[
         { title: "Your listings", homes: offer.mine },
-        { title: "Homes you've liked or sent", homes: offer.touched },
+        { title: "Homes you've liked, saved or sent", homes: offer.touched },
       ].filter((group) => group.homes.length > 0)}
       addTo={addTo}
       start={start?.data}

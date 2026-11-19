@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { signedIn,
   commentIn,
   createShare,
@@ -10,7 +10,9 @@ import { signedIn,
   openComments,
   openMore,
   openScorecard,
+  pickHome,
   signInAgent,
+  signUpBuyer,
 } from "./helpers";
 
 const SECRET = "We could go 50k over asking.";
@@ -196,4 +198,54 @@ test("public pages show activity, never private words, and private threads share
 
   expect((await other.request.get("/homes/NOT-A-LISTING")).status()).toBe(404);
   expect(pageErrors).toEqual([]);
+});
+
+test("a home sent on a link says so only to whoever sent it: an agent's went to a client, anyone else's just went", async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const HALVARD = "10421 Halvard Way NE";
+  const HERON = "88 Heron Bluff Rd";
+  const sentLine = (page: Page, address: string) => homeIn(page, address).getByRole("group", { name: "Recent activity" });
+
+  // An agent sends a home to a client: the newest thing about it.
+  const agent = await signInAgent(browser, "sena-sent@example.com", "Sena Sent");
+  await createShare(agent, ["10421 Halvard"], ["Pat"]);
+  // And someone who isn't an agent sends another to a friend.
+  const mo = await signUpBuyer(browser, "mo.sent@example.com", "Mo Sent");
+  await mo.goto("/send");
+  await pickHome(mo, HERON);
+  await mo.getByRole("button", { name: "Next", exact: true }).click();
+  const who = mo.getByRole("combobox", { name: "Who's it for?" });
+  await who.fill("Sam");
+  await who.press("Enter");
+  await mo.getByRole("button", { name: "Next", exact: true }).click();
+  await mo.waitForURL(/\/s\/[\w-]+\?step=thoughts$/);
+  await mo.getByRole("link", { name: "Skip this step" }).click();
+  await mo.waitForURL(/\/send\/[\w-]+$/);
+
+  // Each is told about their own, in their own words.
+  await agent.goto("/homes/SAMPLE-1005");
+  await expect(sentLine(agent, HALVARD)).toContainText("You sent this to a client");
+  await mo.goto("/homes/SAMPLE-1010");
+  await expect(sentLine(mo, HERON)).toContainText("You sent this");
+  await expect(sentLine(mo, HERON)).not.toContainText("client");
+
+  // Nobody else is: not each other, not a visitor. That a home went out on
+  // someone's link is theirs to know.
+  await agent.goto("/homes/SAMPLE-1010");
+  await expect(homeIn(agent, HERON)).toBeVisible();
+  await expect(agent.getByText(/sent this/)).toHaveCount(0);
+  await mo.goto("/homes/SAMPLE-1005");
+  await expect(homeIn(mo, HALVARD)).toBeVisible();
+  await expect(mo.getByText(/sent this/)).toHaveCount(0);
+  const guest = await (await browser.newContext()).newPage();
+  for (const [key, address] of [
+    ["SAMPLE-1005", HALVARD],
+    ["SAMPLE-1010", HERON],
+  ]) {
+    await guest.goto(`/homes/${key}`);
+    await expect(homeIn(guest, address)).toBeVisible();
+    await expect(guest.getByText(/sent this/)).toHaveCount(0);
+  }
 });

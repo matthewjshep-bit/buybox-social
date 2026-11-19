@@ -1,6 +1,7 @@
 // The bell's page: people and homes. The same thing on one comment on one day
-// is one line ("Jules, Ivy and 2 others liked your comment…"), and days fall
-// under Today, This week and Earlier. This spec runs first, so everything it
+// is one line ("Jules, Ivy and 2 others liked your comment…"), as is a client
+// liking and commenting on one home, and days fall under Today, This week and
+// Earlier. This spec runs first, so everything it
 // makes is deleted again at the end, from each person's own page: no later
 // spec sees a comment, a reply or a like from here, even if it stops halfway.
 import { expect, test, type Page } from "@playwright/test";
@@ -62,7 +63,7 @@ test("activity shows people and homes, with repeats on one comment on one line",
   await expect(ana.getByRole("heading", { level: 1 })).toHaveText("Notifications");
   await expect(ana.getByText("Nothing yet")).toBeVisible();
   await expect(ana.getByText("Replies and likes show up here.")).toBeVisible();
-  await expect(ana.getByRole("link", { name: "See homes" })).toHaveAttribute("href", "/reel");
+  await expect(ana.getByRole("link", { name: "Browse homes" })).toHaveAttribute("href", "/browse");
   await expect(ana.getByText("React to today's picks")).toHaveCount(0);
 
   await ana.goto("/homes/SAMPLE-1013");
@@ -159,6 +160,7 @@ test("activity shows people and homes, with repeats on one comment on one line",
   await expect(rows.nth(1).locator(OWN_PHOTO)).toHaveCount(0);
   // Nothing on these lines is only between two people.
   await expect(today.getByText("Only you see this")).toHaveCount(0);
+  await expect(ana.getByText("Only you see what your clients do.")).toHaveCount(0);
   // A name opens that person's page, not the home under it.
   await rows.nth(0).getByRole("link", { name: "Grace", exact: true }).click();
   await expect(ana).toHaveURL(new RegExp(`/people/${graceId}$`));
@@ -293,6 +295,51 @@ test("repeats group by comment and Seattle day, under Today, This week and Earli
   ]);
   // A like or an ask has no words of its own to quote.
   expect(quoteOf({ kind: "client_like", body: "", people: [] })).toBeNull();
+
+  // A client's like and comment on one home on one day are one line, with
+  // both said and the comment quoted, whichever came last; it goes where the
+  // comment does. An ask to see the home stays a line of its own.
+  const client = (
+    id: string,
+    kind: ActivityItem["kind"],
+    who: string,
+    home: string,
+    at: string,
+    body = "",
+    unread = false,
+  ): ActivityItem => ({
+    ...item(id, kind, who, `${who.toLowerCase()}:${home}`, at, unread),
+    body,
+    commentId: kind === "client_comment" ? id : null,
+    href: kind === "client_comment" ? `/dashboard/shares/s1?tab=homes#comment-${id}` : `/dashboard/shares/s1?tab=homes#home-${home}`,
+  });
+  const theirs = groupActivity([
+    // Jo comments, then likes it, and something in a photo of it.
+    client("jc1", "client_comment", "Jo", "h1", "2026-11-06T16:00:00Z", "Is the basement finished?"),
+    client("jl1", "client_like", "Jo", "h1", "2026-11-06T17:00:00Z", "", true),
+    client("jl2", "client_like", "Jo", "h1", "2026-11-06T17:30:00Z"),
+    // Ben likes it, then says two things about it.
+    client("bl1", "client_like", "Ben", "h1", "2026-11-06T15:00:00Z"),
+    client("bc1", "client_comment", "Ben", "h1", "2026-11-06T15:10:00Z", "Love the porch."),
+    client("bc2", "client_comment", "Ben", "h1", "2026-11-06T15:20:00Z", "And the yard."),
+    // Jo asks to see it: its own line. Another home, or another day, is another line.
+    client("ja1", "client_ask", "Jo", "h1", "2026-11-06T17:45:00Z"),
+    client("jl3", "client_like", "Jo", "h2", "2026-11-06T14:00:00Z"),
+    client("jc2", "client_comment", "Jo", "h1", "2026-11-04T18:00:00Z", "Thinking about it."),
+    client("jl4", "client_like", "Jo", "h1", "2026-11-03T18:00:00Z"),
+  ]);
+  expect(theirs.map((row) => [`${whoText(row.people)} ${describeActivity(row)}`, quoteOf(row), row.at, row.unread])).toEqual([
+    [`Jo asked to see ${ADDRESS}`, null, "2026-11-06T17:45:00Z", false],
+    [`Jo liked and commented on ${ADDRESS}`, "“Is the basement finished?”", "2026-11-06T17:30:00Z", true],
+    [`Ben liked and commented on ${ADDRESS}`, "“And the yard.”", "2026-11-06T15:20:00Z", false],
+    [`Jo liked ${ADDRESS}`, null, "2026-11-06T14:00:00Z", false],
+    [`Jo commented on ${ADDRESS}`, "“Thinking about it.”", "2026-11-04T18:00:00Z", false],
+    [`Jo liked ${ADDRESS}`, null, "2026-11-03T18:00:00Z", false],
+  ]);
+  expect(theirs.slice(1, 3).map((row) => [row.kind, row.commentId, row.href])).toEqual([
+    ["client_comment", "jc1", "/dashboard/shares/s1?tab=homes#comment-jc1"],
+    ["client_comment", "bc2", "/dashboard/shares/s1?tab=homes#comment-bc2"],
+  ]);
 
   // Each section is named by its heading, so its id has no spaces.
   expect(ACTIVITY_SECTIONS.map(sectionId)).toEqual(["activity-today", "activity-this-week", "activity-earlier"]);

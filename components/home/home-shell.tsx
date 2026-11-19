@@ -4,18 +4,19 @@ import { Banner } from "@/components/banner";
 import { Avatar } from "@/components/ui";
 import { NO_BANNER, type BannerChoice } from "@/lib/banner";
 import { cn } from "@/lib/format";
-import { card, pageLabel } from "@/lib/ui";
+import { card } from "@/lib/ui";
 
-// Everyone's home, laid out the same way: who you are and where you go, down
-// the left (from a tablet up); the feed in the middle; what's beside it (an
-// agent's clients, people worth following) down the right on a wide screen.
-// Both sides stay put while the feed scrolls.
+// Everyone's home, laid out the same way: who you are and the places the bar
+// at the top doesn't have, down the left (from a tablet up); the feed in the
+// middle; what's beside it (people worth following) down the right on a wide
+// screen. Both sides stay put while the feed scrolls.
 
 export type RailLink = { href: string; label: string; icon: ReactNode };
 type RailStat = { href: string; label: string; value: number };
 
 // The left side: a card that's them (a band of colour, their face, their name
-// to their own page, a line about them, a few numbers), and their places.
+// to their own page, a line about them, a few numbers), and their places
+// (none to list: no card for them).
 export function ProfileRail({
   name,
   photo,
@@ -65,7 +66,7 @@ export function ProfileRail({
               <li key={stat.label}>
                 <Link
                   href={stat.href}
-                  className="flex min-h-9 items-center justify-between px-4 text-meta hover:bg-stone-50"
+                  className="flex min-h-11 items-center justify-between px-4 text-meta hover:bg-stone-50"
                 >
                   <span className="text-stone-700">{stat.label}</span>
                   <span className="font-semibold tabular-nums text-brand">{stat.value}</span>
@@ -75,52 +76,49 @@ export function ProfileRail({
           </ul>
         )}
       </section>
-      <nav aria-label="Your places" className={cn(card, "py-1.5")}>
-        <ul>
-          {links.map((link) => (
-            <li key={link.href}>
-              <Link
-                href={link.href}
-                className="flex min-h-11 items-center gap-3 px-4 text-body font-medium hover:bg-stone-50"
-              >
-                <span aria-hidden className="text-stone-500">
-                  {link.icon}
-                </span>
-                {link.label}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </nav>
+      {links.length > 0 && (
+        <nav aria-label="Your places" className={cn(card, "py-1.5")}>
+          <ul>
+            {links.map((link) => (
+              <li key={link.href}>
+                <Link
+                  href={link.href}
+                  className="flex min-h-11 items-center gap-3 px-4 text-body font-medium hover:bg-stone-50"
+                >
+                  <span aria-hidden className="text-stone-500">
+                    {link.icon}
+                  </span>
+                  {link.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
     </div>
   );
 }
 
 export function HomeShell({
   title,
-  shown = false,
   left,
   right,
   children,
 }: {
-  // The page's heading: for a screen reader only, unless it's `shown`, small,
-  // at the top of the feed (an agent's home says it's their dashboard).
+  // The page's heading, for a screen reader only: on screen, the bar at the
+  // top says this is Home.
   title: string;
-  shown?: boolean;
   left: ReactNode;
   right: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <main className="mx-auto grid max-w-[1140px] grid-cols-1 gap-6 px-4 pb-16 pt-3 md:grid-cols-[220px_minmax(0,1fr)] lg:grid-cols-[220px_minmax(0,560px)_300px] lg:justify-center lg:pt-5">
-      {!shown && <h1 className="sr-only">{title}</h1>}
+    <main className="mx-auto grid max-w-[1140px] grid-cols-1 gap-6 px-4 pb-16 pt-4 md:grid-cols-[220px_minmax(0,1fr)] lg:grid-cols-[220px_minmax(0,560px)_300px] lg:justify-center lg:pt-6">
+      <h1 className="sr-only">{title}</h1>
       <aside aria-label="Your profile" className="hidden md:sticky md:top-5 md:block md:self-start">
         {left}
       </aside>
-      <div className="flex min-w-0 flex-col gap-5">
-        {shown && <h1 className={cn(pageLabel, "-mb-2")}>{title}</h1>}
-        {children}
-      </div>
+      <div className="flex min-w-0 flex-col gap-5">{children}</div>
       <aside aria-label="Beside your feed" className="hidden flex-col gap-4 lg:sticky lg:top-5 lg:flex lg:self-start">
         {right}
       </aside>

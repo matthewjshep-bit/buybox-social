@@ -1,7 +1,6 @@
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
-import { claimAgentIntent } from "@/lib/auth";
-import { safeNext } from "@/app/login/actions";
+import { accountFor, claimAgentIntent, nameFromSignUp, sitePath } from "@/lib/auth";
 import { siteOrigin } from "@/lib/site";
 import { createSupabase, supabaseConfigured } from "@/lib/supabase/server";
 
@@ -24,12 +23,26 @@ export async function GET(request: NextRequest) {
         ? await supabase.auth.exchangeCodeForSession(code)
         : { data: null, error: new Error("missing sign-in parameters") };
     if (!error) {
-      // Signed up through "For agents": straight to their dashboard.
-      const email = data?.user?.email?.toLowerCase();
-      const agent = email ? await claimAgentIntent(email) : false;
       // Back to the page they started on (an agent's link, say), if it's on this site.
-      const next = await safeNext(searchParams.get("next"));
-      return NextResponse.redirect(new URL(next ?? (agent ? "/dashboard" : "/"), here));
+      const next = sitePath(searchParams.get("next"));
+      const proved = data?.user?.email ? { id: data.user.id, email: data.user.email.toLowerCase() } : null;
+      if (!proved) return NextResponse.redirect(new URL(next ?? "/", here));
+      // Their account, made now if this is their first time: an agent's only
+      // when this email asked for that on "For agents" in the last half hour.
+      // One already there stays what it is, whatever was typed since.
+      const asked = await claimAgentIntent(proved.email);
+      const account = await accountFor(proved, asked ? "agent" : "buyer");
+      const fullName = await nameFromSignUp(account);
+      const agent = account.role === "agent";
+      // An agent, with nowhere else asked for: straight to their dashboard.
+      const to = next ?? (agent ? "/dashboard" : "/");
+      // A buyer with no name yet (they asked from the sign-in page, which
+      // takes only an email): their first name first, then on (the sign-in
+      // page asks, for anyone signed in with none).
+      if (!agent && !fullName.trim()) {
+        return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(to)}`, here));
+      }
+      return NextResponse.redirect(new URL(to, here));
     }
     console.error("[auth] callback failed", error.message);
   }

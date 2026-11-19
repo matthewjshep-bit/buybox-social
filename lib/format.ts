@@ -12,6 +12,11 @@ export const appUrl = () =>
 // themselves.
 export const escapeLike = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
 
+// What was typed to find a home, a word at a time: "5902 Lakeview Terrace SE,
+// Mercer Island" is six words, its comma (and any full stop) only a space. No
+// more than eight are looked for.
+export const placeWords = (text: string) => text.replace(/[,.]/g, " ").split(/\s+/).filter(Boolean).slice(0, 8);
+
 // Names in a sentence: "Sam", "Sam and Ana", "Sam, Ana and Lee".
 export const namesList = (names: string[]) =>
   names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
@@ -37,6 +42,17 @@ export function timeAgo(iso: string, now = Date.now()) {
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d`;
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+// "today", "yesterday", "4 days ago", "Nov 7": whole words, never "4d". By
+// the homes' days (Pacific), so "yesterday" turns over when theirs does.
+export function whenWords(date: Date, now = Date.now()) {
+  const day = (d: Date | number) => new Date(d).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+  const days = Math.round((Date.parse(day(now)) - Date.parse(day(date))) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Los_Angeles" });
 }
 
 // An agent by first name in a sentence ("Liked by Jordan"), or "your agent"

@@ -6,11 +6,13 @@ import type { Sentiment } from "./reactions";
 import { getHomeViews, homeViewKey } from "./shares";
 import { ANONYMOUS_BUYER } from "./timeline";
 
-// An agent's clients, on the links they sent, as the agent's home shows them:
+// An agent's clients, on the links they sent, as each client's own page on
+// the Dashboard shows them (and a stream of all of them would, were one shown):
 // the same cards as someone's own page (one per home per day, the photo large,
 // the spots they picked out, what they said), from what they did on the
 // agent's links. For the agent only: passes and time spent are things a client
-// tells their agent, never anyone else.
+// tells their agent, never anyone else. Whatever is waiting on the agent comes
+// first, however old and however many; the rest follows, newest first.
 
 export type ClientCard = ProfileCard & {
   who: { participantId: string; shareId: string; name: string; photo: string | null; profileId: string | null };
@@ -22,7 +24,8 @@ export type ClientCard = ProfileCard & {
   seconds: number | null;
 };
 
-// How far back the cards go, and how many there are at most.
+// How far back the cards go, and how many there are at most (not counting
+// the ones waiting for an answer, which always show).
 const DAYS = 14;
 const CARDS = 30;
 // However busy the clients are, each kind of thing is read at most this many times.
@@ -30,24 +33,35 @@ const READ_MOST = 600;
 
 type Who = { participant_id: string; share_id: string };
 
-export async function getClientCards(agentId: string): Promise<ClientCard[]> {
+// `participantIds`: one client (everyone they are on the agent's links), for
+// their own page: everything they did, however long ago. `most`: how many
+// cards at most, besides the ones waiting.
+export async function getClientCards(
+  agentId: string,
+  opts: { participantIds?: string[]; most?: number } = {},
+): Promise<ClientCard[]> {
+  const ids = opts.participantIds;
+  if (ids?.length === 0) return [];
   const since = `${DAYS} days`;
   const [reactions, likes, dislikes, comments, agentSaid] = await Promise.all([
     sql<(ReactionRow & Who)[]>`
       select r.participant_id, r.share_id, r.listing_key, r.reaction,
         coalesce(r.liked, '{}') as liked, coalesce(r.disliked, '{}') as disliked, r.updated_at as at
       from reactions r join shares s on s.id = r.share_id
-      where s.agent_id = ${agentId} and r.updated_at > now() - ${since}::interval
+      where s.agent_id = ${agentId}
+        and ${ids ? sql`r.participant_id in ${sql(ids)}` : sql`r.updated_at > now() - ${since}::interval`}
       order by r.updated_at desc limit ${READ_MOST}`,
     sql<(SpotRow & Who)[]>`
       select pl.participant_id, pl.share_id, pl.listing_key, pl.media_key, pl.tag, pl.aspect, pl.created_at as at
       from photo_likes pl join shares s on s.id = pl.share_id
-      where s.agent_id = ${agentId} and pl.created_at > now() - ${since}::interval
+      where s.agent_id = ${agentId}
+        and ${ids ? sql`pl.participant_id in ${sql(ids)}` : sql`pl.created_at > now() - ${since}::interval`}
       order by pl.created_at desc limit ${READ_MOST}`,
     sql<(SpotRow & Who)[]>`
       select pd.participant_id, pd.share_id, pd.listing_key, pd.media_key, pd.tag, pd.created_at as at
       from photo_dislikes pd join shares s on s.id = pd.share_id
-      where s.agent_id = ${agentId} and pd.created_at > now() - ${since}::interval
+      where s.agent_id = ${agentId}
+        and ${ids ? sql`pd.participant_id in ${sql(ids)}` : sql`pd.created_at > now() - ${since}::interval`}
       order by pd.created_at desc limit ${READ_MOST}`,
     // Each with whether the agent has said anything in that home's thread since.
     sql<(CommentRow & Who & { answered: boolean })[]>`
@@ -62,14 +76,19 @@ export async function getClientCards(agentId: string): Promise<ClientCard[]> {
       join shares s on s.id = c.share_id
       left join comments p on p.id = c.parent_id
       where s.agent_id = ${agentId} and c.participant_id is not null
-        and c.created_at > now() - ${since}::interval
+        and ${ids ? sql`c.participant_id in ${sql(ids)}` : sql`c.created_at > now() - ${since}::interval`}
       order by c.created_at desc limit ${READ_MOST}`,
-    // The agent's own words in their links' conversations, for under each card.
+    // The agent's own words in their links' conversations, for under each card
+    // (for one client: on the links they're on).
     sql<{ share_id: string; listing_key: string; body: string; at: Date; to: string | null }[]>`
       select c.share_id, c.listing_key, c.body, c.created_at as at, c.reply_to_participant as to
       from comments c join shares s on s.id = c.share_id
       where s.agent_id = ${agentId} and c.agent_id is not null
-        and c.created_at > now() - ${since}::interval
+        and ${
+          ids
+            ? sql`c.share_id in (select p.share_id from participants p where p.id in ${sql(ids)})`
+            : sql`c.created_at > now() - ${since}::interval`
+        }
       order by c.created_at
       limit ${READ_MOST}`,
   ]);
@@ -162,5 +181,9 @@ export async function getClientCards(agentId: string): Promise<ClientCard[]> {
       });
     }
   }
-  return cards.sort((a, b) => b.at.localeCompare(a.at)).slice(0, CARDS);
+  const newestFirst = (list: ClientCard[]) => list.sort((a, b) => b.at.localeCompare(a.at));
+  return [
+    ...newestFirst(cards.filter((card) => card.waiting)),
+    ...newestFirst(cards.filter((card) => !card.waiting)).slice(0, opts.most ?? CARDS),
+  ];
 }

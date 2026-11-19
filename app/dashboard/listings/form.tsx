@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useId, useRef, useState, useTransition } from "react";
 import { cn } from "@/lib/format";
 import { listingPhoto } from "@/lib/resize-photo";
-import { button, field } from "@/lib/ui";
+import { button, card, field } from "@/lib/ui";
 import { addListingPhoto, createListing, saveListing, type ListingField, type ListingState } from "./actions";
 
 export type ListingValues = {
@@ -294,5 +294,44 @@ export function NewListingForm({ most }: { most: number }) {
         )}
       </div>
     </form>
+  );
+}
+
+// Entering a listing by hand is the second way to add one, so it waits to be
+// asked for: one quiet button under "Find it", and the form takes its place
+// when it's pressed, the cursor in its first box. The page's address then
+// says it's open (?manual=1, which the page reads as `open`), so a reload
+// keeps it open; nothing moves the cursor then.
+export function EnterItYourself({ open, most }: { open: boolean; most: number }) {
+  const [asked, setAsked] = useState(false);
+  const section = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (asked) section.current?.querySelector<HTMLElement>("#address")?.focus();
+  }, [asked]);
+
+  if (!open && !asked) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          const url = new URL(window.location.href);
+          url.searchParams.set("manual", "1");
+          // (With the router's own state kept, so Next doesn't take it for a navigation.)
+          window.history.replaceState(window.history.state, "", url);
+          setAsked(true);
+        }}
+        className={cn(button({ kind: "ghost", size: "lg", flush: true }), "mt-3 text-brand")}
+      >
+        Not there? Enter it yourself
+      </button>
+    );
+  }
+  return (
+    <section ref={section} aria-labelledby="enter-title" className={cn(card, "mt-4 p-5")}>
+      <h2 id="enter-title" className="mb-3 text-lg font-semibold">
+        Enter it yourself
+      </h2>
+      <NewListingForm most={most} />
+    </section>
   );
 }

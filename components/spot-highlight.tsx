@@ -1,6 +1,6 @@
 "use client";
 
-import { Send, User } from "lucide-react";
+import { User } from "lucide-react";
 import { useLinkAgent } from "@/components/agent-notes";
 import { cn } from "@/lib/format";
 import type { TickerEvent } from "@/lib/ticker";
@@ -13,15 +13,12 @@ import { avatarColor } from "@/lib/ui";
 export function MarkFace({
   initial,
   agent = false,
-  plane = false,
   ghost = false,
   image = null,
 }: {
   // None for someone unnamed.
   initial: string | undefined;
   agent?: boolean;
-  // Unnamed, and it's a home sent: a paper plane rather than a figure.
-  plane?: boolean;
   // A copy that's on its way out: the initial drawn, not written.
   ghost?: boolean;
   // Their own photo, where there is one (the agent's, on their link).
@@ -45,8 +42,6 @@ export function MarkFace({
         ) : (
           initial
         )
-      ) : plane ? (
-        <Send size={16} />
       ) : (
         <User size={16} />
       )}
@@ -85,7 +80,6 @@ export function EventFace({
       initial={initial}
       image={theAgent?.photo_data_url}
       agent={tone === "agent" || Boolean(agent)}
-      plane={event.kind === "sent" && tone !== "you"}
       ghost={ghost}
     />
   );

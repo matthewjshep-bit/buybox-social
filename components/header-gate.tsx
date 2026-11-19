@@ -3,10 +3,11 @@
 import { usePathname } from "next/navigation";
 import type { CSSProperties, ReactNode } from "react";
 
-// The full-screen feed pages draw their own header, floating over the photos.
-// (An agent's link has their own header instead.) The home page is a page
-// like any other: what Porchcard is, signed out; their feed, signed in.
-const FULL_SCREEN = [/^\/s\//, /^\/homes(\/|$)/, /^\/reel$/];
+// The full-screen feed pages (Browse among them) draw their own header,
+// floating over the photos. (An agent's link has their own header instead.)
+// The home page is a page like any other: what Porchcard is, signed out;
+// their feed, signed in.
+const FULL_SCREEN = [/^\/s\//, /^\/homes(\/|$)/, /^\/reel$/, /^\/browse$/];
 const fullScreen = (pathname: string) => FULL_SCREEN.some((pattern) => pattern.test(pathname));
 const agentLink = (pathname: string) => pathname.startsWith("/s/");
 

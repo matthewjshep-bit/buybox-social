@@ -34,9 +34,9 @@ test("a buyer saves a home where the Porchcard was; it's under Saved on their ow
   let home = homeIn(sasha, TAMSEN);
   await expect(home).toBeInViewport({ ratio: 0.9 });
 
-  // Like, Comments, Save, Share, More: no Porchcard for a buyer.
+  // Like, Comments, Save, Send, More: no Porchcard for a buyer.
   const rail = home.locator("[data-rail]");
-  const names = [/^Like 1880 Tamsen Ridge Pl SE/, /^Comments/, `Save ${TAMSEN}`, "Share", "More options"];
+  const names = [/^Like 1880 Tamsen Ridge Pl SE/, /^Comments/, `Save ${TAMSEN}`, "Send to someone", "More options"];
   await expect(rail.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(rail.getByRole("button").nth(i)).toHaveAccessibleName(name);
   await expect(porchcardOf(sasha)).toHaveCount(0);
@@ -149,7 +149,11 @@ test("what someone saved is theirs alone: nobody else gets the choice, the list,
       expect(html).toContain(CORBEL);
       expect(html).not.toContain(TAMSEN);
       expect(html).not.toContain("SAMPLE-1002");
-      expect(html).not.toContain("Saved homes");
+      // (No list of saved homes in it. The words alone are in a signed-in
+      // viewer's own menu now: the way to their own saved homes.)
+      expect(html).not.toContain('aria-label="Saved homes"');
+      expect(html).not.toContain("saved-title");
+      expect(html).not.toContain("Nothing saved yet");
     }
     // "Saved", full screen, is only ever the viewer's own: none of hers.
     const reel = await (await viewer.request.get("/reel?from=saved")).text();
@@ -178,7 +182,7 @@ test("from the box on your own page, a home is saved with nothing said, and it's
   const profile = await ownPage(cora);
   await cora.getByRole("button", { name: "Post or save a home…" }).click();
   const form = cora.getByRole("form", { name: "Post or save a home" });
-  await form.getByRole("searchbox", { name: "Which home? Address or MLS number" }).fill("Saltmarsh");
+  await form.getByRole("searchbox", { name: "Which home? Address, city, ZIP or MLS number" }).fill("Saltmarsh");
   await form.getByRole("list", { name: "Homes" }).getByRole("button", { name: new RegExp(SALTMARSH) }).click();
   await expect(form).toContainText(SALTMARSH);
   // Post needs something said; Save doesn't.
@@ -246,11 +250,15 @@ test("the Porchcard is an agent's, going through a link's homes or a client's: n
   await expect(porchcardOf(agent)).toHaveCount(0);
   await expect(agent.getByRole("button", { name: /^Saved? / })).toHaveCount(0);
 
-  // That client's homes, from their card on the agent's home: the Porchcard again.
+  // That client's homes, from their card on their own page (a tap from their
+  // name on the agent's home): the Porchcard again.
   // (Once the client's like has been kept: the heart shows it before it is.)
+  await agent.goto("/");
+  await agent.getByRole("region", { name: "Your clients" }).getByRole("link", { name: /^Jamie\b/ }).click();
+  await agent.waitForURL(/\/dashboard\/clients\//);
   const open = agent.getByRole("link", { name: new RegExp(`^${TAMSEN}: `) }).first();
   await expect(async () => {
-    await agent.goto("/");
+    await agent.reload();
     await expect(open).toHaveAttribute("href", /^\/reel\?from=client%3A[\w-]+&home=SAMPLE-1002/, { timeout: 1500 });
   }).toPass({ timeout: 30_000 });
   await open.click();

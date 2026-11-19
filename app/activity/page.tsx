@@ -20,7 +20,7 @@ import { sql } from "@/lib/db";
 import { readDevice } from "@/lib/engagement";
 import { cn, timeAgo } from "@/lib/format";
 import { getPublicIdentity } from "@/lib/public";
-import { button, card } from "@/lib/ui";
+import { button, card, groupLabel, pageColumn, pageTitle } from "@/lib/ui";
 import { FollowBack } from "./follow-back";
 import { MarkSeen } from "./mark-seen";
 
@@ -42,12 +42,17 @@ const BADGE: Record<ActivityKind, ReactNode> = {
   client_ask: <DoorOpen size={11} strokeWidth={2.5} className="text-amber-700" />,
 };
 
+// What an agent's line about a client is headed, as relationOf says it.
+const CLIENT = "Your client";
+
 // Lines that open a home over this page, which stays where it was beneath.
 const OVER_THE_PAGE = new Set<ActivityKind>(["reply", "comment_like", "comment", "like_reply"]);
 
 // Everything that concerns you, newest first under "Today", "This week" and
 // "Earlier": each line the person, what they did, and the home it was on, and
-// each going straight to it: the comment, the home, the link, the person.
+// each going straight to it: the comment, the home, the link, the person. An
+// agent's clients' lines are theirs alone to see, which the page says once,
+// under its heading, rather than on every one of them.
 export default async function ActivityPage() {
   const [account, device, viewAs] = await Promise.all([getCurrentUser(), readDevice(), getViewAs()]);
   const { visitor } = await getPublicIdentity(account, device);
@@ -68,7 +73,7 @@ export default async function ActivityPage() {
   );
   const relationFor = (row: ActivityRow) => {
     const said = relationOf(row.kind);
-    if (said === "Your client") return account?.role === "agent" ? said : null;
+    if (said === CLIENT) return account?.role === "agent" ? said : null;
     if (said === "Your agent") return row.people.some((person) => person.profileId && agents.has(person.profileId)) ? said : null;
     return said;
   };
@@ -76,10 +81,18 @@ export default async function ActivityPage() {
     title,
     rows: rows.filter((row) => activitySection(row.at) === title),
   })).filter((section) => section.rows.length > 0);
+  const clientLines = rows.some((row) => relationFor(row) === CLIENT);
 
   return (
-    <main className="mx-auto max-w-2xl px-4 pb-16 pt-6">
-      <h1 className="font-display text-3xl">Notifications</h1>
+    <main className={pageColumn()}>
+      <h1 className={pageTitle}>Notifications</h1>
+      {/* What the lock on each client's line means, said once for them all. */}
+      {clientLines && (
+        <p className="mt-1 flex items-center gap-1.5 text-sm text-muted">
+          <Lock aria-hidden size={13} className="shrink-0" />
+          Only you see what your clients do.
+        </p>
+      )}
       {/* Looking as someone else leaves what's new to them as it was. */}
       {visitor && !viewAs && <MarkSeen />}
       {rows.length === 0 ? (
@@ -88,8 +101,8 @@ export default async function ActivityPage() {
           title="Nothing yet"
           className="mt-6"
           action={
-            <Link href="/reel" className={button({ kind: "primary" })}>
-              See homes
+            <Link href="/browse" className={button({ kind: "primary" })}>
+              Browse homes
             </Link>
           }
         >
@@ -101,7 +114,7 @@ export default async function ActivityPage() {
             const id = sectionId(section.title);
             return (
               <section key={section.title} aria-labelledby={id}>
-                <h2 id={id} className="px-1 pt-2 text-body font-semibold text-muted">
+                <h2 id={id} className={cn(groupLabel, "pt-2")}>
                   {section.title}
                 </h2>
                 <ul className="mt-2 flex flex-col gap-2">
@@ -158,10 +171,13 @@ function Row({ row, relation }: { row: ActivityRow; relation: string | null }) {
       />
       <span className="min-w-0 flex-1">
         {relation && (
-          // Between you and your client (or your agent): nobody else sees this line.
+          // Between you and your client (or your agent): nobody else sees this
+          // line. A client's says so with the lock alone, its words said once
+          // under the page's heading (and here for a screen reader).
           <span className="mb-0.5 block text-xs text-muted">
-            <span className="font-semibold text-stone-700">{relation}</span> ·{" "}
-            <Lock aria-hidden size={11} className="-mt-0.5 inline" /> Only you see this
+            <span className="font-semibold text-stone-700">{relation}</span>
+            {relation !== CLIENT && " ·"} <Lock aria-hidden size={11} className="-mt-0.5 inline" />
+            <span className={relation === CLIENT ? "sr-only" : undefined}> Only you see this</span>
           </span>
         )}
         <span className="block text-body leading-snug text-ink">

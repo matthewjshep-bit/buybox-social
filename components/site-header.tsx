@@ -14,11 +14,12 @@ import { button } from "@/lib/ui";
 // for everyone signed in (Home, the homes, Search, the bell, and you: your
 // face, opening your places and Sign out), each an icon over its name, the
 // one you're on underlined. An agent has Dashboard (their clients) there;
-// anyone else, Send. Signed out: For agents, and Sign in. On phones the
-// places are icons, keeping their names for screen readers. Over the full-screen feed it floats on the dark ground, white;
-// only on a phone on its side, where the photo runs under it, does it bring
-// its own shade, dark enough behind its words for a bright sky, and gone
-// before the sign-up card below it starts.
+// anyone else, Send. Signed out: For agents, and Sign in. On a phone the
+// names are there too, small, under their icons, and the logo steps aside
+// for them (Home does its job). Over the full-screen feed it floats on the
+// dark ground, white; only on a phone on its side, where the photo runs
+// under it, does it bring its own shade, dark enough behind its words for a
+// bright sky, and gone before the sign-up card below it starts.
 export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
   const [user, device] = await Promise.all([getCurrentUser(), readDevice()]);
   const { visitor } = await getPublicIdentity(user?.role ? user : null, device);
@@ -28,9 +29,9 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
     // Someone on an agent's link: the way back to it, under their initial.
     user?.role && user.role !== "agent" ? getMyLinks(user.id) : [],
   ]);
-  // Each place in the bar: its icon over its name (the name only where
-  // there's room: on a phone, the icon, with the name kept for screen
-  // readers), and a line under the one you're on.
+  // Each place in the bar: its icon over its name, at every width (nobody
+  // has to guess what two people or a stack of photos mean), and a line
+  // under the one you're on.
   const navItem = cn(
     "relative flex h-14 min-w-11 shrink-0 flex-col items-center justify-center gap-1 px-1.5 text-[12px] font-medium leading-none md:min-w-[4.75rem]",
     "after:absolute after:inset-x-1.5 after:bottom-0 after:h-0.5 after:rounded-full",
@@ -38,7 +39,8 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
       ? "text-white/85 hover:text-white [text-shadow:0_1px_3px_rgb(0_0_0/0.5)] [&[aria-current]]:text-white [&[aria-current]]:after:bg-white"
       : "text-stone-600 hover:text-ink [&[aria-current]]:text-ink [&[aria-current]]:after:bg-ink",
   );
-  const name = "sr-only md:not-sr-only";
+  // The name: small on a phone, so six of them fit across one, each on one line.
+  const name = "whitespace-nowrap text-[10px] tracking-tight md:text-[12px] md:tracking-normal";
   const agent = user?.role === "agent";
   return (
     <header
@@ -62,14 +64,16 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
           "sm:group-data-wide/top:px-4",
         )}
       >
-        <div className="flex shrink-0 justify-start">
+        {/* (Signed in on a phone, the logo makes room for the places' names:
+            Home, first among them, goes where it went.) */}
+        <div className={cn("flex shrink-0 justify-start", user?.role && "max-md:hidden")}>
           <SiteLogo overlay={overlay} />
         </div>
         {/* Signed in, the same few places for everyone, across the top: Home,
             the homes, Search, the bell, and you. An agent has their
             Dashboard (their clients) in place of Send, which is in it. */}
         {user?.role ? (
-          <div className="flex min-w-0 items-center md:gap-1">
+          <div className="flex min-w-0 items-center max-md:flex-1 max-md:justify-between md:gap-1">
             <NavLink href="/" className={navItem}>
               <House aria-hidden size={20} />
               <span className={name}>Home</span>
@@ -80,11 +84,12 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
                 <span className={name}>Dashboard</span>
               </NavLink>
             )}
-            <NavLink href="/reel" className={navItem}>
+            <NavLink href="/browse" className={navItem}>
               <Images aria-hidden size={20} />
               <span className={name}>Browse</span>
             </NavLink>
-            <NavLink href="/search" className={navItem}>
+            {/* (Homes on the map, and people: both are Search.) */}
+            <NavLink href="/search" section className={navItem}>
               <SearchIcon aria-hidden size={20} />
               <span className={name}>Search</span>
             </NavLink>
@@ -107,9 +112,9 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
                     </span>
                   )}
                 </span>
-                {/* (Its name whole for a screen reader; on screen, the word, where there's room.) */}
+                {/* (Its name whole for a screen reader, with how many are new; on screen, the word.) */}
                 <span className="sr-only">{unread > 0 ? `Notifications, ${unread} new` : "Notifications"}</span>
-                <span aria-hidden className="hidden md:inline">
+                <span aria-hidden className={name}>
                   Notifications
                 </span>
               </NavLink>
@@ -122,7 +127,6 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
               email={user.email}
               agent={agent}
               admin={admin}
-              unread={unread}
               overlay={overlay}
               links={menuLinks(links)}
             />

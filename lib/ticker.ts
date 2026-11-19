@@ -174,7 +174,9 @@ export function eventsFromTimeline(
 export function eventsFromHeadline(headline: Headline | null): TickerEvent[] {
   if (!headline) return [];
   const id = `headline:${headline.kind}:${headline.at}`;
-  if (headline.kind === "sent") return [{ id, kind: "sent", who: { tone: headline.who, name: null }, at: headline.at }];
+  if (headline.kind === "sent") {
+    return [{ id, kind: "sent", who: { tone: "you", name: null, ...(headline.agent && { agent: true }) }, at: headline.at }];
+  }
   const who: TickerEvent["who"] =
     headline.who === "anonymous"
       ? { tone: "anonymous", name: null }
@@ -387,7 +389,8 @@ export function eventText(
       sentence = `${event.count ?? 2} buyers liked this home`;
       break;
     case "sent":
-      sentence = event.who.tone === "you" ? "You sent this to a client" : "An agent sent this";
+      // Only whoever sent it is ever told: an agent, that it went to a client.
+      sentence = event.who.agent ? "You sent this to a client" : "You sent this";
       break;
   }
   const words = event.body ? `“${event.body}”` : null;

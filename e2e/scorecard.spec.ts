@@ -203,7 +203,8 @@ test("public and private: a link's people, passes and words stay on the link, an
   // No Porchcard for him: Save where it was, and the description's "more"
   // opens the rest right there.
   const wesRail = wesHome.locator("[data-rail]");
-  const inPublic = [/^Like 16420 NE Alder Crest Way/, /^Comments/, `Save ${ALDER}`, "Share", "More options"];
+  // (Signed in now, having said something: Send where a visitor has Share.)
+  const inPublic = [/^Like 16420 NE Alder Crest Way/, /^Comments/, `Save ${ALDER}`, "Send to someone", "More options"];
   await expect(wesRail.getByRole("button")).toHaveCount(inPublic.length);
   for (const [i, name] of inPublic.entries()) await expect(wesRail.getByRole("button").nth(i)).toHaveAccessibleName(name);
   const wesMore = wesHome.getByRole("button", { name: "more", exact: true });
@@ -330,10 +331,16 @@ test("on a desktop, the panel says what the home is and what people said, and fo
   const panel = home.locator("[data-words]");
   await expect(panel.getByText("Price per sq ft")).toBeVisible();
   await expect(panel.getByRole("list", { name: "Comments and likes" })).toHaveCount(0);
-  // That row, for anyone but an agent in a link's homes: Save, no Porchcard.
+  // That row, for anyone but an agent in a link's homes: Save, no Porchcard;
+  // and, signed in, Send, with its word beside the paper plane.
   const actions = panel.locator("[data-actions]");
-  const inPublic = [/^Like 16420 NE Alder Crest Way/, /^Comments/, `Save ${ALDER}`, "Share", "More options"];
+  const inPublic = [/^Like 16420 NE Alder Crest Way/, /^Comments/, `Save ${ALDER}`, "Send to someone", "More options"];
   await expect(actions.getByRole("button")).toHaveCount(inPublic.length);
+  await expect(actions.getByRole("button", { name: "Send to someone", exact: true })).toHaveText("Send");
+  // Each a fingertip tall.
+  for (const height of await actions.getByRole("button").evaluateAll((all) => all.map((el) => el.getBoundingClientRect().height))) {
+    expect(height).toBeGreaterThanOrEqual(44);
+  }
   for (const [i, name] of inPublic.entries()) await expect(actions.getByRole("button").nth(i)).toHaveAccessibleName(name);
   await panel.getByRole("button", { name: /^Comments, \d+$/ }).click();
   const said = page.getByRole("dialog", { name: "Comments" });

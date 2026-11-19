@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, enterCode, scrollToEnd, signInAgent, toFirstHome } from "./helpers";
+import { createShare, detailsForm, enterCode, scrollToEnd, signInAgent, signUpBuyer, toDetails, toFirstHome } from "./helpers";
 
 const SMALL = { viewport: { width: 360, height: 640 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
 const ON_ITS_SIDE = { viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
@@ -18,7 +18,7 @@ async function swipeUp(page: Page) {
   await touch("touchEnd");
 }
 
-test("signed out, the home page says what this is; Browse homes shows three homes, then asks you to sign up", async ({ page }) => {
+test("signed out, the home page says what this is; See homes shows three homes straight away, then asks you to sign up", async ({ page }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
@@ -28,29 +28,36 @@ test("signed out, the home page says what this is; Browse homes shows three home
   await expect(page.getByRole("heading", { level: 2, name: "Send a few homes. Learn exactly what they want." })).toBeVisible();
   await expect(page.getByRole("heading", { level: 2, name: "Shop for homes together." })).toBeVisible();
   await expect(page.getByRole("article")).toHaveCount(0);
-  // One thing to do: Sign up, which goes to the form at its foot.
+  // Two things to do at the top: Sign up, which goes to the form at its
+  // foot, or see homes first. And an agent's way in, twice: where they're
+  // reading, and by the form (which makes a buyer's account).
   const main = page.getByRole("main");
-  // (And, by the form, the way in for an agent, whose account is another kind.)
-  await expect(main.getByRole("link")).toHaveText(["Sign up", "I'm an agent"]);
-  await expect(main.getByRole("link", { name: "I'm an agent" })).toHaveAttribute("href", "/login?as=agent");
+  await expect(main.getByRole("link")).toHaveText(["Sign up", "See homes", "Start free as an agent", "I'm an agent"]);
+  await expect(main.getByRole("link", { name: "See homes" })).toHaveAttribute("href", "/browse");
+  // Each of them a button, a fingertip tall: by the form, as wide as the form.
+  for (const name of ["Start free as an agent", "I'm an agent"]) {
+    const door = main.getByRole("link", { name });
+    await expect(door).toHaveAttribute("href", "/login?as=agent");
+    expect((await door.boundingBox())!.height, name).toBeGreaterThanOrEqual(48);
+  }
   await main.getByRole("link", { name: "Sign up" }).click();
-  await expect(main.getByRole("form", { name: "Sign up" })).toBeInViewport();
+  const form = main.getByRole("form", { name: "Sign up" });
+  await expect(form).toBeInViewport();
+  const formBox = (await form.boundingBox())!;
+  const agentBox = (await main.getByRole("link", { name: "I'm an agent" }).boundingBox())!;
+  expect(agentBox.y).toBeGreaterThan(formBox.y + formBox.height);
+  expect(agentBox.width).toBeGreaterThanOrEqual(formBox.width);
 
-  // Browse homes, signed out: what this is again, three homes, then sign up.
-  await page.goto("/reel");
-
-  // First: what this is, and a short form.
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("The social way to shop for homes.");
-  const intro = page.getByRole("form", { name: "Sign up" }).first();
-  await expect(intro).toBeInViewport();
-  await expect(intro.getByLabel("Name")).toBeVisible();
-  await expect(intro.getByLabel("Phone")).toBeVisible();
-  await expect(intro.getByLabel("Email")).toBeVisible();
-
-  // Then homes: three of them, a tap away.
-  await page.getByRole("button", { name: "See homes" }).click();
+  // See homes, signed out: a home straight away, with no form in front of
+  // it. Three of them; the sign-up waits at the end, out of sight.
+  await main.getByRole("link", { name: "See homes" }).click();
+  await page.waitForURL(/\/browse$/);
   await expect(page.getByRole("article").first()).toBeInViewport({ ratio: 0.9 });
+  await expect(page.getByRole("region", { name: "Welcome" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Homes for you");
   await expect(page.getByRole("article")).toHaveCount(3);
+  await expect(page.getByRole("form", { name: "Sign up" })).toHaveCount(1);
+  await expect(page.getByRole("form", { name: "Sign up" })).not.toBeInViewport();
 
   // After the third, sign up to see more. No more homes load.
   await page.evaluate(() => {
@@ -80,7 +87,7 @@ test("signed out, the home page says what this is; Browse homes shows three home
   await gate.getByRole("button", { name: "Sign up free" }).click();
   await enterCode(page.getByRole("form", { name: "Sign up" }).last());
   await expect(page.getByRole("button", { name: "Account menu" })).toContainText("R");
-  await expect(page).toHaveURL(/localhost:\d+\/reel$/);
+  await expect(page).toHaveURL(/localhost:\d+\/browse$/);
 
   // Signed in, the home page is their feed, with every home one tap away,
   // for as long as they scroll.
@@ -88,7 +95,7 @@ test("signed out, the home page says what this is; Browse homes shows three home
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Hi, Robin");
   await page.getByRole("link", { name: "Browse homes" }).first().click();
-  await page.waitForURL(/\/reel$/);
+  await page.waitForURL(/\/browse$/);
   await expect(page.getByRole("article").first()).toBeVisible();
   await scrollToEnd(page);
   await expect(page.getByRole("article")).toHaveCount(13);
@@ -96,26 +103,21 @@ test("signed out, the home page says what this is; Browse homes shows three home
   expect(pageErrors).toEqual([]);
 });
 
-test("on a phone, the welcome fits under the header, and a swipe on it goes on to the homes", async ({ browser }) => {
+test("on a phone, signed out, Browse opens on a home, and a swipe goes on to the next", async ({ browser }) => {
   for (const options of [SMALL, ON_ITS_SIDE]) {
     const page = await (await browser.newContext(options)).newPage();
-    await page.goto("/reel");
+    await page.goto("/browse");
     const name = `${options.viewport.width}x${options.viewport.height}`;
-    // All of it on screen, from the headline to the way to the homes, and
-    // nothing of it under the header's buttons.
-    const signIn = (await page.getByRole("banner").getByRole("link", { name: "Sign in", exact: true }).boundingBox())!;
-    const welcome = page.getByRole("region", { name: "Welcome" });
-    const headline = welcome.getByRole("heading", { level: 1 });
-    const form = welcome.getByRole("form", { name: "Sign up" });
-    for (const part of [headline, form.getByRole("button", { name: "Sign up free" }), welcome.getByRole("button", { name: "See homes" })]) {
-      await expect(part, name).toBeInViewport({ ratio: 1 });
-    }
-    for (const part of [headline, form]) {
-      expect((await part.boundingBox())!.y, name).toBeGreaterThanOrEqual(signIn.y + signIn.height);
-    }
-    // A swipe anywhere on it moves on, as it does on a home: nothing on it holds the swipe back.
+    // The first home has the screen: nothing to read or fill in before it.
+    const homes = page.getByRole("article");
+    await expect(homes.first(), name).toBeInViewport({ ratio: 0.9 });
+    await expect(page.getByRole("region", { name: "Welcome" }), name).toHaveCount(0);
+    await expect(page.getByRole("form", { name: "Sign up" }), name).not.toBeInViewport();
+    // Sign in is over it, for someone who has an account.
+    await expect(page.getByRole("banner").getByRole("link", { name: "Sign in", exact: true }), name).toBeInViewport({ ratio: 1 });
+    // A swipe moves on to the next home.
     await swipeUp(page);
-    await expect(page.getByRole("article").first(), name).toBeInViewport({ ratio: 0.9 });
+    await expect(homes.nth(1), name).toBeInViewport({ ratio: 0.9 });
     await page.context().close();
   }
 });
@@ -161,4 +163,93 @@ test("on a phone, the comment box and the sign-up button stay above the keyboard
   // The keyboard away: back at the foot of the screen.
   await keyboard(0);
   await expect.poll(() => bottomOf(join)).toBe(640);
+});
+
+test("the page for agents tells the home page's pitch, and its button says what it does for whoever is looking", async ({ browser }) => {
+  // Signed out: the same headline and the same three lines as the home page;
+  // Start free, or see homes first.
+  const anon = await (await browser.newContext()).newPage();
+  await anon.goto("/");
+  const pitch = anon.locator("#agents");
+  const headline = await pitch.getByRole("heading", { level: 2 }).innerText();
+  const lines = await pitch.getByRole("listitem").allInnerTexts();
+  expect(lines).toHaveLength(3);
+  await anon.goto("/for-agents");
+  const main = anon.getByRole("main");
+  await expect(main.getByRole("heading", { level: 1 })).toHaveText(headline);
+  expect(await main.getByRole("listitem").allInnerTexts()).toEqual(lines);
+  await expect(main.getByRole("link")).toHaveText(["Start free", "See homes"]);
+  await expect(main.getByRole("link", { name: "Start free" })).toHaveAttribute("href", "/login?as=agent");
+  await expect(main.getByRole("link", { name: "See homes" })).toHaveAttribute("href", "/browse");
+  await expect(main.getByRole("link", { name: "Start free" })).toBeInViewport({ ratio: 1 });
+
+  // A buyer, signed in: the button says the account itself changes, with
+  // what they get and what stays. No second button (Browse is in the bar).
+  const buyer = await signUpBuyer(browser, "bea-becomes@example.com", "Bea");
+  await buyer.goto("/for-agents");
+  const become = buyer.getByRole("main").getByRole("button", { name: "Make my account an agent's" });
+  await expect(become).toHaveAccessibleDescription("You'll get a Dashboard for your clients. Your likes and follows stay.");
+  await expect(buyer.getByRole("main").getByText("You'll get a Dashboard for your clients. Your likes and follows stay.")).toBeVisible();
+  await expect(buyer.getByRole("main").getByRole("link")).toHaveCount(0);
+  // It does what it says: an agent's account, by the name they have. Their
+  // details are among their profile settings.
+  await become.click();
+  await buyer.waitForURL("**/dashboard");
+  await expect(buyer.getByRole("banner").getByRole("link", { name: "Dashboard", exact: true })).toBeVisible();
+
+  // An agent: their dashboard, by its name.
+  await buyer.goto("/for-agents");
+  await expect(buyer.getByRole("main").getByRole("link")).toHaveText(["Go to your dashboard"]);
+  await expect(buyer.getByRole("main").getByRole("link", { name: "Go to your dashboard" })).toHaveAttribute("href", "/dashboard");
+});
+
+test("each sign-in form has a quiet way to the other, and a new agent's first screen asks only who they are", async ({ page }) => {
+  // The plain form: an agent's is one tap away.
+  await page.goto("/login?next=%2Fsearch");
+  const main = page.getByRole("main");
+  await expect(main.getByRole("heading", { level: 1 })).toHaveText("Sign in or sign up");
+  const toAgent = main.getByRole("link", { name: "I'm an agent" });
+  expect((await toAgent.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await toAgent.click();
+  await expect(main.getByRole("heading", { level: 1 })).toHaveText("Start free as an agent");
+  await expect(page).toHaveURL(/\/login\?as=agent$/);
+
+  // The agent's form: back to the plain one, to the page they were going to.
+  await page.goto("/login?as=agent&next=%2Fsearch");
+  const toBuyer = main.getByRole("link", { name: "Not an agent?" });
+  expect((await toBuyer.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await expect(toBuyer).toHaveAttribute("href", "/login?next=%2Fsearch");
+  await page.goto("/login?as=agent");
+  await expect(main.getByRole("link", { name: "Not an agent?" })).toHaveAttribute("href", "/login");
+  await expect(main.getByRole("link", { name: "I'm an agent" })).toHaveCount(0);
+
+  // Signed up as an agent: one screen, their name the one thing it needs.
+  // A photo, a name, a company and a colour; nothing about phones or the MLS.
+  await page.getByLabel("Email").fill("fay-firstrun@example.com");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await enterCode(page);
+  await page.waitForURL("**/dashboard/profile");
+  await expect(page).toHaveTitle("Your details · Porchcard");
+  await expect(main.getByRole("heading", { level: 1 })).toHaveText("Your details");
+  await expect(main.getByText("Add your name to start.")).toBeVisible();
+  const first = detailsForm(page);
+  await expect(first.getByRole("textbox")).toHaveCount(2);
+  await expect(first.getByLabel("Full name")).toBeVisible();
+  await expect(first.getByLabel("Company (optional)")).toBeVisible();
+  await expect(first.getByLabel("Your photo")).toBeAttached();
+  await expect(first.getByRole("group", { name: "Brand color" })).toBeVisible();
+  for (const label of ["Phone for clients (optional)", "Email for clients (optional)", "MLS ID (optional)"]) {
+    await expect(first.getByLabel(label)).toHaveCount(0);
+  }
+  // No tabs to places that would only send them back here.
+  await expect(page.getByRole("navigation", { name: "Dashboard" })).toHaveCount(0);
+  await first.getByLabel("Full name").fill("Fay Firstrun");
+  await first.getByRole("button", { name: "Save" }).click();
+  await page.waitForURL("**/dashboard");
+
+  // What wasn't asked is in Edit profile, empty, for when they want it.
+  await toDetails(page);
+  for (const label of ["Phone for clients (optional)", "Email for clients (optional)", "MLS ID (optional)"]) {
+    await expect(detailsForm(page).getByLabel(label)).toHaveValue("");
+  }
 });

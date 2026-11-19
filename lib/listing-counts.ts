@@ -1,32 +1,47 @@
 import { sql } from "./db";
+import { OWN_PREFIX } from "./own-listings";
 
 export type ListingCounts = Map<string, { likes: number; comments: number }>;
 
 // How many people liked each home (it, or anything in its photos, each person
 // once, as the feed counts them) and how many public comments it has. Numbers
 // only: nothing of who, and nothing said on an agent's link.
+//
+// An agent's own copy of an MLS listing stands in for the original on their
+// profile, while everyone browsing meets the original. So the copy's numbers
+// are the two together, under the copy's key (someone who liked both, once):
+// its tile on the profile agrees with what Browse shows.
 export async function getListingCounts(keys: string[]): Promise<ListingCounts> {
   const counts: ListingCounts = new Map();
   if (keys.length === 0) return counts;
+  const own = keys.filter((key) => key.startsWith(OWN_PREFIX));
+  // Which homes count towards which tile: each its own, and a copy's original too.
+  const counted = () => sql`
+    select k as tile, k as listing_key from unnest(${keys}::text[]) k
+    union
+    select listing_key, data->>'CopiedFrom' from listings
+    where listing_key in ${sql(own.length ? own : [""])} and data->>'CopiedFrom' is not null`;
   const [likes, comments] = await Promise.all([
-    sql<{ listing_key: string; n: number }[]>`
-      select listing_key, count(*)::int as n from (
-        select listing_key, 'v' || visitor_id as who from public_reactions
-        where reaction = 'like' and listing_key in ${sql(keys)}
+    sql<{ tile: string; n: number }[]>`
+      with counted as (${counted()})
+      select tile, count(*)::int as n from (
+        select c.tile, 'v' || r.visitor_id as who from public_reactions r join counted c using (listing_key)
+        where r.reaction = 'like'
         union
-        select listing_key, 'p' || participant_id from reactions
-        where reaction = 'like' and listing_key in ${sql(keys)}
+        select c.tile, 'p' || r.participant_id from reactions r join counted c using (listing_key)
+        where r.reaction = 'like'
         union
-        select listing_key, 'v' || visitor_id from public_photo_likes where listing_key in ${sql(keys)}
+        select c.tile, 'v' || l.visitor_id from public_photo_likes l join counted c using (listing_key)
         union
-        select listing_key, 'p' || participant_id from photo_likes where listing_key in ${sql(keys)}) x
-      group by listing_key`,
-    sql<{ listing_key: string; n: number }[]>`
-      select listing_key, count(*)::int as n from public_comments
-      where listing_key in ${sql(keys)} group by listing_key`,
+        select c.tile, 'p' || l.participant_id from photo_likes l join counted c using (listing_key)) x
+      group by tile`,
+    sql<{ tile: string; n: number }[]>`
+      with counted as (${counted()})
+      select c.tile, count(*)::int as n from public_comments pc join counted c using (listing_key)
+      group by c.tile`,
   ]);
   for (const key of keys) counts.set(key, { likes: 0, comments: 0 });
-  for (const row of likes) counts.get(row.listing_key)!.likes = row.n;
-  for (const row of comments) counts.get(row.listing_key)!.comments = row.n;
+  for (const row of likes) counts.get(row.tile)!.likes = row.n;
+  for (const row of comments) counts.get(row.tile)!.comments = row.n;
   return counts;
 }

@@ -21,6 +21,7 @@ export function ProfileHeader({
   name,
   face = name,
   isMe,
+  onLink = false,
   unnamed = false,
   agent = false,
   since,
@@ -44,6 +45,8 @@ export function ProfileHeader({
   // What their initial is from, if not their name ("" for a plain figure).
   face?: string;
   isMe: boolean;
+  // Your own page, and an agent has sent you homes on a link.
+  onLink?: boolean;
   // Your own page, and you haven't said your first name yet.
   unnamed?: boolean;
   // An agent's face is ink, as everywhere.
@@ -165,11 +168,12 @@ export function ProfileHeader({
             )}
           </p>
         )}
-        {/* (That it's public is said above the card. What isn't, for someone on agents' links.) */}
-        {isMe && !agent && (
+        {/* (That it's public is said above the card. What isn't, only for
+            someone on a link: it means nothing to anyone who's never had one.) */}
+        {isMe && onLink && (
           <p className="mt-3 flex gap-1.5 text-meta leading-snug text-muted">
             <Lock aria-hidden size={14} className="mt-0.5 shrink-0" />
-            Agent links stay private.
+            Homes from your agent stay private.
           </p>
         )}
       </div>

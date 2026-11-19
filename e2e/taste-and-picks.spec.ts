@@ -82,12 +82,12 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
     "true",
   );
   await expect(pia.getByRole("heading", { name: "Picked for you" })).toHaveCount(0);
-  const picks = pia.getByRole("region", { name: "More homes for you" });
+  const picks = pia.getByRole("region", { name: "Homes for you" });
   await expect(picks.getByRole("listitem").first().getByRole("link")).toHaveAttribute(
     "href",
     /^\/reel\?from=picks&home=SAMPLE-\d+$/,
   );
-  await expect(picks.getByRole("link", { name: "Browse homes" })).toHaveAttribute("href", "/reel");
+  await expect(picks.getByRole("link", { name: "Browse homes" })).toHaveAttribute("href", "/browse");
   // Homes that match her taste say why: on the pick, and on the home it opens.
   const fit = picks.getByRole("listitem").filter({ hasText: "Why this: " }).first().getByRole("link");
   const reason = (await fit.textContent())!.split("Why this: ")[1].trim();

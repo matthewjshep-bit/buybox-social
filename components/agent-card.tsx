@@ -25,7 +25,10 @@ export const looksLikeEmail = (value: string) => /^[^\s@?&#/]+@[^\s@?&#/]+\.[^\s
 // Someone signed in, on a link that isn't their own to preview: they, and
 // the bell, as the site's header has them, so the link leads on to the rest
 // of Porchcard (their home, their page, what's new).
-export type LinkAccount = Omit<ComponentProps<typeof AccountMenu>, "overlay">;
+export type LinkAccount = Omit<ComponentProps<typeof AccountMenu>, "overlay" | "dashboard"> & {
+  // How much is new, for the bell beside them.
+  unread: number;
+};
 
 // What the Contact sheet offers someone signed in, beyond reaching the agent:
 // the agent's own page and following them, and leaving a link they were added
@@ -143,7 +146,7 @@ export function ShareHeader({
             {/* The agent on their own link sees it just as the client does;
                 that it's their preview is said for a screen reader only. */}
             {preview && (
-              <p className="sr-only">Preview, {notes ? `your notes for ${notes.for}` : preview}</p>
+              <p className="sr-only">Preview, {notes ? `your feedback for ${notes.for}` : preview}</p>
             )}
           </div>
           {notes ? (
@@ -186,29 +189,7 @@ export function ShareHeader({
             </button>
           )}
           {account && !notes && (
-            <div className="flex shrink-0 items-center gap-0.5 text-sm font-medium">
-              <Link
-                href="/activity"
-                className={cn(
-                  "relative flex size-11 shrink-0 items-center justify-center rounded-full hover:bg-white/15 [text-shadow:0_1px_3px_rgb(0_0_0/0.5)]",
-                  focusOnDark,
-                )}
-              >
-                <Bell aria-hidden size={18} className="drop-shadow-[0_1px_2px_rgb(0_0_0/0.45)]" />
-                <span className="sr-only">
-                  Notifications{account.unread > 0 && `, ${account.unread} new`}
-                </span>
-                {account.unread > 0 && (
-                  <span
-                    aria-hidden
-                    className="absolute right-1 top-1.5 flex min-w-[18px] items-center justify-center rounded-full bg-rose-600 px-1 text-tiny font-bold leading-[18px] text-white tabular-nums [text-shadow:none]"
-                  >
-                    {account.unread > 9 ? "9+" : account.unread}
-                  </span>
-                )}
-              </Link>
-              <AccountMenu {...account} overlay />
-            </div>
+            <LinkMenu {...account} />
           )}
         </div>
       </header>
@@ -237,6 +218,37 @@ export function ShareHeader({
         )}
       </Sheet>
     </>
+  );
+}
+
+// Whoever's signed in, at the end of the agent's header: the bell, and
+// they, as the site's header has them.
+function LinkMenu({ unread, ...menu }: LinkAccount) {
+  return (
+    <div className="flex shrink-0 items-center gap-0.5 text-sm font-medium">
+      <Link
+        href="/activity"
+        className={cn(
+          "relative flex size-11 shrink-0 items-center justify-center rounded-full hover:bg-white/15 [text-shadow:0_1px_3px_rgb(0_0_0/0.5)]",
+          focusOnDark,
+        )}
+      >
+        <Bell aria-hidden size={18} className="drop-shadow-[0_1px_2px_rgb(0_0_0/0.45)]" />
+        <span className="sr-only">
+          Notifications{unread > 0 && `, ${unread} new`}
+        </span>
+        {unread > 0 && (
+          <span
+            aria-hidden
+            className="absolute right-1 top-1.5 flex min-w-[18px] items-center justify-center rounded-full bg-rose-600 px-1 text-tiny font-bold leading-[18px] text-white tabular-nums [text-shadow:none]"
+          >
+            {unread > 9 ? "9+" : unread}
+          </span>
+        )}
+      </Link>
+      {/* (No bar here to hold an agent's Dashboard, so their menu does.) */}
+      <AccountMenu {...menu} dashboard overlay />
+    </div>
   );
 }
 

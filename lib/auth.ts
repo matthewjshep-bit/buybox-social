@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 import { sql } from "./db";
@@ -42,9 +42,11 @@ async function getAuthUser(): Promise<{ id: string; email: string } | null> {
 // email). Never a stand-in: each page says that in its own words.
 export const firstName = (account: Pick<Account, "full_name">) => account.full_name.trim().split(/\s+/)[0] ?? "";
 
-// Who's actually signed in, if anyone. Their account is made on their first
-// sign-in, as whatever they signed up as: an agent if they came in through
-// "For agents", otherwise a buyer, named from the sign-up form if they used it.
+// Who's actually signed in, if anyone. Their account is made when they sign
+// in the first time (the code they typed, or the emailed link): an agent's if
+// they came in through "For agents", otherwise a buyer's, named from the
+// sign-up form if they used it. (Signed in with no account yet, which only a
+// hiccup between the two leaves: a buyer's, made here.)
 const getSignedInUser = cache(async (): Promise<Account | null> => {
   const user = await getAuthUser();
   if (!user) return null;
@@ -73,19 +75,23 @@ export const getCurrentUser = cache(
 );
 
 // The account for someone just proved to be signed in (by a code, a link, or
-// locally), made the first time.
-export async function accountFor(user: { id: string; email: string }): Promise<Account> {
+// locally), made the first time: a buyer's, or an agent's when whoever proved
+// it asked for that (`role`). An account already there stays what it is.
+// (What anyone types before proving an email is theirs, a name or "as an
+// agent", counts for half an hour and no longer: anyone can type anyone's
+// email, so it only ever shapes an account made, or named, soon after.)
+export async function accountFor(user: { id: string; email: string }, role: Role = "buyer"): Promise<Account> {
   const [existing] = await sql<Account[]>`
     select id, email, full_name, role, brokerage, photo_data_url, brand_color
     from accounts where auth_user_id = ${user.id}`;
   if (existing?.role) return existing;
-  const [intent] = await sql<{ role: Role }[]>`
-    delete from account_intents where email = ${user.email} returning role`;
+  // A name and phone from a sign-up form, only if just typed.
   const [signup] = await sql<{ full_name: string; phone: string }[]>`
-    select full_name, phone from signups where email = ${user.email}`;
+    select full_name, phone from signups
+    where email = ${user.email} and updated_at > now() - interval '30 minutes'`;
   const [created] = await sql<Account[]>`
     insert into accounts (auth_user_id, email, role, full_name, phone)
-    values (${user.id}, ${user.email}, ${intent?.role ?? "buyer"}, ${signup?.full_name ?? ""}, ${signup?.phone ?? ""})
+    values (${user.id}, ${user.email}, ${role}, ${signup?.full_name ?? ""}, ${signup?.phone ?? ""})
     on conflict (auth_user_id) do update set
       email = excluded.email,
       role = coalesce(accounts.role, excluded.role),
@@ -95,20 +101,46 @@ export async function accountFor(user: { id: string; email: string }): Promise<A
   return created;
 }
 
-// Called once someone has signed in (opening the link proves the email is
-// theirs): whether they came in through "For agents". An account that's
-// already there becomes an agent's now; a new one is made as one.
+// A name from a sign-up form, for an account that has none yet: only one
+// typed in the last half hour, so a stranger can't leave a name waiting for
+// whoever owns the email. Gives back the account's name as it is now.
+export async function nameFromSignUp(account: Pick<Account, "id" | "email">): Promise<string> {
+  await sql`
+    update accounts a set full_name = s.full_name from signups s
+    where a.id = ${account.id} and a.full_name = '' and s.email = ${account.email.toLowerCase()}
+      and s.full_name <> '' and s.updated_at > now() - interval '30 minutes'`;
+  const [named] = await sql<{ full_name: string }[]>`select full_name from accounts where id = ${account.id}`;
+  return named?.full_name ?? "";
+}
+
+// For the emailed sign-in link alone, which carries no word of which form
+// asked for it: whether this email asked to sign up as an agent ("For
+// agents") in the last half hour. Used up by asking. It only ever decides
+// what a brand-new account is: one already there is never changed by it (or
+// anyone could turn your account into an agent's by typing your email).
 export async function claimAgentIntent(email: string) {
-  const [intent] = await sql<{ role: Role }[]>`select role from account_intents where email = ${email}`;
-  if (intent?.role !== "agent") return false;
-  const updated = await sql`update accounts set role = 'agent' where email = ${email} returning id`;
-  if (updated.length) await sql`delete from account_intents where email = ${email}`;
-  return true;
+  const [intent] = await sql<{ role: Role; fresh: boolean }[]>`
+    delete from account_intents where email = ${email}
+    returning role, created_at > now() - interval '30 minutes' as fresh`;
+  return intent?.role === "agent" && intent.fresh;
+}
+
+// Only a path on this site, so signing in can never send anyone elsewhere.
+// (No backslash: a browser reads "/\" as "//", the start of another site.)
+export const sitePath = (path: unknown) =>
+  typeof path === "string" && /^\/(?!\/)[^\\\u0000-\u001f]*$/.test(path) && path.length <= 300 ? path : null;
+
+// Where to sign in, for someone stopped at a page that takes an account: with
+// the page they asked for (proxy.ts notes it on every request as `x-path`),
+// so signing in lands them there. `fallback`: the page, if that's missing.
+export async function signInPath(fallback?: string) {
+  const asked = sitePath((await headers()).get("x-path")) ?? fallback;
+  return asked && asked !== "/" && !asked.startsWith("/login") ? `/login?next=${encodeURIComponent(asked)}` : "/login";
 }
 
 export async function requireUser(): Promise<Account & { role: Role }> {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect(await signInPath());
   return { ...user, role: user.role ?? "buyer" };
 }
 
@@ -127,12 +159,12 @@ export const isAdmin = cache(async (account: Pick<Account, "email"> | null) => {
   return Boolean(row);
 });
 
-// Signed out goes to sign in; anyone else signed in sees "not found", so the
-// admin pages don't show they exist. (Always the admin themselves, even while
+// Signed out goes to sign in (and then back to the page asked for); anyone
+// else signed in sees "not found", so the admin pages don't show they exist. (Always the admin themselves, even while
 // they're seeing the site as someone else.)
 export async function requireAdmin(): Promise<Account & { superAdmin: boolean }> {
   const user = await getSignedInUser();
-  if (!user) redirect("/login");
+  if (!user) redirect(await signInPath());
   if (!(await isAdmin(user))) notFound();
   return { ...user, superAdmin: isSuperAdmin(user) };
 }

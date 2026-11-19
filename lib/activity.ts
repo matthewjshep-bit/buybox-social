@@ -67,6 +67,9 @@ type ActivityPerson = { id: string; name: string; profileId: string | null; phot
 export type ActivityRow = Omit<ActivityItem, "who" | "whoId" | "profileId"> & {
   // Who, newest first, each once.
   people: ActivityPerson[];
+  // A client's comment on a home they also liked that day: one line for both
+  // ("liked and commented on…").
+  likedToo: boolean;
 };
 
 // However much has happened, the page reads this many of the newest events,
@@ -250,11 +253,14 @@ const loadEvents = cache(
     limit ${EVENT_LIMIT}`,
 );
 
-// The same thing on the same comment (or, for new comments, the same home; for
-// a client, the same person and home) on the same day is one row. Days are
-// the homes' days, as on profiles (and as the bell counts them, in the database).
+// The same thing on the same comment (or, for new comments, the same home) on
+// the same day is one row. So is one client liking and commenting on one home
+// that day: the two are filed together, as "client". (An ask to see it stays a
+// row of its own: it wants an answer.) Days are the homes' days, as on
+// profiles. The bell counts by this same key, in the database
+// (countUnreadActivity): change both or neither.
 const rowKey = (item: { kind: string; about: string; at: Date | string }) =>
-  `${item.kind}|${item.about}|${dayOf(item.at)}`;
+  `${item.kind === "client_like" || item.kind === "client_comment" ? "client" : item.kind}|${item.about}|${dayOf(item.at)}`;
 
 const PUBLIC_KINDS = new Set<ActivityKind>(["reply", "comment_like", "comment", "like_reply"]);
 const CLIENT_KINDS = new Set<ActivityKind>(["client_comment", "client_like", "client_ask"]);
@@ -351,7 +357,8 @@ const loadActivity = cache(async (visitorId: string): Promise<ActivityItem[]> =>
 });
 
 // Repeats in one row, timed by its newest and new if any of it is: "Grace,
-// Hannah and 2 others liked your comment".
+// Hannah and 2 others liked your comment". A client's like and comment on one
+// home are one row too, and it's the comment's: its words, and where it goes.
 export function groupActivity(items: ActivityItem[]): ActivityRow[] {
   const rows = new Map<string, ActivityRow>();
   for (const item of [...items].sort((a, b) => b.at.localeCompare(a.at))) {
@@ -374,11 +381,23 @@ export function groupActivity(items: ActivityItem[]): ActivityRow[] {
         at: item.at,
         unread: item.unread,
         people: [person],
+        likedToo: false,
       });
       continue;
     }
     if (!row.people.some((known) => known.id === item.whoId)) row.people.push(person);
     row.unread ||= item.unread;
+    if (row.kind === "client_comment" && item.kind === "client_like") row.likedToo = true;
+    if (row.kind === "client_like" && item.kind === "client_comment") {
+      // The like came after: the row turns into their newest comment (the
+      // photo it's on, and the way straight to it), still timed by the like.
+      row.kind = item.kind;
+      row.body = item.body;
+      row.photo = item.photo;
+      row.commentId = item.commentId;
+      row.href = item.href;
+      row.likedToo = true;
+    }
   }
   return [...rows.values()];
 }
@@ -398,7 +417,9 @@ export function whoOf<P extends { name: string }>(people: P[]) {
 export const whoText = (people: { name: string }[]) => namesOrOthers(people.map((person) => person.name));
 
 // What happened, after who: "replied to your comment on 24611 SE Foxglove Pl".
-export function describeActivity(row: Pick<ActivityRow, "kind" | "address"> & { homes?: number | null }) {
+export function describeActivity(
+  row: Pick<ActivityRow, "kind" | "address"> & { homes?: number | null; likedToo?: boolean },
+) {
   const address = row.address ?? "a home";
   switch (row.kind) {
     case "reply":
@@ -418,7 +439,7 @@ export function describeActivity(row: Pick<ActivityRow, "kind" | "address"> & { 
     case "agent_note":
       return `left a note on ${address}`;
     case "client_comment":
-      return `commented on ${address}`;
+      return `${row.likedToo ? "liked and commented" : "commented"} on ${address}`;
     case "client_like":
       return `liked ${address}`;
     case "client_ask":
@@ -463,12 +484,15 @@ export async function getActivityRows(visitorId: string): Promise<ActivityRow[]>
 }
 
 // What the bell counts: rows with something new in them, as the page shows
-// them. Only what's new is read, and only counted.
+// them (a client's like and comment on one home are one, as in rowKey). Only
+// what's new is read, and only counted.
 export const countUnreadActivity = cache(async (visitorId: string): Promise<number> => {
   const [{ lines }] = await sql<{ lines: number }[]>`
     with events as (${eventsOf(visitorId)})
     select count(*)::int as lines from (
-      select distinct e.kind, e.about, (e.at at time zone ${PROFILE_TIME_ZONE})::date
+      select distinct
+        case when e.kind in ('client_like', 'client_comment') then 'client' else e.kind end,
+        e.about, (e.at at time zone ${PROFILE_TIME_ZONE})::date
       from events e
       where e.at > (select activity_seen_at from visitors where id = ${visitorId})
     ) line`;

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { signInAgent } from "./helpers";
+import { pastNameStep, signInAgent } from "./helpers";
 
 // While sign-in emails aren't set up, the test password (TEST_SIGN_IN_PASSWORD,
 // set for these tests in playwright.config.ts) signs in as any email, no code:
@@ -41,11 +41,14 @@ test("the test password signs in as an account already there, or a new one, and 
   const me = page.getByRole("banner").getByRole("button", { name: "Account menu" });
   await expect(me.locator("img")).toBeVisible();
 
-  // Sign out, then in as someone new: a new buyer's account, home.
+  // Sign out, then in as someone new: a new buyer's account, asked their
+  // first name like anyone new (skipped here), then home.
   await me.click();
   await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
   await page.waitForURL("**/login");
   await testSignIn(page, `casey.${stamp}@example.com`);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("What's your first name?");
+  await pastNameStep(page);
   await page.waitForURL((url) => url.pathname === "/");
   await me.click();
   await expect(page.getByRole("banner").getByText(`casey.${stamp}@example.com`)).toBeVisible();

@@ -124,8 +124,10 @@ test("the dashboard leads with what's new, and says when each link was opened, n
   await agent.goto("/dashboard");
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Clients");
   await expect(group("Haven't opened yet")).toContainText("Owen");
-  await expect(row).toContainText("Not opened yet");
-  await expect(row).toContainText("2 homes sent · Sent today");
+  // (When it went is said once, with that it isn't opened.)
+  await expect(row).toContainText("Not opened yet · sent today");
+  await expect(row).toContainText("2 homes sent");
+  await expect(row).not.toContainText("Sent today");
   await expect(row.getByRole("button", { name: "Copy link for Owen" })).toBeVisible();
 
   // The agent looking at their own link doesn't count as it being opened.
@@ -323,10 +325,27 @@ test("the agent's page about a client reads like the product: a card per home, s
   // off, not even a long name; folded away at first, since each home further
   // down says the same.
   await agent.setViewportSize({ width: 393, height: 852 });
-  await agent.goto(`${dashboardUrl}?tab=want`);
+  // (The Dashboard's three tabs are on its three main pages, each a fingertip
+  // tall, the one you're on marked. A link's page has its way back instead.)
+  await agent.goto("/dashboard");
   const nav = agent.getByRole("navigation", { name: "Dashboard" });
-  await expect(nav.getByRole("link", { name: "Clients" })).toHaveAttribute("aria-current", "true");
-  expect((await nav.getByRole("link", { name: "Listings" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await expect(nav.getByRole("link")).toHaveText(["Clients", "Links", "Listings"]);
+  await expect(nav.getByRole("link", { name: "Clients" })).toHaveAttribute("aria-current", "page");
+  await expect(nav.getByRole("link", { name: "Links" })).not.toHaveAttribute("aria-current");
+  for (const tab of await nav.getByRole("link").all()) {
+    expect((await tab.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
+  await agent.goto(`${dashboardUrl}?tab=want`);
+  await expect(agent.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(nav).toHaveCount(0);
+  // Its own three parts, the same kind of tab: all in view, none to scroll to.
+  const parts = agent.getByRole("navigation", { name: "Parts of this page" });
+  await expect(parts.getByRole("link")).toHaveText([/^Homes/, "Wants", /^People & link/]);
+  await expect(parts.getByRole("link", { name: "Wants", exact: true })).toHaveAttribute("aria-current", "page");
+  for (const tab of await parts.getByRole("link").all()) {
+    expect((await tab.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
+  expect(await parts.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
   const compare = agent.getByRole("region", { name: "What they each want" });
   await expect(compare.getByRole("table")).toBeHidden();
   // A spot she liked counts: the summary and her card agree.

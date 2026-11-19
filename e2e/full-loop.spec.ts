@@ -268,13 +268,14 @@ test("isolation: tokens, agents and signed-out visitors stay in their lane", asy
   expect(htmlA).not.toContain("alice@example.com");
   expect(htmlA).not.toContain(shareB.url.split("/s/")[1]);
 
-  // Signed-out visitors are sent to sign in.
+  // Signed-out visitors are sent to sign in, and from there back to the page
+  // they asked for.
   const anon = await browser.newContext();
   const anonPage = await anon.newPage();
   await anonPage.goto(shareA.dashboardUrl);
-  await expect(anonPage).toHaveURL(/\/login$/);
+  await expect(anonPage).toHaveURL(`/login?next=${encodeURIComponent(new URL(shareA.dashboardUrl).pathname)}`);
   await anonPage.goto("/dashboard");
-  await expect(anonPage).toHaveURL(/\/login$/);
+  await expect(anonPage).toHaveURL("/login?next=%2Fdashboard");
 
   // Each link acts as its own person, on its own package only.
   const client = await signedIn(browser);

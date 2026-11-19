@@ -268,11 +268,11 @@ export function tourSteps(
   if (kind === "notes") {
     const who = notesFor ?? "your client";
     return [
-      { ...facts, title: "Add your take", body: "Tap the price, or any detail." },
+      { ...facts, title: "Add your feedback", body: "Tap the price, or any detail." },
       { ...photo, title: "Point things out", body: "Tap anything in a photo." },
       {
         target: '[data-tour="done"]',
-        title: `${who.charAt(0).toUpperCase() + who.slice(1)} sees your notes`,
+        title: `${who.charAt(0).toUpperCase() + who.slice(1)} sees your feedback`,
         body: "Tap Done when you're finished.",
       },
     ];

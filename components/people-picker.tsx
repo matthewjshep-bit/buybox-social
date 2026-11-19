@@ -15,7 +15,7 @@ import { searchPeople } from "@/app/dashboard/actions";
 import { Avatar } from "@/components/ui";
 import { cn, namesList } from "@/lib/format";
 import { NOT_AN_EMAIL, type PersonOption, type PersonPick } from "@/lib/people-picker";
-import { button, field } from "@/lib/ui";
+import { button, card, field } from "@/lib/ui";
 
 // Who a link is for, in one place wherever homes are sent: the new-link
 // builder, the sheets after Send, and "Add a person" on a link. Type a first
@@ -476,7 +476,7 @@ export function PeoplePicker({
         hidden={!shown}
         // A tap on a suggestion mustn't take the cursor out of the field.
         onMouseDown={(event) => event.preventDefault()}
-        className="mt-1.5 flex max-h-[26rem] flex-col gap-0.5 overflow-y-auto rounded-2xl bg-white p-1.5 ring-1 ring-stone-200"
+        className={cn(card, "mt-1.5 flex max-h-[26rem] flex-col gap-0.5 overflow-y-auto p-1.5")}
       >
         {GROUPS.map((group) => {
           const items = flat

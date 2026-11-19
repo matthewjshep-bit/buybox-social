@@ -1,11 +1,13 @@
 "use server";
 
+import { refresh } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { accountFor, claimAgentIntent, DEV_COOKIE, devLoginEnabled, requireUser, VIEW_AS_COOKIE } from "@/lib/auth";
+import { accountFor, DEV_COOKIE, devLoginEnabled, nameFromSignUp, requireUser, sitePath, VIEW_AS_COOKIE } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { readDevice } from "@/lib/engagement";
+import { ensureAccountVisitor } from "@/lib/public";
 import { ensureLinkProfile, linkOnce } from "@/lib/shares";
 import { siteOrigin } from "@/lib/site";
 import { createSupabase, supabaseConfigured } from "@/lib/supabase/server";
@@ -26,20 +28,20 @@ export type CodeState = {
   // Locally: the code, since no email goes out.
   devCode?: string;
   // Signed in. `agent`: their account is an agent's (to their dashboard).
-  done?: { agent: boolean };
+  // `needsName`: a buyer's with no first name yet, to ask for (an agent gives
+  // their full name with their brand, on their dashboard).
+  done?: { agent: boolean; needsName: boolean };
 };
 
 const DEV_CODE = "123456";
 
 const emailSchema = z.email().max(254);
 
-// Only a path on this site, so the email's link can never send anyone elsewhere.
-export const safeNext = async (next: unknown) =>
-  typeof next === "string" && next.startsWith("/") && !next.startsWith("//") && next.length <= 300 ? next : null;
-
 // Step one: a code to their email, and a link in it back to `next`. A first
 // name, when they give one, names their account if it's new. From "For
-// agents" (`asAgent`), they're signing up as an agent.
+// agents" (`asAgent`), they're signing up as an agent: noted for the email's
+// link, which can't say which form it came from (the code, typed on that
+// form, says so itself).
 export async function sendCode(input: {
   email: string;
   firstName?: string;
@@ -65,9 +67,13 @@ export async function sendCode(input: {
         phone = coalesce(nullif(excluded.phone, ''), signups.phone),
         updated_at = now()`;
   }
+  // (The newest email's code and link are the only ones that work, so the
+  // newest form asked from is the one that counts.)
   if (input.asAgent === true) await signingUpAsAgent(email.data);
+  else await sql`delete from account_intents where email = ${email.data}`;
   if (supabaseConfigured) {
-    const next = await safeNext(input.next);
+    // (Only a path on this site, so the email's link can never send anyone elsewhere.)
+    const next = sitePath(input.next);
     const supabase = await createSupabase();
     const { error } = await supabase.auth.signInWithOtp({
       email: email.data,
@@ -91,8 +97,10 @@ export async function sendCode(input: {
 
 // Step two: the code from the email. They're signed in right here, and what
 // this browser did before (a first name on an agent's link, likes on public
-// homes) becomes their account's.
-export async function verifyCode(input: { email: string; code: string }): Promise<CodeState> {
+// homes) becomes their account's. `asAgent`: typed on the "For agents" form,
+// so the account is an agent's. Only whoever has the code can say so: an
+// email typed on that form by someone else changes nothing.
+export async function verifyCode(input: { email: string; code: string; asAgent?: boolean }): Promise<CodeState> {
   const email = emailSchema.safeParse(String(input.email ?? "").trim().toLowerCase());
   if (!email.success) return { error: "Please enter a valid email address.", field: "email" };
   const code = String(input.code ?? "").replace(/\s+/g, "");
@@ -118,7 +126,7 @@ export async function verifyCode(input: { email: string; code: string }): Promis
   } else {
     return { error: "Sign-in isn't set up yet." };
   }
-  return signedIn(user);
+  return signedIn(user, { asAgent: input.asAgent === true });
 }
 
 // For testing, while sign-in emails aren't set up (lib/test-sign-in.ts): any
@@ -133,38 +141,48 @@ export async function testSignIn(input: { email: string; password: string; asAge
     await new Promise((resolve) => setTimeout(resolve, 1000));
     return { error: "That isn't the test password.", field: "password" };
   }
-  if (input.asAgent === true) await signingUpAsAgent(email.data);
   const [existing] = await sql<{ auth_user_id: string }[]>`
     select auth_user_id from accounts where lower(email) = ${email.data} order by created_at limit 1`;
   const user = { id: existing?.auth_user_id ?? `test:${email.data}`, email: email.data };
   // Out of any emailed sign-in on this browser (only here), so it's this one.
   if (supabaseConfigured) await (await createSupabase()).auth.signOut({ scope: "local" });
   await setTestUser(user);
-  return signedIn(user);
+  return signedIn(user, { asAgent: input.asAgent === true });
 }
 
-// From "For agents": signing up (or in) as an agent.
+// From "For agents": signing up (or in) as an agent. Kept for half an hour,
+// for the email's link (lib/auth.ts claimAgentIntent).
 async function signingUpAsAgent(email: string) {
   await sql`
     insert into account_intents (email, role) values (${email}, 'agent')
     on conflict (email) do update set role = excluded.role, created_at = now()`;
 }
 
-// Proved to be them: their account (made the first time, an agent's if they
-// came through "For agents"), and what this browser did before becomes its.
-async function signedIn(user: { id: string; email: string }): Promise<CodeState> {
-  await claimAgentIntent(user.email);
-  const account = await accountFor(user);
+// Proved to be them, on the form they signed in on: their account (made the
+// first time), and what this browser did before becomes its. `asAgent`: that
+// form was "For agents", so the account is an agent's, new or not (they chose
+// it themselves, with the code or the password in hand).
+async function signedIn(user: { id: string; email: string }, { asAgent }: { asAgent: boolean }): Promise<CodeState> {
+  let account = await accountFor(user, asAgent ? "agent" : "buyer");
+  if (asAgent && account.role !== "agent") {
+    await sql`update accounts set role = 'agent' where id = ${account.id}`;
+    account = { ...account, role: "agent" };
+  }
+  // Settled here, so what was noted for the email's link is done with.
+  await sql`delete from account_intents where email = ${user.email}`;
   // A name from the form, for an account that has none yet.
-  await sql`
-    update accounts a set full_name = s.full_name from signups s
-    where a.id = ${account.id} and a.full_name = '' and s.email = ${user.email} and s.full_name <> ''`;
+  const fullName = await nameFromSignUp(account);
   // A place on an agent's link this browser had becomes theirs: they and the
   // agent follow each other, the first time they're linked. Any link they're
   // on: a profile, if they had none, so the agent's pages can link their name to it.
   for (const participantId of await claimDevice(account.id)) await linkOnce(account.id, participantId);
   await ensureLinkProfile(account.id);
-  return { done: { agent: account.role === "agent" } };
+  // Anyone with a name has a public page from here on, so they can be found
+  // and followed (Search, People) before they've liked anything. (After the
+  // browser's own page has become theirs, above; the name as it is now.)
+  if (account.role && fullName.trim()) await ensureAccountVisitor({ ...account, full_name: fullName });
+  const agent = account.role === "agent";
+  return { done: { agent, needsName: !agent && !fullName.trim() } };
 }
 
 // A buyer who sends homes to clients after all: an agent's account, then
@@ -172,6 +190,9 @@ async function signedIn(user: { id: string; email: string }): Promise<CodeState>
 export async function becomeAgent() {
   const user = await requireUser();
   if (user.role !== "agent") await sql`update accounts set role = 'agent' where id = ${user.id}`;
+  // The bar is drawn again too: the Dashboard they were just told they'd get
+  // is in it when they land, in place of Send.
+  refresh();
   redirect("/dashboard");
 }
 

@@ -1,7 +1,7 @@
 import type { ComponentProps } from "react";
 import { loadOrderedReel } from "@/app/reel/actions";
 import { FeedEnd } from "@/components/feed-end";
-import { JoinGate, JoinIntro } from "@/components/join";
+import { JoinGate } from "@/components/join";
 import { commentParam, photoParam, PUBLIC_PROMPT, publicReelActions } from "@/components/listing-detail";
 import { OrderedReel } from "@/components/ordered-reel";
 import { QuickSendReel } from "@/components/quick-send";
@@ -24,7 +24,7 @@ const FREE_HOMES = 3;
 // page by its id with the page's filter, an agent's client or link, your
 // picks: see homesFrom) with the home tapped (`&home=`): that feed's homes,
 // in its order, opened on that one, each saying why it's there. Otherwise
-// ("Browse homes"): every home, best matches for your taste first (or
+// (Browse, at /browse): every home, best matches for your taste first (or
 // `?home=` first), as you scroll. `&comment=`: that home's comments open on
 // that comment.
 export async function ReelView({ params, contained = false }: { params: ReelParams; contained?: boolean }) {
@@ -40,8 +40,8 @@ export async function ReelView({ params, contained = false }: { params: ReelPara
   ]);
 
   if (!ordered) {
-    // Signed out: a few homes, opening on what this is and a short sign-up
-    // form, then asking them to sign up to see the rest.
+    // Signed out: a few homes, the first one straight away (they came to see
+    // homes, not a form), then asking them to sign up to see the rest.
     if (!viewer) {
       const posts = await getReel(viewer, device, taste);
       const free = posts.slice(0, FREE_HOMES);
@@ -58,8 +58,7 @@ export async function ReelView({ params, contained = false }: { params: ReelPara
           myName={name}
           prompt={PUBLIC_PROMPT}
           header={contained ? undefined : <SiteHeader overlay />}
-          intro={<JoinIntro photo={free[0]?.listing.Media[0]} devMode={devLoginEnabled} />}
-          // How it works, the first time, once they're on the first home.
+          // How it works, the first time, on the first home.
           tour="home"
           end={<JoinGate photo={next} devMode={devLoginEnabled} />}
         />

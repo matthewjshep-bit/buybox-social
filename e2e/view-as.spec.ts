@@ -1,5 +1,5 @@
 import { expect, test, type Browser } from "@playwright/test";
-import { enterCode, signInAgent, signUpBuyer } from "./helpers";
+import { enterCode, pastNameStep, signInAgent, signUpBuyer } from "./helpers";
 
 const DESKTOP = { viewport: { width: 1280, height: 900 } };
 const OWNER = "matt@shepflips.com";
@@ -12,6 +12,8 @@ async function signIn(browser: Browser, email: string) {
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Continue" }).click();
   await enterCode(page);
+  // (Just an email, so no first name yet: asked, and skipped.)
+  await pastNameStep(page);
   await page.waitForURL((url) => url.pathname === "/");
   return page;
 }
@@ -31,7 +33,8 @@ test("an admin sees the site as one of its people, a bar saying so, until Stop; 
   await admin.waitForURL((url) => url.pathname === "/");
   const bar = admin.getByRole("region", { name: "Viewing as someone else" });
   await expect(bar).toContainText("Viewing as Vera Viewed (agent). Anything you do is done as them.");
-  await expect(admin.getByRole("heading", { level: 1 })).toHaveText("Agent dashboard");
+  await expect(admin.getByRole("heading", { level: 1 })).toHaveText("Your home");
+  await expect(admin.getByRole("region", { name: "Send your first homes" })).toBeVisible();
   // Her dashboard too.
   await admin.goto("/dashboard");
   await expect(admin.getByRole("heading", { level: 1 })).toHaveText("Clients");

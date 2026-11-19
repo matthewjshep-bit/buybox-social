@@ -2,8 +2,8 @@
 // what it is, its photos, whether it's on their profile. Theirs to change
 // and take away; on their profile for anyone; never in the homes everyone
 // browses, and never anyone else's to edit.
-import { expect, test } from "@playwright/test";
-import { saveDetails, signInAgent, signUpBuyer } from "./helpers";
+import { expect, test, type Locator } from "@playwright/test";
+import { enterListingYourself, heartOf, saveDetails, signInAgent, signUpBuyer } from "./helpers";
 
 // A tiny PNG, as a photo would arrive.
 const PNG = Buffer.from(
@@ -11,6 +11,24 @@ const PNG = Buffer.from(
   "base64",
 );
 const ADDRESS = "742 Dealmaker Ave";
+
+// A row's controls (links or buttons, by name) all sit on one line, each a
+// fingertip tall, none off the side of the row.
+async function expectOneLine(row: Locator, names: string[]) {
+  const edge = (await row.boundingBox())!;
+  const boxes = [];
+  for (const name of names) {
+    const control = row.getByRole("link", { name }).or(row.getByRole("button", { name }));
+    await expect(control).toBeVisible();
+    boxes.push((await control.boundingBox())!);
+  }
+  for (const box of boxes) {
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(Math.abs(box.y + box.height / 2 - (boxes[0].y + boxes[0].height / 2))).toBeLessThan(2);
+    expect(box.x).toBeGreaterThanOrEqual(edge.x);
+    expect(box.x + box.width).toBeLessThanOrEqual(edge.x + edge.width);
+  }
+}
 
 test("an agent adds a listing with photos; it leads their profile, opens full screen, and stays out of what everyone browses", async ({
   browser,
@@ -20,7 +38,17 @@ test("an agent adds a listing with photos; it leads their profile, opens full sc
   await agent.goto("/dashboard/listings");
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Listings");
   await agent.getByRole("link", { name: "Add a listing" }).click();
-  const form = agent.getByRole("form", { name: "Listing details" });
+  // One way at a time: it opens on "Find it" alone, and entering one by hand is asked for under it.
+  await expect(agent.getByRole("region", { name: "Find it" })).toBeVisible();
+  await expect(agent.getByRole("form", { name: "Listing details" })).toHaveCount(0);
+  await expect(agent.getByRole("main").getByRole("heading", { level: 2 })).toHaveText(["Find it"]);
+  const form = await enterListingYourself(agent);
+  // The cursor is in its first box, and the page's address says it's open: a reload keeps it so.
+  await expect(form.getByLabel("Street address")).toBeFocused();
+  await expect(agent).toHaveURL(/\/dashboard\/listings\/new\?manual=1$/);
+  await agent.reload();
+  await expect(form).toBeVisible();
+  await expect(agent.getByRole("button", { name: "Not there? Enter it yourself" })).toHaveCount(0);
 
   // What's wrong is said, by the field.
   await form.getByLabel("Street address").fill(ADDRESS);
@@ -41,6 +69,11 @@ test("an agent adds a listing with photos; it leads their profile, opens full sc
   await agent.waitForURL(/\/dashboard\/listings$/);
   const row = agent.getByRole("list", { name: "Your listings" }).getByRole("listitem").filter({ hasText: ADDRESS });
   await expect(row).toContainText("Add a photo to show it");
+  // Not on her profile, so nothing to send or to star (and no line about the star).
+  await expect(row.getByRole("link", { name: `Send ${ADDRESS}` })).toHaveCount(0);
+  await expect(row.getByRole("button", { name: `Feature ${ADDRESS}` })).toHaveCount(0);
+  await expect(agent.getByRole("link", { name: "Change the layout" })).toBeVisible();
+  await expect(agent.getByRole("main")).not.toContainText("starred listing");
   await row.getByRole("link", { name: `Edit ${ADDRESS}` }).click();
   await agent.waitForURL(/\/dashboard\/listings\/OWN-[\w-]+$/);
   const editUrl = new URL(agent.url()).pathname;
@@ -121,7 +154,7 @@ test("a listing added with its photos in one go is on their profile at once, wit
 }) => {
   const agent = await signInAgent(browser, "gus.listings@example.com", "Gus Listings");
   await agent.goto("/dashboard/listings/new");
-  const form = agent.getByRole("form", { name: "Listing details" });
+  const form = await enterListingYourself(agent);
   await form.getByLabel("Add photos").setInputFiles([
     { name: "one.png", mimeType: "image/png", buffer: PNG },
     { name: "two.png", mimeType: "image/png", buffer: PNG },
@@ -157,14 +190,20 @@ test("a home found by its address is added with one tap, says who listed it, and
   const agent = await signInAgent(browser, "fay.listings@example.com", "Fay Listings");
   await agent.goto("/dashboard/listings/new");
   const find = agent.getByRole("region", { name: "Find it" });
-  await find.getByRole("searchbox", { name: "Find it by address or MLS number" }).fill("Quillan");
+  await find.getByRole("searchbox", { name: "Find it by address, city, ZIP or MLS number" }).fill("Quillan");
   await find.getByRole("button", { name: "Add 1204 Quillan St SE" }).click();
   await agent.waitForURL(/\/dashboard\/listings$/);
   const row = agent.getByRole("list", { name: "Your listings" }).getByRole("listitem").filter({ hasText: "1204 Quillan St SE" });
   await expect(row).toContainText("On your profile");
-  // Found again, it says it's already there.
+  // It can be sent from here: the way to a link, with this home picked.
+  await expect(row.getByRole("link", { name: "Send 1204 Quillan St SE" })).toHaveAttribute("href", "/dashboard/new?home=SAMPLE-1009");
+  // On a small phone (360px) Send, Remove and the star share one line under the words.
+  await agent.setViewportSize({ width: 360, height: 740 });
+  await expectOneLine(row, ["Send 1204 Quillan St SE", "Remove 1204 Quillan St SE", "Feature 1204 Quillan St SE"]);
+  expect(await agent.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  // Found again (by its street and city this time), it says it's already there.
   await agent.goto("/dashboard/listings/new");
-  await find.getByRole("searchbox", { name: "Find it by address or MLS number" }).fill("Quillan");
+  await find.getByRole("searchbox", { name: "Find it by address, city, ZIP or MLS number" }).fill("1204 Quillan St SE, Olympia");
   await expect(find.getByRole("list", { name: "Homes found" })).toContainText("Added");
   await expect(find.getByRole("button", { name: "Add 1204 Quillan St SE" })).toHaveCount(0);
 
@@ -191,7 +230,7 @@ test("a deal's own numbers show when they're given, and the price per square foo
   const agent = await signInAgent(browser, "ivy.listings@example.com", "Ivy Listings");
   await agent.setViewportSize({ width: 1440, height: 900 });
   await agent.goto("/dashboard/listings/new");
-  const form = agent.getByRole("form", { name: "Listing details" });
+  const form = await enterListingYourself(agent);
   await form.getByLabel("Add photos").setInputFiles([{ name: "one.png", mimeType: "image/png", buffer: PNG }]);
   await form.getByLabel("Street address").fill("31 Flipper Ln");
   await form.getByLabel("City").fill("Auburn");
@@ -247,6 +286,10 @@ test("an MLS listing of theirs is changed through their own copy, which takes it
   await expect(agent.getByText("Agent dashboard")).toBeVisible();
   const fromMls = agent.getByRole("list", { name: "Listings from the MLS" });
   await expect(fromMls.getByRole("listitem")).toHaveCount(2);
+  // Each can be sent as it is, and what the star does is said once above them.
+  await expect(fromMls.getByRole("link", { name: /^Send / })).toHaveCount(2);
+  await expect(fromMls.getByRole("link", { name: "Send 96 Fernhollow Ln" })).toHaveAttribute("href", "/dashboard/new?home=SAMPLE-1004");
+  await expect(agent.getByRole("main")).toContainText("The starred listing shows first on your profile.");
   await fromMls.getByRole("button", { name: "Edit 96 Fernhollow Ln" }).click();
   await agent.waitForURL(/\/dashboard\/listings\/OWN-[\w-]+$/);
   const editUrl = new URL(agent.url()).pathname;
@@ -276,6 +319,39 @@ test("an MLS listing of theirs is changed through their own copy, which takes it
   await visitor.goto("/homes/SAMPLE-1004");
   await expect(visitor.getByRole("article", { name: "96 Fernhollow Ln" })).toContainText("$839,000");
 
+  // Everyone browsing meets the MLS's home, so that's where the likes are:
+  // her copy's tile counts them with its own, each person once.
+  const likesOnTile = async () => {
+    await visitor.goto(new URL(agent.url()).pathname);
+    await expect(tiles).toHaveCount(1);
+    return Number(((await tiles.textContent()) ?? "").match(/(\d+)\s*likes?/)?.[1] ?? 0);
+  };
+  const before = await likesOnTile();
+  const fan = await signUpBuyer(browser, `fern.fan.${Date.now()}@example.com`, "Fern");
+  await fan.goto("/homes/SAMPLE-1004");
+  const original = fan.getByRole("article", { name: "96 Fernhollow Ln" });
+  await heartOf(original).click();
+  await expect(heartOf(original)).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(likesOnTile).toBe(before + 1);
+  // The same person likes her copy too, opened from her profile: still once.
+  await fan.goto(new URL(agent.url()).pathname);
+  await fan.getByRole("list", { name: "Listings" }).getByRole("link", { name: /96 Fernhollow Ln/ }).first().click();
+  await fan.waitForURL(/\/reel\?from=listings/);
+  const copy = fan.getByRole("article", { name: "96 Fernhollow Ln" });
+  await expect(copy).toContainText("$815,000");
+  await heartOf(copy).click();
+  await expect(heartOf(copy)).toHaveAttribute("aria-pressed", "true");
+  expect(await likesOnTile()).toBe(before + 1);
+  // And someone else, on the copy alone: one more.
+  const second = await signUpBuyer(browser, `saul.second.${Date.now()}@example.com`, "Saul");
+  await second.goto(new URL(agent.url()).pathname);
+  await second.getByRole("list", { name: "Listings" }).getByRole("link", { name: /96 Fernhollow Ln/ }).first().click();
+  await second.waitForURL(/\/reel\?from=listings/);
+  const his = second.getByRole("article", { name: "96 Fernhollow Ln" });
+  await heartOf(his).click();
+  await expect(heartOf(his)).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(likesOnTile).toBe(before + 2);
+
   // Someone else can't make a copy of hers: another agent's page for it isn't there.
   const other = await signInAgent(browser, "omar.copy@example.com", "Omar Copy");
   expect((await other.request.get(editUrl)).status()).toBe(404);
@@ -284,7 +360,7 @@ test("an MLS listing of theirs is changed through their own copy, which takes it
 test("a video by its link plays with the photos, after them; a link that isn't one is refused", async ({ browser }) => {
   const agent = await signInAgent(browser, "vic.listings@example.com", "Vic Listings");
   await agent.goto("/dashboard/listings/new");
-  const form = agent.getByRole("form", { name: "Listing details" });
+  const form = await enterListingYourself(agent);
   await form.getByLabel("Add photos").setInputFiles([{ name: "one.png", mimeType: "image/png", buffer: PNG }]);
   await form.getByLabel("Street address").fill("5 Walkthrough Way");
   await form.getByLabel("City").fill("Renton");
@@ -335,7 +411,7 @@ test("an agent chooses how their listings are laid out, which one leads, and mar
   const agent = await signInAgent(browser, "lou.listings@example.com", "Lou Listings");
   const add = async (address: string, price: string) => {
     await agent.goto("/dashboard/listings/new");
-    const form = agent.getByRole("form", { name: "Listing details" });
+    const form = await enterListingYourself(agent);
     await form.getByLabel("Add photos").setInputFiles([{ name: "one.png", mimeType: "image/png", buffer: PNG }]);
     await form.getByLabel("Street address").fill(address);
     await form.getByLabel("City").fill("Burien");
@@ -415,4 +491,78 @@ test("an agent chooses how their listings are laid out, which one leads, and mar
   await expect(grid).not.toContainText("2 Layout Ln");
   await agent.reload();
   await expect(details.getByRole("radio", { name: "Closed" })).toBeChecked();
+});
+
+test("on a phone a listing's address and price are never cut short, and Send starts a link with that listing picked", async ({
+  browser,
+}) => {
+  test.setTimeout(90_000);
+  const LONG = "18204 Northeast Meadowbrook Parkway Unit 12B";
+  const agent = await signInAgent(browser, "pam.listings@example.com", "Pam Listings");
+  await agent.setViewportSize({ width: 390, height: 780 });
+  await agent.goto("/dashboard/listings/new");
+  const form = await enterListingYourself(agent);
+  await form.getByLabel("Add photos").setInputFiles([{ name: "one.png", mimeType: "image/png", buffer: PNG }]);
+  await form.getByLabel("Street address").fill(LONG);
+  await form.getByLabel("City").fill("Sedro-Woolley");
+  await form.getByLabel("ZIP").fill("98284");
+  await form.getByLabel("Price", { exact: true }).fill("1250000");
+  await form.getByLabel("Beds").fill("4");
+  await form.getByLabel("Baths").fill("3");
+  await form.getByLabel("Sq ft", { exact: true }).fill("2600");
+  await form.getByRole("button", { name: "Add listing" }).click();
+  await agent.waitForURL(/\/dashboard\/listings$/);
+  const row = agent.getByRole("list", { name: "Your listings" }).getByRole("listitem").filter({ hasText: LONG });
+  await expect(row).toContainText("On your profile");
+
+  // All of the address and the price line, on as many lines as they take:
+  // nothing clipped, nothing off the side of the screen.
+  const whole = (line: Locator) =>
+    line.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      return el.scrollWidth <= el.clientWidth && box.left >= 0 && box.right <= window.innerWidth;
+    });
+  const address = row.getByRole("heading", { name: LONG });
+  await expect(address).toBeVisible();
+  expect(await whole(address)).toBe(true);
+  // (It's too long for one line at this width, so it's on two or more.)
+  expect((await address.boundingBox())!.height).toBeGreaterThan(40);
+  expect(await whole(row.getByText("$1,250,000 · Sedro-Woolley"))).toBe(true);
+  expect(await agent.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  // Under the words: Send and Edit side by side, the star at the end; the same on a smaller phone.
+  const controls = [`Send ${LONG}`, `Edit ${LONG}`, `Feature ${LONG}`];
+  await expectOneLine(row, controls);
+  expect((await row.getByRole("link", { name: `Send ${LONG}` }).boundingBox())!.y).toBeGreaterThan(
+    (await address.boundingBox())!.y + (await address.boundingBox())!.height,
+  );
+  await agent.setViewportSize({ width: 360, height: 740 });
+  await expectOneLine(row, controls);
+  expect(await whole(address)).toBe(true);
+  expect(await agent.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  // What the star does is said once, above the rows.
+  await expect(agent.getByRole("main")).toContainText("The starred listing shows first on your profile.");
+
+  // Send: on to Send homes, with this listing already picked.
+  await agent.setViewportSize({ width: 390, height: 780 });
+  await row.getByRole("link", { name: `Send ${LONG}` }).click();
+  await agent.waitForURL(/\/dashboard\/new\?home=OWN-[\w-]+$/);
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send this home");
+  const picked = agent.getByRole("button", { pressed: true });
+  await expect(picked).toHaveCount(1);
+  await expect(picked).toContainText(LONG);
+  await expect(agent.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
+
+  // Closed, it stays on her profile (so it keeps its star), but a link takes only homes for sale: no Send.
+  await agent.goto("/dashboard/listings");
+  await row.getByRole("link", { name: `Edit ${LONG}` }).click();
+  await agent.waitForURL(/\/dashboard\/listings\/OWN-[\w-]+$/);
+  const details = agent.getByRole("form", { name: "Listing details" });
+  await details.getByText("Closed", { exact: true }).click();
+  await details.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(details.getByRole("status")).toHaveText("Saved");
+  await agent.goto("/dashboard/listings");
+  await expect(row).toContainText("Closed · On your profile");
+  await expect(row.getByRole("link", { name: `Send ${LONG}` })).toHaveCount(0);
+  await expect(row.getByRole("link", { name: `Edit ${LONG}` })).toBeVisible();
+  await expect(row.getByRole("button", { name: `Feature ${LONG}` })).toBeVisible();
 });

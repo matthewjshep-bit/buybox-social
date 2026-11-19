@@ -10,6 +10,7 @@ import { cn } from "@/lib/format";
 // what's typed. `onSend` gives back what went wrong, or nothing once it's
 // sent, and the box empties. `sent`: said under the box once it has, until
 // they type again. `ring`: ringed in amber, when something waits on them.
+// `autoFocus`: the box was asked for (a Reply button), so typing starts in it.
 export function InlineBox({
   me,
   agent = false,
@@ -18,6 +19,7 @@ export function InlineBox({
   sendLabel,
   sent,
   ring = false,
+  autoFocus = false,
   onSend,
   className,
 }: {
@@ -28,6 +30,7 @@ export function InlineBox({
   sendLabel: [idle: string, busy: string];
   sent?: string;
   ring?: boolean;
+  autoFocus?: boolean;
   onSend: (text: string) => Promise<string | null>;
   className?: string;
 }) {
@@ -66,6 +69,7 @@ export function InlineBox({
             value={body}
             rows={1}
             maxLength={1000}
+            autoFocus={autoFocus}
             placeholder={placeholder}
             aria-label={label}
             aria-invalid={error ? true : undefined}

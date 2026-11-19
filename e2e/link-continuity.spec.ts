@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, openComments, saveDetails, signInAgent, toFirstHome } from "./helpers";
+import { createShare, heartOf, homeIn, joinAs, openComments, pastNameStep, saveDetails, signInAgent, toFirstHome } from "./helpers";
 
 // A client's own link leads on to the rest of Porchcard and never ends in a
 // dead end: signed in, their menu and the bell are in the agent's header; a
@@ -267,6 +267,8 @@ test("privacy: what a client said on a link never shows to the next person signe
   await form.getByLabel("Email").fill(`ben-samebrowser.${stamp}@example.com`);
   await form.getByLabel("Test password").fill("e2e-test-password");
   await form.getByRole("button", { name: "Sign in" }).click();
+  // (New here, so asked his first name: skipped.)
+  await pastNameStep(page);
   await page.waitForURL((url) => url.pathname === "/");
 
   // None of what Ana said reaches him, on the home or full screen.

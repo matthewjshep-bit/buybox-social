@@ -1,10 +1,12 @@
 import { Heart, MessageCircle } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { Badge } from "@/components/ui";
 import { cn, formatPrice } from "@/lib/format";
 import type { ListingCounts } from "@/lib/listing-counts";
 import type { Listing } from "@/lib/listings/types";
 import type { ListingLayout } from "@/lib/own-listings";
+import { card, link } from "@/lib/ui";
 
 const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
@@ -42,7 +44,7 @@ export function ListingGrid({
       data-layout={layout}
       className={cn(
         list
-          ? "flex flex-col divide-y divide-stone-200 overflow-hidden rounded-2xl bg-white ring-1 ring-stone-200"
+          ? cn(card, "flex flex-col divide-y divide-stone-200 overflow-hidden")
           : cn("grid gap-x-2.5 gap-y-5", layout === "grid3" ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2"),
       )}
     >
@@ -150,7 +152,7 @@ function Tally({ likes, comments }: { likes: number; comments: number }) {
 
 // No longer available: sold, or the deal done.
 function Closed() {
-  return <span className="rounded-full bg-stone-900 px-2 py-0.5 text-tiny font-semibold text-white">Closed</span>;
+  return <Badge tone="ink">Closed</Badge>;
 }
 
 function EditLink({ href, address }: { href: string; address: string }) {
@@ -158,7 +160,7 @@ function EditLink({ href, address }: { href: string; address: string }) {
     <Link
       href={href}
       aria-label={`Edit ${address}`}
-      className="inline-flex min-h-11 shrink-0 items-center gap-1 px-0.5 text-sm font-semibold text-brand underline-offset-2 hover:underline"
+      className={cn(link, "inline-flex min-h-11 shrink-0 items-center gap-1 px-0.5 text-sm")}
     >
       Edit
     </Link>

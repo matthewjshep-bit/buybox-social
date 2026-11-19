@@ -323,10 +323,11 @@ function Face({
       </span>
     );
   }
-  // Their own photo, where they've added one: the face their page shows.
+  // Their own photo, where they've added one: the face their page shows
+  // (yours too, on what you did).
   const { who } = shown.event;
   const face =
-    who.photo && who.tone !== "you" ? (
+    who.photo ? (
       <MarkFace
         initial={who.name?.trim()[0]?.toUpperCase()}
         image={who.photo}

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Search, X } from "lucide-react";
+import { Check, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { findHomesToPost, type HomeToPost } from "@/app/homes/actions";
@@ -51,13 +51,13 @@ export function FindListing({ have }: { have: string[] }) {
   return (
     <div>
       <label className="relative block">
-        <span className="sr-only">Find it by address or MLS number</span>
+        <span className="sr-only">Find it by address, city, ZIP or MLS number</span>
         <Search aria-hidden size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-500" />
         <input
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Address or MLS #"
+          placeholder="Address, city, ZIP or MLS #"
           autoComplete="off"
           className="h-12 w-full rounded-full bg-stone-100 pl-11 pr-4 text-body text-ink placeholder:text-stone-500 focus:bg-white focus:outline-2 focus:outline-brand"
         />
@@ -106,6 +106,8 @@ export function FindListing({ have }: { have: string[] }) {
 }
 
 // Taking a found home off their Listings (the home itself is untouched).
+// Just the word, as Edit is on the other rows: with Send and the star beside
+// it, an icon too wouldn't fit a small phone.
 export function RemoveFound({ listingKey, address }: { listingKey: string; address: string }) {
   const [pending, startTransition] = useTransition();
   return (
@@ -114,9 +116,9 @@ export function RemoveFound({ listingKey, address }: { listingKey: string; addre
       disabled={pending}
       aria-label={`Remove ${address}`}
       onClick={() => startTransition(async () => void (await unpinListing(listingKey)))}
-      className={cn(button({ kind: "secondary" }), "shrink-0")}
+      className={cn(button({ kind: "secondary", size: "lg" }), "shrink-0")}
     >
-      <X aria-hidden size={16} /> {pending ? "Removing…" : "Remove"}
+      {pending ? "Removing…" : "Remove"}
     </button>
   );
 }

@@ -15,15 +15,14 @@ test("an agent's take before they send: a note and a like on the price, a dislik
 
   // Asked for on the link's page, before it's sent.
   const ask = agent.locator("[data-your-take]");
-  await expect(ask).toContainText("Add your take before you send");
-
-  await expect(ask).toContainText("Wren sees your notes on the link");
-  await ask.getByRole("link", { name: "Add your take" }).click();
+  // (One button, and no more words than its name.)
+  await expect(ask).toHaveText("Add your feedback");
+  await ask.getByRole("link", { name: "Add your feedback" }).click();
   await agent.waitForURL("**/s/*");
   await toFirstHome(agent);
   const home = homeIn(agent, "1204 Quillan St SE");
   await expect(home).toBeInViewport({ ratio: 0.9 });
-  await expect(agent.getByRole("banner")).toContainText("your notes for Wren");
+  await expect(agent.getByRole("banner")).toContainText("your feedback for Wren");
 
   // The price: a note, then a like. (A dislike is there too, as for anyone.)
   const price = home.locator('[data-fact="Price"]');
@@ -34,7 +33,7 @@ test("an agent's take before they send: a note and a like on the price, a dislik
   await expect(card.getByRole("button", { name: /^Dislike the price/ })).toBeVisible();
   await card.getByRole("button", { name: /^Add a note on the price/ }).click();
   const sheet = agent.getByRole("dialog", { name: "Comments" });
-  await expect(sheet.getByText("Everyone on this link sees your notes.")).toBeVisible();
+  await expect(sheet.getByText("Everyone on this link sees your feedback.")).toBeVisible();
   await sheet.getByLabel("Add a note on the price").fill("Priced under the last two sales on this street.");
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(sheet).toBeHidden();
@@ -200,32 +199,31 @@ test("the first time, a quick tour shows what to tap, step by step, and then get
   await page.waitForTimeout(2000);
   await expect(page.locator("[data-tour-open]")).toHaveCount(0);
 
-  // Browse homes, signed out: the same, once they're on the first home, and Skip ends it.
+  // Browse homes, signed out: the same, on the first home (which is where it
+  // opens: no form comes first), and Skip ends it.
   const guest = await (await browser.newContext()).newPage();
   await withTour(guest);
   await guest.goto("/reel");
-  await guest.waitForTimeout(1500);
-  await expect(guest.locator("[data-tour-open]")).toHaveCount(0);
-  await guest.locator("[data-reel]").evaluate((reel) => reel.scrollTo({ top: reel.clientHeight }));
+  await expect(guest.getByRole("article").first()).toBeInViewport({ ratio: 0.9 });
   const intro = guest.locator("[data-tour-open]");
   await expect(intro).toContainText("Tap any detail");
   await intro.getByRole("button", { name: "Skip" }).click();
   await expect(intro).toHaveCount(0);
   await guest.reload();
-  await guest.locator("[data-reel]").evaluate((reel) => reel.scrollTo({ top: reel.clientHeight }));
+  await expect(guest.getByRole("article").first()).toBeInViewport({ ratio: 0.9 });
   await guest.waitForTimeout(2000);
   await expect(guest.locator("[data-tour-open]")).toHaveCount(0);
 
-  // The agent's own link: how to add their take, ending on Done.
+  // The agent's own link: how to add their feedback, ending on Done.
   await withTour(agent);
   await agent.goto(url);
   await agent.getByRole("button", { name: "See the 2 homes" }).click();
   const theirs = agent.locator("[data-tour-open]");
-  await expect(theirs).toContainText("Add your take");
+  await expect(theirs).toContainText("Add your feedback");
   await theirs.getByRole("button", { name: "Next", exact: true }).click();
   await expect(theirs).toContainText("Point things out");
   await theirs.getByRole("button", { name: "Next", exact: true }).click();
-  await expect(theirs).toContainText("Rue sees your notes");
+  await expect(theirs).toContainText("Rue sees your feedback");
   await agent.keyboard.press("Escape");
   await expect(theirs).toHaveCount(0);
 });

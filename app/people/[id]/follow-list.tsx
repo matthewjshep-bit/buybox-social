@@ -1,7 +1,8 @@
 import { ArrowLeft, Users } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Avatar, EmptyState } from "@/components/ui";
+import { PersonRow } from "@/components/person-row";
+import { EmptyState } from "@/components/ui";
 import { getCurrentUser } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
 import { getFollowCounts, getFollowedIds, getFollowList } from "@/lib/follows";
@@ -10,7 +11,7 @@ import { getProfilePerson } from "@/lib/profile";
 import { getPublicIdentity } from "@/lib/public";
 import { ANONYMOUS_BUYER } from "@/lib/timeline";
 import { yourClientNames } from "@/lib/your-client";
-import { button, card } from "@/lib/ui";
+import { backLink, button, card, pageColumn, pageTitle, tab as tabClass } from "@/lib/ui";
 import { FollowButton } from "./client";
 
 type Which = "followers" | "following";
@@ -23,7 +24,10 @@ const calledBy =
     person.name.trim() || clients.get(person.id) || (person.isAgent ? "An agent" : ANONYMOUS_BUYER);
 
 // Someone's followers, or the people they follow, newest first: each to their
-// page, with Follow beside them for whoever's looking (never beside themselves).
+// page (the same row as Search's people: an agent by their whole name, with
+// "Agent" and their company), with Follow beside them for whoever's looking
+// (never beside themselves). Your own empty Following list offers the way to
+// find people.
 export async function FollowListPage({ id, which }: { id: string; which: Which }) {
   if (id.length > 64) notFound();
   const person = await getProfilePerson(id);
@@ -32,17 +36,18 @@ export async function FollowListPage({ id, which }: { id: string; which: Which }
   const { visitor } = await getPublicIdentity(account?.role ? account : null, device);
   const isMe = visitor?.id === person.id;
   const [list, counts, mine] = await Promise.all([
-    getFollowList(person.id, which),
-    getFollowCounts(person.id),
+    // (Told who's looking: an agent's clients show only to the two of them.)
+    getFollowList(person.id, which, visitor?.id ?? null),
+    getFollowCounts(person.id, visitor?.id ?? null),
     getFollowedIds(visitor?.id),
   ]);
   // An agent's own clients, among them (or whose page this is), by name.
-  const called = calledBy(
+  const calledAs = calledBy(
     account?.role === "agent"
       ? await yourClientNames(account.id, [person.id, ...list.map((someone) => someone.id)])
       : new Map(),
   );
-  const name = called(person);
+  const name = calledAs(person);
   const title =
     which === "followers"
       ? isMe
@@ -58,21 +63,18 @@ export async function FollowListPage({ id, which }: { id: string; which: Which }
   ];
 
   return (
-    <main className="mx-auto max-w-xl px-4 pb-16 pt-4">
-      <Link href={`/people/${person.id}`} className="flex min-h-11 w-fit items-center gap-1.5 text-sm font-medium">
-        <ArrowLeft aria-hidden size={16} /> {isMe ? "Your profile" : name}
+    <main className={pageColumn()}>
+      <Link href={`/people/${person.id}`} className={backLink}>
+        <ArrowLeft aria-hidden size={18} /> {isMe ? "Your profile" : name}
       </Link>
-      <h1 className="font-display text-3xl">{title}</h1>
+      <h1 className={cn(pageTitle, "mt-2")}>{title}</h1>
       <nav aria-label="Followers and following" className="mt-3 flex gap-1 border-b border-stone-200">
         {tabs.map((tab) => (
           <Link
             key={tab.key}
             href={`/people/${person.id}/${tab.key}`}
             aria-current={tab.key === which ? "page" : undefined}
-            className={cn(
-              "-mb-px flex min-h-11 items-center gap-1.5 border-b-2 px-3 text-sm font-semibold",
-              tab.key === which ? "border-stone-900 text-ink" : "border-transparent text-stone-600 hover:text-ink",
-            )}
+            className={cn(tabClass(tab.key === which), "-mb-px")}
           >
             <span className="tabular-nums">{tab.count}</span> {tab.label}
           </Link>
@@ -94,33 +96,40 @@ export async function FollowListPage({ id, which }: { id: string; which: Which }
           }
           action={
             isMe && which === "following" ? (
-              <Link href="/reel" className={button({ kind: "primary" })}>
-                See homes
+              <Link href="/search/people" className={button({ kind: "primary" })}>
+                Find people
               </Link>
             ) : undefined
           }
         />
       ) : (
         <ul aria-label={title} className={cn(card, "mt-4 divide-y divide-stone-100")}>
-          {list.map((someone) => (
-            <li key={someone.id} className="flex items-center gap-3 p-3">
-              <Avatar name={someone.name} tone={someone.isAgent ? "agent" : "person"} size={10} photo={someone.photo} />
-              <Link href={`/people/${someone.id}`} className="min-w-0 flex-1 underline-offset-2 hover:underline">
-                <span className="block truncate font-semibold">{called(someone)}</span>
-                {someone.isAgent && <span className="block text-sm text-muted">Agent</span>}
-              </Link>
-              {someone.id !== visitor?.id && (
-                <FollowButton
-                  small
-                  stay
-                  personId={someone.id}
-                  name={called(someone)}
-                  following={mine.has(someone.id)}
-                  signIn={signIn}
-                />
-              )}
-            </li>
-          ))}
+          {list.map((someone) => {
+            const called = someone.agentName || calledAs(someone);
+            return (
+              <PersonRow
+                key={someone.id}
+                href={`/people/${someone.id}`}
+                name={called}
+                face={someone.name}
+                photo={someone.photo}
+                agent={someone.isAgent}
+                line={someone.brokerage ?? undefined}
+                action={
+                  someone.id !== visitor?.id && (
+                    <FollowButton
+                      small
+                      stay
+                      personId={someone.id}
+                      name={called}
+                      following={mine.has(someone.id)}
+                      signIn={signIn}
+                    />
+                  )
+                }
+              />
+            );
+          })}
         </ul>
       )}
     </main>

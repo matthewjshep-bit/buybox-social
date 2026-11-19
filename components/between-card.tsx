@@ -1,9 +1,9 @@
 import { ChevronRight, Lock, MessageCircle } from "lucide-react";
 import Link from "next/link";
-import { ago, street } from "@/components/client-status";
+import { street } from "@/components/client-status";
 import { HomeThumb } from "@/components/ui";
 import type { BetweenLink } from "@/lib/between";
-import { cn } from "@/lib/format";
+import { cn, whenWords } from "@/lib/format";
 import { card } from "@/lib/ui";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -16,10 +16,10 @@ function headlineOf(link: BetweenLink, first: string) {
   return `You're both on ${link.agentFirst}'s link`;
 }
 
-// "Nov 3 · 2 new", "Liked 2 of 3", in small words under it.
+// "Sent 3 days ago · 2 new · Jenny liked 2", in small words under it.
 function metaOf(link: BetweenLink, first: string) {
   return [
-    `Sent ${ago(link.sentAt)}`,
+    `Sent ${whenWords(link.sentAt)}`,
     link.kind === "together" && plural(link.homes, "home"),
     link.unrated > 0 && `${link.unrated} new`,
     link.kind !== "from" && link.theyLiked > 0 && `${first} liked ${link.theyLiked}`,
@@ -73,7 +73,7 @@ export function BetweenCard({
                       <strong className="font-semibold">{first}:</strong> “{link.said.body}”
                       <span className="text-meta text-muted">
                         {" "}
-                        · {street(link.said.address)} · {ago(link.said.at)}
+                        · {street(link.said.address)} · {whenWords(link.said.at)}
                       </span>
                     </span>
                   </span>

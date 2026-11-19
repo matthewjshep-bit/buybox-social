@@ -1,14 +1,14 @@
 "use client";
 
 import { ArrowLeft, ArrowRight, Check, Plus, Search, X } from "lucide-react";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { PeoplePicker, typed, type Chosen } from "@/components/people-picker";
 import { HomeThumb } from "@/components/ui";
-import { cn, formatPrice } from "@/lib/format";
+import { cn, formatPrice, placeWords } from "@/lib/format";
 import type { Listing } from "@/lib/listings/types";
 import { addressFromLink, looksLikeLink } from "@/lib/listing-link";
 import { peopleTitle } from "@/lib/people-picker";
-import { button, card as cardClass, field } from "@/lib/ui";
+import { backLink, button, card as cardClass, field, groupLabel, pageTitle } from "@/lib/ui";
 import { addHomesToShare, createShare, suggestHomes } from "../actions";
 
 const MAX_LISTINGS = 3;
@@ -33,6 +33,7 @@ export function ShareBuilder({
   peer = false,
   addTo,
   start,
+  aside,
 }: {
   heading: string;
   intro: string;
@@ -47,6 +48,9 @@ export function ShareBuilder({
   // A home already picked (sent from the home itself): just who it's for, and
   // a note, until they ask for another home.
   start?: Listing;
+  // Something quiet at the top of the first step, where Back is on the next:
+  // the way to the homes they've sent before.
+  aside?: ReactNode;
 }) {
   const [query, setQuery] = useState("");
   const [step, setStep] = useState<Step>("home");
@@ -254,12 +258,12 @@ export function ShareBuilder({
             <button
               type="button"
               onClick={() => go(steps[at - 1])}
-              className="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 text-sm font-medium hover:bg-black/5"
+              className={backLink}
             >
-              <ArrowLeft aria-hidden size={16} /> Back
+              <ArrowLeft aria-hidden size={18} /> Back
             </button>
           ) : (
-            <span className="min-h-11" />
+            aside || <span className="min-h-11" />
           )}
           <p className="ml-auto text-sm font-semibold text-stone-600">
             Step {at + 1} of {STEPS}
@@ -271,7 +275,7 @@ export function ShareBuilder({
           </ol>
         </div>
       )}
-      <h1 ref={heading_} tabIndex={-1} className="font-display text-3xl outline-none">
+      <h1 ref={heading_} tabIndex={-1} className={cn(pageTitle, "outline-none")}>
         {titles[step]}
       </h1>
 
@@ -336,7 +340,7 @@ export function ShareBuilder({
                   id="home-suggestions"
                   role="listbox"
                   aria-label="Homes that match"
-                  className="mt-2 overflow-hidden rounded-2xl bg-white py-1 ring-1 ring-stone-200"
+                  className={cn(cardClass, "mt-2 overflow-hidden py-1")}
                 >
                   {options.map((home, i) => (
                     <li
@@ -379,7 +383,7 @@ export function ShareBuilder({
                 shown.length === 0 &&
                 groups.map((group) => (
                   <section key={group.title} aria-label={group.title} className="mt-6">
-                    <h2 className="px-1 text-meta font-semibold text-muted">{group.title}</h2>
+                    <h2 className={groupLabel}>{group.title}</h2>
                     <ul className="mt-2 grid gap-3 sm:grid-cols-2">{group.homes.map(card)}</ul>
                   </section>
                 ))}
@@ -455,15 +459,22 @@ export function ShareBuilder({
 }
 
 // An address with the part that was typed in ink, the rest a shade lighter,
-// so the eye lands on why it matched.
+// so the eye lands on why it matched. Several words typed ("lakeview mercer",
+// or the street with its city after a comma): as many of them from the start
+// as the address has together, or else the first of them it has at all.
 function Matched({ text, part }: { text: string; part: string }) {
-  const at = part ? text.toLowerCase().indexOf(part.toLowerCase()) : -1;
+  const address = text.toLowerCase();
+  const words = placeWords(part.toLowerCase());
+  // ("5902 lakeview terrace se mercer island", then one word fewer each time.)
+  const runs = words.map((_, i) => words.slice(0, words.length - i).join(" "));
+  const marked = [...runs, ...words].find((word) => address.includes(word)) ?? "";
+  const at = marked ? address.indexOf(marked) : -1;
   if (at < 0) return <>{text}</>;
   return (
     <>
       <span className="font-normal text-stone-600">{text.slice(0, at)}</span>
-      {text.slice(at, at + part.length)}
-      <span className="font-normal text-stone-600">{text.slice(at + part.length)}</span>
+      {text.slice(at, at + marked.length)}
+      <span className="font-normal text-stone-600">{text.slice(at + marked.length)}</span>
     </>
   );
 }

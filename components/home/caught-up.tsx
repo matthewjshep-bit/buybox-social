@@ -1,6 +1,5 @@
 import { CheckCircle2 } from "lucide-react";
 import type { ReactNode } from "react";
-import { dayName, daysBefore, dayOf, PROFILE_TIME_ZONE } from "@/lib/profile";
 
 // "You're all caught up": where what's new ends, so a feed has a place to stop
 // rather than going on forever. A rule either side, a tick, and a line more.
@@ -22,16 +21,4 @@ export function CaughtUp({
       <span aria-hidden className="h-px flex-1 bg-stone-300" />
     </div>
   );
-}
-
-// "since Tuesday", "since yesterday", "since November 4": when they last looked.
-export function sinceWords(at: string, now: number = Date.now()) {
-  const day = dayOf(at);
-  const days = daysBefore(day, now);
-  if (days <= 0) return "since earlier today";
-  if (days === 1) return "since yesterday";
-  if (days < 7) {
-    return `since ${new Date(at).toLocaleDateString("en-US", { weekday: "long", timeZone: PROFILE_TIME_ZONE })}`;
-  }
-  return `since ${dayName(day, now)}`;
 }

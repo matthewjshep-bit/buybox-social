@@ -5,7 +5,7 @@ import { requireAgent } from "@/lib/auth";
 import { cn } from "@/lib/format";
 import { getOwnListing, OWN_PHOTOS_MOST, OWN_VIDEOS_MOST, photosOf, VIDEO_MOST_BYTES, videosOf } from "@/lib/own-listings";
 import { supabaseConfigured } from "@/lib/supabase/server";
-import { button, card } from "@/lib/ui";
+import { backLink, button, card, pageTitle } from "@/lib/ui";
 import { ListingForm } from "../form";
 import { DeleteListing, ListingPhotos, ListingVideos } from "../photos";
 
@@ -23,11 +23,11 @@ export default async function EditListingPage({ params }: { params: Promise<{ ke
   const shown = active && photosOf(listing).length > 0;
   return (
     <>
-      <Link href="/dashboard/listings" className="-ml-2 inline-flex min-h-11 items-center gap-2 rounded-full px-2 font-medium hover:bg-black/5">
+      <Link href="/dashboard/listings" className={backLink}>
         <ArrowLeft aria-hidden size={18} /> Listings
       </Link>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="min-w-0 break-words font-display text-3xl">{listing.UnparsedAddress}</h1>
+        <h1 className={cn(pageTitle, "min-w-0")}>{listing.UnparsedAddress}</h1>
         {shown && (
           <Link href={`/homes/${encodeURIComponent(listing.ListingKey)}`} className={cn(button({ kind: "secondary" }), "shrink-0")}>
             <ExternalLink aria-hidden size={16} /> View

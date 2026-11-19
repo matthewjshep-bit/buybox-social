@@ -1,16 +1,17 @@
-import { Compass } from "lucide-react";
+import { Images } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { cn, formatPrice } from "@/lib/format";
 import type { FeedPost } from "@/lib/feed";
 import { button } from "@/lib/ui";
 
-// "More homes for you": homes picked by their taste, as a board of photos at
+// "Homes for you": homes picked by their taste, as a board of photos at
 // their own shapes, two columns, filled left, right, left, right in the order
 // they were picked (so the first is top left, and the reel they open goes in
 // that same order). On a phone, one column in that order, each photo as wide
 // as the page. Each says why it's here, when there's a reason, and opens
-// them all full screen on that one. Then the way to every home.
+// them all full screen on that one. Then the way to every home, under the
+// bar's own picture for it.
 
 // Photos keep their shape, between a little taller than wide and a little wider.
 const ratioOf = (width?: number, height?: number) =>
@@ -59,13 +60,10 @@ function Pin({ post, eager }: { post: FeedPost; eager: boolean }) {
 export function PicksMasonry({ picks }: { picks: FeedPost[] }) {
   const columns = [picks.filter((_, i) => i % 2 === 0), picks.filter((_, i) => i % 2 === 1)];
   return (
-    <section aria-labelledby="more-homes-title" className="flex flex-col gap-3">
-      <div className="px-1">
-        <h2 id="more-homes-title" className="text-[17px] font-semibold">
-          More homes for you
-        </h2>
-
-      </div>
+    <section aria-labelledby="homes-for-you-title" className="flex flex-col gap-3">
+      <h2 id="homes-for-you-title" className="px-1 text-[17px] font-semibold">
+        Homes for you
+      </h2>
       {picks.length > 0 && (
         <ul className="flex min-w-0 flex-col gap-5 sm:hidden">
           {picks.map((post, i) => (
@@ -84,8 +82,8 @@ export function PicksMasonry({ picks }: { picks: FeedPost[] }) {
           ))}
         </div>
       )}
-      <Link href="/reel" className={cn(button({ kind: "secondary" }), "mx-auto mt-1")}>
-        <Compass aria-hidden size={17} /> Browse homes
+      <Link href="/browse" className={cn(button({ kind: "secondary" }), "mx-auto mt-1")}>
+        <Images aria-hidden size={17} /> Browse homes
       </Link>
     </section>
   );

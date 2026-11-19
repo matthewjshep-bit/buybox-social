@@ -1,10 +1,10 @@
-import { ArrowLeft, Check, ChevronRight, Clock, Globe, Heart, PenLine, Plus, Tag, ThumbsDown } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, Clock, Globe, Heart, Home, PenLine, Plus, Tag, ThumbsDown } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { LiveRefresh } from "@/components/live-refresh";
 import { CommentBubble } from "@/components/comment-bubble";
-import { Avatar, Badge, HomeThumb } from "@/components/ui";
+import { Avatar, Badge, EmptyState, HomeThumb } from "@/components/ui";
 import { requireAgent } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { headlineFromTimeline, type FeedPost } from "@/lib/feed";
@@ -12,6 +12,7 @@ import { appUrl, cn, formatPrice, namesList, timeAgo } from "@/lib/format";
 import { aspectOfTag, FACTS, mediaKeyOf, NO_PHOTO_LIKES, photoTags, tagPosition, thingOf } from "@/lib/photos";
 import { aspectLabel, NO_REACTION, type Aspect, type ReactionState } from "@/lib/reactions";
 import { comparePeople, suggestHomes, type Suggestion } from "@/lib/compare";
+import { getClientBook } from "@/lib/clients";
 import { photoUrl } from "@/lib/person-photo";
 import { getSharePhotoLikes, getShareTimelines, type TimelineReaction } from "@/lib/timeline";
 import {
@@ -33,7 +34,7 @@ import {
   type TakeMark,
   type ThreadComment,
 } from "@/lib/shares";
-import { button, card } from "@/lib/ui";
+import { backLink, button, card, link as linkClass, pageTitle, sectionTitle, tab as tabClass } from "@/lib/ui";
 import { addSuggestedHome } from "../../actions";
 import { Opened } from "../../opened";
 import {
@@ -61,19 +62,30 @@ type Thread = Awaited<ReturnType<typeof getThread>>;
 const key = (thing: string) => thing.toLowerCase();
 const uniq = (things: string[]) => things.filter((thing, i) => things.findIndex((t) => key(t) === key(thing)) === i);
 
-// A client's page, one part at a time: the homes and what was said about
-// them; what they want, and homes to send them next; and the people on it,
-// each with their own link to send, and what it opens on.
+// A link's page, one part at a time: the homes and what was said about
+// them; what they want, and homes to send them next (once someone has liked
+// or passed on one: until then there's nothing to say); and the people on
+// it, each with their own link to send, and what it opens on. (Short names:
+// the three, with their counts, fit across a phone without scrolling.)
 const TABS = [
   { key: "homes", label: "Homes" },
-  { key: "want", label: "What they want" },
+  { key: "want", label: "Wants" },
   { key: "people", label: "People & link" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
 
-// Everything one client has told this agent. At the top, who it's for and how
-// it's going; then the part they asked for. Until it's been opened it starts
-// on sending it, after that on the homes.
+// The tab says which link: who it's for, or its first home.
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const agent = await requireAgent();
+  const { id } = await params;
+  const { links } = await getClientBook(agent.id);
+  return { title: `${links.find((link) => link.shareId === id)?.title ?? "Link"} · Porchcard` };
+}
+
+// Everything one client has told this agent. At the top, the way back (to the
+// client it belongs to, or to Links), who it's for and how it's going; then
+// the part they asked for. Until it's been opened it starts on sending it,
+// after that on the homes.
 export default async function ShareDetailPage({
   params,
   searchParams,
@@ -91,7 +103,7 @@ export default async function ShareDetailPage({
     where id = ${id} and agent_id = ${agent.id}`;
   if (!share) notFound();
 
-  const [listings, thread, people, opens, [{ latest }], confidant, [take], views, others, [me]] = await Promise.all([
+  const [listings, thread, people, opens, [{ latest }], confidant, [take], views, others, [me], book] = await Promise.all([
     getShareListings(share.id, true),
     getThread(share.id),
     // Everyone on the package: people the agent added, in the order they did,
@@ -149,8 +161,14 @@ export default async function ShareDetailPage({
       select v.id as visitor_id, left(md5(a.photo_data_url), 10) as photo_v
       from accounts a left join visitors v on v.account_id = a.id
       where a.id = ${agent.id}`,
+    // Whose link it is, for the way back. (Read once, with the tab's title.)
+    getClientBook(agent.id),
   ]);
   const agentPhoto = me?.visitor_id ? photoUrl(me.visitor_id, me.photo_v) : null;
+  // Back goes to the client this link belongs to; with nobody on it, or more
+  // than one client, to all the links.
+  const owners = book.clients.filter((client) => client.links.some((link) => link.shareId === share.id));
+  const back = owners.length === 1 ? { href: owners[0].href, label: owners[0].name } : { href: "/dashboard/links", label: "Links" };
   const lastOpen = opens.reduce<string | null>((at, open) => (!at || open.lastAt > at ? open.lastAt : at), null);
   const tab = TABS.find((t) => t.key === asked)?.key;
   const tabHref = (key: Tab) => `/dashboard/shares/${share.id}?tab=${key}`;
@@ -190,6 +208,11 @@ export default async function ShareDetailPage({
   const photosLooked = Math.min(photos, Math.max(0, ...opens.map((open) => open.photosSeen)));
   const viewOf = (listingKey: string) => views.get(homeViewKey(share.id, listingKey));
   const seconds = active.reduce((sum, listing) => sum + (viewOf(listing.ListingKey)?.seconds ?? 0), 0);
+  // Never opened, and nothing done on it (a link from before opens were
+  // counted can have likes with no open).
+  const untouched = !lastOpen && likedHomes + passedHomes === 0 && seconds === 0;
+  // Someone has liked or passed on a home ever sent on it, even one since removed.
+  const reacted = listings.some((listing) => homeVerdict(listing.ListingKey, thread) !== null);
   // Each home as its Porchcard needs it, from this link alone: never anything
   // public, and nobody from any other link.
   // (Without when it was taken off the link: the card shows the listing alone.)
@@ -227,18 +250,18 @@ export default async function ShareDetailPage({
         <HomeMovedStatus />
         <MarkSeen shareId={share.id} latest={latest} />
         <ShowTarget />
-        <Link href="/dashboard" className="flex min-h-11 w-fit items-center gap-1.5 text-sm font-medium">
-          <ArrowLeft aria-hidden size={16} /> All clients
+        <Link href={back.href} className={backLink}>
+          <ArrowLeft aria-hidden size={18} /> {back.label}
         </Link>
 
         {/* Who it's for, and the one thing to do next: send them more. */}
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-          <h1 className="mt-1 min-w-0 break-words font-display text-3xl">{clientName}</h1>
+          <h1 className={cn(pageTitle, "mt-1 min-w-0")}>{clientName}</h1>
           <Link
             href={`/dashboard/new?share=${share.id}`}
-            className={cn(button({ kind: "primary" }), "mt-1 shrink-0 whitespace-nowrap")}
+            className={cn(button({ kind: "primary", size: "lg" }), "mt-1 shrink-0 whitespace-nowrap")}
           >
-            <Plus aria-hidden size={16} /> Send more homes
+            <Plus aria-hidden size={20} /> Send more homes
           </Link>
         </div>
         {people.length > 0 && (
@@ -251,7 +274,7 @@ export default async function ShareDetailPage({
               </span>
             ))}{" "}
             ·{" "}
-            <Link href={tabHref("people")} scroll={false} className="font-medium text-brand underline-offset-2 hover:underline">
+            <Link href={tabHref("people")} scroll={false} className={linkClass}>
               Edit<span className="sr-only"> who is on this link</span>
             </Link>
           </p>
@@ -263,7 +286,7 @@ export default async function ShareDetailPage({
               <Link
                 key={other.id}
                 href={`/dashboard/shares/${other.id}`}
-                className="rounded-full bg-white px-3 py-1.5 font-medium ring-1 ring-stone-200 hover:ring-stone-400"
+                className={button({ kind: "secondary" })}
               >
                 {other.created_at.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Los_Angeles" })}{" "}
                 · {other.homes === 1 ? "1 home" : `${other.homes} homes`}
@@ -272,21 +295,34 @@ export default async function ShareDetailPage({
           </nav>
         )}
 
-        <dl aria-label="At a glance" className="mt-4 grid grid-cols-2 gap-2 @2xl:grid-cols-4">
-          <Glance label="Last opened" warn={!lastOpen}>
-            {lastOpen ? <Opened at={lastOpen} bare /> : "Not yet"}
-          </Glance>
-          <Glance label={active.length === 1 ? "The home sent" : `${active.length} homes sent`}>
-            {likedHomes + passedHomes === 0
-              ? "No reactions yet"
-              : [likedHomes > 0 && `${likedHomes} liked`, passedHomes > 0 && `${passedHomes} passed`].filter(Boolean).join(" · ")}
-          </Glance>
-          <Glance label="Photos seen">{photos ? `${photosLooked} of ${photos}` : "None yet"}</Glance>
-          <Glance label="Time spent">{seconds > 0 ? duration(seconds) : "None yet"}</Glance>
-        </dl>
+        {untouched ? (
+          // Nothing to count yet: one line says so, in place of four boxes
+          // each saying "nothing".
+          <dl aria-label="At a glance" className="mt-4">
+            <dt className="sr-only">Last opened</dt>
+            <dd className="font-semibold text-amber-900">Not opened yet</dd>
+          </dl>
+        ) : (
+          <dl aria-label="At a glance" className="mt-4 grid grid-cols-2 gap-2 @2xl:grid-cols-4">
+            <Glance label="Last opened" warn={!lastOpen}>
+              {lastOpen ? <Opened at={lastOpen} bare /> : "Not yet"}
+            </Glance>
+            <Glance label={active.length === 1 ? "The home sent" : `${active.length} homes sent`}>
+              {likedHomes + passedHomes === 0
+                ? "No reactions yet"
+                : [likedHomes > 0 && `${likedHomes} liked`, passedHomes > 0 && `${passedHomes} passed`]
+                    .filter(Boolean)
+                    .join(" · ")}
+            </Glance>
+            <Glance label="Photos seen">{photos ? `${photosLooked} of ${photos}` : "None yet"}</Glance>
+            <Glance label="Time spent">{seconds > 0 ? duration(seconds) : "None yet"}</Glance>
+          </dl>
+        )}
 
         <nav aria-label="Parts of this page" className="mt-6 flex gap-1 overflow-x-auto border-b border-stone-200">
-          {TABS.map((t) => {
+          {/* "Wants" comes once there's something in it (or when
+              it's the part that was asked for). */}
+          {TABS.filter((t) => t.key !== "want" || reacted || tab === "want").map((t) => {
             const count = t.key === "homes" ? active.length : t.key === "people" ? people.length : null;
             return (
               <Link
@@ -294,10 +330,7 @@ export default async function ShareDetailPage({
                 href={tabHref(t.key)}
                 scroll={false}
                 aria-current={t.key === tab ? "page" : undefined}
-                className={cn(
-                  "-mb-px flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 text-sm font-semibold",
-                  t.key === tab ? "border-stone-900 text-ink" : "border-transparent text-stone-600 hover:text-ink",
-                )}
+                className={cn(tabClass(t.key === tab), "-mb-px")}
               >
                 {t.label}
                 {count !== null && count > 0 && (
@@ -314,9 +347,7 @@ export default async function ShareDetailPage({
               Homes you sent
             </h2>
             {active.length === 0 ? (
-              <p className={cn(card, "p-6 text-center text-stone-700")}>
-                No homes on this link.
-              </p>
+              <EmptyState icon={Home} title="No homes on this link." />
             ) : (
               <div className="flex flex-col gap-4">
                 {active.map((listing) => (
@@ -335,11 +366,11 @@ export default async function ShareDetailPage({
             )}
             {removed.length > 0 && (
               <section aria-labelledby="removed-title" className="mt-10">
-                <h2 id="removed-title" className="font-display text-2xl">
+                <h2 id="removed-title" className={sectionTitle}>
                   Removed from their link
                 </h2>
                 <p className="text-sm text-stone-700">
-                  {share.client_name || "Your client"} can&apos;t see these anymore. What they said about them still counts.
+                  {share.client_name || "Your client"} can&apos;t see these anymore.
                 </p>
                 <div className="mt-3 flex flex-col gap-4">
                   {removed.map((listing) => (
@@ -362,7 +393,7 @@ export default async function ShareDetailPage({
         {tab === "want" && (
           <>
             <WhatTheyWant
-              clientName={clientName}
+              clientName={share.client_name.trim()}
               comparison={comparison}
               homeCount={listings.length}
               thread={thread}
@@ -382,12 +413,9 @@ export default async function ShareDetailPage({
         {tab === "people" && (
           <>
             <section aria-labelledby="links-title" className="mt-5">
-              <h2 id="links-title" className="font-display text-2xl">
+              <h2 id="links-title" className={sectionTitle}>
                 People on this link
               </h2>
-              <p className="text-sm text-stone-700">
-                Everyone gets their own link.
-              </p>
               <ul className="mt-3 flex flex-col gap-3">
                 {invitees.map((person) => (
                   <li key={person.id} className={cn(card, "p-4")}>
@@ -452,7 +480,7 @@ export default async function ShareDetailPage({
                     says who opened it. */}
                 {invitees.length > 0 && packageOpens.length > 0 && (
                   <li className={cn(card, "p-4 text-sm")}>
-                    <p className="font-semibold">The link you sent first</p>
+                    <p className="font-semibold">Opened before you added names</p>
                     <p className="mt-0.5 text-muted">
                       <OpenedBy opens={packageOpens} photos={photos} />
                     </p>
@@ -470,7 +498,7 @@ export default async function ShareDetailPage({
 
             {active.length > 0 && (
               <section aria-labelledby="opens-on-title" className="mt-10">
-                <h2 id="opens-on-title" className="font-display text-2xl">
+                <h2 id="opens-on-title" className={sectionTitle}>
                   Welcome note
                 </h2>
                 <div className="mt-3">
@@ -488,7 +516,6 @@ export default async function ShareDetailPage({
                     <YourTake
                       // Their link, as the first of them will see it.
                       href={`/s/${invitees[0]?.token ?? share.token}`}
-                      who={invitees.length === 1 ? invitees[0].first_name : share.client_name || "your client"}
                       notes={take.notes}
                       likes={take.likes}
                       dislikes={take.dislikes}
@@ -541,7 +568,7 @@ function PersonHeader({
         <p className="flex flex-wrap items-baseline gap-x-2">
           <span className="font-semibold">{person.first_name}</span>
           {profile ? (
-            <Link href={profile} className="text-sm font-medium text-brand underline-offset-2 hover:underline">
+            <Link href={profile} className={cn(linkClass, "text-sm")}>
               View profile<span className="sr-only"> of {person.first_name}</span>
             </Link>
           ) : (
@@ -596,19 +623,17 @@ function homeVerdict(listingKey: string, thread: Thread): "like" | "pass" | null
 }
 
 
-// The agent's first pass, before the link goes out (or after): their notes,
+// The agent's feedback, before the link goes out (or after): their notes,
 // likes and dislikes on the price, a room, anything, which everyone on the link sees
 // as theirs. Optional, so asked for, not required; once there, a line to add
 // more. It opens the link as their client sees it, to tap things there.
 function YourTake({
   href,
-  who,
   notes,
   likes,
   dislikes,
 }: {
   href: string;
-  who: string;
   notes: number;
   likes: number;
   dislikes: number;
@@ -625,7 +650,7 @@ function YourTake({
       <div className={cn(card, "mb-3 flex items-center gap-3 p-3 pl-4")}>
         <Check aria-hidden size={18} className="shrink-0 text-emerald-700" />
         <p className="min-w-0 flex-1 text-sm">
-          <span className="font-semibold">Your take is on it.</span>{" "}
+          <span className="font-semibold">Your feedback is on it.</span>{" "}
           <span className="text-muted">{said}</span>
         </p>
         <Link href={href} className={cn(button({ kind: "secondary" }), "shrink-0")}>
@@ -635,18 +660,12 @@ function YourTake({
     );
   }
   return (
-    <div data-your-take className={cn(card, "mb-3 p-4")}>
-      <div className="flex items-start gap-3">
-        <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
-          <PenLine size={18} />
-        </span>
-        <div className="min-w-0">
-          <p className="font-semibold">Add your take before you send</p>
-          <p className="mt-1 text-sm text-muted">{who.charAt(0).toUpperCase() + who.slice(1)} sees your notes on the link.</p>
-        </div>
-      </div>
-      <Link href={href} className={cn(button({ kind: "primary", block: true }), "mt-3")}>
-        <PenLine aria-hidden size={16} /> Add your take
+    // (One button, by the name the last step of sending gives it: the link
+    // itself says who sees what they add. Quieter than sending the link,
+    // which is what this page is for.)
+    <div data-your-take className="mb-3">
+      <Link href={href} className={button({ kind: "secondary", block: true })}>
+        <PenLine aria-hidden size={16} /> Add your feedback
       </Link>
     </div>
   );
@@ -759,6 +778,7 @@ function WhatTheyWant({
   thread,
   profiles,
 }: {
+  // Who the link is for; empty with no name on it yet.
   clientName: string;
   comparison: ReturnType<typeof comparePeople>;
   homeCount: number;
@@ -768,6 +788,9 @@ function WhatTheyWant({
 }) {
   const { summaries, homes, likers, both, only } = comparison;
   const several = summaries.length >= 2;
+  // Whose it is, in the heading: the one person on it, else the link's name.
+  // A link with no name on it isn't a person: "What they want".
+  const who = summaries[0]?.person.name.trim() || clientName;
   // The table's cells, plus what each person didn't like in a home's photos
   // and facts, so a pass says why, and the spots they tapped that aren't on
   // anything named ("A spot in the kitchen", "2 spots outside").
@@ -808,8 +831,8 @@ function WhatTheyWant({
       : `${namesList(names)} ${likers.length === 2 ? "both" : "all"} like`;
   return (
     <section aria-labelledby="profile-title" className={cn(card, "@container mt-6 p-5")}>
-      <h2 id="profile-title" className="font-display text-2xl">
-        {several ? "What they each want" : `What ${summaries[0]?.person.name ?? clientName} wants`}
+      <h2 id="profile-title" className={sectionTitle}>
+        {several ? "What they each want" : who ? `What ${who} wants` : "What they want"}
       </h2>
       {heard.length === 0 ? (
         <p className="mt-1 text-stone-700">
@@ -1049,7 +1072,7 @@ function Suggestions({
     );
   return (
     <section aria-labelledby="suggest-title" className={cn(card, "mt-6 p-5")}>
-      <h2 id="suggest-title" className="font-display text-2xl">
+      <h2 id="suggest-title" className={sectionTitle}>
         {together ? `Homes ${people.length === 2 ? "they might both" : "they might all"} like` : `Homes ${people[0] ?? "they"} might like`}
       </h2>
       <p className="text-sm text-muted">From what they&apos;ve liked so far.</p>

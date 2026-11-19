@@ -50,3 +50,18 @@ export function Opened({ at, name, bare = false }: { at: string; name?: string |
   );
   return <time dateTime={at}>{text}</time>;
 }
+
+// When a link was sent, to the minute, for telling apart two that would
+// otherwise read the same: "Sent today, 2:14 pm", "Sent Nov 3, 2:14 pm".
+export function Sent({ at }: { at: string }) {
+  const label = (timeZone?: string) => {
+    const { today, text } = when(at, timeZone);
+    return `Sent ${today ? "today, " : ""}${text}`;
+  };
+  const text = useSyncExternalStore(
+    never,
+    () => label(),
+    () => label(FIRST_ZONE),
+  );
+  return <time dateTime={at}>{text}</time>;
+}

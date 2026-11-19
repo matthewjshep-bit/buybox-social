@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { heartOf, homeIn, openMore, signUpBuyer } from "./helpers";
+import { createShare, heartOf, homeIn, joinAs, openMore, signInAgent, signUpBuyer } from "./helpers";
 
 const saved = (page: Page) =>
   page.waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
@@ -106,6 +106,15 @@ test("following: from someone's page, what they like comes first in your feed, a
   await bo.reload();
   await expect(bo.getByText("You're not following anyone yet")).toBeVisible();
   await expect(bo.getByRole("navigation", { name: "Followers and following" })).toContainText("0 Following");
+  // Nobody followed: the way to find people is right there. (Only on his own
+  // list: Ana, looking at it, is offered nothing.)
+  await expect(bo.getByRole("main").getByRole("link", { name: "Find people", exact: true })).toHaveAttribute(
+    "href",
+    "/search/people",
+  );
+  await ana.goto(`${boPage}/following`);
+  await expect(ana.getByText("Bo isn't following anyone yet")).toBeVisible();
+  await expect(ana.getByRole("main").getByRole("link", { name: "Find people" })).toHaveCount(0);
 
   // Signed out, Follow is the way to sign in, back to her page.
   const guest = await (await browser.newContext()).newPage();
@@ -179,4 +188,134 @@ test("the Following stream: one card per home however many people liked it, only
   await expect(dee.getByRole("dialog", { name: "Homes" }).getByRole("article", { name: TAMSEN })).toBeInViewport({
     ratio: 0.9,
   });
+});
+
+test("an agent's clients are in neither list nor either number to anyone else; the agent and each client still see each other", async ({
+  browser,
+}) => {
+  test.setTimeout(180_000);
+  const tabs = (page: Page) => page.getByRole("navigation", { name: "Followers and following" });
+  const profileCount = (page: Page, count: string) => page.getByRole("main").getByRole("link", { name: count, exact: true });
+  // Someone signs up right on the link an agent sent them, to like a home:
+  // from then on they and the agent follow each other.
+  const joinOn = async (url: string, name: string, email: string) => {
+    const page = await (await browser.newContext()).newPage();
+    await page.addInitScript(() => localStorage.setItem("buybox:nudges", JSON.stringify({ photos: true, next: true })));
+    await page.goto(url);
+    const quillan = homeIn(page, "1204 Quillan St SE");
+    await heartOf(quillan).click();
+    await joinAs(page, name, email);
+    await expect(heartOf(quillan)).toHaveAttribute("aria-pressed", "true");
+    return page;
+  };
+
+  // Reed has two clients, each on a link of their own.
+  const reed = await signInAgent(browser, "reed.lists@example.com", "Reed Lists");
+  const forKit = await createShare(reed, ["1204 Quillan", "719 Saltmarsh"], ["Kit"]);
+  const forLou = await createShare(reed, ["1204 Quillan", "719 Saltmarsh"], ["Lou"]);
+  const kit = await joinOn(forKit.url, "Kit", "kit.lists@example.com");
+  const lou = await joinOn(forLou.url, "Lou", "lou.lists@example.com");
+  await lou.context().close();
+  const reedPage = await pageOf(reed);
+  const kitPage = await pageOf(kit);
+
+  // Nell is nobody's client: she follows Reed from his page, in public.
+  const nell = await signUpBuyer(browser, "nell.lists@example.com", "Nell Lists");
+  await nell.goto(reedPage);
+  await Promise.all([saved(nell), nell.getByRole("button", { name: "Follow Reed" }).click()]);
+  await expect(nell.getByRole("button", { name: "Following Reed" })).toHaveAttribute("aria-pressed", "true");
+
+  // To her, and to someone signed out, Reed has the one follower and follows
+  // nobody: no client in either list, nor in the numbers, on his page or theirs.
+  const guest = await (await browser.newContext()).newPage();
+  for (const page of [nell, guest]) {
+    await page.goto(reedPage);
+    await expect(profileCount(page, "1 follower")).toBeVisible();
+    await expect(profileCount(page, "0 following")).toBeVisible();
+    await page.goto(`${reedPage}/followers`);
+    const followers = page.getByRole("list", { name: "Reed's followers" });
+    await expect(followers.getByRole("listitem")).toHaveCount(1);
+    await expect(followers.getByRole("link", { name: "Nell", exact: true })).toBeVisible();
+    await expect(page.getByRole("main")).not.toContainText(/Kit|Lou/);
+    await expect(tabs(page)).toContainText("1 Follower");
+    await expect(tabs(page)).toContainText("0 Following");
+    await page.goto(`${reedPage}/following`);
+    await expect(page.getByText("Reed isn't following anyone yet")).toBeVisible();
+    await expect(page.getByRole("main")).not.toContainText(/Kit|Lou/);
+    await expect(tabs(page)).toContainText("1 Follower");
+    await expect(tabs(page)).toContainText("0 Following");
+    // A client's own lists say nothing of their agent either.
+    await page.goto(kitPage);
+    await expect(profileCount(page, "0 followers")).toBeVisible();
+    await expect(profileCount(page, "0 following")).toBeVisible();
+    await page.goto(`${kitPage}/following`);
+    await expect(page.getByText("Kit isn't following anyone yet")).toBeVisible();
+    await expect(page.getByRole("main")).not.toContainText("Reed");
+    await expect(tabs(page)).toContainText("0 Followers");
+    await expect(tabs(page)).toContainText("0 Following");
+    await page.goto(`${kitPage}/followers`);
+    await expect(page.getByText("No one follows Kit yet")).toBeVisible();
+    await expect(page.getByRole("main")).not.toContainText("Reed");
+  }
+  await guest.context().close();
+
+  // Reed sees all of his own: both clients and Nell.
+  await reed.goto(reedPage);
+  await expect(profileCount(reed, "3 followers")).toBeVisible();
+  await expect(profileCount(reed, "2 following")).toBeVisible();
+  await reed.goto(`${reedPage}/followers`);
+  const his = reed.getByRole("list", { name: "Your followers" });
+  await expect(his.getByRole("listitem")).toHaveCount(3);
+  await expect(his.getByRole("link", { name: "Kit", exact: true })).toHaveAttribute("href", kitPage);
+  await expect(his.getByRole("link", { name: "Lou", exact: true })).toBeVisible();
+  await expect(his.getByRole("link", { name: "Nell", exact: true })).toBeVisible();
+  // A buyer is only ever their first name, with no "Agent" beside it.
+  await expect(his).not.toContainText(/Nell Lists|Agent/);
+  await expect(tabs(reed)).toContainText("3 Followers");
+  await expect(tabs(reed)).toContainText("2 Following");
+  await reed.goto(`${reedPage}/following`);
+  const hisFollowing = reed.getByRole("list", { name: "People you follow" });
+  await expect(hisFollowing.getByRole("listitem")).toHaveCount(2);
+  await expect(hisFollowing.getByRole("link", { name: "Kit", exact: true })).toBeVisible();
+  // And himself on Kit's, where he is one of the two.
+  await reed.goto(kitPage);
+  await expect(profileCount(reed, "1 follower")).toBeVisible();
+  await expect(profileCount(reed, "1 following")).toBeVisible();
+  await reed.goto(`${kitPage}/following`);
+  await expect(reed.getByRole("list", { name: "People Kit follows" }).getByRole("link", { name: /^Reed\b/ })).toHaveAttribute(
+    "href",
+    reedPage,
+  );
+
+  // Kit sees all of her own, Reed in both.
+  await kit.goto(kitPage);
+  await expect(profileCount(kit, "1 follower")).toBeVisible();
+  await expect(profileCount(kit, "1 following")).toBeVisible();
+  await kit.goto(`${kitPage}/following`);
+  await expect(kit.getByRole("list", { name: "People you follow" }).getByRole("link", { name: /^Reed\b/ })).toBeVisible();
+  // An agent is listed as their page names them: their whole name, "Agent"
+  // and their company, so they're told apart from a buyer called Reed.
+  const agentRow = kit.getByRole("list", { name: "People you follow" }).getByRole("listitem");
+  await expect(agentRow).toContainText("Reed Lists");
+  await expect(agentRow).toContainText("Agent");
+  await expect(agentRow).toContainText("Harbor & Pine Realty");
+  await expect(agentRow.getByRole("button", { name: "Following Reed Lists" })).toHaveAttribute("aria-pressed", "true");
+  await kit.goto(`${kitPage}/followers`);
+  await expect(kit.getByRole("list", { name: "Your followers" }).getByRole("link", { name: /^Reed\b/ })).toBeVisible();
+  // On Reed's she is there herself, with Nell; his other client is not.
+  await kit.goto(reedPage);
+  await expect(profileCount(kit, "2 followers")).toBeVisible();
+  await expect(profileCount(kit, "1 following")).toBeVisible();
+  await kit.goto(`${reedPage}/followers`);
+  const reeds = kit.getByRole("list", { name: "Reed's followers" });
+  await expect(reeds.getByRole("listitem")).toHaveCount(2);
+  await expect(reeds.getByRole("link", { name: "Kit", exact: true })).toHaveAttribute("href", kitPage);
+  await expect(reeds.getByRole("link", { name: "Nell", exact: true })).toBeVisible();
+  await expect(kit.getByRole("main")).not.toContainText("Lou");
+  await expect(tabs(kit)).toContainText("2 Followers");
+  await expect(tabs(kit)).toContainText("1 Following");
+  await kit.goto(`${reedPage}/following`);
+  const reedFollows = kit.getByRole("list", { name: "People Reed follows" });
+  await expect(reedFollows.getByRole("listitem")).toHaveCount(1);
+  await expect(reedFollows.getByRole("link", { name: "Kit", exact: true })).toBeVisible();
 });

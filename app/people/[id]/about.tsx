@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, Plus, X } from "lucide-react";
+import { Check, Pencil, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
@@ -14,23 +14,30 @@ const LINKS_MOST = 5;
 
 // What you say about yourself, and (an agent) your links. On a page of its
 // own (`done`: where Save and Cancel go back to), it's open from the start;
-// elsewhere, closed, it's one button: Edit, or Add a few words.
+// elsewhere, closed, it's one button: Edit, or Add a few words. On Edit
+// profile, one card among several that each save themselves (`stay`): saving
+// stays on the page and says "Saved", as the cards above it do, the button
+// says what it saves, and there's no Cancel (the page has its own way back).
 export function EditAbout({
   bio,
   links,
   agent,
   done,
+  stay = false,
 }: {
   bio: string;
   links: ProfileLink[];
   agent: boolean;
   done?: string;
+  stay?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(Boolean(done));
   const [text, setText] = useState(bio);
   const [rows, setRows] = useState<ProfileLink[]>(links.length ? links : done && agent ? [{ label: "", url: "" }] : links);
   const [error, setError] = useState<string | null>(null);
+  // Said beside the button once it's saved (`stay`), until something's changed again.
+  const [saved, setSaved] = useState(false);
   const [pending, start] = useTransition();
   const id = useId();
 
@@ -56,13 +63,20 @@ export function EditAbout({
   const save = () =>
     start(async () => {
       setError(null);
+      setSaved(false);
       const result = await saveAbout(text, rows);
       if (!result.ok) return setError(result.error);
-      if (done) router.push(done);
+      if (stay) setSaved(true);
+      else if (done) router.push(done);
       else setOpen(false);
     });
+  // Any change to the links: no longer what was saved.
+  const changeRows = (change: (now: ProfileLink[]) => ProfileLink[]) => {
+    setSaved(false);
+    setRows(change);
+  };
   const setRow = (i: number, next: Partial<ProfileLink>) =>
-    setRows((now) => now.map((row, j) => (j === i ? { ...row, ...next } : row)));
+    changeRows((now) => now.map((row, j) => (j === i ? { ...row, ...next } : row)));
 
   return (
     <form
@@ -83,7 +97,10 @@ export function EditAbout({
           maxLength={BIO_MOST}
           rows={3}
           autoFocus={!done}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            setSaved(false);
+            setText(event.target.value);
+          }}
           placeholder={
             agent
               ? "Helping first-time buyers on the Eastside since 2015."
@@ -125,7 +142,7 @@ export function EditAbout({
               <button
                 type="button"
                 aria-label={`Remove link ${i + 1}`}
-                onClick={() => setRows((now) => now.filter((_, j) => j !== i))}
+                onClick={() => changeRows((now) => now.filter((_, j) => j !== i))}
                 className="flex size-11 shrink-0 items-center justify-center rounded-full text-stone-500 hover:bg-black/5 hover:text-ink"
               >
                 <X aria-hidden size={16} />
@@ -135,7 +152,7 @@ export function EditAbout({
           {rows.length < LINKS_MOST && (
             <button
               type="button"
-              onClick={() => setRows((now) => [...now, { label: "", url: "" }])}
+              onClick={() => changeRows((now) => [...now, { label: "", url: "" }])}
               className="-ml-2 inline-flex min-h-11 w-fit items-center gap-1.5 rounded-full px-2 text-sm font-semibold text-brand hover:bg-black/5"
             >
               <Plus aria-hidden size={15} /> Add a link
@@ -148,24 +165,42 @@ export function EditAbout({
           {error}
         </p>
       )}
-      <div className="flex justify-end gap-2">
-        {done ? (
-          <Link href={done} className={button({ kind: "ghost", size: "lg" })}>
-            Cancel
-          </Link>
-        ) : (
-          <button type="button" onClick={() => setOpen(false)} className={button({ kind: "ghost" })}>
-            Cancel
+      {stay ? (
+        // As "Save details" above it: the button, then that it's saved.
+        <div className="flex items-center gap-3">
+          <button
+            type="submit"
+            aria-disabled={pending}
+            className={cn(button({ kind: "primary", size: "lg" }), pending && "opacity-60")}
+          >
+            {pending ? "Saving…" : "Save about"}
           </button>
-        )}
-        <button
-          type="submit"
-          aria-disabled={pending}
-          className={cn(button({ kind: "primary", size: done ? "lg" : "md" }), pending && "opacity-60")}
-        >
-          {pending ? "Saving…" : "Save"}
-        </button>
-      </div>
+          {saved && !pending && (
+            <p role="status" className="flex items-center gap-1 text-meta font-semibold text-emerald-700">
+              <Check aria-hidden size={14} /> Saved
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="flex justify-end gap-2">
+          {done ? (
+            <Link href={done} className={button({ kind: "ghost", size: "lg" })}>
+              Cancel
+            </Link>
+          ) : (
+            <button type="button" onClick={() => setOpen(false)} className={button({ kind: "ghost" })}>
+              Cancel
+            </button>
+          )}
+          <button
+            type="submit"
+            aria-disabled={pending}
+            className={cn(button({ kind: "primary", size: done ? "lg" : "md" }), pending && "opacity-60")}
+          >
+            {pending ? "Saving…" : "Save"}
+          </button>
+        </div>
+      )}
     </form>
   );
 }

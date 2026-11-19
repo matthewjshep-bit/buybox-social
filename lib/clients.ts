@@ -13,6 +13,9 @@ import { ANONYMOUS_BUYER } from "./timeline";
 // with nobody on it yet isn't a person: it's listed apart, as a link.
 // Only ever for the agent whose links they are: what's here (passes, time
 // spent, who's on a link right now, requests to see a home) is theirs alone.
+// (Someone who isn't an agent has links too, the homes they sent a friend:
+// "Homes you sent" reads `links` for them, and shows far less of it. See
+// LinkRow's `plain`.)
 
 // One link (one send of homes), as it's listed under a person or on its own.
 export type ClientLink = {
@@ -28,18 +31,39 @@ export type ClientLink = {
   firstAddress: string | null;
   // The others on it, by first name (not the person it's listed under).
   with: string[];
+  // Everyone on it, by first name: who it's for. Empty with no name on it yet.
+  for: string[];
+  // How many people are on it (some may have joined without giving a name).
+  people: number;
+  // The homes on it that someone on it liked, and what they've said there.
+  liked: number;
+  comments: number;
+  // Someone on it is waiting for the agent: a request to see a home, or
+  // something they said, with no answer yet.
+  waiting: boolean;
+  // The link to copy and send ("/s/…"): the one person's own, or the link's
+  // own with nobody on it. Null with several people, who each have their own
+  // (on the link's page).
+  linkPath: string | null;
   unread: boolean;
   // "saw 3 of 4 photos": the most of it one of their devices looked at.
   seen: string | null;
 };
 
 export type ClientStatus =
-  | { kind: "ask"; address: string; href: string }
+  | { kind: "ask"; address: string }
+  | { kind: "comment"; body: string }
   | { kind: "active" }
-  | { kind: "comment"; body: string; href: string }
   | { kind: "liked"; n: number; of: number }
   | { kind: "opened" }
   | { kind: "unopened"; sentAt: Date };
+
+// Where an answer to them goes: that home's conversation on their link, to them.
+export type ClientReply = { shareId: string; listingKey: string; to: string };
+
+// A request to see a home in person that the agent hasn't answered yet, and
+// the first name of whoever asked (their name on that link).
+export type ClientAsk = ClientReply & { name: string; address: string; at: Date };
 
 export type Client = {
   // Stays the same between loads: acct:<account>, name:<first name>, or p:<participant>.
@@ -60,10 +84,17 @@ export type Client = {
   liked: number;
   passed: number;
   comments: number;
-  // Requests to see a home in person the agent hasn't answered in its thread.
-  asks: number;
+  // Requests to see a home in person the agent hasn't answered in its thread,
+  // newest first.
+  asks: ClientAsk[];
   // Threads where what they said last has no word from the agent since.
   unanswered: number;
+  // Waiting for the agent: a request to see a home, or something they said,
+  // with no answer yet. The one test of it, wherever it's asked (Home, the
+  // Clients page's groups, the buttons), whatever the sentence about them says.
+  waiting: boolean;
+  // What Reply answers: the request first, else the newest thing they said.
+  reply: ClientReply | null;
   opened: boolean;
   // The last thing they did (a like, a comment), or the last time they looked.
   lastActive: Date | null;
@@ -218,8 +249,11 @@ const loadAsks = (agentId: string) => sql<AskRow[]>`
         and r.agent_id is not null and r.created_at > a.asked_at)
   order by a.asked_at desc`;
 
-const homeAnchor = (shareId: string, listingKey: string) =>
-  `/dashboard/shares/${shareId}?tab=homes#home-${encodeURIComponent(listingKey)}`;
+// That home's conversation, on the link's own page.
+export const replyHref = (reply: ClientReply) =>
+  `/dashboard/shares/${reply.shareId}?tab=homes#home-${encodeURIComponent(reply.listingKey)}`;
+
+export const isWaiting = (client: Client) => client.waiting;
 
 // Which person each participant is: their account, else their first name
 // (joining the one signed-up client with that name, when there's just one),
@@ -242,17 +276,20 @@ function personKeys(people: PersonRow[]) {
   );
 }
 
-function statusOf(c: Omit<Client, "status">, ask: AskRow | undefined, waiting: PersonRow | undefined): ClientStatus {
-  if (ask) return { kind: "ask", address: ask.address, href: homeAnchor(ask.share_id, ask.listing_key) };
+// What's waiting on the agent is said ahead of "Looking now", so the sentence
+// about someone who's waiting always says what for.
+function statusOf(c: Omit<Client, "status">, said: PersonRow | undefined): ClientStatus {
+  if (c.asks[0]) return { kind: "ask", address: c.asks[0].address };
+  if (said?.waiting_body) return { kind: "comment", body: clip(said.waiting_body) };
   if (c.activeNow) return { kind: "active" };
-  if (waiting?.waiting_body && waiting.waiting_key)
-    return { kind: "comment", body: clip(waiting.waiting_body), href: homeAnchor(waiting.share_id, waiting.waiting_key) };
   if (c.liked > 0) return { kind: "liked", n: c.liked, of: c.homes };
   if (c.opened) return { kind: "opened" };
   return { kind: "unopened", sentAt: c.sentAt };
 }
 
-export type ClientBook = { clients: Client[]; unclaimed: ClientLink[] };
+// `links`: every link the agent has sent, newest first, each once, whoever
+// is on it. `unclaimed`: the ones with nobody on them yet.
+export type ClientBook = { clients: Client[]; links: ClientLink[]; unclaimed: ClientLink[] };
 
 // A client's own page on the Clients page.
 const clientHref = (key: string) => `/dashboard/clients/${encodeURIComponent(key)}`;
@@ -271,19 +308,34 @@ export const getClientBook = cache(async (agentId: string): Promise<ClientBook> 
   const onLink = new Map<string, PersonRow[]>();
   for (const p of people) onLink.set(p.share_id, [...(onLink.get(p.share_id) ?? []), p]);
 
-  const linkFor = (share: ShareRow, others: string[]): ClientLink => ({
-    shareId: share.id,
-    title: linkTitle(share.client_name, share.homes[0]?.address),
-    href: `/dashboard/shares/${share.id}`,
-    sentAt: share.created_at,
-    openedAt: share.opened_at,
-    homes: share.homes.length,
-    photos: share.homes.slice(0, 3).map((home) => home.photo),
-    firstAddress: share.homes[0]?.address ?? null,
-    with: others,
-    unread: share.unread,
-    seen: photosSeenLine(share.photos_seen, share.photo_count),
-  });
+  // One link, with how it's gone for everyone on it. `others`: who else is
+  // on it, when it's listed under one of them.
+  const linkFor = (share: ShareRow, others: string[] = []): ClientLink => {
+    const on = onLink.get(share.id) ?? [];
+    const ids = new Set(on.map((p) => p.id));
+    const homeKeys = new Set(share.homes.map((home) => home.key));
+    return {
+      shareId: share.id,
+      title: linkTitle(share.client_name, share.homes[0]?.address),
+      href: `/dashboard/shares/${share.id}`,
+      sentAt: share.created_at,
+      openedAt: share.opened_at,
+      homes: share.homes.length,
+      photos: share.homes.slice(0, 3).map((home) => home.photo),
+      firstAddress: share.homes[0]?.address ?? null,
+      with: others,
+      for: on.map((p) => p.first_name.trim()).filter(Boolean),
+      people: on.length,
+      liked: new Set(on.flatMap((p) => p.liked_keys).filter((k) => homeKeys.has(k))).size,
+      comments: on.reduce((sum, p) => sum + p.comments, 0),
+      waiting:
+        on.some((p) => p.unanswered > 0) ||
+        asks.some((ask) => ask.share_id === share.id && ids.has(ask.participant_id)),
+      linkPath: on.length <= 1 ? `/s/${on[0]?.token ?? share.token}` : null,
+      unread: share.unread,
+      seen: photosSeenLine(share.photos_seen, share.photo_count),
+    };
+  };
 
   const groups = new Map<string, PersonRow[]>();
   for (const p of people) {
@@ -317,11 +369,24 @@ export const getClientBook = cache(async (agentId: string): Promise<ClientBook> 
       // On a link of their own, the link's opens are theirs.
       linkIds.some((share) => share.opened_at && (onLink.get(share.id)?.length ?? 0) === 1);
     const lastActive = rows.reduce<Date | null>((at, row) => newest(at, row.last_active), null);
-    const waiting = rows
+    // Whichever of them said the newest thing still waiting on the agent.
+    const said = rows
       .filter((row) => row.unanswered > 0)
       .sort((a, b) => +(b.waiting_at ?? 0) - +(a.waiting_at ?? 0))[0];
     const ids = new Set(rows.map((row) => row.id));
-    const open = asks.filter((ask) => ids.has(ask.participant_id));
+    const open = asks
+      .filter((ask) => ids.has(ask.participant_id))
+      .map(
+        (ask): ClientAsk => ({
+          shareId: ask.share_id,
+          listingKey: ask.listing_key,
+          to: ask.participant_id,
+          name: rows.find((row) => row.id === ask.participant_id)?.first_name.trim() || ANONYMOUS_BUYER,
+          address: ask.address,
+          at: ask.at,
+        }),
+      );
+    const unanswered = rows.reduce((sum, row) => sum + row.unanswered, 0);
     const base = {
       key,
       name: named?.first_name.trim() || ANONYMOUS_BUYER,
@@ -335,8 +400,14 @@ export const getClientBook = cache(async (agentId: string): Promise<ClientBook> 
       liked: [...liked].filter((k) => homeKeys.has(k)).length,
       passed: [...passed].filter((k) => homeKeys.has(k)).length,
       comments: rows.reduce((sum, row) => sum + row.comments, 0),
-      asks: open.length,
-      unanswered: rows.reduce((sum, row) => sum + row.unanswered, 0),
+      asks: open,
+      unanswered,
+      waiting: open.length > 0 || unanswered > 0,
+      reply: open[0]
+        ? { shareId: open[0].shareId, listingKey: open[0].listingKey, to: open[0].to }
+        : said?.waiting_key
+          ? { shareId: said.share_id, listingKey: said.waiting_key, to: said.id }
+          : null,
       opened,
       lastActive,
       sentAt: linkIds[0].created_at,
@@ -344,19 +415,23 @@ export const getClientBook = cache(async (agentId: string): Promise<ClientBook> 
       activeNow: linkIds.some((share) => share.active_now),
       seconds: linkIds.reduce((sum, share) => sum + (secondsOf.get(share.id) ?? 0), 0),
     };
-    return { ...base, status: statusOf(base, open[0], waiting) };
+    return { ...base, status: statusOf(base, said) };
   });
 
-  // Whoever asked to see a home first, then anyone with something new, then
-  // whoever was on theirs most recently (or was sent homes most recently).
+  // Whoever is waiting for an answer first (a request to see a home ahead of
+  // something they said), then whoever is looking now, then anyone with
+  // something new, then whoever was on theirs most recently (or was sent
+  // homes most recently).
   clients.sort(
     (a, b) =>
-      Number(b.asks > 0) - Number(a.asks > 0) ||
+      Number(b.waiting) - Number(a.waiting) ||
+      Number(b.asks.length > 0) - Number(a.asks.length > 0) ||
       Number(b.activeNow) - Number(a.activeNow) ||
       Number(b.unread) - Number(a.unread) ||
       +(newest(b.lastActive, b.sentAt) ?? 0) - +(newest(a.lastActive, a.sentAt) ?? 0),
   );
 
-  const unclaimed = shares.filter((share) => !onLink.has(share.id)).map((share) => linkFor(share, []));
-  return { clients, unclaimed };
+  // (Already newest first: the order they were read in.)
+  const links = shares.map((share) => linkFor(share));
+  return { clients, links, unclaimed: links.filter((link) => link.people === 0) };
 });

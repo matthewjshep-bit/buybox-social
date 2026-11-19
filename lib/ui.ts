@@ -120,10 +120,54 @@ export const field = ({
 export const card = "rounded-2xl bg-white ring-1 ring-stone-200";
 
 // Which side of the app a page is on, said small at its top: "Agent
-// dashboard" on an agent's home and dashboard pages, "Your public profile"
-// on their own profile. One style, so the two read as a pair.
+// dashboard" on every dashboard page, "Your public profile" on your own
+// profile. One style, so the two read as a pair.
 export const pageLabel = "px-1 text-[12px] font-semibold uppercase leading-4 tracking-[0.08em] text-stone-600";
 
+// A page's column: the same width, the same left edge and the same room
+// under the bar on every page that's one column of things (Notifications,
+// Edit profile, follower lists, Send, the Dashboard), so moving between them
+// nothing jumps sideways. Home is wider (it has rails) and so is a profile.
+// `tray`: a page that ends in a bar held to the foot of the screen (picking
+// homes to send), which wants less room under it.
+export const pageColumn = ({ tray = false }: { tray?: boolean } = {}) =>
+  cn("mx-auto w-full max-w-3xl px-4 pt-4 lg:pt-6", tray ? "pb-6" : "pb-16");
+
+// A page's title: the display type, one size on a phone and one above it,
+// whichever page it is. A long one (an address, two names) breaks onto a
+// second line rather than running off the screen. (Someone's name at the top
+// of their profile, and a client's inside their card, are their own.)
+export const pageTitle = "font-display text-3xl leading-tight break-words sm:text-4xl";
+
+// A heading over a list or a card on a page ("Waiting for you", "People on
+// this link"): plain and bold. The display type is for the page's title and
+// for prices, never for these.
+export const sectionTitle = "text-2xl font-semibold";
+
+// A quiet label over a group in a list: a day ("This week"), "Your listings".
+export const groupLabel = "px-1 text-body font-semibold text-muted";
+
+// The way back, at the top of a page that's a step in from another: an arrow
+// (18px) and where it goes, a fingertip tall, its words lined up with the
+// column and a pill under the pointer.
+export const backLink = "-ml-2 inline-flex min-h-11 w-fit items-center gap-2 rounded-full px-2 font-medium hover:bg-black/5";
+
+// A tab: one of the parts of a place (the Dashboard's three, a profile's
+// Listings and Activity, a link's Homes and People, Followers and Following),
+// with a line under the one you're on. In a row with `border-b
+// border-stone-200` under it, the tabs (or their row) pulled down a pixel
+// (`-mb-px`) so the two lines are one. Black pills are for filters only
+// (Home's Following and For you, which links to show).
+export const tab = (active: boolean) =>
+  cn(
+    "flex min-h-12 shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 text-body font-semibold sm:px-4",
+    active ? "border-stone-900 text-ink" : "border-transparent text-stone-600 hover:text-ink",
+  );
+
+// Words that go somewhere, in a line of words or beside a heading ("Change
+// it", "Edit listings"): the brand's colour, bold, underlined under the
+// pointer. Its place and its touch area are its page's to add.
+export const link = "font-semibold text-brand underline-offset-2 hover:underline";
 
 // Someone's face: an agent's in ink, a buyer's (yours included) in the
 // brand's colour, someone unnamed in stone. On the dark ground, stone is

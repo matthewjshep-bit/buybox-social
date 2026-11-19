@@ -8,7 +8,7 @@ import { searchHomeKeys } from "@/lib/search";
 import { parseFilters } from "@/lib/search-options";
 import { getTaste } from "@/lib/taste";
 
-export const metadata = { title: "Map · Porchcard" };
+export const metadata = { title: "Search homes · Porchcard" };
 
 // The most homes shown beside the map at once.
 const MAX_SHOWN = 60;
@@ -44,6 +44,8 @@ export default async function SearchPage({
       myName={name}
       prompt={PUBLIC_PROMPT}
       sender={viewer?.role === "agent" ? { profileComplete: Boolean(viewer.full_name) } : null}
+      // Signed in, Search finds people too.
+      people={Boolean(viewer)}
     />
   );
 }

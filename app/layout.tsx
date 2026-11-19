@@ -11,8 +11,10 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL(appUrl()),
-  title: "Porchcard",
-  description: "Send clients homes they can react to and talk about together.",
+  // What a link to the site says of it, in a text or an email: the home
+  // page's own headline and the line under it, for agents and buyers alike.
+  title: "Porchcard · The social way to shop for homes",
+  description: "Agents send homes as one link. Buyers tap what they love.",
 };
 
 export const viewport: Viewport = {

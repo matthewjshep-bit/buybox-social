@@ -1,7 +1,6 @@
-import { Heart, MessageCircle, Send } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { becomeAgent } from "@/app/login/actions";
+import { AGENT_HEADLINE, AgentFeatures, AgentPicture, Eyebrow } from "@/components/marketing-home";
 import { getCurrentUser } from "@/lib/auth";
 import { button } from "@/lib/ui";
 
@@ -10,80 +9,54 @@ export const metadata = {
   description: "Send clients a few homes as a link. See what they like and pass on, in their own words.",
 };
 
-const STEPS = [
-  { icon: Send, title: "Pick and send", text: "Choose a few homes and text the link from your own phone." },
-  {
-    icon: Heart,
-    title: "They like or pass",
-    text: "One tap per home. No app, no password.",
-  },
-  {
-    icon: MessageCircle,
-    title: "Talk it through",
-    text: "See what they like, and add their partner.",
-  },
-];
-
+// The page for agents: the home page's pitch to them (the same headline, the
+// same three lines, the same picture: components/marketing-home.tsx), and one
+// thing to do, which depends on who's looking. Signed out: Start free, or see
+// homes first. An agent: their dashboard. A buyer: their account becomes an
+// agent's, said in so many words, with what changes and what stays.
 export default async function ForAgentsPage() {
   const user = await getCurrentUser();
   const start = button({ kind: "primary", size: "lg" });
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-      <section className="grid items-center gap-8 md:grid-cols-2">
+    <main className="mx-auto max-w-6xl px-5 py-10 sm:px-8 md:py-16">
+      <section aria-labelledby="agents-title" className="grid items-center gap-14 md:grid-cols-2 md:gap-16">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-wide text-brand">For agents</p>
-          <h1 className="mt-2 font-display text-4xl leading-tight sm:text-5xl">
-            Know what your clients think of every home.
+          <Eyebrow>For agents &amp; brokers</Eyebrow>
+          <h1 id="agents-title" className="mt-3 text-balance font-display text-4xl leading-tight sm:text-5xl">
+            {AGENT_HEADLINE}
           </h1>
-          <p className="mt-4 text-lg leading-relaxed text-stone-700">
-            Send a few homes as one link. See what each client likes.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
+          <AgentFeatures />
+          <div className="mt-8 flex flex-wrap gap-3">
             {!user ? (
-              <Link href="/login?as=agent" className={start}>
-                Start free
-              </Link>
+              <>
+                <Link href="/login?as=agent" className={start}>
+                  Start free
+                </Link>
+                {/* The homes themselves, for anyone who'd rather look first.
+                    (Signed in, Browse is in the bar already.) */}
+                <Link href="/browse" className={button({ kind: "secondary", size: "lg" })}>
+                  See homes
+                </Link>
+              </>
             ) : user.role === "agent" ? (
               <Link href="/dashboard" className={start}>
-                Go to Clients
+                Go to your dashboard
               </Link>
             ) : (
-              // Signed in as a buyer: one tap to an agent's account.
+              // Signed in as a buyer: one tap changes the account itself, and
+              // there's no button back, so it says what it does and what it brings.
               <form action={becomeAgent}>
-                <button type="submit" className={start}>
-                  Set up my agent account
+                <button type="submit" aria-describedby="become-agent-note" className={start}>
+                  Make my account an agent&apos;s
                 </button>
+                <p id="become-agent-note" className="mt-3 max-w-sm text-body leading-relaxed text-stone-700">
+                  You&apos;ll get a Dashboard for your clients. Your likes and follows stay.
+                </p>
               </form>
             )}
-            <Link href="/reel" className={button({ kind: "secondary", size: "lg" })}>
-              See it as a buyer
-            </Link>
           </div>
         </div>
-        <div className="relative aspect-[4/3] overflow-hidden rounded-2xl shadow-lg">
-          <Image
-            src="/sample/ravenna-1.jpg"
-            alt="White Craftsman home with a covered front porch"
-            fill
-            priority
-            sizes="(max-width: 768px) 100vw, 480px"
-            className="object-cover"
-          />
-        </div>
-      </section>
-      <section aria-labelledby="how-title" className="mt-14">
-        <h2 id="how-title" className="text-sm font-semibold uppercase tracking-wide text-muted">
-          How it works
-        </h2>
-        <div className="mt-3 grid gap-6 sm:grid-cols-3">
-          {STEPS.map(({ icon: Icon, title, text }) => (
-            <div key={title}>
-              <Icon aria-hidden className="text-brand" size={22} />
-              <h3 className="mt-2 font-semibold">{title}</h3>
-              <p className="mt-1 text-body text-stone-700">{text}</p>
-            </div>
-          ))}
-        </div>
+        <AgentPicture />
       </section>
     </main>
   );

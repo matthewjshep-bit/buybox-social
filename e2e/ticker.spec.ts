@@ -11,6 +11,9 @@ const WEXFORD = "3518 Wexford Ave N";
 const FERNHOLLOW = "96 Fernhollow Ln";
 const SALTMARSH = "719 Saltmarsh Ln";
 const COTTAGE = "Blue cottage behind a white picket fence";
+// A photo of someone, as small as one gets.
+const PNG_1PX =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAEBgIApD5fRAAAAABJRU5ErkJggg==";
 const DESKTOP = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, isMobile: false, hasTouch: false };
 // Wexford's photos, for where the things in them are.
 const LISTING = (JSON.parse(readFileSync("supabase/seed/listings.json", "utf8")) as Listing[]).find(
@@ -557,7 +560,12 @@ test("isolation: what you said on an agent's link reads \"You commented\" to you
   await expect(liked).toHaveAttribute("aria-pressed", "true");
   await wren.goto("/people/me");
   await wren.waitForURL(/\/people\/[0-9a-f-]{36}$/);
-  const address = `/reel?from=${new URL(wren.url()).pathname.split("/").pop()}&home=SAMPLE-1008`;
+  const wrenId = new URL(wren.url()).pathname.split("/").pop();
+  const address = `/reel?from=${wrenId}&home=SAMPLE-1008`;
+  // She has a photo of herself.
+  await wren.goto("/people/me/edit");
+  await wren.getByLabel("Add a photo").setInputFiles({ name: "me.png", mimeType: "image/png", buffer: Buffer.from(PNG_1PX, "base64") });
+  await expect(wren.getByLabel("Change photo")).toBeAttached();
 
   // Each thing the line says as it goes round, by its name.
   const round = async (page: Page, turns: number) => {
@@ -578,6 +586,13 @@ test("isolation: what you said on an agent's link reads \"You commented\" to you
   await own.clock.install();
   await own.clock.pauseAt(new Date(Date.now() + 1000));
   await own.goto(address);
+  // (Her own face starts what she did: her photo, as her page shows it, not her initial.)
+  await settled(homeIn(own, SALTMARSH));
+  await expect(lineOf(homeIn(own, SALTMARSH))).toHaveAccessibleName(/^You /);
+  await expect(activityOf(homeIn(own, SALTMARSH)).getByRole("link", { name: "Your profile" }).locator("img")).toHaveAttribute(
+    "src",
+    new RegExp(`^/people/${wrenId}/photo`),
+  );
   const hers = await round(own, 6);
   expect(hers).toContainEqual(expect.stringMatching(/^You commented: Too close to the road/));
   expect(hers).toContainEqual(expect.stringMatching(/^You liked this/));

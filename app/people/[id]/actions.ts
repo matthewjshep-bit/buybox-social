@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { BANNER_STYLE } from "@/lib/banner";
 import { fail, readDevice, type ActionResult } from "@/lib/engagement";
+import { NOT_AN_EMAIL } from "@/lib/people-picker";
 import { ensureAccountVisitor, getPublicIdentity } from "@/lib/public";
 import type { Sentiment } from "@/lib/reactions";
 
@@ -140,6 +141,28 @@ export async function deleteMyComment(id: string): Promise<ActionResult> {
   if (outcome === "gone") return fail("That comment isn't there anymore.");
   if (outcome === "answered") return fail("Comments with replies can't be deleted here.");
   refresh();
+  return { ok: true };
+}
+
+// Your own name: a buyer's, given right after signing in with only an email
+// (the sign-in page asks, once) or changed on Edit profile. Up to 60
+// characters and never an email: everyone else only ever sees the first of
+// it, and an email typed here by mistake would show whole. Their public page
+// goes by it from then on. An agent's is among their details instead (their
+// MLS ID is checked against it there). (The page isn't refreshed here: the
+// sign-in page is on its way somewhere else, and each form does it itself.)
+const NAME_MOST = 60;
+
+export async function setMyName(name: string): Promise<ActionResult> {
+  const typed = typeof name === "string" ? name.replace(/\s+/g, " ").trim() : "";
+  if (typed.includes("@")) return fail(NOT_AN_EMAIL);
+  if (!typed) return fail("Please add your name.");
+  if (typed.length > NAME_MOST) return fail(`Keep it to ${NAME_MOST} characters.`);
+  const account = await getCurrentUser();
+  if (!account) return fail("Sign in to change your name.");
+  if (account.role === "agent") return fail("Your name is in Your details.");
+  await sql`update accounts set full_name = ${typed} where id = ${account.id}`;
+  await ensureAccountVisitor({ ...account, full_name: typed });
   return { ok: true };
 }
 

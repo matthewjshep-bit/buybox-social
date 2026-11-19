@@ -1,4 +1,4 @@
-import { Home, Map as MapIcon, MapPinOff } from "lucide-react";
+import { Home, MapPinOff, Search } from "lucide-react";
 import Link from "next/link";
 import { RouteState, routeAction } from "@/components/route-state";
 import { SiteHeader } from "@/components/site-header";
@@ -19,8 +19,8 @@ export default function HomeNotFound() {
               Go home
             </Link>
             <Link href="/search" className={routeAction.secondary}>
-              <MapIcon aria-hidden size={18} />
-              Open the map
+              <Search aria-hidden size={18} />
+              Search homes
             </Link>
           </>
         }

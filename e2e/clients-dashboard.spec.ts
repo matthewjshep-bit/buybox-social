@@ -1,12 +1,20 @@
 // The agent's clients, as the Clients page shows them, plainly: whoever is
 // waiting for an answer first, then whoever hasn't opened what was sent, then
 // everyone else; one row each, with one sentence, one line of facts and one
-// big button. Each client's own page has their links. A link with nobody on
-// it yet is listed apart, called by its first home.
+// big button. Each client's own page has what they did (whatever is waiting
+// first, with Reply right there), the way to send them more homes on the link
+// they have, and their links. A link with nobody on it yet isn't a client:
+// it's on the Links page, and the Clients page only says how many there are.
+import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import { clientRow, createShare, homeIn, joinAs, signInAgent, toFirstHome } from "./helpers";
+import { clientRow, createShare, homeIn, joinAs, pickHome, signInAgent, toFirstHome } from "./helpers";
 
 const QUILLAN = "1204 Quillan St SE";
+
+const emailsTo = (address: string) =>
+  readFileSync("test-results-server.log", "utf8")
+    .split("\n")
+    .filter((line) => line.includes(`[email] to=${address} `));
 
 test("whoever wants a showing leads the Clients page, with Reply, until the agent answers", async ({ browser }) => {
   test.setTimeout(120_000);
@@ -30,13 +38,14 @@ test("whoever wants a showing leads the Clients page, with Reply, until the agen
   await expect(contact.getByRole("status")).toHaveText(/^Sent\./);
 
   // Fern's Clients: Jo first, waiting for her, with Reply; Max next, not
-  // opened yet, with his link to copy; the link with nobody on it last.
+  // opened yet, with his link to copy. Those two groups and no other: the
+  // link with nobody on it isn't a client.
   await fern.goto("/dashboard");
+  await expect(fern).toHaveTitle("Dashboard · Porchcard");
   await expect(fern.getByRole("heading", { level: 1 })).toHaveText("Clients");
   await expect(fern.getByRole("heading", { level: 2 })).toHaveText([
     /^Waiting for you\s*1$/,
     /^Haven't opened yet\s*1$/,
-    "Links without a name",
   ]);
   const waiting = fern.getByRole("region", { name: /^Waiting for you/ });
   const row = clientRow(fern, "Jo");
@@ -47,25 +56,83 @@ test("whoever wants a showing leads the Clients page, with Reply, until the agen
     "href",
     new RegExp(`^${sharePath}\\?tab=homes#home-[\\w%-]+$`),
   );
-  await expect(clientRow(fern, "Max")).toContainText("Not opened yet");
+  await expect(clientRow(fern, "Max")).toContainText("Not opened yet · sent today");
   await expect(clientRow(fern, "Max").getByRole("button", { name: "Copy link for Max" })).toBeVisible();
+  // What Jo did is new since Fern last looked: said on her row, as Home's dot
+  // says it. Max has done nothing.
+  await expect(row).toContainText("New since you last looked");
+  await expect(clientRow(fern, "Max")).not.toContainText("New since you last looked");
   // [P] First names only: her email is nowhere on the page.
   expect(await fern.content()).not.toContain(joEmail);
 
-  // The link with nobody on it is listed apart, called by its home, never "Unnamed client".
-  const unclaimed = fern.getByRole("region", { name: "Links without a name" });
-  await expect(unclaimed).toContainText("96 Fernhollow Ln");
+  // The link with nobody on it is one line here, the way to the Links page,
+  // where it's listed with its home: "No name yet", never "Unnamed client".
+  await expect(fern.getByText("Unnamed client")).toHaveCount(0);
+  await fern.getByRole("link", { name: "1 link with no name" }).click();
+  await fern.waitForURL(/\/dashboard\/links$/);
+  const unclaimed = fern
+    .getByRole("list", { name: "Links" })
+    .getByRole("listitem")
+    .filter({ hasText: "96 Fernhollow Ln" });
+  await expect(unclaimed.getByRole("link", { name: "No name yet" })).toBeVisible();
   await expect(unclaimed).toContainText("Not opened yet");
   await expect(fern.getByText("Unnamed client")).toHaveCount(0);
+  await fern.goto("/dashboard");
 
   // Her own page: where things stand, the homes sent her, each link to its page.
   await row.getByRole("link", { name: "Jo", exact: true }).click();
   await fern.waitForURL(/\/dashboard\/clients\//);
+  const joPage = new URL(fern.url()).pathname;
+  await expect(fern).toHaveTitle("Jo · Porchcard");
   await expect(fern.getByRole("heading", { level: 1 })).toHaveText("Jo");
-  await expect(fern.getByRole("link", { name: "Reply to Jo" })).toBeVisible();
+  // Her name is the way to her public page; three buttons at most, and while
+  // she's waiting Reply is the filled one, going down the page to what she asked.
+  await expect(fern.getByRole("heading", { level: 1 }).getByRole("link", { name: "Jo" })).toHaveAttribute(
+    "href",
+    /^\/people\/[\w-]+$/,
+  );
+  const top = fern.getByRole("region", { name: "Jo", exact: true });
+  await expect(top).toContainText(`Wants to see ${QUILLAN}`);
+  await expect(top.getByRole("link", { name: "Reply to Jo" })).toHaveAttribute("href", "#did");
+  await expect(top.getByRole("link", { name: "Reply to Jo" })).toHaveClass(/bg-brand/);
+  await expect(top.getByRole("link", { name: "Send more homes" })).not.toHaveClass(/bg-brand/);
+  await expect(top.getByRole("button", { name: "Copy link for Jo" })).toBeVisible();
+  await expect(top.getByRole("link").or(top.getByRole("button"))).toHaveCount(4);
+  await expect(fern.getByRole("link", { name: "Their profile" })).toHaveCount(0);
+
+  // What she did, on this page: her asking to see the home first, said
+  // across the top of its card, with a box to answer her right there.
+  const did = fern.getByRole("region", { name: "What Jo did" });
+  const first = did.getByRole("region", { name: "Waiting for you" }).getByRole("listitem").first();
+  await expect(first).toContainText(`Wants to see ${QUILLAN}`);
+  await expect(first).toContainText("Only you see this");
+  await expect(first).toContainText("Can we see it in person?");
+  await expect(first.getByRole("textbox", { name: "Reply to Jo" })).toHaveClass(/ring-amber/);
+  // (One box for the one thing she asked.)
+  await expect(did.getByRole("textbox", { name: "Reply to Jo" })).toHaveCount(1);
+
   const sent = fern.getByRole("region", { name: "Sent to Jo" });
   await expect(sent).toContainText(`${QUILLAN} and 1 more`);
   await expect(sent.getByRole("link", { name: /^Open the link for/ })).toHaveAttribute("href", sharePath);
+
+  // "Send more homes" remembers her: it adds to the link she has, and then
+  // it's that link again, ready to copy or send. She's on Porchcard, so she
+  // hears about the new home from us too.
+  await top.getByRole("link", { name: "Send more homes" }).click();
+  await expect(fern.getByRole("heading", { name: "Add homes for Jo" })).toBeVisible();
+  await expect(fern).toHaveTitle("Send homes · Porchcard");
+  await pickHome(fern, "812 N Corbel");
+  await fern.getByRole("button", { name: "Add 1 home to Jo's link" }).click();
+  await fern.waitForURL(new RegExp(`^[^?#]*${sharePath}/sent$`));
+  await expect(fern.getByRole("heading", { level: 1 })).toHaveText("Your link is ready");
+  await expect(fern.getByRole("main")).toContainText("3 homes · for Jo");
+  await expect(fern.getByLabel("Jo's link")).toHaveValue(urls.Jo);
+  await expect.poll(() => emailsTo(joEmail).length).toBe(1);
+  expect(emailsTo(joEmail)[0]).toContain('subject="Fern Clients sent you 1 more home on Porchcard"');
+  // No second link was made: she still has the one, now with three homes.
+  await fern.goto(joPage);
+  await expect(sent.getByRole("listitem")).toHaveCount(1);
+  await expect(sent).toContainText(`${QUILLAN} and 2 more`);
   await fern.getByRole("link", { name: "All clients" }).click();
   await fern.waitForURL(/\/dashboard$/);
 
@@ -79,4 +146,15 @@ test("whoever wants a showing leads the Clients page, with Reply, until the agen
   await expect(waiting).toHaveCount(0);
   await expect(row).not.toContainText("Wants to see");
   await expect(row.getByRole("link", { name: "Open Jo" })).toBeVisible();
+
+  // On her page, nothing waits any more: Reply is gone from the top, sending
+  // more homes is the filled button, and her card has the answer under it.
+  await fern.goto(joPage);
+  await expect(top.getByRole("link", { name: "Reply to Jo" })).toHaveCount(0);
+  await expect(top.getByRole("link", { name: "Send more homes" })).toHaveClass(/bg-brand/);
+  await expect(did.getByRole("region", { name: "Waiting for you" })).toHaveCount(0);
+  const card = did.getByRole("listitem").filter({ hasText: "Can we see it in person?" }).first();
+  await expect(card).not.toContainText("Wants to see");
+  await expect(card.getByRole("list", { name: "Your replies" })).toContainText("Saturday at 10 works.");
+  await expect(card.getByRole("textbox", { name: "Reply to Jo" })).not.toHaveClass(/ring-amber/);
 });

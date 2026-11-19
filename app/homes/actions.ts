@@ -4,10 +4,9 @@ import { refresh } from "next/cache";
 import { after } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
-import { escapeLike } from "@/lib/format";
+import { placeWords } from "@/lib/format";
 import { importMissing, runImportsAndContinue } from "@/lib/listings/imports";
 import { findOnRepliers } from "@/lib/listings/repliers";
-import type { Listing } from "@/lib/listings/types";
 import {
   commentSchema,
   ensureDevice,
@@ -22,8 +21,9 @@ import {
 } from "@/lib/engagement";
 import type { SpotReaction } from "@/lib/photos";
 import { getReel, REEL_PAGE, type FeedPost } from "@/lib/feed";
-import { matchesPlace, searchHomeKeys } from "@/lib/search";
+import { searchHomeKeys } from "@/lib/search";
 import { parseFilters } from "@/lib/search-options";
+import { homesHere } from "@/lib/send-search";
 import { ensureAccountVisitor, findSpot, getPublicIdentity, getVisitor } from "@/lib/public";
 import { getTaste } from "@/lib/taste";
 import { z } from "zod";
@@ -284,17 +284,12 @@ export type HomeToPost = {
 export async function findHomesToPost(query: string): Promise<HomeToPost[]> {
   if (typeof query !== "string") return [];
   const text = query.trim().slice(0, 100);
-  if (text.length < 2) return [];
+  // (Two letters at least; commas alone are nothing to look for.)
+  if (placeWords(text).join(" ").length < 2) return [];
   const MOST = 6;
   // (Of the listings people added themselves, only your own.)
   const me = (await getCurrentUser())?.id ?? null;
-  const rows = await sql<{ data: Listing }[]>`
-    select l.data from listings l
-    where l.standard_status = 'Active' and ${matchesPlace(text)}
-      and (l.owner_account_id is null or l.owner_account_id = ${me}::uuid)
-    order by (l.data->>'UnparsedAddress' ilike ${`${escapeLike(text)}%`}) desc, l.updated_at desc, l.listing_key
-    limit ${MOST}`;
-  const here = rows.map((row) => row.data);
+  const here = await homesHere(text, me, [], MOST);
   // Not enough here: homes for sale found by that address elsewhere, for
   // someone signed in. One is brought in when it's posted about.
   const have = new Set(here.map((home) => home.ListingKey));

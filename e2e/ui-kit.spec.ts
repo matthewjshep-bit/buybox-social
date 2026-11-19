@@ -1,5 +1,5 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
-import { enterCode, createShare, signInAgent, signUpBuyer } from "./helpers";
+import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
+import { enterCode, createShare, pastNameStep, signInAgent, signUpBuyer } from "./helpers";
 
 // The light pages are made of one kit (lib/ui.ts, components/ui.tsx): one
 // button, one text box, one face for each kind of person, prices in the
@@ -80,6 +80,8 @@ async function signIn(browser: Browser, email: string) {
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Continue" }).click();
   await enterCode(page);
+  // (Just an email, so no first name yet: asked, and skipped.)
+  await pastNameStep(page);
   await page.waitForURL((url) => !url.pathname.startsWith("/login"));
   return page;
 }
@@ -145,6 +147,56 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   await agent.goto("/dashboard/profile");
   await expectKitButtons(agent, "brand");
   await expectFieldFocus(agent, "Full name");
+});
+
+test("one title, one column and one way back: the same size and the same left edge from page to page", async ({ browser }) => {
+  const agent = await signInAgent(browser, "tess-title@example.com", "Tess Title");
+  const { dashboardUrl } = await createShare(agent, ["812 N Corbel"], ["Kit"]);
+  await agent.setViewportSize({ width: 1280, height: 900 });
+
+  // The page's title: its type, its size and where it starts.
+  const title = async (path: string) => {
+    await agent.goto(path);
+    const h1 = agent.getByRole("main").getByRole("heading", { level: 1 });
+    await expect(h1).toBeVisible();
+    return h1.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { size: style.fontSize, family: style.fontFamily, left: Math.round(el.getBoundingClientRect().left) };
+    });
+  };
+  const notifications = await title("/activity");
+  expect(notifications.size).toBe("36px");
+  for (const path of ["/people/me/edit", "/dashboard", "/dashboard/links", "/dashboard/listings", new URL(dashboardUrl).pathname]) {
+    expect(await title(path), path).toEqual(notifications);
+  }
+
+  // The way back, on a link's page and on a client's: a fingertip tall, the
+  // same size, starting at the same place.
+  const back = async (link: Locator, what: string) => {
+    await expect(link, what).toBeVisible();
+    const box = (await link.boundingBox())!;
+    expect(box.height, what).toBeGreaterThanOrEqual(44);
+    return { size: await link.evaluate((el) => getComputedStyle(el).fontSize), left: Math.round(box.x), height: box.height };
+  };
+  const main = agent.getByRole("main");
+  await agent.goto(dashboardUrl);
+  // (A link's page goes back to the client it's for, by name.)
+  const toClient = main.locator('a[href^="/dashboard/clients/"]').first();
+  await expect(toClient).toHaveText("Kit");
+  const fromLink = await back(toClient, "a link's page");
+  await toClient.click();
+  await agent.waitForURL((url) => url.pathname.startsWith("/dashboard/clients/"));
+  expect(await back(main.getByRole("link", { name: "All clients", exact: true }), "a client's page")).toEqual(fromLink);
+  await agent.goto("/people/me/edit");
+  expect(await back(main.getByRole("link", { name: "Your profile", exact: true }), "Edit profile")).toEqual(fromLink);
+
+  // On a phone the title is a size smaller, and still the same everywhere.
+  await agent.setViewportSize({ width: 390, height: 780 });
+  const small = await title("/activity");
+  expect(small.size).toBe("30px");
+  for (const path of ["/people/me/edit", "/dashboard", new URL(dashboardUrl).pathname]) {
+    expect(await title(path), path).toEqual(small);
+  }
 });
 
 test("a buyer's pages, sign-in and the admin are the same kit, and a buyer's face is the brand's colour", async ({

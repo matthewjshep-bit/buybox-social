@@ -1,23 +1,39 @@
 // The map-and-list search page.
 import { sql } from "./db";
-import { escapeLike } from "./format";
+import { escapeLike, placeWords } from "./format";
 import { ORDER_BY, totalsForListing } from "./public";
 import { HOME_TYPES, type SearchFilters } from "./search-options";
 
-// A home (`listings l`) found by what's typed: part of its address, city, zip
-// or MLS number, taken as it is.
+// Everything a home (`listings l`) is found by, as one line, the way the app
+// prints it: "5902 Lakeview Terrace SE Mercer Island WA 98040", then its MLS
+// number.
+const place = () =>
+  sql`concat_ws(' ', l.data->>'UnparsedAddress', l.data->>'City', l.data->>'StateOrProvince', l.data->>'PostalCode', l.data->>'ListingId')`;
+
+// A home found by what's typed: every word of it is somewhere in the home's
+// address, city, state, ZIP or MLS number, in any order. So the street with
+// its city ("5902 Lakeview Terrace SE, Mercer Island"), a few words of each
+// ("lakeview mercer") and a ZIP with a street ("98040 lakeview") all find it.
+// Nothing typed (or only commas) matches every home.
 export const matchesPlace = (text: string) => {
-  const pattern = `%${escapeLike(text)}%`;
-  return sql`(
-    l.data->>'UnparsedAddress' ilike ${pattern} or l.data->>'City' ilike ${pattern}
-    or l.data->>'PostalCode' ilike ${pattern} or l.data->>'ListingId' ilike ${pattern})`;
+  const words = placeWords(text);
+  if (words.length === 0) return sql`true`;
+  const each = words.map((word) => sql`${place()} ilike ${`%${escapeLike(word)}%`}`);
+  return sql`(${each.reduce((all, one) => sql`${all} and ${one}`)})`;
 };
+
+// To order by: whether the home's address (with its city after it) starts
+// with what was typed, so "12 Main" has 12 Main St ahead of 412 Main St.
+// Commas and full stops count for nothing on either side.
+export const startsWithPlace = (text: string) =>
+  sql`regexp_replace(${place()}, '[[:space:],.]+', ' ', 'g') ilike ${`${escapeLike(placeWords(text).join(" "))}%`}`;
 
 // The homes a search finds, in its order: their keys, for the reel to show.
 export async function searchHomeKeys(filters: SearchFilters): Promise<string[]> {
   // (Not the listings people added themselves: those are on their profiles.)
   const conditions = [sql`l.standard_status = 'Active' and l.owner_account_id is null`];
-  if (filters.q) conditions.push(matchesPlace(filters.q));
+  // (Only commas in the box is nothing to look for: no homes, not every home.)
+  if (filters.q) conditions.push(placeWords(filters.q).length ? matchesPlace(filters.q) : sql`false`);
   if (filters.minPrice) conditions.push(sql`(l.data->>'ListPrice')::numeric >= ${filters.minPrice}`);
   if (filters.maxPrice) conditions.push(sql`(l.data->>'ListPrice')::numeric <= ${filters.maxPrice}`);
   if (filters.beds) conditions.push(sql`(l.data->>'BedroomsTotal')::int >= ${filters.beds}`);

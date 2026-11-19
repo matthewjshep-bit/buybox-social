@@ -3,12 +3,30 @@ import { NextResponse, type NextRequest } from "next/server";
 
 // Keeps the signed-in person's Supabase session fresh. Every page shows who is
 // signed in, so this runs everywhere except static files.
+//
+// It also notes the page asked for, as `x-path` on the request the pages see:
+// someone stopped at a page that takes an account is sent to sign in, and
+// then back to it (lib/auth.ts signInPath). Set on every way out of here, so
+// it's always this request's own address, never one a browser sent along.
 export async function proxy(request: NextRequest) {
+  // (Without the `_rsc` a tap on a link adds: it's the router's, not the page's.)
+  const asked = request.nextUrl.clone();
+  asked.searchParams.delete("_rsc");
+  const path = request.nextUrl.searchParams.has("_rsc")
+    ? `${asked.pathname}${asked.search}`
+    : `${request.nextUrl.pathname}${request.nextUrl.search}`;
+  // On to the page, with the request's headers as they are now (its cookies too).
+  const onward = () => {
+    const headers = new Headers(request.headers);
+    headers.set("x-path", path);
+    return NextResponse.next({ request: { headers } });
+  };
+
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_PUBLISHABLE_KEY;
-  if (!url || !key) return NextResponse.next();
+  if (!url || !key) return onward();
 
-  let response = NextResponse.next({ request });
+  let response = onward();
   const supabase = createServerClient(url, key, {
     cookies: {
       getAll: () => request.cookies.getAll(),
@@ -16,7 +34,7 @@ export async function proxy(request: NextRequest) {
         for (const { name, value } of cookiesToSet) {
           request.cookies.set(name, value);
         }
-        response = NextResponse.next({ request });
+        response = onward();
         for (const { name, value, options } of cookiesToSet) {
           response.cookies.set(name, value, options);
         }

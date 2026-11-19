@@ -23,10 +23,10 @@ test("someone posts about a home from their page; a follower sees it in their fe
   await ravi.getByRole("button", { name: "Follow Pia" }).click();
   await expect(ravi.getByRole("button", { name: /^Following/ })).toBeVisible();
 
-  // Pia finds the home by its street, and says what she thinks.
+  // Pia finds the home by its street and city, and says what she thinks.
   await pia.getByRole("button", { name: "Post or save a home…" }).click();
   const form = pia.getByRole("form", { name: "Post or save a home" });
-  await form.getByRole("searchbox", { name: "Which home? Address or MLS number" }).fill("Larkmoor");
+  await form.getByRole("searchbox", { name: "Which home? Address, city, ZIP or MLS number" }).fill(`${LARKMOOR}, Seattle`);
   await form.getByRole("list", { name: "Homes" }).getByRole("button", { name: new RegExp(LARKMOOR) }).click();
   await expect(form).toContainText(LARKMOOR);
   // Save is there beside Post (it keeps the home for her alone, with nothing

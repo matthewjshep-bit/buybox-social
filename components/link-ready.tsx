@@ -6,7 +6,7 @@ import { SendLink } from "@/app/dashboard/shares/[id]/client";
 import { sql } from "@/lib/db";
 import { appUrl, cn } from "@/lib/format";
 import { getShareListings } from "@/lib/shares";
-import { button, card } from "@/lib/ui";
+import { button, card, pageTitle } from "@/lib/ui";
 
 // The last step of sending homes: the link, ready to copy or send, and
 // nothing else. One for each person it's for (each with their name), or the
@@ -42,10 +42,10 @@ export async function LinkReady({
   const count = listings.length;
   const oneHome = count === 1 ? { address: listings[0].UnparsedAddress, price: listings[0].ListPrice } : undefined;
   return (
-    <div className="mx-auto max-w-xl">
+    <div>
       <div className="flex items-center gap-3">
         <CheckCircle2 aria-hidden size={32} className="shrink-0 text-emerald-600" />
-        <h1 className="font-display text-3xl">{people.length > 1 ? "Your links are ready" : "Your link is ready"}</h1>
+        <h1 className={cn(pageTitle, "min-w-0")}>{people.length > 1 ? "Your links are ready" : "Your link is ready"}</h1>
       </div>
       <p className="mt-1 text-body text-stone-700">
         {count === 1 ? listings[0].UnparsedAddress : `${count} homes`}

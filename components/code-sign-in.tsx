@@ -43,7 +43,9 @@ export function CodeSignIn({
   // The id of a line that says more about the first name ("Not Toby? Type
   // your name."), for screen readers.
   nameHint?: string;
-  onDone: (done: { agent: boolean; firstName?: string }) => void;
+  // Signed in. `needsName`: a buyer's account with no first name yet (this
+  // form didn't ask one), for the page to ask next.
+  onDone: (done: { agent: boolean; needsName: boolean; firstName?: string }) => void;
 }) {
   const id = useId();
   const [state, setState] = useState<CodeState>({});
@@ -90,7 +92,8 @@ export function CodeSignIn({
 
   const verify = () =>
     startTransition(async () => {
-      const result = await verifyCode({ email: sentTo ?? email, code }).catch(
+      // (`asAgent` goes with the code: only whoever has it can make the account an agent's.)
+      const result = await verifyCode({ email: sentTo ?? email, code, asAgent }).catch(
         (): CodeState => ({ error: "That didn't go through. Please try again.", field: "code" }),
       );
       if (result.done) onDone({ ...result.done, ...(withName && firstName.trim() && { firstName: firstName.trim() }) });

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, signInPath } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
 import { ensureAccountVisitor, getPublicIdentity } from "@/lib/public";
 
@@ -20,5 +20,6 @@ export default async function MyProfile({
   if (tab === "activity" && account?.role === "agent") params.set("tab", "activity");
   if (show === "saved") params.set("show", "saved");
   const query = params.toString();
-  redirect(me ? `/people/${me.id}${query ? `?${query}` : ""}` : "/login");
+  // (Signed out, and nothing of this browser's: sign in, then back here.)
+  redirect(me ? `/people/${me.id}${query ? `?${query}` : ""}` : await signInPath("/people/me"));
 }

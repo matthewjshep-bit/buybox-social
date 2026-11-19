@@ -59,6 +59,15 @@ export async function getOwnListing(accountId: string, key: string): Promise<Own
   return row ? own(row) : null;
 }
 
+// Whether a listing someone added is one anyone may see on their profile, as
+// part of a query on `listings`: not hidden, and with a photo (a video alone
+// has nothing for a card to show).
+export const shownOnProfile = () => sql`
+  (coalesce((data->>'Hidden')::boolean, false) = false
+    and exists (
+      select 1 from jsonb_array_elements(data->'Media') m
+      where coalesce(m->>'MediaCategory', 'Photo') <> 'Video' and m->>'VideoEmbed' is null))`;
+
 // The ones anyone may see on their profile: available or closed (a closed
 // one says so), not hidden, with a photo; newest first.
 export async function getShownOwnListings(accountId: string | null): Promise<Listing[]> {
@@ -66,11 +75,7 @@ export async function getShownOwnListings(accountId: string | null): Promise<Lis
   const rows = await sql<{ data: Listing }[]>`
     select data from listings
     where owner_account_id = ${accountId} and standard_status in ('Active', 'Closed')
-      and coalesce((data->>'Hidden')::boolean, false) = false
-      -- (With a photo: a video alone has nothing for a card to show.)
-      and exists (
-        select 1 from jsonb_array_elements(data->'Media') m
-        where coalesce(m->>'MediaCategory', 'Photo') <> 'Video' and m->>'VideoEmbed' is null)
+      and ${shownOnProfile()}
     order by updated_at desc, listing_key
     limit ${OWN_LISTINGS_MOST}`;
   return rows.map((row) => sorted(row.data));

@@ -26,8 +26,13 @@ export function ProfileForm(props: {
   // Among their other profile settings (Edit profile): their photo has its
   // own place there, saving stays on the page, and the button says what it saves.
   embedded?: boolean;
+  // A new agent's first screen: who they are (photo, name, company, colour)
+  // and no more. How clients reach them and their MLS ID aren't asked; they're
+  // in Edit profile, where this form shows whole.
+  firstRun?: boolean;
 }) {
   const embedded = props.embedded ?? false;
+  const firstRun = props.firstRun ?? false;
   const [state, action, pending] = useActionState<ProfileState, FormData>(saveProfile, {});
   const [photo, setPhoto] = useState(props.photo);
   const [color, setColor] = useState(props.brandColor);
@@ -124,100 +129,107 @@ export function ProfileForm(props: {
           maxLength={80}
           autoComplete="organization"
           defaultValue={state.values?.brokerage ?? props.brokerage}
-          aria-describedby="brokerage-hint"
           className={inputClass}
         />
-        <p id="brokerage-hint" className="mt-1 text-sm text-muted">
-          Or your team.
-        </p>
       </div>
 
-      <div>
-        <label htmlFor="contactPhone" className="text-sm font-medium">
-          Phone for clients (optional)
-        </label>
-        <input
-          ref={phoneField}
-          id="contactPhone"
-          name="contactPhone"
-          type="tel"
-          inputMode="tel"
-          maxLength={30}
-          autoComplete="tel"
-          value={phone}
-          onChange={(event) => setPhone(event.target.value)}
-          {...invalid("contactPhone")}
-          className={inputClass}
-        />
-        {suggestion && (
-          <button
-            type="button"
-            onClick={() => {
-              setPhone(suggestion);
-              // The button goes once it's used; the cursor carries on in the field.
-              phoneField.current?.focus();
-            }}
-            className={cn(button({ kind: "ghost", flush: true }), "mt-1 text-brand")}
-          >
-            Use {suggestion}
-          </button>
-        )}
-        {state.field === "contactPhone" && (
-          <p id="contactPhone-error" role="alert" className="mt-1 text-sm text-red-700">
-            {state.error}
-          </p>
-        )}
-      </div>
+      {firstRun ? (
+        // Not asked the first time: saved empty, as if left blank.
+        <>
+          <input type="hidden" name="contactPhone" value="" />
+          <input type="hidden" name="contactEmail" value="" />
+          <input type="hidden" name="mlsAgentId" value="" />
+        </>
+      ) : (
+        <>
+          <div>
+            <label htmlFor="contactPhone" className="text-sm font-medium">
+              Phone for clients (optional)
+            </label>
+            <input
+              ref={phoneField}
+              id="contactPhone"
+              name="contactPhone"
+              type="tel"
+              inputMode="tel"
+              maxLength={30}
+              autoComplete="tel"
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              {...invalid("contactPhone")}
+              className={inputClass}
+            />
+            {suggestion && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPhone(suggestion);
+                  // The button goes once it's used; the cursor carries on in the field.
+                  phoneField.current?.focus();
+                }}
+                className={cn(button({ kind: "ghost", flush: true }), "mt-1 text-brand")}
+              >
+                Use {suggestion}
+              </button>
+            )}
+            {state.field === "contactPhone" && (
+              <p id="contactPhone-error" role="alert" className="mt-1 text-sm text-red-700">
+                {state.error}
+              </p>
+            )}
+          </div>
 
-      <div>
-        <label htmlFor="contactEmail" className="text-sm font-medium">
-          Email for clients (optional)
-        </label>
-        <input
-          id="contactEmail"
-          name="contactEmail"
-          type="email"
-          maxLength={254}
-          autoComplete="email"
-          defaultValue={state.values?.contactEmail ?? props.contactEmail}
-          {...invalid("contactEmail")}
-          className={inputClass}
-        />
-        {state.field === "contactEmail" && (
-          <p id="contactEmail-error" role="alert" className="mt-1 text-sm text-red-700">
-            {state.error}
-          </p>
-        )}
-        <p id="contact-hint" className="mt-1 text-sm text-muted">
-          Shown on your links.
-        </p>
-      </div>
+          <div>
+            <label htmlFor="contactEmail" className="text-sm font-medium">
+              Email for clients (optional)
+            </label>
+            <input
+              id="contactEmail"
+              name="contactEmail"
+              type="email"
+              maxLength={254}
+              autoComplete="email"
+              defaultValue={state.values?.contactEmail ?? props.contactEmail}
+              {...invalid("contactEmail")}
+              className={inputClass}
+            />
+            {state.field === "contactEmail" && (
+              <p id="contactEmail-error" role="alert" className="mt-1 text-sm text-red-700">
+                {state.error}
+              </p>
+            )}
+            <p id="contact-hint" className="mt-1 text-sm text-muted">
+              Shown on your links.
+            </p>
+          </div>
 
-      <div>
-        <label htmlFor="mlsAgentId" className="text-sm font-medium">
-          MLS ID (optional)
-        </label>
-        <input
-          id="mlsAgentId"
-          name="mlsAgentId"
-          maxLength={20}
-          autoComplete="off"
-          autoCapitalize="characters"
-          spellCheck={false}
-          defaultValue={state.values?.mlsAgentId ?? props.mlsAgentId}
-          aria-invalid={state.field === "mlsAgentId" ? true : undefined}
-          aria-describedby={state.field === "mlsAgentId" ? "mlsAgentId-error mlsAgentId-hint" : "mlsAgentId-hint"}
-          className={inputClass}
-        />
-        {state.field === "mlsAgentId" && (
-          <p id="mlsAgentId-error" role="alert" className="mt-1 text-sm text-red-700">
-            {state.error}
-          </p>
-        )}
-        <p id="mlsAgentId-hint" className="mt-1 text-sm text-muted">
-          Your active listings show on your profile.
-        </p>
-      </div>
+          <div>
+            <label htmlFor="mlsAgentId" className="text-sm font-medium">
+              MLS ID (optional)
+            </label>
+            <input
+              id="mlsAgentId"
+              name="mlsAgentId"
+              maxLength={20}
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              defaultValue={state.values?.mlsAgentId ?? props.mlsAgentId}
+              aria-invalid={state.field === "mlsAgentId" ? true : undefined}
+              aria-describedby={state.field === "mlsAgentId" ? "mlsAgentId-error mlsAgentId-hint" : "mlsAgentId-hint"}
+              className={inputClass}
+            />
+            {state.field === "mlsAgentId" && (
+              <p id="mlsAgentId-error" role="alert" className="mt-1 text-sm text-red-700">
+                {state.error}
+              </p>
+            )}
+            <p id="mlsAgentId-hint" className="mt-1 text-sm text-muted">
+              Shows your MLS listings.
+            </p>
+          </div>
+        </>
+      )}
 
       <fieldset>
         <legend className="text-sm font-medium">Brand color</legend>
@@ -250,8 +262,10 @@ export function ProfileForm(props: {
         <button
           type="submit"
           disabled={pending}
-          // In the colour picked, before it's saved.
-          style={{ background: color }}
+          // On its own page, in the colour picked, before it's saved. On Edit
+          // profile it's the site's own, like the other Save there (the
+          // swatches above already show the colour picked).
+          style={embedded ? undefined : { background: color }}
           className={button({ kind: "primary", size: "lg" })}
         >
           {pending ? "Saving…" : embedded ? "Save details" : "Save"}

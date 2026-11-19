@@ -155,12 +155,8 @@ export function WelcomeEditor({
               autoFocus
               autoComplete="off"
               placeholder={standard}
-              aria-describedby={`${ids}-headline-hint`}
               className={cn(field(), "mt-1")}
             />
-            <p id={`${ids}-headline-hint`} className="mt-1 text-meta text-muted">
-              Leave it empty for the standard line, with each person&apos;s own name.
-            </p>
           </div>
           <div>
             <label htmlFor={`${ids}-note`} className="text-sm font-medium">

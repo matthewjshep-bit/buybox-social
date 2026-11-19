@@ -5,13 +5,17 @@ import type { ReactNode } from "react";
 import { SignUpForm } from "@/components/join";
 import { Avatar } from "@/components/ui";
 import { cn } from "@/lib/format";
-import { button, card, glass } from "@/lib/ui";
+import { button, card, focusOnDark, glass, pill } from "@/lib/ui";
 
 // The home page, signed out: what Porchcard is, at a glance. First the idea
 // (a home with people's takes on it), then what it does for agents and
-// brokers, then for buyers, then the sign-up. One thing to do on it: Sign up.
+// brokers, then for buyers, then the sign-up. Two things to do at the top:
+// Sign up, or see homes first. An agent's way in is a button of its own,
+// where they're reading and again by the form (which makes a buyer's account).
+// The pitch to agents is written once, here, and the page for agents
+// (/for-agents) draws the same one.
 
-function Eyebrow({ children }: { children: ReactNode }) {
+export function Eyebrow({ children }: { children: ReactNode }) {
   return <p className="text-sm font-semibold uppercase tracking-[0.14em] text-brand">{children}</p>;
 }
 
@@ -80,7 +84,7 @@ function HeroPicture() {
   );
 }
 
-function Feature({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+export function Feature({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
   return (
     <li className="flex gap-4">
       <span aria-hidden className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
@@ -94,8 +98,28 @@ function Feature({ icon, title, children }: { icon: ReactNode; title: string; ch
   );
 }
 
+// What agents are told, in one line and three: the same words on the home
+// page and on the page for agents.
+export const AGENT_HEADLINE = "Send a few homes. Learn exactly what they want.";
+
+export function AgentFeatures() {
+  return (
+    <ul className="mt-8 flex flex-col gap-6">
+      <Feature icon={<Send size={18} />} title="One link, your brand">
+        Text it from your own phone.
+      </Feature>
+      <Feature icon={<Heart size={18} />} title="More than yes or no">
+        See what they loved, and what put them off.
+      </Feature>
+      <Feature icon={<DoorOpen size={18} />} title="Know who’s ready">
+        See who opened it and who wants a showing.
+      </Feature>
+    </ul>
+  );
+}
+
 // For agents: the link their client opens, and what the agent sees back.
-function AgentPicture() {
+export function AgentPicture() {
   return (
     <div aria-hidden className="relative mx-auto w-full max-w-md md:max-w-none">
       <div className="relative aspect-[5/4] overflow-hidden rounded-[2rem] bg-stone-700 shadow-2xl">
@@ -176,9 +200,16 @@ export function MarketingHome({ devMode }: { devMode: boolean }) {
           <p className="mt-6 max-w-lg text-pretty text-lg leading-relaxed text-stone-700 sm:text-xl">
             Agents send homes as one link. Buyers tap what they love.
           </p>
-          <a href="#start" className={cn(button({ kind: "primary", size: "lg" }), "mt-8")}>
-            Sign up
-          </a>
+          {/* Sign up goes to the form at the foot; See homes, to the homes
+              themselves, for anyone who'd rather look first. */}
+          <div className="mt-8 flex flex-wrap gap-3">
+            <a href="#start" className={button({ kind: "primary", size: "lg" })}>
+              Sign up
+            </a>
+            <Link href="/browse" className={button({ kind: "secondary", size: "lg" })}>
+              See homes
+            </Link>
+          </div>
           <p className="mt-5 text-meta text-muted">No app. No password.</p>
         </div>
         <HeroPicture />
@@ -190,20 +221,15 @@ export function MarketingHome({ devMode }: { devMode: boolean }) {
           <div className="md:order-2">
             <Eyebrow>For agents &amp; brokers</Eyebrow>
             <h2 id="agents-title" className="mt-3 text-balance font-display text-4xl leading-tight sm:text-5xl">
-              Send a few homes. Learn exactly what they want.
+              {AGENT_HEADLINE}
             </h2>
 
-            <ul className="mt-8 flex flex-col gap-6">
-              <Feature icon={<Send size={18} />} title="One link, your brand">
-                Text it from your own phone.
-              </Feature>
-              <Feature icon={<Heart size={18} />} title="More than yes or no">
-                See what they loved, and what put them off.
-              </Feature>
-              <Feature icon={<DoorOpen size={18} />} title="Know who’s ready">
-                See who opened it and who wants a showing.
-              </Feature>
-            </ul>
+            <AgentFeatures />
+            {/* An agent's account starts here, where they're reading: the
+                form at the foot makes a buyer's. */}
+            <Link href="/login?as=agent" className={cn(button({ kind: "primary", size: "lg" }), "mt-8")}>
+              Start free as an agent
+            </Link>
           </div>
           <AgentPicture />
         </div>
@@ -244,10 +270,12 @@ export function MarketingHome({ devMode }: { devMode: boolean }) {
           </div>
           <div className="w-full md:max-w-sm md:justify-self-end">
             <SignUpForm devMode={devMode} />
-            {/* The form above makes a buyer's account; an agent's starts here. */}
+            {/* The form above makes a buyer's account; an agent's starts here:
+                a button as wide as the form, edged in white on the brand's
+                colour so the form stays the first thing. */}
             <Link
               href="/login?as=agent"
-              className="mt-2 flex min-h-11 items-center justify-center font-semibold text-white underline underline-offset-4"
+              className={cn(pill("lg", { block: true }), "mt-3 border-2 border-white text-white hover:bg-white/15", focusOnDark)}
             >
               I&apos;m an agent
             </Link>

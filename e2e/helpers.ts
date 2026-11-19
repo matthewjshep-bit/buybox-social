@@ -42,6 +42,15 @@ export async function saveDetails(page: Page) {
   await expect(detailsForm(page).getByRole("status")).toHaveText("Saved");
 }
 
+// Add a listing opens on "Find it" alone; entering one by hand is asked for
+// under it. Asks (on the page already open), and gives back the form.
+export async function enterListingYourself(page: Page) {
+  const form = page.getByRole("form", { name: "Listing details" });
+  await page.getByRole("button", { name: "Not there? Enter it yourself" }).click();
+  await expect(form).toBeVisible();
+  return form;
+}
+
 // Sending homes goes a step at a time: the homes, who it's for, then (on the
 // link itself) what the agent thinks of them. From the homes (one picked), on
 // to who it's for.
@@ -104,7 +113,7 @@ export async function createShare(page: Page, addresses: string[], people: strin
 // A buyer signs up the way buyers do: the form at the foot of the home page,
 // a first name and an email, then the code (locally, always DEV_CODE, shown on the page).
 // They're signed in right there: the home page is their feed now. Then on to
-// every home full screen (Browse homes), where most tests carry on. The phone
+// every home full screen (Browse, at /browse), where most tests carry on. The phone
 // is optional.
 export async function signUpBuyer(browser: Browser, email: string, name: string, phone?: string) {
   const page = await (await browser.newContext()).newPage();
@@ -118,7 +127,7 @@ export async function signUpBuyer(browser: Browser, email: string, name: string,
   await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
   await expect(page.getByRole("form", { name: "Sign up" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Browse homes" }).first()).toBeVisible();
-  await page.goto("/reel");
+  await page.goto("/browse");
   await expect(page.getByRole("article").first()).toBeVisible();
   return page;
 }
@@ -126,15 +135,41 @@ export async function signUpBuyer(browser: Browser, email: string, name: string,
 // Someone already signed in (just an email, no name yet), in a browser of
 // their own: the way a client comes back to a link after signing up. On their
 // own link, a tap does what it does at once; on a package's link they're asked
-// only their first name (joinAs).
-export async function signedIn(browser: Browser, email = `client.${Date.now()}${Math.floor(Math.random() * 1e4)}@example.com`) {
+// only their first name (joinAs). The sign-in page asks a new buyer's first
+// name before going on: skipped here, so they stay nameless, unless `name`
+// is given.
+export async function signedIn(
+  browser: Browser,
+  email = `client.${Date.now()}${Math.floor(Math.random() * 1e4)}@example.com`,
+  name?: string,
+) {
   const page = await (await browser.newContext()).newPage();
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Continue" }).click();
   await enterCode(page);
+  await pastNameStep(page, name);
   await page.waitForURL((url) => url.pathname === "/");
   return page;
+}
+
+// Just signed in on the sign-in page (the code, or the test password): a
+// buyer with no first name yet is asked it there, the one thing on the page,
+// before going on. Given here (`name`), or skipped. Anyone with a name, and
+// any agent, goes straight on, and there's nothing to do.
+export async function pastNameStep(page: Page, name?: string) {
+  const step = page.getByRole("form", { name: "Your name" });
+  await expect(async () => {
+    expect(!new URL(page.url()).pathname.startsWith("/login") || (await step.isVisible())).toBe(true);
+  }).toPass({ timeout: 15_000 });
+  if (!(await step.isVisible())) return;
+  if (name) {
+    await step.getByLabel("First name").fill(name);
+    await step.getByRole("button", { name: "Continue" }).click();
+  } else {
+    await step.getByRole("link", { name: "Skip" }).click();
+  }
+  await page.waitForURL((url) => !url.pathname.startsWith("/login"));
 }
 
 // The code from the email, typed where it was asked for: locally there's no

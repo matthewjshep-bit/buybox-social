@@ -1,4 +1,4 @@
-import { Map as MapIcon, Plus } from "lucide-react";
+import { Search, Send } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 import { StoryTasteCard, TasteCard } from "@/components/taste-card";
@@ -26,11 +26,11 @@ export function FeedEnd({
       </Suspense>
       <div className="mt-6 flex flex-wrap justify-center gap-3">
         <Link href="/search" className={button({ kind: "light", size: "lg" })}>
-          <MapIcon aria-hidden size={17} /> Map
+          <Search aria-hidden size={17} /> Search homes
         </Link>
         {account?.role === "agent" && (
           <Link href="/dashboard/new" className={button({ kind: "primary", size: "lg" })}>
-            <Plus aria-hidden size={17} /> Send homes
+            <Send aria-hidden size={17} /> Send homes
           </Link>
         )}
         {!account && (

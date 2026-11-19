@@ -13,6 +13,7 @@ import {
   Hand,
   Heart,
   ImageIcon,
+  Link2,
   LoaderCircle,
   MapPin,
   Maximize2,
@@ -135,9 +136,11 @@ const sendHomeOf = ({ listing }: FeedPost): SendHome => ({
 });
 
 // What the rail's fourth button does: share the page, invite someone onto an
-// agent's link, or (an agent, on a home for sale) send it to a client.
-// "sending": Send, between one send and the new link for the next.
-type ShareKind = "share" | "invite" | "send" | "sending";
+// agent's link, or, on a home for sale, send it. An agent's Send ("send")
+// makes a client's link there and then ("sending": between one send and the
+// new link for the next); anyone else signed in goes on to the three steps
+// for sending homes, with this one picked ("steps").
+type ShareKind = "share" | "invite" | "send" | "sending" | "steps";
 
 // What can rise over a home.
 type SheetKind = "comments" | "more" | "scorecard";
@@ -240,6 +243,7 @@ export function ReelFeed({
   // Signed-in agents on public pages: the rail's share button sends this home.
   // Called first thing in the tap, with nothing awaited before it. Side by
   // side, `panel` is the home's white panel, for what follows to rise over.
+  // (Without it, anyone else signed in still has Send: on to Send homes.)
   onSend?: (home: SendHome, panel?: HTMLElement | null) => void;
   // Send's next link is on its way: the button waits, and says so.
   sendBusy?: boolean;
@@ -340,7 +344,7 @@ export function ReelFeed({
     mode === "public"
       ? { text: "Public, with your first name.", private: false }
       : notes
-        ? { text: "Everyone on this link sees your notes.", private: true }
+        ? { text: "Everyone on this link sees your feedback.", private: true }
         : alone
         ? { text: `Only you and ${agent} see this.`, private: true }
         : { text: `Only ${agent} and people on this link see this.`, private: true };
@@ -516,6 +520,7 @@ function Feed({
   // if it doesn't hold (signed out: on to signing in, and back here after).
   const [savedNow, setSavedNow] = useState<Record<string, boolean>>({});
   const router = useRouter();
+  const signedIn = useSignedIn();
   const saves = {
     now: savedNow,
     toggle: (key: string, to: boolean) => {
@@ -791,21 +796,26 @@ function Feed({
   };
 
   const isForSale = (post: FeedPost) => post.listing.StandardStatus === "Active";
+  // On a public page, a home for sale is sent by anyone signed in; signed
+  // out, or once it's sold, there's only its page to share.
   const shareKind = (post: FeedPost): ShareKind | null =>
     mode === "share"
       ? canInvite
         ? "invite"
         : null
-      : onSend && isForSale(post)
-        ? sendBusy
-          ? "sending"
-          : "send"
-        : "share";
+      : !isForSale(post)
+        ? "share"
+        : onSend
+          ? sendBusy
+            ? "sending"
+            : "send"
+          : signedIn
+            ? "steps"
+            : "share";
 
-  const share = async (post: FeedPost) => {
-    if (onSend && mode === "public" && isForSale(post)) {
-      return onSend(sendHomeOf(post), wide ? wordsOf(post.listing.ListingKey) : null);
-    }
+  // The link to this page (a home's public page, or the agent's link you're
+  // on): handed to the phone's share sheet where there is one, or else copied.
+  const shareLink = async (post: FeedPost) => {
     const url =
       mode === "share" ? window.location.href : `${window.location.origin}/homes/${encodeURIComponent(post.listing.ListingKey)}`;
     const title = `${post.listing.UnparsedAddress} · ${formatPrice(post.listing.ListPrice)}`;
@@ -818,6 +828,15 @@ function Feed({
     } catch {
       // Closing the share sheet isn't an error.
     }
+  };
+
+  const share = (post: FeedPost) => {
+    if (mode === "public" && isForSale(post)) {
+      if (onSend) return onSend(sendHomeOf(post), wide ? wordsOf(post.listing.ListingKey) : null);
+      // (Anyone else signed in: Send homes, which finds this one picked.)
+      if (signedIn) return router.push(`/send?home=${encodeURIComponent(post.listing.ListingKey)}`);
+    }
+    return shareLink(post);
   };
 
   const sheetPost = sheet && posts.find((post) => post.listing.ListingKey === sheet.key);
@@ -1129,8 +1148,17 @@ function Feed({
         post={sheet?.kind === "more" ? (sheetPost ?? null) : null}
         state={sheetPost ? (reactions.states[sheetPost.listing.ListingKey] ?? NO_REACTION) : NO_REACTION}
         agentName={agentName}
-        // Anyone but an agent (whose rail has Send): the steps for sending homes, this one picked.
-        canSend={mode === "public" && !onSend && Boolean(sheetPost && isForSale(sheetPost))}
+        // On a public page, for everyone (an agent too, whose Send makes a
+        // client's private link): the link to the home's public page.
+        onShareLink={
+          mode === "public" && sheetPost
+            ? () => {
+                // (Gone first, so "Link copied" isn't said behind it.)
+                closeSheet("more");
+                void shareLink(sheetPost);
+              }
+            : undefined
+        }
         // On a phone, what the home is beyond its price and size is here
         // (side by side, the panel beside the photo already says it).
         about={!wide}
@@ -1531,18 +1559,19 @@ function Panel({
         ? {
             id: `you:like:${likeId(unheard.mediaKey, unheard.tag)}`,
             kind: unheard.mediaKey === FACTS ? "fact-like" : "spot-like",
-            who: { tone: "you", name: null },
+            who: { tone: "you", name: null, ...(post.myFace && { photo: post.myFace }) },
             at: unheard.at,
             mediaKey: unheard.mediaKey,
             spot: unheard.tag,
           }
         : null,
-    [mode, unheard],
+    [mode, unheard, post.myFace],
   );
   const likedHome = useMemo<TickerEvent | null>(() => {
     const shown = mode === "public" && reactedAt && JSON.stringify(state) !== JSON.stringify(base) ? publicSideOf(state) : null;
-    return shown && reactedAt ? { id: "you:reaction", kind: "reaction", who: { tone: "you", name: null }, at: reactedAt, state: shown } : null;
-  }, [mode, reactedAt, state, base]);
+    const who: TickerEvent["who"] = { tone: "you", name: null, ...(post.myFace && { photo: post.myFace }) };
+    return shown && reactedAt ? { id: "you:reaction", kind: "reaction", who, at: reactedAt, state: shown } : null;
+  }, [mode, reactedAt, state, base, post.myFace]);
   const events = useMemo(() => {
     const yours = [likedSpot, likedHome]
       .filter((event): event is TickerEvent => Boolean(event))
@@ -2181,7 +2210,8 @@ function Panel({
                       ? `Tell ${agentFirst} what you think…`
                       : "Add a comment…"}
                 </span>
-                <Send aria-hidden size={18} className="shrink-0 opacity-70" />
+                {/* (Not the paper plane: that only ever means sending homes.) */}
+                <ArrowUp aria-hidden size={18} className="shrink-0 opacity-70" />
               </button>
             )}
           </div>
@@ -2411,6 +2441,12 @@ function Rail({
           ) : (
             <Send size={26} {...icon} />
           )}
+        </RailButton>
+      )}
+      {/* Anyone else signed in: on to Send homes, with this one picked. */}
+      {onShare && shareAs === "steps" && (
+        <RailButton name="Send to someone" label="Send" onClick={onShare}>
+          <Send size={26} {...icon} />
         </RailButton>
       )}
       {onShare && shareAs === "invite" && (
@@ -2774,9 +2810,10 @@ function PanelActions({
   onShare?: () => void;
   onMore: () => void;
 }) {
+  // Each a fingertip tall (44px), and all but More with its word beside it.
   const action =
-    "flex h-10 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-sm font-semibold text-white/90 transition-colors hover:bg-white/10 active:bg-white/15";
-  const iconOnly = "flex size-10 shrink-0 items-center justify-center rounded-full text-white/85 transition-colors hover:bg-white/10 hover:text-white active:bg-white/15";
+    "flex h-11 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-sm font-semibold text-white/90 transition-colors hover:bg-white/10 active:bg-white/15";
+  const iconOnly = "flex size-11 shrink-0 items-center justify-center rounded-full text-white/85 transition-colors hover:bg-white/10 hover:text-white active:bg-white/15";
   const sending = shareAs === "sending";
   return (
     <div data-actions className="-mx-1 mb-2 hidden items-center gap-0.5 split:flex">
@@ -2825,23 +2862,32 @@ function PanelActions({
           title="Send to a client"
           aria-disabled={sending || undefined}
           onClick={sending ? undefined : onShare}
-          className={cn(iconOnly, sending && "cursor-progress opacity-60")}
+          className={cn(action, sending && "cursor-progress opacity-60")}
         >
           {sending ? (
             <LoaderCircle aria-hidden size={20} className="animate-spin motion-reduce:animate-none" />
           ) : (
             <Send aria-hidden size={20} />
           )}
+          Send
+        </button>
+      )}
+      {onShare && shareAs === "steps" && (
+        <button type="button" aria-label="Send to someone" title="Send to someone" onClick={onShare} className={action}>
+          <Send aria-hidden size={20} />
+          Send
         </button>
       )}
       {onShare && shareAs === "invite" && (
-        <button type="button" aria-label="Invite someone" title="Invite someone" onClick={onShare} className={iconOnly}>
+        <button type="button" aria-label="Invite someone" title="Invite someone" onClick={onShare} className={action}>
           <UserPlus aria-hidden size={20} />
+          Invite
         </button>
       )}
       {onShare && shareAs === "share" && (
-        <button type="button" aria-label="Share" title="Share" onClick={onShare} className={iconOnly}>
+        <button type="button" aria-label="Share" title="Share" onClick={onShare} className={action}>
           <Share2 aria-hidden size={20} />
+          Share
         </button>
       )}
       <button
@@ -3373,13 +3419,13 @@ function MoreSheet({
   anchor,
   returnTo,
   about = false,
-  canSend = false,
+  onShareLink,
 }: {
   post: FeedPost | null;
   state: ReactionState;
   agentName?: string;
-  // Signed in, it offers "Send to someone": the steps for sending homes, with this one picked.
-  canSend?: boolean;
+  // On a public page it offers "Share link": the home's public page, to pass on.
+  onShareLink?: () => void;
   // Say what the home is, under the rest: its description whole, and the
   // details there's no room for under a phone's photo.
   about?: boolean;
@@ -3392,7 +3438,6 @@ function MoreSheet({
   onClose: () => void;
 }) {
   const passed = state.reaction === "dislike";
-  const signedIn = useSignedIn();
   return (
     <Sheet open={Boolean(post)} onClose={onClose} label="More" title="More" anchor={anchor} returnTo={returnTo}>
       {post && (
@@ -3429,14 +3474,15 @@ function MoreSheet({
               Map of {post.listing.City}
             </Link>
           )}
-          {canSend && signedIn && (
-            <Link
-              href={`/send?home=${encodeURIComponent(post.listing.ListingKey)}`}
+          {onShareLink && (
+            <button
+              type="button"
+              onClick={onShareLink}
               className={cn(button({ kind: "ghost", flush: true }), "-mt-1 self-start text-ink")}
             >
-              <Send aria-hidden size={17} />
-              Send to someone
-            </Link>
+              <Link2 aria-hidden size={17} />
+              Share link
+            </button>
           )}
           <button
             type="button"

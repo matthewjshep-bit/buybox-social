@@ -11,7 +11,8 @@ import { searchHomeKeys } from "@/lib/search";
 import { filtersQuery, parseFilters } from "@/lib/search-options";
 import { getTaste } from "@/lib/taste";
 
-export const metadata = { title: "Homes · Porchcard" };
+// (Search's homes, so Search's name: Browse is the other place.)
+export const metadata = { title: "Search homes · Porchcard" };
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 

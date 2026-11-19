@@ -45,6 +45,17 @@ test("a home from a pasted Zillow link, nobody named, their thoughts skipped: th
   await search.press("Escape");
   await expect(agent.getByRole("listbox", { name: "Homes that match" })).toHaveCount(0);
   await search.fill("");
+  // The street with its city, as a home's card prints it, finds the home;
+  // so do a few words of each, and a ZIP with the street. A street in
+  // another city finds nothing.
+  for (const typed of ["719 Saltmarsh Ln, Edmonds", "saltmarsh edmonds", "98020 saltmarsh"]) {
+    await search.fill(typed);
+    await expect(offered, typed).toHaveCount(1);
+    await expect(offered, typed).toContainText("719 Saltmarsh Ln");
+  }
+  await search.fill("Saltmarsh Ln, Seattle");
+  await expect(agent.getByRole("listbox", { name: "Homes that match" })).toContainText("No homes match that.");
+  await search.fill("");
   // A tap picks too.
   await search.fill("Saltm");
   await agent.getByRole("option", { name: /719 Saltmarsh Ln/ }).click();

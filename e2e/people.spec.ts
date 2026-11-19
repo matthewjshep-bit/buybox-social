@@ -35,7 +35,7 @@ test("a client's page: one part at a time, people added and taken off, and anyon
   await expect(agent.getByText("On this link:").getByRole("link", { name: "Ben", exact: true })).toBeVisible();
 
   // What they want: Ben linked; Nina, who hasn't signed up, not.
-  await parts.getByRole("link", { name: "What they want" }).click();
+  await parts.getByRole("link", { name: "Wants", exact: true }).click();
   const want = agent.getByRole("region", { name: "What they each want" });
   await expect(want.getByRole("link", { name: "Ben", exact: true })).toBeVisible();
   await expect(want).toContainText("Nina hasn't reacted yet");

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Compass, Link2, Maximize2, Send, X } from "lucide-react";
+import { ArrowLeft, Images, Link2, Maximize2, Send, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
@@ -210,8 +210,8 @@ function EndCard({
     </Link>
   );
   const browse = () => (
-    <Link href="/reel" className={light}>
-      <Compass aria-hidden size={17} /> Browse homes
+    <Link href="/browse" className={light}>
+      <Images aria-hidden size={17} /> Browse homes
     </Link>
   );
   const name = context?.name ?? "";

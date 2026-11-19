@@ -166,14 +166,14 @@ export function PostComposer({ me }: { me: { name: string; photo: string | null;
       ) : (
         <div>
           <label className="relative block">
-            <span className="sr-only">Which home? Address or MLS number</span>
+            <span className="sr-only">Which home? Address, city, ZIP or MLS number</span>
             <Search aria-hidden size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-500" />
             <input
               ref={searchBox}
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Which home? Address or MLS #"
+              placeholder="Address, city, ZIP or MLS #"
               autoComplete="off"
               className="h-12 w-full rounded-full bg-stone-100 pl-11 pr-4 text-body text-ink placeholder:text-stone-500 focus:bg-white focus:outline-2 focus:outline-brand"
             />

@@ -118,6 +118,7 @@ export function ActivityCard({
   nameHref,
   avatarPhoto,
   only = false,
+  header,
   footer,
 }: {
   card: ProfileCard;
@@ -132,6 +133,9 @@ export function ActivityCard({
   avatarPhoto?: string | null;
   // Only the viewer sees it (an agent's client's card): a lock by the time.
   only?: boolean;
+  // Across its top, before who and what: a word on why this card comes first
+  // (a client asked to see this home).
+  header?: ReactNode;
   // Under it all: the agent's replies, and their own box to reply in.
   footer?: ReactNode;
 }) {
@@ -148,6 +152,7 @@ export function ActivityCard({
         data-card-link={card.id}
         className="absolute inset-0 z-10 scroll-mt-[var(--filters)] rounded-2xl focus-visible:outline-offset-[-3px]!"
       />
+      {header}
       <div className="flex items-start gap-3 p-4 pb-3">
         <Avatar name={face} tone={agent ? "agent" : "person"} size={8} photo={avatarPhoto} />
         <p className="min-w-0 flex-1 pt-1 text-body leading-snug text-ink">
