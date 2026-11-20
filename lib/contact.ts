@@ -1,5 +1,9 @@
-// How an agent's phone for clients is kept and shown. Plain helpers with no
-// client or server marker, so a form, a link and a dashboard page can all use them.
+// How an agent's phone and email for clients are kept and shown. Plain helpers with no
+// client or server marker, so a form, a link, a profile and a dashboard page can all use them.
+
+// An address safe to put in a mailto: link: one @, a dot after it, and none
+// of the characters that would start a query or a path.
+export const looksLikeEmail = (value: string) => /^[^\s@?&#/]+@[^\s@?&#/]+\.[^\s@?&#/]+$/.test(value);
 
 export const phoneDigits = (value: string) => value.replace(/\D/g, "");
 

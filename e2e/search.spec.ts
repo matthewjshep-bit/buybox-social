@@ -1,7 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import { heartOf, homeIn, joinAs, settle, signUpBuyer } from "./helpers";
 
-const pins = (page: Page) => page.getByRole("button", { name: /\$\d[\d,]*$/ });
+// (A pin is named by its short price, its address and its price: "$689K, 719
+// Saltmarsh Ln, $689,000". The home beside the map has a price to tap too.)
+const pins = (page: Page) => page.getByRole("button", { name: /^\$\d+(\.\d+)?[KM], .*\$\d[\d,]*$/ });
+const pressedPins = (page: Page) => pins(page).and(page.locator('[aria-pressed="true"]'));
 // Pins can sit on top of each other when zoomed out; this picks one by name.
 const tapPin = (page: Page, name: string) => page.getByRole("button", { name }).dispatchEvent("click");
 
@@ -25,7 +28,24 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await page.waitForTimeout(1500);
   await expect(pins(page)).toHaveCount(13);
   await expect(page.getByRole("article").first()).toBeInViewport();
-  await expect(page.getByRole("button", { name: /\$\d[\d,]*$/, pressed: true })).toHaveCount(1);
+  await expect(pressedPins(page)).toHaveCount(1);
+  // Read left to right as it's used: the list of homes, the one picked from
+  // it, then the map. (Narrower, with no list: the home, then the map.)
+  const left = async (css: string) => (await page.locator(css).first().boundingBox())!.x;
+  const [listX, homeX, mapX] = [
+    await left('ol[aria-label="Homes found"]'),
+    await left('section[aria-label="Homes"]'),
+    await left(".maplibregl-canvas"),
+  ];
+  expect(listX).toBe(0);
+  expect(homeX).toBeGreaterThan(listX);
+  expect(mapX).toBeGreaterThan(homeX);
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await expect(page.locator('ol[aria-label="Homes found"]')).toBeHidden();
+  expect(await left('section[aria-label="Homes"]')).toBe(0);
+  expect(await left(".maplibregl-canvas")).toBeGreaterThan(400);
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await expect(page.locator('ol[aria-label="Homes found"]')).toBeVisible();
   // Every pin shows its price, zoomed out too.
   await expect(pins(page)).toHaveText(Array(13).fill(/^\$\d+(\.\d+)?[KM]$/));
   // The map starts right under the filters, with no gap between.
@@ -54,7 +74,7 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await expect(homeIn(page, "10421 Halvard Way NE")).toBeInViewport({ ratio: 0.9 });
   await expect(page.getByRole("button", { name: "10421 Halvard Way NE, $1,349,000" })).toHaveAttribute("aria-pressed", "true");
   await expect(halvardCard).toHaveAttribute("aria-current", "true");
-  await expect(page.getByRole("button", { name: /\$\d[\d,]*$/, pressed: true })).toHaveCount(1);
+  await expect(pressedPins(page)).toHaveCount(1);
   // The address keeps the home picked, so a reload comes back to it (even
   // when it's the first).
   await expect(page).toHaveURL(/\/search\?home=SAMPLE-1005$/);
@@ -100,23 +120,52 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await page.waitForTimeout(800);
   await page.locator("[data-reel]").evaluate((reel) => reel.scrollBy({ top: reel.clientHeight }));
   await expect(larkmoorPin).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByRole("button", { name: /\$\d[\d,]*$/, pressed: true })).toHaveCount(1);
+  await expect(pressedPins(page)).toHaveCount(1);
   await expect(page).toHaveURL(/\/search\?sort=price-desc&home=SAMPLE-(?!1001$)\d+$/);
 
-  // Beside the map, a home is just a look: nothing to like, say or tap on it.
+  // Beside the map, on a wide screen, it's the home itself, not just a look
+  // at it: its X and its heart, its comments, its price to tap.
   await page.goto("/search?beds=4");
   const found = Number((await page.getByText(/^\d+ homes?$/).textContent())!.split(" ")[0]);
   await page.waitForTimeout(1500);
   await tapPin(page, "10421 Halvard Way NE, $1,349,000");
   const halvard = homeIn(page, "10421 Halvard Way NE");
   await expect(halvard).toBeInViewport({ ratio: 0.9 });
-  await expect(heartOf(halvard)).toHaveCount(0);
-  await expect(halvard.getByRole("button", { name: "Add a comment…" })).toHaveCount(0);
-  await expect(halvard.getByRole("button", { name: "Next photo" })).toHaveCount(0);
-  await expect(halvard.getByRole("button", { name: /^\$1,349,000/ })).toHaveCount(0);
+  await expect(heartOf(halvard)).toBeVisible();
+  await expect(halvard.getByRole("button", { name: "Pass on this home" })).toBeVisible();
+  // The room goes to the photo: no row of round buttons. The comment bar
+  // opens the comments, with Save and More beside it, all on one line.
+  await expect(halvard.locator("[data-rail]")).toBeHidden();
+  await expect(halvard.getByRole("button", { name: /^Comments/ }).filter({ visible: true })).toHaveCount(0);
+  await expect(halvard.getByRole("button", { name: /^Send to/ }).filter({ visible: true })).toHaveCount(0);
+  const bar = halvard.getByRole("button", { name: /^Add a comment…/ });
+  const save = halvard.getByRole("button", { name: /^Save 10421 Halvard Way NE/ }).filter({ visible: true });
+  const more = halvard.getByRole("button", { name: "More options" }).filter({ visible: true });
+  await expect(save).toHaveCount(1);
+  await expect(more).toHaveCount(1);
+  const [barBox, saveBox, moreBox] = [(await bar.boundingBox())!, (await save.boundingBox())!, (await more.boundingBox())!];
+  expect(Math.abs(barBox.y - saveBox.y)).toBeLessThan(2);
+  expect(Math.abs(barBox.y - moreBox.y)).toBeLessThan(2);
+  expect(saveBox.x).toBeGreaterThan(barBox.x + barBox.width);
+  expect(moreBox.x).toBeGreaterThan(saveBox.x + saveBox.width);
+  expect(saveBox.width).toBeGreaterThanOrEqual(44);
+  // And the photo keeps its size: more than half the pane's height.
+  const photoBox = (await halvard.getByRole("group", { name: /^Photos of/ }).locator("img").first().boundingBox())!;
+  expect(photoBox.height).toBeGreaterThan((await page.locator('section[aria-label="Homes"]').boundingBox())!.height * 0.5);
+  await expect(halvard.getByRole("button", { name: /^\$1,349,000/ })).toBeVisible();
+  // Full screen is a button in the pane's top right corner, a fingertip
+  // wide; no big button under the words.
+  await expect(halvard.getByRole("button", { name: /^Open full screen/ })).toHaveCount(0);
+  const pane = page.locator('section[aria-label="Homes"]');
+  const corner = pane.getByRole("button", { name: "Open full screen", exact: true });
+  const [paneBox, cornerBox] = [(await pane.boundingBox())!, (await corner.boundingBox())!];
+  expect(cornerBox.width).toBeGreaterThanOrEqual(44);
+  expect(cornerBox.height).toBeGreaterThanOrEqual(44);
+  expect(paneBox.x + paneBox.width - (cornerBox.x + cornerBox.width)).toBeLessThan(20);
+  expect(cornerBox.y - paneBox.y).toBeLessThan(20);
 
-  // Tapping it opens it full screen, with this search's homes to scroll through.
-  await halvard.getByRole("group", { name: /^Photos of/ }).click();
+  // It opens the home full screen, with this search's homes to scroll through.
+  await corner.click();
   await expect(page).toHaveURL(/\/homes\?beds=4&home=SAMPLE-1005$/);
   const full = homeIn(page, "10421 Halvard Way NE");
   await expect(full).toBeInViewport({ ratio: 0.9 });
@@ -172,11 +221,8 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await expect(page).toHaveURL(new RegExp(`/search\\?beds=4&home=${last}$`));
   await expect(page.locator(`article[data-home="${last}"]`)).toBeInViewport({ ratio: 0.9 });
 
-  // "Liked by buyers" keeps only homes with likes. A like is a heart here too.
-  await expect(page.locator("label").filter({ hasText: "Liked by buyers" }).locator(".lucide-heart")).toBeVisible();
-  await page.getByLabel("Liked by buyers").check();
-  await expect(page).toHaveURL(/liked=1/);
-  await expect(homeIn(page, "10421 Halvard Way NE")).toBeAttached();
+  // (No "Liked by buyers" among the filters: Sort has "Most liked".)
+  await expect(page.getByText("Liked by buyers")).toHaveCount(0);
 
   // A home's address, like its price, can be liked or talked about, and it
   // opens the home here, beside the map.
@@ -377,6 +423,35 @@ test("signed in, Search is homes or people: the switch sits above the field on a
   const filters = (await page.getByRole("search", { name: "Filter homes" }).boundingBox())!;
   const map = (await page.locator(".maplibregl-map").boundingBox())!;
   expect(Math.abs(map.y - (filters.y + filters.height))).toBeLessThan(2);
+  // And the home between the list and the map can be liked, passed on and
+  // talked about right there. The heart: liked. The comment bar: they open over the
+  // home, in its own pane. The X: passed, and on to the next home, with the
+  // list and the address going with it.
+  const first = page.getByRole("article").first();
+  await expect(first).toBeInViewport({ ratio: 0.9 });
+  const firstKey = (await first.getAttribute("data-home"))!;
+  await heartOf(first).click();
+  await expect(heartOf(first)).toHaveAttribute("aria-pressed", "true");
+  // (The comment bar is the way to them.)
+  await first.getByRole("button", { name: /^Add a comment…/ }).click();
+  const comments = page.getByRole("dialog", { name: "Comments" });
+  await expect(comments).toBeVisible();
+  const [paneBox, sheetBox] = [
+    (await page.locator('section[aria-label="Homes"]').boundingBox())!,
+    (await comments.boundingBox())!,
+  ];
+  expect(sheetBox.x).toBeGreaterThanOrEqual(paneBox.x - 1);
+  expect(sheetBox.x + sheetBox.width).toBeLessThanOrEqual(paneBox.x + paneBox.width + 1);
+  await page.keyboard.press("Escape");
+  await expect(comments).toBeHidden();
+  await first.getByRole("button", { name: "Pass on this home" }).click();
+  const second = page.getByRole("article").nth(1);
+  await expect(second).toBeInViewport({ ratio: 0.9 });
+  const secondKey = (await second.getAttribute("data-home"))!;
+  expect(secondKey).not.toBe(firstKey);
+  await expect(page.locator(`ol[aria-label="Homes found"] li[data-key="${secondKey}"] a`)).toHaveAttribute("aria-current", "true");
+  await expect(page).toHaveURL(new RegExp(`home=${secondKey}$`));
+
   await page.getByRole("group", { name: "Search for" }).getByRole("link", { name: "People", exact: true }).click();
   await page.waitForURL((url) => url.pathname === "/search/people");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Find people");

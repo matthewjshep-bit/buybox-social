@@ -12,7 +12,7 @@ import { AccountMenu } from "@/components/header-nav";
 import { PorchcardMark } from "@/components/porchcard-logo";
 import { useThread } from "@/components/listing-thread";
 import { Sheet } from "@/components/sheet";
-import { phoneDigits } from "@/lib/contact";
+import { looksLikeEmail, phoneDigits } from "@/lib/contact";
 import { agentFirstName, cn } from "@/lib/format";
 import type { ShareAgent } from "@/lib/shares";
 import { button, focusOnDark, pill } from "@/lib/ui";
@@ -20,7 +20,7 @@ import { button, focusOnDark, pill } from "@/lib/ui";
 // An agent's link is the agent's space: their name and face at the top, and
 // one tap to text, call or email them about the home on screen.
 
-export const looksLikeEmail = (value: string) => /^[^\s@?&#/]+@[^\s@?&#/]+\.[^\s@?&#/]+$/.test(value);
+export { looksLikeEmail };
 
 // Someone signed in, on a link that isn't their own to preview: they, and
 // the bell, as the site's header has them, so the link leads on to the rest

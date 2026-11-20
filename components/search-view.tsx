@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Heart, Home, Map as MapIcon, Search } from "lucide-react";
+import { ArrowLeft, Home, Map as MapIcon, Maximize2, Search } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -10,6 +10,7 @@ import {
   useOptimistic,
   useRef,
   useState,
+  useSyncExternalStore,
   useTransition,
   type ComponentProps,
   type ReactNode,
@@ -26,6 +27,22 @@ import { filtersQuery, HOME_TYPES, SORTS, type SearchFilters } from "@/lib/searc
 import { button, field } from "@/lib/ui";
 
 // The map draws with WebGL in the browser, so it never renders on the server.
+// A wide screen, where the home sits between the list and the map with room
+// for everything a home can do. (A phone's pane is a look at the home under
+// the filters, with a button to open it.)
+const WIDE = "(min-width: 64rem)";
+const subscribeWide = (onChange: () => void) => {
+  const query = matchMedia(WIDE);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+};
+const useWideScreen = () =>
+  useSyncExternalStore(
+    subscribeWide,
+    () => matchMedia(WIDE).matches,
+    () => false,
+  );
+
 const ListingMap = dynamic(() => import("@/components/listing-map"), {
   ssr: false,
   loading: () => <div className="size-full animate-pulse bg-stone-200" />,
@@ -125,6 +142,7 @@ export function SearchView({
 }) {
   const router = useRouter();
   const pane = useRef<HTMLElement>(null);
+  const wideScreen = useWideScreen();
   // An agent can send the home showing to a client. Its sheets rise over the pane.
   const quick = useQuickSend({ profileComplete: Boolean(sender?.profileComplete), anchor: pane });
   const [pending, startTransition] = useTransition();
@@ -204,6 +222,13 @@ export function SearchView({
     if (at.top < box.top || at.bottom > box.bottom) list.current.scrollBy({ top: at.top - box.top - box.height / 3 });
   }, [activeKey]);
 
+  // The home full screen, with the rest of this search behind it.
+  const openFull = (key: string) => {
+    keepInAddress(key);
+    const query = filtersQuery(latest.current);
+    router.push(`/homes?${query ? `${query}&` : ""}home=${encodeURIComponent(key)}`);
+  };
+
   const count = `${total} ${total === 1 ? "home" : "homes"}`;
   // Only a home that's still for sale.
   const sendable = sender
@@ -238,10 +263,14 @@ export function SearchView({
 
   return (
     // Phones: the filters, what was found, then the homes or the map. Wide
-    // screens: the filters across the top; what was found over the map, one
-    // home beside it. Wider still, a list of the homes between the two.
+    // screens: the filters across the top; one home on the left, and what was
+    // found over the map on the right. Wider still, read left to right as
+    // it's used: the list of homes, the one picked from it, then the map.
+    // (The list and the map take the same share either side, 28% each, so the
+    // home sits in the middle of the page; on a very wide screen the list
+    // stops growing and the map takes the rest.)
     // Signed in, Homes | People is the first row of the filters, at every width.
-    <div className="flex h-[calc(100dvh-3.5rem-1px)] flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_min(46rem,50%)] lg:grid-rows-[auto_auto_minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_18rem_min(44rem,44%)] xl:grid-rows-[auto_minmax(0,1fr)]">
+    <div className="flex h-[calc(100dvh-3.5rem-1px)] flex-col lg:grid lg:grid-cols-[min(46rem,50%)_minmax(0,1fr)] lg:grid-rows-[auto_auto_minmax(0,1fr)] xl:grid-cols-[clamp(20rem,28%,26rem)_min(44rem,44%)_minmax(0,1fr)] xl:grid-rows-[auto_minmax(0,1fr)]">
       <form
         role="search"
         aria-label="Filter homes"
@@ -344,23 +373,13 @@ export function SearchView({
               </option>
             ))}
           </select>
-          <label className={cn(pill, "flex cursor-pointer items-center gap-2 has-[:checked]:border-rose-600 has-[:checked]:bg-rose-50")}>
-            <input
-              type="checkbox"
-              checked={shown.liked}
-              onChange={(event) => update({ liked: event.target.checked })}
-              className="size-4 accent-rose-600"
-            />
-            <Heart aria-hidden size={15} className="text-rose-600" />
-            Liked by buyers
-          </label>
         </FilterRow>
       </form>
 
       {/* What was found, on one line on a phone and over the map. Wider
-          screens: a list of the homes beside the map, each bringing its home
-          up and lighting its pin. */}
-      <div className="flex flex-col border-b border-stone-200 bg-white lg:col-start-1 lg:row-start-2 xl:col-start-2 xl:min-h-0 xl:border-b-0 xl:border-l">
+          screens: a list of the homes down the left, each bringing its home
+          up beside it and lighting its pin. */}
+      <div className="flex flex-col border-b border-stone-200 bg-white lg:col-start-2 lg:row-start-2 xl:col-start-1 xl:min-h-0 xl:border-b-0 xl:border-r">
         <div className="flex items-center justify-between gap-x-3 px-4 lg:justify-start xl:flex-wrap xl:justify-between xl:pt-2">
           <h1 className="text-sm font-semibold max-lg:sr-only lg:min-w-0 lg:truncate xl:w-full xl:pt-1">
             {filters.q ? `Homes matching “${filters.q}”` : "Washington homes for sale"}
@@ -438,34 +457,35 @@ export function SearchView({
         )}
       </div>
 
-      <div
-        className={cn(
-          "relative min-h-0 flex-1 lg:col-start-1 lg:row-start-3 xl:row-start-2",
-          mobileMap ? "block" : "hidden lg:block",
-        )}
-      >
-        <ListingMap
-          homes={homes}
-          activeKey={activeKey}
-          hoveredKey={hoveredKey}
-          onHover={setHoveredKey}
-          onSelect={pick}
-        />
-      </div>
-
       <section
         ref={pane}
         aria-label="Homes"
         aria-busy={pending}
         className={cn(
-          "relative min-h-0 bg-stone-950 transition-opacity lg:col-start-2 lg:row-span-2 lg:row-start-2 lg:block xl:col-start-3 xl:row-span-1",
+          "relative min-h-0 bg-stone-950 transition-opacity lg:col-start-1 lg:row-span-2 lg:row-start-2 lg:block xl:col-start-2 xl:row-span-1",
+          // (Wide: Send and full screen sit over the photo's top corners, so
+          // what the photo says of itself, "Kitchen · 2 of 9", goes under them.)
+          "lg:[--photo-label-drop:3.5rem]",
           mobileMap ? "hidden" : "block flex-1",
           pending && "opacity-60",
         )}
       >
-        {/* Wide screens: over the top of the photo, clear of the words at the bottom. */}
+        {/* Wide screens: over the top of the photo, clear of the words at the
+            bottom. Sending it on the left; on the right, the way to the home
+            full screen (with the rest of this search to go through). */}
         {sending && (
           <SendPill home={sending} quick={quick} className="absolute left-3 top-3 z-30 hidden lg:flex" />
+        )}
+        {posts.length > 0 && activeKey && (
+          <button
+            type="button"
+            aria-label="Open full screen"
+            title="Open full screen"
+            onClick={() => openFull(activeKey)}
+            className="absolute right-3 top-3 z-30 hidden size-12 items-center justify-center rounded-full bg-white text-ink shadow-lg ring-1 ring-stone-200 hover:bg-stone-50 lg:flex"
+          >
+            <Maximize2 aria-hidden size={18} />
+          </button>
         )}
         {posts.length === 0 ? (
           // Said once: beside the map on the widest screens, here otherwise.
@@ -487,13 +507,15 @@ export function SearchView({
               setActiveKey(key);
               keepInAddress(key);
             }}
-            // Just a look here: a tap opens it full screen, with the rest of
-            // this search to scroll through.
-            onOpen={(key) => {
-              keepInAddress(key);
-              const query = filtersQuery(latest.current);
-              router.push(`/homes?${query ? `${query}&` : ""}home=${encodeURIComponent(key)}`);
-            }}
+            // On a phone, just a look: a tap opens it full screen, with the
+            // rest of this search to scroll through. On a wide screen it's
+            // the home itself, right here: pass or like, comment, what
+            // people made of it; full screen is the button in its corner.
+            onOpen={wideScreen ? undefined : openFull}
+            // (And the room goes to the photo: no row of round buttons.)
+            lean
+            onSend={wideScreen && sender ? quick.send : undefined}
+            sendBusy={wideScreen && sender ? quick.waiting : undefined}
             end={
               <div className="max-w-sm">
                 <h2 className="font-display text-2xl">That&apos;s all</h2>
@@ -503,6 +525,22 @@ export function SearchView({
           />
         )}
       </section>
+
+      {/* The map: on the right on a wide screen (after the home, as it reads). */}
+      <div
+        className={cn(
+          "relative min-h-0 flex-1 lg:col-start-2 lg:row-start-3 xl:col-start-3 xl:row-start-2",
+          mobileMap ? "block" : "hidden lg:block",
+        )}
+      >
+        <ListingMap
+          homes={homes}
+          activeKey={activeKey}
+          hoveredKey={hoveredKey}
+          onHover={setHoveredKey}
+          onSelect={pick}
+        />
+      </div>
 
       {/* Phones: along the bottom, in the space the home's words leave for
           these buttons, so they never cover the words on a short screen. */}

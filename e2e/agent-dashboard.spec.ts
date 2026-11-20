@@ -15,7 +15,7 @@ const emailsTo = (address: string) =>
 const actionAnswered = (page: Page) =>
   page.waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
 
-test("an agent's phone and email for clients: checked, kept as digits, and never the login email", async ({
+test("an agent's phone and email for clients: checked, kept as digits, on their links and their public profile, and never the login email", async ({
   browser,
 }) => {
   test.setTimeout(60_000);
@@ -57,6 +57,26 @@ test("an agent's phone and email for clients: checked, kept as digits, and never
   await expect(phone).toHaveValue("(206) 555-0142");
   await expect(email).toHaveValue("casey@harborpine.example");
 
+  // On their public profile, for anyone, signed in or not: the number to
+  // call and the address to write to, each a fingertip tall. Never the email
+  // they sign in with.
+  await agent.goto("/people/me");
+  await agent.waitForURL(/\/people\/[\w-]+$/);
+  const caseyPage = new URL(agent.url()).pathname;
+  const guest = await (await browser.newContext()).newPage();
+  await guest.goto(caseyPage);
+  const reach = guest.getByRole("list", { name: /^How to reach / });
+  const call = reach.getByRole("link", { name: /^Call / });
+  await expect(call).toHaveAttribute("href", "tel:2065550142");
+  await expect(call).toContainText("(206) 555-0142");
+  expect((await call.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  const write = reach.getByRole("link", { name: /^Email / });
+  await expect(write).toHaveAttribute("href", "mailto:casey@harborpine.example");
+  await expect(write).toContainText("casey@harborpine.example");
+  expect(await guest.content()).not.toContain("casey-contact@example.com");
+  // (Their own view of their page says the same.)
+  await expect(agent.getByRole("list", { name: "How to reach you" }).getByRole("link")).toHaveCount(2);
+
   // Kept as digits: that's all the link's call button is made of.
   const { url } = await createShare(agent, ["96 Fernhollow"], ["Robin"]);
   const client = await (await browser.newContext()).newPage();
@@ -82,6 +102,11 @@ test("an agent's phone and email for clients: checked, kept as digits, and never
   await expect(contact).toBeVisible();
   await expect(contact.getByRole("link")).toHaveCount(0);
   await expect(contact.getByRole("button", { name: "Ask to see it" })).toBeVisible();
+  // And from their profile.
+  await guest.reload();
+  await expect(guest.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(guest.getByRole("list", { name: /^How to reach / })).toHaveCount(0);
+  expect(await guest.content()).not.toContain("2065550142");
 });
 
 test("a home that has sold can't go on a new link, and nothing is made", async ({ browser }) => {

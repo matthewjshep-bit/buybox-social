@@ -185,6 +185,7 @@ export function ReelFeed({
   endBackdrop,
   infinite = false,
   embedded = false,
+  lean = false,
   contained = false,
   agentName,
   canInvite = true,
@@ -226,6 +227,10 @@ export function ReelFeed({
   infinite?: boolean;
   // One home inside a pop-out rather than filling the screen.
   embedded?: boolean;
+  // Beside the map, wide: the room goes to the photo. No row of round
+  // buttons: the comment bar says how many comments and opens them, with
+  // Save and More beside it. (Sending it is the map page's own button.)
+  lean?: boolean;
   // A whole feed of homes inside a pop-out: everything the full-screen feed
   // does (on to the next home, the keys, more as you go, the end), in its box.
   contained?: boolean;
@@ -387,6 +392,7 @@ export function ReelFeed({
         end={end}
         endBackdrop={endBackdrop}
         embedded={embedded}
+        lean={lean}
         contained={contained}
         onOpen={onOpen}
         onSend={onSend}
@@ -429,6 +435,7 @@ function Feed({
   end,
   endBackdrop,
   embedded,
+  lean,
   contained,
   onOpen,
   onSend,
@@ -464,6 +471,7 @@ function Feed({
   // Behind the last screen, edge to edge (a link's wash of colour, as its first screen has).
   endBackdrop?: ReactNode;
   embedded: boolean;
+  lean: boolean;
   contained: boolean;
   onOpen?: (listingKey: string) => void;
   onSend?: (home: SendHome, panel?: HTMLElement | null) => void;
@@ -961,8 +969,8 @@ function Feed({
           ? "[--chrome-top:4rem] [--photo-top:calc(60px+env(safe-area-inset-top))] has-[[data-reel-bar]]:[--photo-top:calc(104px+env(safe-area-inset-top))] [--stage-top:72px]"
           : cn(
               "[--chrome-top:0.75rem] [--stage-top:64px]",
-              // (Beside the map there's no button over it.)
-              embedded && onOpen ? "[--photo-top:0.5rem]" : "[--photo-top:calc(3.75rem+env(safe-area-inset-top))]",
+              // (Beside the map there's no bar over it.)
+              embedded ? "[--photo-top:0.5rem]" : "[--photo-top:calc(3.75rem+env(safe-area-inset-top))]",
             ),
         embedded || contained ? "relative h-full w-full" : "fixed inset-0 z-30",
       )}
@@ -1112,6 +1120,7 @@ function Feed({
               onShowEverything={() => setBare(null)}
               goToSpot={goToSpot?.key === key ? goToSpot : null}
               onOpen={onOpen && (() => onOpen(key))}
+              lean={lean && !onOpen}
               onMore={() => {
                 dock.current = wordsOf(key);
                 setSheet({ kind: "more", key });
@@ -1398,6 +1407,7 @@ function Panel({
   onShowEverything,
   goToSpot,
   onOpen,
+  lean,
   onMore,
   shareAs,
   onShare,
@@ -1476,6 +1486,8 @@ function Panel({
   goToSpot: { spot: SpotRef; n: number; keyboard?: boolean; back?: HTMLElement | null } | null;
   // Just a look (beside the map): a tap anywhere opens the home full screen.
   onOpen?: () => void;
+  // Beside the map, wide: no row of round buttons (see ReelFeed's `lean`).
+  lean: boolean;
   onMore: () => void;
   shareAs: ShareKind | null;
   onShare?: () => void;
@@ -1953,7 +1965,13 @@ function Panel({
         "[--photo-fit:1] [--backdrop-shade:0.4]",
         bare
           ? "[--backdrop-bottom:0px] [--backdrop-top:0px] [--photo-align:0.5] [--photo-bottom:env(safe-area-inset-bottom)] [--photo-top:env(safe-area-inset-top)]"
-          : "[--backdrop-bottom:var(--photo-bottom)] [--backdrop-top:var(--photo-top)] [--photo-align:0] [--words-gap:56px] squat:[--words-gap:52px] [--photo-bottom:calc(var(--words-height,calc(330px+env(safe-area-inset-bottom)))+var(--words-gap,0px))]",
+          : cn(
+              "[--backdrop-bottom:var(--photo-bottom)] [--backdrop-top:var(--photo-top)] [--photo-align:0] [--photo-bottom:calc(var(--words-height,calc(330px+env(safe-area-inset-bottom)))+var(--words-gap,0px))]",
+              // Between the photo and the words: room for the line of who
+              // did what. (Beside the map, `lean`, that line is on the
+              // photo, so the photo has the room instead.)
+              lean ? "[--words-gap:8px]" : "[--words-gap:56px] squat:[--words-gap:52px]",
+            ),
         "short:[--backdrop-bottom:0px] short:[--backdrop-shade:0] short:[--backdrop-top:0px] short:[--photo-fit:0] short:[--words-gap:8px]",
         legacy(
           "@5xl:[--backdrop-bottom:0px] @5xl:[--backdrop-shade:0] @5xl:[--backdrop-top:0px] @5xl:[--photo-align:0.5] @5xl:[--photo-fit:0] @5xl:[--photo-top:calc(var(--chrome-top,4rem)+0.5rem)] @5xl:[--words-gap:8px]",
@@ -2022,7 +2040,12 @@ function Panel({
                     } as CSSProperties
                   }
                   className={cn(
-                    "pointer-events-none absolute inset-x-3 top-[calc(100cqh-var(--photo-bottom)+(var(--words-gap)-48px)/2)] z-10 flex justify-start",
+                    "pointer-events-none absolute z-10 flex",
+                    lean
+                      ? // Beside the map: on the photo, in the middle of its
+                        // foot, between the X and the heart (as side by side).
+                        "left-(--cap-left) right-auto top-[calc(var(--cap-foot)-0.75rem)] w-(--cap-width) -translate-y-full justify-center px-16"
+                      : "inset-x-3 top-[calc(100cqh-var(--photo-bottom)+(var(--words-gap)-48px)/2)] justify-start",
                     // (It steps aside for a card that's open, as the line waits for it.)
                     picked && "invisible",
                     "short:left-(--cap-left) short:right-auto short:top-[calc(100cqh-var(--words-height,0px)-0.5rem)] short:-translate-y-full",
@@ -2138,6 +2161,7 @@ function Panel({
               onShare={onShare}
               onMore={onMore}
               moreRef={moreButton}
+              lean={lean}
             />
           )}
         </div>
@@ -2170,8 +2194,9 @@ function Panel({
             "absolute inset-x-0 bottom-0 flex flex-col bg-night pb-(--words-pad) transition-[opacity,visibility] duration-300 [--words-pad:calc(12px+env(safe-area-inset-bottom))]",
             more
               ? "h-auto"
-              : onOpen
-                ? "h-[calc(248px+var(--words-pad))] squat:h-[calc(214px+var(--words-pad))]"
+              : onOpen || lean
+                ? // (Beside the map: no row of buttons to keep room for.)
+                  "h-[calc(248px+var(--words-pad))] squat:h-[calc(214px+var(--words-pad))]"
                 : "h-[max(calc(318px+var(--words-pad)),calc(100cqh-var(--photo-top)-75cqw-var(--words-gap)))] squat:h-[calc(272px+var(--words-pad))] tiny:h-[calc(190px+var(--words-pad))]",
             // On its side: over the photo, on a shade of their own that
             // starts a little above the first line, so every line of it reads
@@ -2328,7 +2353,7 @@ function Panel({
             className={cn(
               "w-full pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]",
               // At the foot, under the row of buttons (which keeps its room here).
-              onOpen ? "mt-2" : "mt-auto pt-[78px] squat:pt-[66px] tiny:pt-[58px] short:mt-2 short:pt-0",
+              onOpen || lean ? "mt-2" : "mt-auto pt-[78px] squat:pt-[66px] tiny:pt-[58px] short:mt-2 short:pt-0",
               legacy("@5xl:max-w-xl @5xl:px-0"),
               "split:mt-0 split:border-t split:border-white/[0.08] split:p-3",
             )}
@@ -2351,30 +2376,74 @@ function Panel({
                 type="button"
                 data-keep-clear
                 onClick={onOpen}
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-white text-body font-semibold text-ink shadow-lg transition-colors hover:bg-white/90"
+                // (Wide, the search page has it as a button in the photo's
+                // corner: this one is only for a phone.)
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-white text-body font-semibold text-ink shadow-lg transition-colors hover:bg-white/90 lg:hidden"
               >
                 <Maximize2 aria-hidden size={17} />
                 Open full screen
                 <span className="sr-only">: {listing.UnparsedAddress}</span>
               </button>
             ) : (
-              <button
-                type="button"
-                data-keep-clear
-                onClick={onCompose}
-                // (With the least height, the row's Comment button does its job.)
-                className="flex h-12 w-full items-center gap-3 rounded-full bg-white/12 pl-5 pr-3 text-left text-base text-white/75 ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18 tiny:hidden split:flex"
-              >
-                <span className="min-w-0 flex-1 truncate">
-                  {notes
-                    ? `Add a note for ${notes.for}…`
-                    : mode === "share"
-                      ? `Tell ${agentFirst} what you think…`
-                      : "Add a comment…"}
-                </span>
-                {/* (Not the paper plane: that only ever means sending homes.) */}
-                <ArrowUp aria-hidden size={18} className="shrink-0 opacity-70" />
-              </button>
+              // (Beside the map, `lean`: the bar says how many comments there
+              // are and opens them, and Save and More are beside it, so the
+              // row of round buttons isn't needed and the photo has its room.)
+              <div className={cn(lean && "flex items-center gap-2")}>
+                <button
+                  type="button"
+                  data-keep-clear
+                  onClick={onCompose}
+                  className={cn(
+                    "flex h-12 items-center gap-3 rounded-full bg-white/12 pl-5 pr-3 text-left text-base text-white/75 ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18 split:flex",
+                    // (With the least height, the row's Comment button does its job.)
+                    lean ? "min-w-0 flex-1" : "w-full tiny:hidden",
+                  )}
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    {notes
+                      ? `Add a note for ${notes.for}…`
+                      : mode === "share"
+                        ? `Tell ${agentFirst} what you think…`
+                        : "Add a comment…"}
+                  </span>
+                  {lean && comments > 0 ? (
+                    <span className="flex shrink-0 items-center gap-1.5 pr-1.5 text-sm font-semibold text-white/90 tabular-nums">
+                      <MessageCircle aria-hidden size={18} />
+                      {countLabel(comments)}
+                      <span className="sr-only"> {comments === 1 ? "comment" : "comments"}</span>
+                    </span>
+                  ) : (
+                    // (Not the paper plane: that only ever means sending homes.)
+                    <ArrowUp aria-hidden size={18} className="shrink-0 opacity-70" />
+                  )}
+                </button>
+                {lean && !onScorecard && onSave && (
+                  <button
+                    type="button"
+                    data-keep-clear
+                    aria-label={saved ? `Saved ${listing.UnparsedAddress}` : `Save ${listing.UnparsedAddress}`}
+                    title={saved ? "Saved" : "Save"}
+                    aria-pressed={saved}
+                    onClick={onSave}
+                    className="flex size-12 shrink-0 items-center justify-center rounded-full bg-white/12 text-white ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18 short:hidden"
+                  >
+                    <Bookmark aria-hidden size={20} className={cn(saved && "fill-white")} />
+                  </button>
+                )}
+                {lean && (
+                  <button
+                    type="button"
+                    data-keep-clear
+                    data-follow="more"
+                    aria-label="More options"
+                    title="More"
+                    onClick={onMore}
+                    className="flex size-12 shrink-0 items-center justify-center rounded-full bg-white/12 text-white ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18 short:hidden"
+                  >
+                    <Ellipsis aria-hidden size={20} />
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -2523,6 +2592,7 @@ function Rail({
   onShare,
   onMore,
   moreRef,
+  lean = false,
 }: {
   address: string;
   things: Thing[];
@@ -2542,6 +2612,9 @@ function Rail({
   onShare?: () => void;
   onMore: () => void;
   moreRef?: Ref<HTMLButtonElement>;
+  // Beside the map: no row here (its buttons are beside the comment bar),
+  // but for a window so short the words lie over the photo.
+  lean?: boolean;
 }) {
   const icon = { "aria-hidden": true, className: "drop-shadow" } as const;
   return (
@@ -2551,7 +2624,8 @@ function Rail({
       // Clear of a notch or rounded corner, on a phone on its side. There, in
       // two columns: one would run up under the header.
       className={cn(
-        "pointer-events-auto absolute inset-x-3 bottom-[calc(68px+env(safe-area-inset-bottom))] z-10 flex items-start justify-between tiny:bottom-[calc(12px+env(safe-area-inset-bottom))]",
+        "pointer-events-auto absolute inset-x-3 bottom-[calc(68px+env(safe-area-inset-bottom))] z-10 items-start justify-between tiny:bottom-[calc(12px+env(safe-area-inset-bottom))]",
+        lean ? "hidden" : "flex",
         "short:left-auto short:right-[calc(0.5rem+env(safe-area-inset-right))] short:grid short:grid-cols-2 short:items-center short:justify-normal short:gap-x-2 short:gap-y-1",
         legacy("@5xl:bottom-[max(5rem,calc(env(safe-area-inset-bottom)+4.25rem))] @5xl:right-[calc(1rem+env(safe-area-inset-right))]"),
         // Side by side, there's no rail: the same buttons are in a row in

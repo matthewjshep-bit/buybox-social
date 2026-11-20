@@ -1,3 +1,4 @@
+import { isContactPhone, looksLikeEmail, phoneDigits } from "./contact";
 import { cache } from "react";
 import { bannerUrl } from "./banner";
 import { sql } from "./db";
@@ -649,13 +650,15 @@ export const getProfilePerson = cache(async (visitorId: string) => {
       brand_color: string | null;
       mls_agent_id: string | null;
       full_name: string | null;
+      contact_phone: string | null;
+      contact_email: string | null;
       banner: string | null;
       banner_v: string | null;
       banner_frame: unknown;
     }[]
   >`
     select v.id, v.created_at, v.hide_passes, v.hide_links, v.taste_hidden, a.id as account_id, a.bio, a.profile_links, a.brokerage,
-      a.brand_color, a.mls_agent_id, a.full_name, a.banner, left(md5(a.banner_data_url), 10) as banner_v, a.banner_frame,
+      a.brand_color, a.mls_agent_id, a.full_name, a.contact_phone, a.contact_email, a.banner, left(md5(a.banner_data_url), 10) as banner_v, a.banner_frame,
       -- An account with no name yet has none here either, even where an
       -- older visitor row stood in with "Someone".
       case when a.id is not null and btrim(a.full_name) = '' then '' else v.first_name end as first_name,
@@ -692,6 +695,13 @@ export const getProfilePerson = cache(async (visitorId: string) => {
     mlsAgentId: visitor.is_agent ? visitor.mls_agent_id?.trim() || null : null,
     // An agent's whole name: the one their listings are listed under.
     agentName: visitor.is_agent ? (visitor.full_name?.trim() ?? "") : "",
+    // How to reach an agent: the phone and email they gave for that (never
+    // the email they sign in with), and only ones that are real enough to
+    // call or write to. Nobody else's is ever here.
+    contact: {
+      phone: visitor.is_agent && isContactPhone(phoneDigits(visitor.contact_phone ?? "")) ? phoneDigits(visitor.contact_phone ?? "") : "",
+      email: visitor.is_agent && looksLikeEmail(visitor.contact_email?.trim() ?? "") ? visitor.contact_email!.trim() : "",
+    },
   };
 });
 

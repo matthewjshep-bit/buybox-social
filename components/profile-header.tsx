@@ -1,10 +1,11 @@
-import { ExternalLink, Images, Lock, Pencil, Users } from "lucide-react";
+import { ExternalLink, Images, Lock, Mail, Pencil, Phone, Users } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AddFirstName, ShareMyPage } from "@/app/people/[id]/client";
 import { Banner } from "@/components/banner";
 import { Avatar, Badge, RoleChip } from "@/components/ui";
 import { NO_BANNER, type BannerChoice } from "@/lib/banner";
+import { formatPhone } from "@/lib/contact";
 import { cn } from "@/lib/format";
 import { sinceLabel, type ProfileLink } from "@/lib/profile";
 import { button, card } from "@/lib/ui";
@@ -32,6 +33,7 @@ export function ProfileHeader({
   client,
   bio = "",
   links = [],
+  contact,
   brokerage = "",
   personId,
   brandColor = null,
@@ -66,6 +68,8 @@ export function ProfileHeader({
   // What they say about themselves, an agent's links, and their brokerage.
   bio?: string;
   links?: ProfileLink[];
+  // An agent's phone (digits) and email for anyone who wants to reach them.
+  contact?: { phone: string; email: string };
   brokerage?: string;
   // Whose page it is, and an agent's own colour, for the band at the top.
   personId: string;
@@ -137,6 +141,36 @@ export function ProfileHeader({
         )}
         {bio && (
           <p className="mt-3 max-w-2xl whitespace-pre-line break-words text-body leading-relaxed text-ink">{bio}</p>
+        )}
+        {/* How to reach an agent: their number rings them, their email writes
+            to them. Each a fingertip tall. */}
+        {contact && (contact.phone || contact.email) && (
+          <ul aria-label={isMe ? "How to reach you" : `How to reach ${name}`} className="-ml-1 mt-2 flex flex-wrap gap-x-4">
+            {contact.phone && (
+              <li className="max-w-full">
+                <a
+                  href={`tel:${contact.phone}`}
+                  className="inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-lg px-1 text-body font-semibold text-ink hover:underline"
+                >
+                  <Phone aria-hidden size={16} className="shrink-0 text-stone-500" />
+                  <span className="sr-only">Call </span>
+                  {formatPhone(contact.phone)}
+                </a>
+              </li>
+            )}
+            {contact.email && (
+              <li className="max-w-full">
+                <a
+                  href={`mailto:${contact.email}`}
+                  className="inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-lg px-1 text-body font-semibold text-ink hover:underline"
+                >
+                  <Mail aria-hidden size={16} className="shrink-0 text-stone-500" />
+                  <span className="sr-only">Email </span>
+                  <span className="truncate">{contact.email}</span>
+                </a>
+              </li>
+            )}
+          </ul>
         )}
         {links.length > 0 && (
           <ul aria-label={`${isMe ? "Your" : `${name}'s`} links`} className="-ml-1 mt-2 flex flex-wrap gap-x-4">

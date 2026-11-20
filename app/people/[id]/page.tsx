@@ -263,6 +263,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
         }
         bio={person.bio}
         links={person.links}
+        contact={person.contact}
         brokerage={person.brokerage}
         personId={person.id}
         brandColor={person.brandColor}

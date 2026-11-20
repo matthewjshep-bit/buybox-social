@@ -333,18 +333,44 @@ test("opened from someone's profile, the line says only what they did", async ({
   }
 });
 
-test("beside the map it's only to read: the newest, still, not a button", async ({ browser }) => {
+test("beside the map: on a phone it's only to read, the newest, still; on a wide screen it's the line itself, on the photo's foot between the X and the heart", async ({
+  browser,
+}) => {
+  // A phone: the home under the filters is just a look.
+  const phone = await (await browser.newContext({ viewport: { width: 390, height: 780 } })).newPage();
+  await phone.clock.install();
+  await phone.goto("/search?home=SAMPLE-1007");
+  const small = homeIn(phone, WEXFORD);
+  await expect(small).toBeVisible();
+  await expect(activityOf(small)).toContainText("Bo liked the front entry");
+  await expect(activityOf(small).getByRole("button")).toHaveCount(0);
+  await phone.clock.runFor(20_000);
+  await phone.waitForTimeout(300);
+  await expect(activityOf(small)).toContainText("Bo liked the front entry");
+  await phone.context().close();
+
+  // Wide: the home itself, so the line is a button, as anywhere. It's on the
+  // photo (which has the room it used to take), in the middle of its foot,
+  // level with the X and the heart and between them.
   const page = await (await browser.newContext(DESKTOP)).newPage();
-  await page.clock.install();
   await page.goto("/search?home=SAMPLE-1007");
   const home = homeIn(page, WEXFORD);
   await expect(home).toBeVisible();
   const activity = activityOf(home);
-  await expect(activity).toContainText("Bo liked the front entry");
-  await expect(activity.getByRole("button")).toHaveCount(0);
-  await page.clock.runFor(20_000);
-  await page.waitForTimeout(300);
-  await expect(activity).toContainText("Bo liked the front entry");
+  await expect(activity).toContainText(/liked|commented|on the/);
+  await expect(activity.getByRole("button").first()).toBeVisible();
+  const box = async (part: Locator) => (await part.boundingBox())!;
+  const [line, photo, pass, heart] = [
+    await box(lineOf(home)),
+    await box(home.getByRole("group", { name: /^Photos of/ }).locator("img").first()),
+    await box(home.getByRole("button", { name: "Pass on this home" })),
+    await box(heartOf(home)),
+  ];
+  expect(line.y).toBeGreaterThan(photo.y + photo.height / 2);
+  expect(line.y + line.height).toBeLessThanOrEqual(photo.y + photo.height);
+  expect(line.x).toBeGreaterThan(pass.x + pass.width);
+  expect(line.x + line.width).toBeLessThan(heart.x);
+  expect(Math.abs(line.x + line.width / 2 - (photo.x + photo.width / 2))).toBeLessThan(24);
 });
 
 test("on a link, what you said is \"You\", and the agent's own words are theirs", async ({ browser }) => {

@@ -199,7 +199,7 @@ export function ProfileForm(props: {
               </p>
             )}
             <p id="contact-hint" className="mt-1 text-sm text-muted">
-              Shown on your links.
+              Your phone and email show on your public profile and on the links you send.
             </p>
           </div>
 

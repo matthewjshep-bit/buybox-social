@@ -329,7 +329,9 @@ export function ReelPhotos({
   // The arrows, in the middle of the photo's height, but never down under the
   // buttons that reach over a phone's photo (where they start, if they do).
   const middle = `min(calc(${place.top} + ${place.height} / 2), var(--rail-top, 100cqh) - 1.75rem)`;
-  const head = `calc(${photoHead(shown)} + 0.5rem)`;
+  // (`--photo-label-drop`: further down, where something sits over the
+  // photo's top corners: beside the map, Send and full screen.)
+  const head = `calc(${photoHead(shown)} + 0.5rem + var(--photo-label-drop, 0px))`;
   // The arrows and labels sit just inside the photo's edges, and clear of a
   // notch or a rounded corner (a phone on its side).
   const edge = `max(${place.left} + 0.5rem, env(safe-area-inset-left) + 0.5rem)`;
