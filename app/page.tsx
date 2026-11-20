@@ -4,11 +4,10 @@ import { PEOPLE_SHOWN } from "@/components/home/people-card";
 import { MarketingHome } from "@/components/marketing-home";
 import { getBanner } from "@/lib/banner";
 import { devLoginEnabled, firstName, getCurrentUser, getViewAs } from "@/lib/auth";
-import { getClientCards } from "@/lib/client-feed";
 import { getClientBook } from "@/lib/clients";
 import { readDevice } from "@/lib/engagement";
 import { getFollowCounts } from "@/lib/follows";
-import { feedKeys, getHomeFeed, getHomeSeen, markHomeSeen, myReactions, type FeedWho } from "@/lib/home-feed";
+import { feedKeys, getHomeFeed, markHomeSeen, myReactions, type FeedWho } from "@/lib/home-feed";
 import { getMyLinks } from "@/lib/my-links";
 import { suggestPeopleFor } from "@/lib/people";
 import { photoUrl, photoVersion } from "@/lib/person-photo";
@@ -18,17 +17,13 @@ import { kindOf, listingWords } from "@/lib/kinds";
 // The home page. Signed out: what Porchcard is, for agents and for buyers,
 // and a way to start (MarketingHome). Signed in, it's one page for everyone
 // (Home): their card down the left; in the middle the box to send homes, the
-// homes their agent sent, and what the people they follow did; people to
-// follow down the right. An agent's has their clients besides: under the box
-// to send homes, whoever is waiting first; and beside Following, everything
-// their clients did on the homes they were sent.
-export default async function HomePage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
+// homes their agent sent, and their feed (what the people they follow did,
+// woven with what's popular, new, near them and picked for them:
+// lib/home-feed.ts); people to follow down the right. An agent's clients are
+// on Clients.
+export default async function HomePage() {
   await connection();
-  const [user, device, viewAs, params] = await Promise.all([getCurrentUser(), readDevice(), getViewAs(), searchParams]);
+  const [user, device, viewAs] = await Promise.all([getCurrentUser(), readDevice(), getViewAs()]);
   // Signed out: what Porchcard is. (The homes are at /browse.)
   if (!user) return <MarketingHome devMode={devLoginEnabled} />;
   const found = await getPublicIdentity(user, device);
@@ -38,8 +33,6 @@ export default async function HomePage({
   const visitor = found.visitor ?? (user.role && user.full_name.trim() ? await ensureAccountVisitor(user) : null);
 
   const visitorId = visitor?.id ?? null;
-  const lensParam = typeof params.lens === "string" ? params.lens : null;
-  const lens = { initial: lensParam ?? "", fromUrl: lensParam !== null };
   const profileHref = visitorId ? `/people/${visitorId}` : "/people/me";
   // Once this page is on its way, it's been seen: next time, "new" starts
   // here. (Not while an admin is looking as them: that's not them looking.)
@@ -61,17 +54,14 @@ export default async function HomePage({
   const noFollows = { followers: 0, following: 0 };
 
   // The same reads for everyone; an agent's clients besides.
-  const [banner, everyone, links, seenAt, suggestions, follows, book, cards] = await Promise.all([
+  const [banner, everyone, links, suggestions, follows, book] = await Promise.all([
     getBanner(visitorId),
     getHomeFeed(user, visitorId),
     getMyLinks(user.id),
-    getHomeSeen(visitorId),
     suggestPeopleFor({ visitorId, accountId: user.id, agent }, PEOPLE_SHOWN),
     // (Their own numbers, to them: all of them. None yet for someone with no page.)
     visitorId ? getFollowCounts(visitorId, visitorId) : noFollows,
     agent ? getClientBook(user.id) : null,
-    // An agent's clients, on the homes they were sent: the newest of it.
-    agent ? getClientCards(user.id, { most: 20 }) : [],
   ]);
   // In an agent's Following, whoever is their own client says so by their name.
   const clientIds = new Set((book?.clients ?? []).flatMap((client) => (client.profileId ? [client.profileId] : [])));
@@ -94,11 +84,9 @@ export default async function HomePage({
       suggestions={suggestions}
       feed={feed}
       mine={mine}
-      seenAt={seenAt}
-      lens={lens}
       agent={
         book
-          ? { book, cards, brokerage: user.brokerage, brandColor: user.brand_color, listings: listingWords(kindOf(user)).Many }
+          ? { book, brokerage: user.brokerage, brandColor: user.brand_color, listings: listingWords(kindOf(user)).Many }
           : undefined
       }
     />

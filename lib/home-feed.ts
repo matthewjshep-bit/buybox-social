@@ -6,6 +6,12 @@ import { getFollowedIds } from "./follows";
 import { buildCards, getProfilePerson, getProfileRows, withoutPasses, type ProfileCard } from "./profile";
 import type { ReactionState } from "./reactions";
 import { getTaste } from "./taste";
+import { isProKind, listingWords } from "./kinds";
+import type { Listing } from "./listings/types";
+import { isVideoMedia } from "./own-listings";
+import { photoUrl } from "./person-photo";
+import { getPopularHomes, type PopularHome } from "./popular";
+import { US_STATES } from "./places";
 
 // The home page's Following stream, signed in: what the people you follow
 // liked and said in public, one entry per home per day however many of them
@@ -48,6 +54,10 @@ type FeedHome = {
 // what they said (newest first, as they wrote it), and the photo it's about.
 type FeedWhy = { key: string; who: FeedWho[]; sentence: string; quotes: string[]; photo: number | null };
 
+// Why a home is in your feed when nobody you follow is the reason: it's
+// popular, it's near you, or it's picked from what you like.
+export type FeedReason = { kind: "popular" | "near" | "picked"; text: string };
+
 export type HomeFeedEntry = {
   // The home and the day: one entry each.
   id: string;
@@ -59,6 +69,8 @@ export type HomeFeedEntry = {
   said: { who: FeedWho; body: string }[];
   // Whether anyone liked it, rather than only saying something about it.
   liked: boolean;
+  // Not from anyone you follow: why it's here instead.
+  reason?: FeedReason;
 };
 
 // How far the feed reads, and how much it holds.
@@ -150,14 +162,210 @@ function entriesOf(takes: Take[]): HomeFeedEntry[] {
     .sort((a, b) => b.at.localeCompare(a.at) || a.id.localeCompare(b.id));
 }
 
-// Someone's Following stream, newest first. (`account` is who's asking: the
-// signature stays as the reel's `from=feed` calls it. What's in it depends
-// only on whom their page follows.)
-export const getHomeFeed = cache(async (account: Account, visitorId: string | null): Promise<HomeFeedEntry[]> => {
-  if (!account || !visitorId) return [];
+// What the people you follow did, newest first.
+async function followingEntries(visitorId: string | null): Promise<HomeFeedEntry[]> {
+  if (!visitorId) return [];
   const ids = [...(await getFollowedIds(visitorId))].slice(0, FOLLOWED_MOST);
   const takes = (await Promise.all(ids.map(takesOf))).flat();
   return entriesOf(takes).slice(0, FEED_MOST);
+}
+
+// A home as a card shows it, from the listing: its first photo, large.
+function feedHomeOf(listing: Listing): FeedHome {
+  const photos = [...(listing.Media ?? [])].sort((a, b) => a.Order - b.Order).filter((media) => !isVideoMedia(media));
+  const first = photos[0];
+  return {
+    key: listing.ListingKey,
+    address: listing.UnparsedAddress,
+    city: listing.City ?? "",
+    price: listing.ListPrice ?? 0,
+    beds: listing.BedroomsTotal ?? 0,
+    baths: listing.BathroomsTotalInteger ?? 0,
+    sqft: listing.LivingArea ?? 0,
+    active: listing.StandardStatus === "Active",
+    photo: first
+      ? {
+          url: first.MediaURL,
+          index: 0,
+          alt: first.ShortDescription ?? `${listing.UnparsedAddress}, photo 1`,
+          width: first.ImageWidth,
+          height: first.ImageHeight,
+        }
+      : null,
+  };
+}
+
+// One home in the feed for a reason of its own (or, `who`, someone who just
+// added it: a new deal or listing).
+function entryOf(
+  source: string,
+  listing: Listing,
+  at: string,
+  why: { reason?: FeedReason; who?: FeedWho[]; sentence?: string; said?: HomeFeedEntry["said"] },
+): HomeFeedEntry {
+  const home = feedHomeOf(listing);
+  return {
+    id: `${source}:${home.key}`,
+    at,
+    day: at.slice(0, 10),
+    home,
+    why: { key: home.key, who: why.who ?? [], sentence: why.sentence ?? "", quotes: (why.said ?? []).map((quote) => quote.body), photo: 0 },
+    said: why.said ?? [],
+    liked: false,
+    ...(why.reason && { reason: why.reason }),
+  };
+}
+
+// The listings for these keys, as they are, in that order (those still here).
+async function listingsOf(keys: string[]): Promise<Listing[]> {
+  if (keys.length === 0) return [];
+  const rows = await sql<{ data: Listing }[]>`
+    select data from listings
+    where listing_key in ${sql(keys)}
+      and (owner_account_id is null or coalesce((data->>'Hidden')::boolean, false) = false)`;
+  const byKey = new Map(rows.map((row) => [row.data.ListingKey, row.data]));
+  return keys.flatMap((key) => (byKey.has(key) ? [byKey.get(key)!] : []));
+}
+
+const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
+
+// What everyone's liking and talking about: this week's, and this month's
+// when the week is quiet. The best-liked thing said about each comes with it.
+async function popularEntries(): Promise<HomeFeedEntry[]> {
+  let hot: (PopularHome & { when: string })[] = (await getPopularHomes("week", 20)).map((home) => ({ ...home, when: "this week" }));
+  if (hot.length < 8) {
+    const seen = new Set(hot.map((home) => home.key));
+    const month = (await getPopularHomes("month", 20)).filter((home) => !seen.has(home.key));
+    hot = [...hot, ...month.map((home) => ({ ...home, when: "this month" }))];
+  }
+  const listings = new Map((await listingsOf(hot.map((home) => home.key))).map((listing) => [listing.ListingKey, listing]));
+  const now = new Date().toISOString();
+  return hot.flatMap((home) => {
+    const listing = listings.get(home.key);
+    if (!listing) return [];
+    const counts = [home.likes > 0 && plural(home.likes, "like"), home.comments > 0 && plural(home.comments, "comment")].filter(Boolean);
+    return [
+      entryOf("popular", listing, now, {
+        reason: { kind: "popular", text: [`Popular ${home.when}`, ...counts].join(" · ") },
+        said: home.top
+          ? [{ who: { name: home.top.name, face: home.top.name, profileId: null, agent: false, photo: null }, body: home.top.body }]
+          : [],
+      }),
+    ];
+  });
+}
+
+// Homes for sale near where they said they are: in their city first, then
+// the rest of their state, the newest first.
+async function nearEntries(place: { city: string; state: string } | null): Promise<HomeFeedEntry[]> {
+  if (!place?.city || !place.state) return [];
+  const rows = await sql<{ data: Listing; here: boolean }[]>`
+    select data, lower(data->>'City') = ${place.city.toLowerCase()} as here from listings
+    where standard_status = 'Active'
+      and upper(data->>'StateOrProvince') = ${place.state.toUpperCase()}
+      and jsonb_array_length(coalesce(data->'Media', '[]'::jsonb)) > 0
+      and (owner_account_id is null or coalesce((data->>'Hidden')::boolean, false) = false)
+    order by here desc, updated_at desc, listing_key
+    limit 15`;
+  const now = new Date().toISOString();
+  return rows.map(({ data, here }) =>
+    entryOf("near", data, now, {
+      reason: { kind: "near", text: here ? `Near you in ${place.city}` : `Near you in ${US_STATES[place.state] ?? place.state}` },
+    }),
+  );
+}
+
+// What pros just put up: their new deals and listings (with a photo, shown
+// on their profile), whoever they are but the one looking.
+async function newEntries(accountId: string): Promise<HomeFeedEntry[]> {
+  const rows = await sql<
+    { data: Listing; at: string; profile_id: string; name: string; face: string; kind: string | null; photo_v: string | null }[]
+  >`
+    select l.data, coalesce(l.data->>'OriginalEntryTimestamp', l.updated_at::text) as at,
+      v.id as profile_id, btrim(a.full_name) as name, btrim(v.first_name) as face, a.kind,
+      left(md5(a.photo_data_url), 10) as photo_v
+    from listings l
+    join accounts a on a.id = l.owner_account_id
+    join visitors v on v.account_id = a.id
+    where l.standard_status in ('Active', 'Closed') and a.id <> ${accountId}
+      and coalesce((l.data->>'Hidden')::boolean, false) = false
+      and btrim(a.full_name) <> ''
+      and exists (
+        select 1 from jsonb_array_elements(l.data->'Media') m
+        where coalesce(m->>'MediaCategory', 'Photo') <> 'Video' and m->>'VideoEmbed' is null)
+      and coalesce((l.data->>'OriginalEntryTimestamp')::timestamptz, l.updated_at) > now() - interval '60 days'
+    order by at desc, l.listing_key
+    limit 12`;
+  return rows.map((row) =>
+    entryOf("new", row.data, new Date(row.at).toISOString(), {
+      who: [{ name: row.name, face: row.face, profileId: row.profile_id, agent: true, photo: photoUrl(row.profile_id, row.photo_v) }],
+      sentence: `added a new ${listingWords(isProKind(row.kind) ? row.kind : "agent").one}`,
+    }),
+  );
+}
+
+// Homes picked for them from what they've liked (or, with nothing liked yet,
+// homes to start with), none already in the feed.
+async function pickedEntries(account: Account, visitorId: string | null, exclude: string[]): Promise<HomeFeedEntry[]> {
+  const taste = await getTaste(visitorId);
+  const posts = await getReel(account, undefined, taste, { limit: 12, exclude });
+  const now = new Date().toISOString();
+  return posts.map((post) =>
+    entryOf("picked", post.listing, now, {
+      reason: { kind: "picked", text: taste ? "Picked for you, from what you like" : "Homes to start with" },
+    }),
+  );
+}
+
+// The order the feed takes from each source, over and over: what the people
+// you follow did most often, between what's popular, what's new, what's
+// near you and what's picked for you. A source with nothing left is passed
+// over, so someone who follows nobody still has a full feed.
+const PATTERN = ["following", "popular", "following", "new", "near", "following", "picked", "popular", "near", "following", "new", "picked"] as const;
+
+// Someone's home feed: what the people they follow did, woven together with
+// what's popular, new deals and listings, homes near them and homes picked
+// for them. Each home once (the people you follow first), never one they
+// passed on. (`account` is who's asking: the reel's `from=feed` reads the
+// same feed, in the same order.)
+export const getHomeFeed = cache(async (account: Account, visitorId: string | null): Promise<HomeFeedEntry[]> => {
+  if (!account) return [];
+  const [[place], passed, following, popular, fresh] = await Promise.all([
+    sql<{ city: string; state: string }[]>`
+      select location_city as city, location_state as state from accounts where id = ${account.id}`,
+    visitorId
+      ? sql<{ listing_key: string }[]>`
+          select listing_key from public_reactions where visitor_id = ${visitorId} and reaction = 'dislike'`
+      : Promise.resolve([]),
+    followingEntries(visitorId),
+    popularEntries(),
+    newEntries(account.id),
+  ]);
+  const near = await nearEntries(place ?? null);
+  const skip = new Set(passed.map((row) => row.listing_key));
+  const taken = [...following, ...popular, ...fresh, ...near].map((entry) => entry.home.key);
+  const picked = await pickedEntries(account, visitorId, [...new Set([...taken, ...skip])]);
+  const sources: Record<(typeof PATTERN)[number], HomeFeedEntry[]> = { following, popular, new: fresh, near, picked };
+  const feed: HomeFeedEntry[] = [];
+  // (A home someone you follow is in the feed for is theirs: never again
+  // for another reason, wherever that would have come first.)
+  const seen = new Set<string>(following.map((entry) => entry.home.key));
+  let turn = 0;
+  while (feed.length < FEED_MOST && Object.values(sources).some((list) => list.length > 0)) {
+    const list = sources[PATTERN[turn++ % PATTERN.length]];
+    while (list.length > 0) {
+      const entry = list.shift()!;
+      const key = entry.home.key;
+      // (The people you follow, on a home, however often; anything else once.)
+      if (entry.reason || entry.id.startsWith("new:")) {
+        if (seen.has(key) || skip.has(key)) continue;
+        seen.add(key);
+      }
+      feed.push(entry);
+      break;
+    }
+  }
+  return feed;
 });
 
 // The homes in a feed, in its order, each once: what opens full screen.

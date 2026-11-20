@@ -3,7 +3,7 @@
 // keeps the Porchcard). What you saved is yours alone, under Saved on your
 // own profile, and nobody else's page says anything of it.
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, openComments, openScorecard, signedIn, signInAgent, signUpBuyer } from "./helpers";
+import { createShare, heartOf, homeIn, openComments, openScorecard, signedIn, signInAgent, signUpBuyer, clientRow } from "./helpers";
 
 const TAMSEN = "1880 Tamsen Ridge Pl SE";
 const SALTMARSH = "719 Saltmarsh Ln";
@@ -251,10 +251,10 @@ test("the Porchcard is an agent's, going through a link's homes or a client's: n
   await expect(agent.getByRole("button", { name: /^Saved? / })).toHaveCount(0);
 
   // That client's homes, from their card on their own page (a tap from their
-  // name on the agent's home): the Porchcard again.
+  // name on Clients): the Porchcard again.
   // (Once the client's like has been kept: the heart shows it before it is.)
-  await agent.goto("/");
-  await agent.getByRole("region", { name: "Your clients" }).getByRole("link", { name: /^Jamie\b/ }).click();
+  await agent.goto("/dashboard");
+  await clientRow(agent, "Jamie").getByRole("link", { name: /^Jamie\b/ }).first().click();
   await agent.waitForURL(/\/dashboard\/clients\//);
   const open = agent.getByRole("link", { name: new RegExp(`^${TAMSEN}: `) }).first();
   await expect(async () => {

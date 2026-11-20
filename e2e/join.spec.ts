@@ -246,7 +246,7 @@ test("each sign-in form has a quiet way to the other, and a new agent's first sc
   await main.getByRole("button", { name: "Continue" }).click();
   // The rest may each be skipped (the color has one picked already), and
   // nothing about phones on the way: those are on Edit profile.
-  for (const heading of ["What brokerage are you with?", "What's your MLS ID?", "Add a photo of you"]) {
+  for (const heading of ["Where are you located?", "What brokerage are you with?", "What's your MLS ID?", "Add a photo of you"]) {
     await expect(main.getByRole("heading", { level: 1 })).toHaveText(heading);
     await main.getByRole("button", { name: "Skip" }).click();
   }

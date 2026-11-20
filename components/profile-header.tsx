@@ -1,4 +1,4 @@
-import { ExternalLink, Images, Lock, Mail, Pencil, Phone, Users } from "lucide-react";
+import { ExternalLink, Images, Lock, Mail, MapPin, Pencil, Phone, Users } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AddFirstName, ShareMyPage } from "@/app/people/[id]/client";
@@ -35,6 +35,7 @@ export function ProfileHeader({
   unnamed = false,
   agent = false,
   kind,
+  place = "",
   since,
   people,
   followsYou = false,
@@ -65,6 +66,8 @@ export function ProfileHeader({
   agent?: boolean;
   // What they are (lib/kinds.ts): the chip beside their name.
   kind?: Kind;
+  // Where they said they are: "Seattle, WA".
+  place?: string;
   since: string;
   // Their followers and whom they follow: how many, and the page listing each.
   people?: { followers: number; following: number; href: string };
@@ -137,8 +140,17 @@ export function ProfileHeader({
           <RoleChip role={agent ? (kind ?? "agent") : null} />
         </div>
         {isMe && unnamed && <AddFirstName />}
-        <p className="mt-1 text-body text-stone-700">
-          {agent ? brokerage || PRO_LINE[kind ?? "agent"] : `Looking since ${sinceLabel(since)}`}
+        <p className="mt-1 flex flex-wrap items-center gap-x-2 text-body text-stone-700">
+          <span>{agent ? brokerage || PRO_LINE[kind ?? "agent"] : `Looking since ${sinceLabel(since)}`}</span>
+          {place && (
+            <span className="inline-flex items-center gap-1">
+              <span aria-hidden className="text-stone-400">
+                ·
+              </span>
+              <MapPin aria-hidden size={15} className="shrink-0 text-stone-500" />
+              {place}
+            </span>
+          )}
         </p>
         {client && (
           <div className="mt-3 flex flex-wrap items-center gap-2">

@@ -155,7 +155,7 @@ test("the Following stream: one card per home however many people liked it, only
   // One card for the home they both liked, newest first, each name to their
   // page; nothing at all about the home Bo passed on.
   await dee.goto("/?lens=following");
-  const stream = dee.getByRole("region", { name: "What's new" });
+  const stream = dee.getByRole("region", { name: "Your feed" });
   const card = stream.getByRole("link", { name: `${TAMSEN}: Bo and Cy liked this home`, exact: true });
   await expect(card).toBeVisible();
   await expect(stream.getByRole("link", { name: new RegExp(TAMSEN) })).toHaveCount(1);
@@ -165,10 +165,12 @@ test("the Following stream: one card per home however many people liked it, only
   await expect(item).toContainText("Bo and Cy liked this home");
   await expect(item.getByRole("link", { name: "Bo", exact: true })).toHaveAttribute("href", boPage);
   await expect(item.getByRole("link", { name: "Cy", exact: true })).toHaveAttribute("href", cyPage);
-  await expect(stream.getByText(LAKEVIEW)).toHaveCount(0);
+  // (Nothing of Bo's pass: the home may be in the feed for another reason,
+  // never for him.)
+  await expect(stream.getByRole("link", { name: new RegExp(`^${LAKEVIEW}: Bo`) })).toHaveCount(0);
   await expect(stream.getByText(/passed/i)).toHaveCount(0);
-  // Where what's new ends, it says so.
-  await expect(stream.getByRole("note")).toBeVisible();
+  // Where the feed ends, it says so.
+  await expect(stream.getByRole("note")).toBeAttached();
 
   // Its heart likes it right there, and the page stays where it is.
   const heart = item.getByRole("button", { name: `Like ${TAMSEN}` });

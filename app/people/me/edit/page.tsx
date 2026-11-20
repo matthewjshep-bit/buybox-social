@@ -21,6 +21,8 @@ import { ensureAccountVisitor } from "@/lib/public";
 import { backLink, button, card, pageColumn, pageTitle } from "@/lib/ui";
 import { isProKind, listingWords } from "@/lib/kinds";
 import { KindPicker } from "./kind-picker";
+import { PlaceForm } from "./place-form";
+import { knownPlaces } from "@/lib/known-places";
 
 export const metadata = { title: "Edit profile · Porchcard" };
 
@@ -110,6 +112,15 @@ export default async function EditProfilePage() {
           <NameForm name={account.full_name.trim()} />
         </section>
       )}
+
+      {/* Where they are: by their name on their profile, and what their feed leans toward. */}
+      <section id="location" aria-labelledby="location-title" className={cn(card, "mt-4 scroll-mt-4 p-5")}>
+        <h2 id="location-title" className="mb-1 text-lg font-semibold">
+          Location
+        </h2>
+        <p className="mb-4 text-body text-muted">It&apos;s on your profile, and your feed shows you homes near it.</p>
+        <PlaceForm place={person.place} places={await knownPlaces()} />
+      </section>
 
       <section aria-labelledby="banner-title" className={cn(card, "mt-4 p-5")}>
         <h2 id="banner-title" className="text-lg font-semibold">

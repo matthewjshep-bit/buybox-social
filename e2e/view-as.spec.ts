@@ -34,7 +34,7 @@ test("an admin sees the site as one of its people, a bar saying so, until Stop; 
   const bar = admin.getByRole("region", { name: "Viewing as someone else" });
   await expect(bar).toContainText("Viewing as Vera Viewed (agent). Anything you do is done as them.");
   await expect(admin.getByRole("heading", { level: 1 })).toHaveText("Your home");
-  await expect(admin.getByRole("region", { name: "Send your first homes" })).toBeVisible();
+  await expect(admin.getByRole("region", { name: "Your feed" })).toBeVisible();
   // Her dashboard too.
   await admin.goto("/dashboard");
   await expect(admin.getByRole("heading", { level: 1 })).toHaveText("Clients");

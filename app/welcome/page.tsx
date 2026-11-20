@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, sitePath } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { isKind } from "@/lib/kinds";
+import { knownPlaces } from "@/lib/known-places";
+import { placeLabel } from "@/lib/places";
 import { Onboarding } from "./onboarding";
 
 export const metadata = { title: "Welcome · Porchcard" };
@@ -18,9 +20,19 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
   const wanted = sitePath(asked);
   const next = wanted && !wanted.startsWith("/welcome") && !wanted.startsWith("/login") ? wanted : null;
   const [row] = await sql<
-    { kind: string | null; full_name: string; brokerage: string; mls_agent_id: string; photo_data_url: string | null; brand_color: string }[]
+    {
+      kind: string | null;
+      full_name: string;
+      brokerage: string;
+      mls_agent_id: string;
+      photo_data_url: string | null;
+      brand_color: string;
+      location_city: string;
+      location_state: string;
+    }[]
   >`
-    select kind, full_name, brokerage, mls_agent_id, photo_data_url, brand_color from accounts where id = ${me.id}`;
+    select kind, full_name, brokerage, mls_agent_id, photo_data_url, brand_color, location_city, location_state
+    from accounts where id = ${me.id}`;
   const kind = isKind(row?.kind) ? row.kind : null;
   // Nothing left to ask: on their way.
   if (kind && row.full_name.trim()) redirect(next ?? (me.role === "agent" ? "/dashboard" : "/"));
@@ -33,6 +45,8 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
         mlsId={row.mls_agent_id}
         photo={row.photo_data_url}
         color={row.brand_color}
+        place={placeLabel({ city: row.location_city, state: row.location_state })}
+        places={await knownPlaces()}
         next={next}
         // From "For agents": the pros come first.
         pro={as === "agent"}

@@ -233,7 +233,7 @@ test("Undo send takes back an unopened link, and a home meant for an existing cl
   request,
 }) => {
   test.setTimeout(120_000);
-  const agent = await signInAgent(browser, "uma-undo@example.com", "Uma Undo");
+  const agent = await signInAgent(browser, "ula-undo@example.com", "Ula Undo");
   const nina = await createShare(agent, ["4127 Larkmoor"], ["Nina"]);
   const { seen } = await agentOnHome(agent);
   const sheet = agent.getByRole("dialog", { name: "Sent. Who's it for?" });

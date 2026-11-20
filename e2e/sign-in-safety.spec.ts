@@ -132,10 +132,11 @@ test("signing up on the sign-in page with only an email asks a first name, once"
   expect(skip.height).toBeGreaterThanOrEqual(44);
   // [P] Never an email for a name.
   await name.fill(email);
-  await step.getByRole("button", { name: "Finish" }).click();
+  await step.getByRole("button", { name: "Continue" }).click();
   await expect(step.getByRole("alert")).toHaveText("Type a first name, not an email");
   await name.fill("Nora");
-  await step.getByRole("button", { name: "Finish" }).click();
+  await step.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("form", { name: "Where are you located?" }).getByRole("button", { name: "Skip" }).click();
 
   // Home, and her card says who she is.
   await page.waitForURL((url) => url.pathname === "/");
@@ -158,6 +159,7 @@ test("signing up on the sign-in page with only an email asks a first name, once"
   await emailAndCode(quiet, `quiet.${Date.now()}@example.com`);
   await quiet.getByRole("button", { name: /^I'm shopping for a home/ }).click();
   await quiet.getByRole("form", { name: "What's your first name?" }).getByRole("button", { name: "Skip" }).click();
+  await quiet.getByRole("form", { name: "Where are you located?" }).getByRole("button", { name: "Skip" }).click();
   await quiet.waitForURL((url) => url.pathname === "/search");
   await quiet.goto("/");
   await expect(quiet).toHaveURL(/localhost:\d+\/$/);

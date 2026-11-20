@@ -1,4 +1,4 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Flame, MapPin, Sparkles } from "lucide-react";
 import type { CSSProperties } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -92,8 +92,9 @@ export function FollowingCard({
   // Who's looking, for the box to comment in under it.
   me?: { name: string; photo: string | null; agent?: boolean } | null;
 }) {
-  const { home, why } = entry;
-  const label = `${home.address}: ${namesText(why.who)} ${why.sentence}`;
+  const { home, why, reason } = entry;
+  const label = reason ? `${home.address}: ${reason.text}` : `${home.address}: ${namesText(why.who)} ${why.sentence}`;
+  const ReasonIcon = reason ? { popular: Flame, near: MapPin, picked: Sparkles }[reason.kind] : null;
   return (
     <li className={cn(card, "relative overflow-hidden")}>
       <Link
@@ -101,16 +102,32 @@ export function FollowingCard({
         aria-label={label}
         className="absolute inset-0 z-10 rounded-2xl focus-visible:outline-offset-[-3px]!"
       />
-      <div className="flex items-center gap-3 p-3.5">
-        <FaceStack who={why.who} />
-        <p className="min-w-0 flex-1 text-body leading-snug">
-          <Names who={why.who} /> {why.sentence}
-          <span className="whitespace-nowrap text-meta text-muted">
-            {" · "}
-            <time dateTime={entry.at}>{cardTime(entry.at)}</time>
+      {reason && ReasonIcon ? (
+        // Here for a reason of its own: popular, near them, or picked for them.
+        <div className="flex items-center gap-3 p-3.5">
+          <span
+            aria-hidden
+            className={cn(
+              "grid size-9 shrink-0 place-items-center rounded-full",
+              reason.kind === "popular" ? "bg-rose-50 text-rose-600" : reason.kind === "near" ? "bg-sky-50 text-sky-700" : "bg-amber-50 text-amber-700",
+            )}
+          >
+            <ReasonIcon size={18} />
           </span>
-        </p>
-      </div>
+          <p className="min-w-0 flex-1 text-body font-semibold leading-snug">{reason.text}</p>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3 p-3.5">
+          <FaceStack who={why.who} />
+          <p className="min-w-0 flex-1 text-body leading-snug">
+            <Names who={why.who} /> {why.sentence}
+            <span className="whitespace-nowrap text-meta text-muted">
+              {" · "}
+              <time dateTime={entry.at}>{cardTime(entry.at)}</time>
+            </span>
+          </p>
+        </div>
+      )}
       {home.photo && (
         <div
           // On a phone, the photo whole, at its own shape (between a little

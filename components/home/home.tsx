@@ -1,15 +1,11 @@
 import { Bookmark, Building2, House, Send, UserRoundSearch } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { ClientFeed } from "@/components/home/client-feed";
-import { ClientsRail } from "@/components/home/clients-rail";
 import { HomeShell, ProfileRail, type RailLink } from "@/components/home/home-shell";
-import { Lenses } from "@/components/home/lens-pills";
 import { PeopleCard } from "@/components/home/people-card";
 import { FollowingFeed } from "@/components/home-feed";
 import { Avatar } from "@/components/ui";
 import type { BannerChoice } from "@/lib/banner";
-import type { ClientCard } from "@/lib/client-feed";
 import type { ClientBook } from "@/lib/clients";
 import type { FollowCounts } from "@/lib/follows";
 import { cn } from "@/lib/format";
@@ -102,8 +98,6 @@ export function Home({
   suggestions,
   feed,
   mine,
-  seenAt,
-  lens,
   agent,
 }: {
   firstName: string;
@@ -116,17 +110,10 @@ export function Home({
   suggestions: FoundPerson[];
   feed: HomeFeedEntry[];
   mine: Record<string, ReactionState>;
-  seenAt: string | null;
-  lens: { initial: string; fromUrl: boolean };
   // An agent, and so their clients too (and what those clients did on the
   // homes they were sent): everything else is anyone's home.
-  agent?: { book: ClientBook; cards: ClientCard[]; brokerage: string; brandColor: string; listings?: string };
+  agent?: { book: ClientBook; brokerage: string; brandColor: string; listings?: string };
 }) {
-  // An agent's feed opens on Following, the same every time (whoever is
-  // waiting is in "Your clients", straight over it). Whichever they last
-  // chose here, on this device, wins.
-  const asked = lens.initial === "following" || lens.initial === "clients";
-  const initial = lens.initial === "clients" ? "clients" : "following";
   const agentName = links[0] && (links[0].agent.firstName || links[0].agent.name);
   // Only what the bar at the top doesn't have (it has Search, Send,
   // the Dashboard, and their own page under their face).
@@ -149,12 +136,15 @@ export function Home({
     <PeopleCard people={suggestions} id={`people-${where}`} className="lg:hidden" />
   );
   const quiet = feed.length === 0;
+  // One feed for everyone: what the people they follow did, woven together
+  // with what's popular, new deals and listings, homes near them and homes
+  // picked for them (lib/home-feed.ts). Not a timeline, so no "new since".
   const following = (
     <FollowingFeed
       entries={feed}
       mine={mine}
       me={{ name: me.name, photo: me.photo, agent: Boolean(agent) }}
-      seenAt={seenAt}
+      seenAt={null}
       among={peopleInline("following")}
       empty={
         follows.following === 0 ? (
@@ -218,31 +208,13 @@ export function Home({
           <span className="text-stone-600">Send homes…</span>
         </Link>
       </div>
-      {/* An agent's clients: once, here, at every width. */}
-      {agent && <ClientsRail book={agent.book} me={me} />}
+      {/* (An agent's clients, and what they did, are on Clients.) */}
       {links.length > 0 && <FromYourAgent links={links} />}
       <section aria-labelledby="stream-title">
         <h2 id="stream-title" className="sr-only">
-          What&apos;s new
+          Your feed
         </h2>
-        {agent ? (
-          <Lenses
-            label="Show"
-            lenses={[
-              { key: "following", label: "Following" },
-              { key: "clients", label: "Clients" },
-            ]}
-            initial={initial}
-            fromUrl={lens.fromUrl && asked}
-            panels={{
-              following,
-              // Everything their clients did on the homes they were sent, each with Reply. Only theirs to see.
-              clients: <ClientFeed cards={agent.cards} me={me} asks={agent.book.clients.flatMap((client) => client.asks)} />,
-            }}
-          />
-        ) : (
-          following
-        )}
+        {following}
       </section>
       {quiet && peopleInline("inline")}
     </HomeShell>

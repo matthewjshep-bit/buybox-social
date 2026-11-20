@@ -7,18 +7,21 @@ import { BRAND_COLORS, cn } from "@/lib/format";
 import { isProKind, type Kind } from "@/lib/kinds";
 import { resizePhoto } from "@/lib/resize-photo";
 import { button, field } from "@/lib/ui";
-import { chooseKind, saveColor, saveCompany, saveMlsId, saveName, savePhoto, type StepResult } from "./actions";
+import { PlaceField } from "@/components/place-field";
+import { chooseKind, saveColor, saveCompany, saveMlsId, saveName, savePhoto, savePlace, type StepResult } from "./actions";
 
-type Step = "kind" | "name" | "company" | "mls" | "photo" | "color";
+type Step = "kind" | "name" | "place" | "company" | "mls" | "photo" | "color";
 
 // The questions for someone of this kind, in order, from where they are:
 // only what's still to say about them.
-function stepsFor(kind: Kind | null, has: { name: boolean }, askKind: boolean): Step[] {
+function stepsFor(kind: Kind | null, has: { name: boolean; place: boolean }, askKind: boolean): Step[] {
   const steps: Step[] = askKind ? ["kind"] : [];
   if (!kind) return steps;
   // (A pro's whole name is asked for even when a first name came with
   // signing up: it's the one their listings go by.)
   if (!has.name || (askKind && isProKind(kind))) steps.push("name");
+  // Where they are, for everyone new: on their profile, and their feed leans near it.
+  if (askKind && !has.place) steps.push("place");
   if (isProKind(kind) && askKind) {
     steps.push("company");
     if (kind === "agent") steps.push("mls");
@@ -47,6 +50,9 @@ export function Onboarding(props: {
   mlsId: string;
   photo: string | null;
   color: string;
+  // Where they are ("Seattle, WA"), and the cities to offer as they type.
+  place: string;
+  places: string[];
   next: string | null;
   pro: boolean;
 }) {
@@ -57,8 +63,9 @@ export function Onboarding(props: {
   // change under them as it does.
   const [askKind] = useState(props.kind === null);
   const [hadName] = useState(Boolean(props.name.trim()));
+  const [hadPlace] = useState(Boolean(props.place));
   const [kind, setKind] = useState<Kind | null>(props.kind);
-  const steps = stepsFor(kind, { name: hadName }, askKind);
+  const steps = stepsFor(kind, { name: hadName, place: hadPlace }, askKind);
   const [at, setAt] = useState(0);
   const step = steps[at];
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +75,7 @@ export function Onboarding(props: {
   const [mlsId, setMlsId] = useState(props.mlsId);
   const [photo, setPhoto] = useState(props.photo);
   const [color, setColor] = useState(props.color);
+  const [place, setPlace] = useState(props.place);
   const fileInput = useRef<HTMLInputElement>(null);
   const pro = isProKind(kind);
 
@@ -96,7 +104,7 @@ export function Onboarding(props: {
       setError(null);
       setKind(chosen);
       // (Shopping, with their name given already: nothing more to ask.)
-      if (stepsFor(chosen, { name: hadName }, askKind).length <= 1) return finish(isProKind(chosen));
+      if (stepsFor(chosen, { name: hadName, place: hadPlace }, askKind).length <= 1) return finish(isProKind(chosen));
       setAt(1);
     });
 
@@ -108,6 +116,7 @@ export function Onboarding(props: {
   const heading: Record<Step, string> = {
     kind: "What brings you to Porchcard?",
     name: pro ? "What's your full name?" : "What's your first name?",
+    place: "Where are you located?",
     company: COMPANY_ASK[kind ?? "agent"] ?? "What company are you with?",
     mls: "What's your MLS ID?",
     photo: "Add a photo of you",
@@ -116,6 +125,7 @@ export function Onboarding(props: {
   const hint: Record<Step, string> = {
     kind: "Pick the one that fits. You can change it later.",
     name: pro ? "It's on your profile and on every home you send." : "It shows beside your likes and comments.",
+    place: "It's on your profile, and your feed shows you homes near it.",
     company: "It shows under your name. You can leave it empty.",
     mls: "Your MLS listings show on your profile. You can add it later.",
     photo: "People see it on your profile and the homes you send.",
@@ -123,7 +133,7 @@ export function Onboarding(props: {
   };
 
   if (!step) return null;
-  const optional = step === "company" || step === "mls" || step === "photo" || (step === "name" && !pro);
+  const optional = step === "place" || step === "company" || step === "mls" || step === "photo" || (step === "name" && !pro);
   const errorId = `${id}-error`;
 
   return (
@@ -194,6 +204,7 @@ export function Onboarding(props: {
           onSubmit={(event) => {
             event.preventDefault();
             if (step === "name") save(() => saveName(name));
+            else if (step === "place") save(() => savePlace(place));
             else if (step === "company") save(() => saveCompany(company));
             else if (step === "mls") save(() => saveMlsId(mlsId));
             else if (step === "photo") save(async () => (photo ? savePhoto(photo) : { ok: true }));
@@ -221,6 +232,17 @@ export function Onboarding(props: {
                 className={cn(field(), "mt-1")}
               />
             </>
+          )}
+
+          {step === "place" && (
+            <PlaceField
+              value={place}
+              onChange={setPlace}
+              places={props.places}
+              invalid={Boolean(error)}
+              describedBy={error ? errorId : undefined}
+              autoFocus
+            />
           )}
 
           {step === "photo" && (

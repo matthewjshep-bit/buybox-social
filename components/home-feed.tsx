@@ -88,6 +88,18 @@ export function FollowingFeed({
       </ul>
     );
 
+  // Nothing older to come after it (a feed that isn't one long timeline):
+  // the people card after the first few, and the end of it said at the end.
+  if (freshItems.length > 0 && olderItems.length === 0) {
+    return (
+      <div className="flex flex-col gap-4">
+        {list(freshItems.slice(0, AMONG_AFTER))}
+        {among}
+        {list(freshItems.slice(AMONG_AFTER))}
+        <CaughtUp />
+      </div>
+    );
+  }
   if (freshItems.length === 0) {
     return (
       <div className="flex flex-col gap-4">

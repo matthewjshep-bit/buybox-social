@@ -75,6 +75,7 @@ export default async function AdminApiPage() {
     email: "jordan@harborpine.com",
     role: "agent",
     kind: "agent",
+    location: "Seattle, WA",
     signed_in: false,
     owner: false,
     full_name: "Jordan Rivera",
@@ -312,6 +313,14 @@ export default async function AdminApiPage() {
                     name: "email",
                     required: true,
                     children: "What they'll sign in with.",
+                  },
+                  {
+                    name: "location",
+                    children: (
+                      <>
+                        Where they are, like <C>Seattle, WA</C>. On their profile, and their feed leans toward it.
+                      </>
+                    ),
                   },
                   {
                     name: "kind",

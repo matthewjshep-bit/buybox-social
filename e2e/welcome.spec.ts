@@ -25,7 +25,7 @@ test("an investor joins a step at a time, wears an Investor chip, and their list
   await expect(choices).toHaveCount(4);
   await page.getByRole("button", { name: /^I'm an investor/ }).click();
   // Then their name, with how far along they are; Back goes back a step.
-  await expect(page.getByText("Step 2 of 5")).toBeVisible();
+  await expect(page.getByText("Step 2 of 6")).toBeVisible();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("What's your full name?");
   const name = page.getByRole("form", { name: "What's your full name?" });
   // (A name is needed: Continue says so, and stays.)
@@ -33,17 +33,25 @@ test("an investor joins a step at a time, wears an Investor chip, and their list
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("What's your full name?");
   await name.getByLabel("Full name").fill("Ivy Investor");
   await name.getByRole("button", { name: "Continue" }).click();
-  // An investor's company, no MLS ID.
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("What's your company called?");
+  // Where they are: a city and state, however it's typed (one it can't read is said so).
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Where are you located?");
   await page.getByRole("button", { name: "Back" }).click();
   await expect(page.getByRole("form", { name: "What's your full name?" }).getByLabel("Full name")).toHaveValue("Ivy Investor");
   await page.getByRole("form", { name: "What's your full name?" }).getByRole("button", { name: "Continue" }).click();
+  const where = page.getByRole("form", { name: "Where are you located?" });
+  await where.getByLabel("City and state").fill("Seattle");
+  await where.getByRole("button", { name: "Continue" }).click();
+  await expect(where.getByRole("alert")).toHaveText("Type the city and state, like Seattle, WA.");
+  await where.getByLabel("City and state").fill("seattle washington");
+  await where.getByRole("button", { name: "Continue" }).click();
+  // An investor's company, no MLS ID.
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("What's your company called?");
   const company = page.getByRole("form", { name: "What's your company called?" });
   await company.getByLabel("Company").fill("Ivy Capital");
   await company.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Add a photo of you");
   await page.getByRole("button", { name: "Skip" }).click();
-  await expect(page.getByText("Step 5 of 5")).toBeVisible();
+  await expect(page.getByText("Step 6 of 6")).toBeVisible();
   await page.getByRole("button", { name: "Plum" }).click();
   await page.getByRole("button", { name: "Finish" }).click();
   await page.waitForURL("**/dashboard");
@@ -76,6 +84,7 @@ test("an investor joins a step at a time, wears an Investor chip, and their list
   await expect(visitor.getByRole("heading", { level: 1 })).toHaveText("Ivy Investor");
   await expect(visitor.getByText("Investor", { exact: true })).toBeVisible();
   await expect(visitor.getByText("Ivy Capital")).toBeVisible();
+  await expect(visitor.getByText("Seattle, WA")).toBeVisible();
   await expect(visitor.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: /^Deals/ })).toBeVisible();
   await visitor.getByRole("list", { name: "Deals" }).getByRole("link").first().click();
   await visitor.waitForURL(/\/reel\?from=listings/);
@@ -102,10 +111,12 @@ test("someone shopping for a home says so and their first name, and has no chip;
   await page.waitForURL("**/welcome**");
   await page.getByRole("button", { name: /^I'm shopping for a home/ }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("What's your first name?");
-  await expect(page.getByText("Step 2 of 2")).toBeVisible();
+  await expect(page.getByText("Step 2 of 3")).toBeVisible();
   const name = page.getByRole("form", { name: "What's your first name?" });
   await name.getByLabel("First name").fill("Sam");
-  await name.getByRole("button", { name: "Finish" }).click();
+  await name.getByRole("button", { name: "Continue" }).click();
+  // Where she is may wait.
+  await page.getByRole("form", { name: "Where are you located?" }).getByRole("button", { name: "Skip" }).click();
   await page.waitForURL((url) => url.pathname === "/");
   await page.goto("/people/me");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Sam");

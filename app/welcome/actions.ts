@@ -14,6 +14,7 @@ import {
   PROFILE_PHOTO_MOST_CHARS,
 } from "@/lib/profile-fields";
 import { NOT_AN_EMAIL } from "@/lib/people-picker";
+import { parsePlace } from "@/lib/places";
 import { ensureAccountVisitor } from "@/lib/public";
 
 // Getting started, a step at a time (app/welcome): each step saves its one
@@ -105,5 +106,17 @@ export async function savePhoto(photo: string): Promise<StepResult> {
   const me = await getCurrentUser();
   if (!me?.role) return fail("Sign in again to go on.");
   await sql`update accounts set photo_data_url = ${photo} where id = ${me.id}`;
+  return { ok: true };
+}
+
+// Where they are: a city and its state ("Seattle, WA"), as typed or picked.
+// Empty takes it off.
+export async function savePlace(typed: string): Promise<StepResult> {
+  const text = typeof typed === "string" ? typed.trim() : "";
+  const place = text ? parsePlace(text) : { city: "", state: "" };
+  if (!place) return fail("Type the city and state, like Seattle, WA.");
+  const me = await getCurrentUser();
+  if (!me?.role) return fail("Sign in again to go on.");
+  await sql`update accounts set location_city = ${place.city}, location_state = ${place.state} where id = ${me.id}`;
   return { ok: true };
 }

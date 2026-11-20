@@ -27,6 +27,7 @@ import {
   PROFILE_PHOTO_MOST_CHARS,
 } from "../profile-fields";
 import { isProKind, KINDS, type Kind } from "../kinds";
+import { parsePlace, placeLabel } from "../places";
 import { ensureAccountVisitor } from "../public";
 import { ApiError, isUuid } from "./http";
 import { jpegWithin, photoBytes, photoPixels, photoSchema } from "./photos";
@@ -54,6 +55,8 @@ type Row = {
   email: string;
   role: "agent" | "buyer" | null;
   kind: Kind | null;
+  location_city: string;
+  location_state: string;
   full_name: string;
   phone: string;
   brokerage: string;
@@ -71,7 +74,7 @@ type Row = {
 };
 
 const columns = sql`
-  a.id, a.auth_user_id, a.email, a.role, a.kind, a.full_name, a.phone, a.brokerage, a.mls_agent_id,
+  a.id, a.auth_user_id, a.email, a.role, a.kind, a.location_city, a.location_state, a.full_name, a.phone, a.brokerage, a.mls_agent_id,
   a.contact_phone, a.contact_email, a.bio, a.profile_links, a.brand_color, a.created_at, a.banner,
   left(md5(a.photo_data_url), 10) as photo_v, left(md5(a.banner_data_url), 10) as banner_v,
   v.id as profile_id`;
@@ -99,6 +102,8 @@ function accountJson(row: Row) {
     // What they are: an agent, an investor, a lender, or someone shopping
     // ("buyer"). The first three have an agent's account.
     kind: row.kind ?? (row.role === "agent" ? "agent" : row.role === "buyer" ? "buyer" : null),
+    // Where they are: "Seattle, WA", or null.
+    location: placeLabel({ city: row.location_city, state: row.location_state }) || null,
     signed_in: !row.auth_user_id.startsWith(INVITED_PREFIX),
     owner: isOwnerEmail(row.email),
     full_name: row.full_name,
@@ -196,6 +201,7 @@ const FIELDS = [
   "email",
   "role",
   "kind",
+  "location",
   "full_name",
   "phone",
   "brokerage",
@@ -242,6 +248,7 @@ const image = z.union([photoSchema, z.null()], {
 
 const fields = {
   full_name: z.string({ error: "“full_name” is text." }).optional(),
+  location: z.union([z.string(), z.null()], { error: "“location” is text, like “Seattle, WA”, or null." }).optional(),
   phone: clearable("phone"),
   brokerage: clearable("brokerage"),
   mls_agent_id: clearable("mls_agent_id"),
@@ -308,6 +315,13 @@ async function columnsFrom(body: Change, current: Current | null) {
     out.role = body.role;
     // (A pro stays the pro they were; anyone else made an agent is one.)
     out.kind = body.role === "agent" ? (isProKind(current?.kind) ? current.kind : "agent") : "buyer";
+  }
+  if (body.location !== undefined) {
+    const typed = body.location?.trim() ?? "";
+    const place = typed ? parsePlace(typed) : { city: "", state: "" };
+    if (!place) throw wrong("location", "Send the city and state, like “Seattle, WA”.");
+    out.location_city = place.city;
+    out.location_state = place.state;
   }
   const roleNow = (out.role as string | undefined) ?? current?.role ?? null;
   const isAgent = roleNow === "agent";

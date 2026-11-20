@@ -16,7 +16,7 @@ export const WELCOME_CHOICE = {
 export async function throughWelcome(
   page: Page,
   kind: keyof typeof WELCOME_CHOICE,
-  answers: { name?: string; company?: string; mlsId?: string; photo?: boolean; color?: string } = {},
+  answers: { name?: string; place?: string; company?: string; mlsId?: string; photo?: boolean; color?: string } = {},
 ) {
   await page.waitForURL("**/welcome**");
   await page.getByRole("button", { name: new RegExp(`^${WELCOME_CHOICE[kind]}`) }).click();
@@ -25,15 +25,16 @@ export async function throughWelcome(
     if (value !== undefined && field) await form.getByLabel(field, { exact: true }).fill(value);
     await form.getByRole("button", { name: value !== undefined || !field ? /^(Continue|Finish)$/ : "Skip" }).click();
   };
+  const place = step("Where are you located?");
   if (kind === "buyer") {
     const name = step("What's your first name?");
-    // (Asked only when they didn't give it signing up.)
-    await expect(async () => {
-      expect(!new URL(page.url()).pathname.startsWith("/welcome") || (await name.isVisible())).toBe(true);
-    }).toPass({ timeout: 15_000 });
+    // (Their name, asked only when they didn't give it signing up; then where they are.)
+    await expect(name.or(place)).toBeVisible();
     if (await name.isVisible()) await next(name, answers.name, "First name");
+    await next(place, answers.place, "City and state");
   } else {
     await next(step("What's your full name?"), answers.name ?? "Pat Pro", "Full name");
+    await next(place, answers.place, "City and state");
     const company = page.getByRole("form", { name: /^What('s| brokerage| company)/ });
     await next(company, answers.company, "Company");
     if (kind === "agent") await next(step("What's your MLS ID?"), answers.mlsId, "MLS ID");
@@ -214,6 +215,7 @@ export async function pastNameStep(page: Page, name?: string) {
     await throughWelcome(page, "buyer", { name });
     return;
   }
+  // (Here before, with no name yet: only that's asked.)
   if (name) {
     await step.getByLabel("First name", { exact: true }).fill(name);
     await step.getByRole("button", { name: /^(Continue|Finish)$/ }).click();

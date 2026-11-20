@@ -267,6 +267,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
         unnamed={unnamed}
         agent={person.isAgent}
         kind={person.kind}
+        place={person.place}
         since={person.since}
         people={{ ...people, href: `/people/${person.id}` }}
         photo={person.photo}

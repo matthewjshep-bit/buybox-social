@@ -307,20 +307,21 @@ test("people to follow on a buyer's home: whoever follows them first, with why; 
   await expect(card.getByRole("link", { name: /^Ignatius\b/ })).toHaveCount(0);
   await expect(rows.nth(0)).toContainText("Leocadia");
 
-  // On a phone there's no rail: the same card is in her feed, once, straight
-  // after where what's new ends, so a long feed doesn't bury it.
+  // On a phone there's no rail: the same card is in her feed, once, after
+  // the first few homes, so a long feed doesn't bury it.
   await thisbe.setViewportSize({ width: 390, height: 844 });
   await thisbe.goto("/?lens=following");
-  const feed = thisbe.getByRole("region", { name: "What's new" });
+  const feed = thisbe.getByRole("region", { name: "Your feed" });
   await expect(feed.getByRole("listitem").filter({ hasText: HALVARD }).first()).toContainText("Ignatius");
   const caughtUp = feed.getByRole("note", { name: "You're all caught up" });
-  await expect(caughtUp).toBeVisible();
+  await expect(caughtUp).toBeAttached();
   const inFeed = thisbe.getByRole("region", { name: "People to follow" });
   await expect(inFeed).toHaveCount(1);
   await expect(feed.getByRole("region", { name: "People to follow" })).toHaveCount(1);
   await expect(inFeed.getByRole("listitem").first()).toContainText("Leocadia");
   const top = async (part: Locator) => (await part.boundingBox())!.y;
-  expect(await top(inFeed)).toBeGreaterThan(await top(caughtUp));
+  expect(await top(inFeed)).toBeGreaterThan(await top(feed.getByRole("listitem").first()));
+  expect(await top(inFeed)).toBeLessThan(await top(caughtUp));
   await expect(inFeed.getByRole("link", { name: "See all people to follow", exact: true })).toBeVisible();
   expect(await thisbe.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });

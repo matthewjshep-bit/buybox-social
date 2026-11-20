@@ -359,7 +359,7 @@ test("an MLS listing of theirs is changed through their own copy, which takes it
 });
 
 test("a video by its link plays with the photos, after them; a link that isn't one is refused", async ({ browser }) => {
-  const agent = await signInAgent(browser, "vic.listings@example.com", "Vic Listings");
+  const agent = await signInAgent(browser, "val.listings@example.com", "Val Listings");
   await agent.goto("/dashboard/listings/new");
   const form = await enterListingYourself(agent);
   await form.getByLabel("Add photos").setInputFiles([{ name: "one.png", mimeType: "image/png", buffer: PNG }]);
