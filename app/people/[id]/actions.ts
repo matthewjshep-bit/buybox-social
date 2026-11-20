@@ -7,6 +7,17 @@ import { sql } from "@/lib/db";
 import { BANNER_STYLE } from "@/lib/banner";
 import { fail, readDevice, type ActionResult } from "@/lib/engagement";
 import { NOT_AN_EMAIL } from "@/lib/people-picker";
+import {
+  aboutLink,
+  BANNER_IMAGE_MOST_CHARS,
+  BANNER_SOURCE_MOST_CHARS,
+  BIO_MOST,
+  BUYER_NAME_MOST,
+  JPEG_DATA_URL,
+  linkUrl,
+  LINKS_MOST,
+  PROFILE_PHOTO_MOST_CHARS,
+} from "@/lib/profile-fields";
 import { ensureAccountVisitor, getPublicIdentity } from "@/lib/public";
 import type { Sentiment } from "@/lib/reactions";
 
@@ -166,7 +177,8 @@ export async function deleteMyComment(id: string): Promise<ActionResult> {
 // goes by it from then on. An agent's is among their details instead (their
 // MLS ID is checked against it there). (The page isn't refreshed here: the
 // sign-in page is on its way somewhere else, and each form does it itself.)
-const NAME_MOST = 60;
+// (lib/profile-fields.ts, the same as the admin API.)
+const NAME_MOST = BUYER_NAME_MOST;
 
 export async function setMyName(name: string): Promise<ActionResult> {
   const typed = typeof name === "string" ? name.replace(/\s+/g, " ").trim() : "";
@@ -181,12 +193,12 @@ export async function setMyName(name: string): Promise<ActionResult> {
   return { ok: true };
 }
 
-const PHOTO = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/;
+const PHOTO = JPEG_DATA_URL;
 
 // Your own photo, in place of your initial wherever you appear: a small square
 // JPEG made in the browser (lib/resize-photo.ts). Empty takes it away.
 export async function setMyPhoto(photo: string): Promise<ActionResult> {
-  if (typeof photo !== "string" || photo.length > 200_000 || (photo !== "" && !PHOTO.test(photo))) {
+  if (typeof photo !== "string" || photo.length > PROFILE_PHOTO_MOST_CHARS || (photo !== "" && !PHOTO.test(photo))) {
     return fail("We couldn't use that photo. Try a JPEG or PNG.");
   }
   const account = await getCurrentUser();
@@ -212,10 +224,10 @@ export async function setMyBanner(
   frame?: { x: number; y: number; zoom: number },
 ): Promise<ActionResult> {
   if (typeof style !== "string" || !BANNER_STYLE.test(style)) return fail("We couldn't save that.");
-  if (image !== undefined && (typeof image !== "string" || image.length > 600_000 || !PHOTO.test(image))) {
+  if (image !== undefined && (typeof image !== "string" || image.length > BANNER_IMAGE_MOST_CHARS || !PHOTO.test(image))) {
     return fail("We couldn't use that image. Try a JPEG or PNG.");
   }
-  if (source !== undefined && (typeof source !== "string" || source.length > 900_000 || !PHOTO.test(source))) {
+  if (source !== undefined && (typeof source !== "string" || source.length > BANNER_SOURCE_MOST_CHARS || !PHOTO.test(source))) {
     return fail("That image is too large. Try a smaller one.");
   }
   const framed = frame === undefined ? null : bannerFrame.safeParse(frame);
@@ -235,25 +247,8 @@ export async function setMyBanner(
 }
 
 // What you say about yourself at the top of your page, and (an agent) a few
-// links: each http(s), a bare address taken as https. Only ever your own.
-const BIO_MOST = 300;
-const LINKS_MOST = 5;
-const aboutLink = z.object({
-  label: z.string().trim().max(40),
-  url: z.string().trim().min(1).max(300),
-});
-
-function linkUrl(raw: string): string | null {
-  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
-  try {
-    const url = new URL(withScheme);
-    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-    if (!url.hostname.includes(".")) return null;
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
+// links: each http(s), a bare address taken as https (lib/profile-fields.ts).
+// Only ever your own.
 
 export async function saveAbout(bio: string, links: { label: string; url: string }[]): Promise<ActionResult> {
   if (typeof bio !== "string" || !Array.isArray(links)) return fail("We couldn't save that.");

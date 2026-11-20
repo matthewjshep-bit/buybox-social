@@ -4,21 +4,30 @@ import { randomUUID } from "node:crypto";
 import { refresh } from "next/cache";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
-import { z } from "zod";
 import { getCurrentUser, type Account } from "@/lib/auth";
 import { sameAgent } from "@/lib/agent-listings";
 import { sql } from "@/lib/db";
 import { importMissing, runImportsAndContinue } from "@/lib/listings/imports";
 import type { Listing } from "@/lib/listings/types";
 import {
+  addOwnListingPhoto,
+  createOwnListing,
+  deleteOwnListing,
+  listingFacts,
+  removeOwnListingPhoto,
+  setOwnListingMedia as setPhotos,
+  STORED_VIDEO as STORED,
+  updateOwnListing,
+  WITHDRAWN_INSTEAD,
+  type ListingField as Field,
+} from "@/lib/own-listing-writes";
+import {
   getOwnListing,
   isListingLayout,
   isVideoMedia,
   OWN_LISTINGS_MOST,
-  OWN_PHOTOS_MOST,
   OWN_PREFIX,
   OWN_VIDEOS_MOST,
-  photosOf,
   VIDEO_BUCKET,
   VIDEO_MOST_BYTES,
   VIDEO_TYPES,
@@ -29,73 +38,16 @@ import { createSupabase, supabaseConfigured } from "@/lib/supabase/server";
 import { videoLink } from "@/lib/video-link";
 
 // Adding and changing the listings an agent (or an investor) keeps
-// themselves. Every one of these checks the listing is theirs first.
+// themselves. Every one of these checks the listing is theirs first. The
+// checking and keeping is lib/own-listing-writes.ts, which the API uses too;
+// what's here is the form's side of it: who's signed in, what was typed, and
+// the page drawn again after.
 
-export type ListingField =
-  | "address"
-  | "city"
-  | "state"
-  | "zip"
-  | "price"
-  | "beds"
-  | "baths"
-  | "sqft"
-  | "about"
-  | "yearBuilt"
-  | "arv"
-  | "rehab";
+export type ListingField = Field;
 // (What was typed comes back with a save that didn't go through, so the
 // form still has it.)
 export type ListingTyped = Record<ListingField, string> & { shown: boolean; perSqft: boolean; closed: boolean };
 export type ListingState = { error?: string; field?: ListingField; saved?: boolean; values?: ListingTyped };
-
-const number = (most: number) =>
-  z.preprocess((value) => Number(String(value ?? "").replace(/[$,\s]/g, "")), z.number().finite().min(0).max(most));
-
-// A number that may be left out: empty is none.
-const optional = (least: number, most: number) =>
-  z.preprocess(
-    (value) => {
-      const text = String(value ?? "").replace(/[$,\s]/g, "");
-      return text === "" ? null : Number(text);
-    },
-    z.number().finite().min(least).max(most).nullable(),
-  );
-
-const details = z.object({
-  address: z.string().trim().min(3).max(120),
-  city: z.string().trim().min(2).max(60),
-  state: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/),
-  zip: z.string().trim().regex(/^\d{5}$/),
-  price: number(500_000_000),
-  beds: number(50),
-  baths: number(50),
-  sqft: number(200_000),
-  about: z.string().trim().max(2000),
-  shown: z.boolean(),
-  // No longer available (sold, the deal done): it says so wherever it shows.
-  closed: z.boolean(),
-  // The optional ones: left empty, they aren't shown.
-  yearBuilt: optional(1600, 2100),
-  arv: optional(0, 500_000_000),
-  rehab: optional(0, 500_000_000),
-  perSqft: z.boolean(),
-});
-
-const WHAT: Record<ListingField, string> = {
-  address: "Enter the street address.",
-  city: "Enter the city.",
-  state: "Use the state's two letters, like WA.",
-  zip: "Enter a 5-digit ZIP code.",
-  price: "Enter the price as a number.",
-  beds: "Enter the number of bedrooms.",
-  baths: "Enter the number of bathrooms.",
-  sqft: "Enter the square feet as a number.",
-  about: "Keep the description to 2,000 characters.",
-  yearBuilt: "Enter the year it was built, like 1962.",
-  arv: "Enter the after repair value as a number.",
-  rehab: "Enter the estimated rehab as a number.",
-};
 
 async function agent() {
   const account = await getCurrentUser();
@@ -115,38 +67,10 @@ function read(form: FormData) {
     perSqft: form.get("perSqft") === "on",
     closed: form.get("status") === "closed",
   } as ListingTyped;
-  const parsed = details.safeParse(typed);
-  if (!parsed.success) {
-    const field = parsed.error.issues[0]?.path[0] as ListingField | undefined;
-    return { typed, problem: { error: field ? WHAT[field] : "We couldn't save that.", field, values: typed } };
-  }
-  const v = parsed.data;
-  return {
-    typed,
-    facts: {
-      StandardStatus: v.closed ? "Closed" : "Active",
-      Hidden: v.shown ? null : true,
-      ListPrice: Math.round(v.price),
-      UnparsedAddress: v.address,
-      City: v.city,
-      StateOrProvince: v.state,
-      PostalCode: v.zip,
-      BedroomsTotal: Math.round(v.beds),
-      BathroomsTotalInteger: Math.round(v.baths),
-      LivingArea: Math.round(v.sqft),
-      PublicRemarks: v.about,
-      // (Nulls, so one taken away is taken off the listing too: see `stored`.)
-      YearBuilt: v.yearBuilt === null ? null : Math.round(v.yearBuilt),
-      AfterRepairValue: v.arv ? Math.round(v.arv) : null,
-      EstimatedRehab: v.rehab ? Math.round(v.rehab) : null,
-      HidePricePerSqFt: v.perSqft ? null : true,
-    },
-  };
+  const checked = listingFacts(typed);
+  if ("error" in checked) return { typed, problem: { error: checked.error, field: checked.field, values: typed } };
+  return { typed, facts: checked.facts };
 }
-
-// The facts as they're kept: nothing for what was left empty.
-const stored = <T extends Record<string, unknown>>(facts: T) =>
-  Object.fromEntries(Object.entries(facts).filter(([, value]) => value !== null));
 
 // A new listing: what it is. Its key comes back, for its photos to follow
 // (each sent on its own: addListingPhoto).
@@ -155,26 +79,10 @@ export async function createListing(form: FormData): Promise<ListingState & { ke
   const me = await agent();
   if (!me) return { error: "Sign in as an agent to add a listing.", values: typed };
   if (!facts) return problem;
-  const [{ n }] = await sql<{ n: number }[]>`
-    select count(*)::int as n from listings where owner_account_id = ${me.id}`;
-  if (n >= OWN_LISTINGS_MOST) {
-    return { error: `You can keep up to ${OWN_LISTINGS_MOST} listings. Delete one first.`, values: typed };
-  }
-  const key = `${OWN_PREFIX}${randomUUID()}`;
-  // Listed by whoever added it, under the name and brokerage on their brand.
-  const listing: Listing = {
-    ListingKey: key,
-    ListingId: "",
-    ...(stored(facts) as Omit<Listing, "ListingKey" | "ListingId" | "Media">),
-    ListAgentFullName: me.full_name,
-    ListOfficeName: me.brokerage,
-    Media: [],
-  };
-  await sql`
-    insert into listings (listing_key, standard_status, data, owner_account_id)
-    values (${key}, ${facts.StandardStatus}, ${sql.json(listing as never)}, ${me.id})`;
+  const made = await createOwnListing(me, facts);
+  if ("error" in made) return { error: made.error, values: typed };
   refresh();
-  return { key };
+  return { key: made.key };
 }
 
 // One of theirs, changed.
@@ -183,65 +91,32 @@ export async function saveListing(key: string, _state: ListingState, form: FormD
   const me = await agent();
   if (!me) return { error: "Sign in as an agent to change a listing.", values: typed };
   if (!facts) return problem;
-  const mine = await getOwnListing(me.id, key);
-  if (!mine) return { error: "We couldn't find that listing.", values: typed };
-  const kept = { ...stored(facts), ListAgentFullName: me.full_name, ListOfficeName: me.brokerage };
-  // (What was left empty this time comes off the listing.)
-  const dropped = Object.entries(facts).flatMap(([name, value]) => (value === null ? [name] : []));
-  await sql`
-    update listings set standard_status = ${facts.StandardStatus},
-      data = (data - ${dropped}::text[]) || ${sql.json(kept as never)}, updated_at = now()
-    where listing_key = ${key} and owner_account_id = ${me.id}`;
+  const saved = await updateOwnListing(me, key, facts);
+  if ("error" in saved) return { error: saved.error, values: typed };
   refresh();
   return { saved: true, values: typed };
 }
 
-const PHOTO = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/;
-
 // One more photo, at the end: a JPEG made in the browser (lib/resize-photo.ts).
 export async function addListingPhoto(key: string, dataUrl: string, width: number, height: number): Promise<{ error?: string }> {
   const me = await agent();
-  const mine = me && typeof key === "string" ? await getOwnListing(me.id, key) : null;
-  if (!me || !mine) return { error: "We couldn't find that listing." };
-  if (typeof dataUrl !== "string" || dataUrl.length > 900_000 || !PHOTO.test(dataUrl)) {
-    return { error: "We couldn't use that photo. Try a JPEG or PNG." };
-  }
-  if (![width, height].every((n) => Number.isInteger(n) && n >= 1 && n <= 4000)) return { error: "We couldn't use that photo." };
-  if (photosOf(mine.listing).length >= OWN_PHOTOS_MOST) return { error: `A listing can have up to ${OWN_PHOTOS_MOST} photos.` };
-  const [{ id }] = await sql<{ id: string }[]>`
-    insert into listing_uploads (listing_key, account_id, data_url, width, height)
-    values (${key}, ${me.id}, ${dataUrl}, ${width}, ${height}) returning id`;
-  const photo = { MediaKey: id, MediaURL: `/listing-photo/${id}`, Order: 0, MediaCategory: "Photo", ImageWidth: width, ImageHeight: height };
-  // (After the photos there are, before any video.)
-  await setPhotos(me.id, key, [...photosOf(mine.listing), photo, ...videosOf(mine.listing)]);
+  if (!me) return { error: "We couldn't find that listing." };
+  const added = await addOwnListingPhoto(me.id, key, dataUrl, width, height);
+  if ("error" in added) return { error: added.error };
   refresh();
   return {};
 }
 
-// The photos and videos as they are now, written back in a new order or with
-// one gone or one more: photos first, always, then videos.
-async function setPhotos(accountId: string, key: string, media: Listing["Media"]) {
-  const ordered = [...media.filter((item) => !isVideoMedia(item)), ...media.filter(isVideoMedia)].map((photo, i) => ({
-    ...photo,
-    Order: i,
-  }));
-  await sql`
-    update listings set data = jsonb_set(data, '{Media}', ${sql.json(ordered as never)}), updated_at = now()
-    where listing_key = ${key} and owner_account_id = ${accountId}`;
-}
-
 export async function removeListingPhoto(key: string, mediaKey: string): Promise<{ error?: string }> {
   const me = await agent();
-  const mine = me && typeof key === "string" ? await getOwnListing(me.id, key) : null;
-  if (!me || !mine || typeof mediaKey !== "string") return { error: "We couldn't find that listing." };
-  // (A photo that came with a copied listing has no key of its own: it goes by its address.)
-  await setPhotos(me.id, key, mine.listing.Media.filter((photo) => (photo.MediaKey ?? photo.MediaURL) !== mediaKey));
-  await sql`delete from listing_uploads where id::text = ${mediaKey} and listing_key = ${key} and account_id = ${me.id}`;
-  // An uploaded video goes from file storage too (its key is where it's kept there).
-  const gone = mine.listing.Media.find((photo) => (photo.MediaKey ?? photo.MediaURL) === mediaKey);
-  if (gone && isVideoMedia(gone) && !gone.VideoEmbed && supabaseConfigured && STORED.test(mediaKey)) {
+  if (!me) return { error: "We couldn't find that listing." };
+  const removed = await removeOwnListingPhoto(me.id, key, mediaKey);
+  if ("error" in removed) return { error: removed.error };
+  // An uploaded video goes from file storage too (its key is where it's kept
+  // there), which only their own signed-in session may do.
+  if (removed.storedVideo && supabaseConfigured) {
     const supabase = await createSupabase();
-    await supabase.storage.from(VIDEO_BUCKET).remove([mediaKey]);
+    await supabase.storage.from(VIDEO_BUCKET).remove([removed.storedVideo]);
   }
   refresh();
   return {};
@@ -264,16 +139,13 @@ export async function leadWithListingPhoto(key: string, mediaKey: string): Promi
 // from their profile instead, and says so.
 export async function deleteListing(key: string): Promise<{ error?: string }> {
   const me = await agent();
-  if (!me || typeof key !== "string" || !(await getOwnListing(me.id, key))) return { error: "We couldn't find that listing." };
-  const [onLink] = await sql`select 1 from share_listings where listing_key = ${key} limit 1`;
-  if (onLink) {
-    await sql`
-      update listings set standard_status = 'Withdrawn', data = data || '{"StandardStatus":"Withdrawn"}'::jsonb, updated_at = now()
-      where listing_key = ${key} and owner_account_id = ${me.id}`;
+  if (!me) return { error: "We couldn't find that listing." };
+  const gone = await deleteOwnListing(me.id, key);
+  if ("error" in gone) return { error: gone.error };
+  if ("withdrawn" in gone) {
     refresh();
-    return { error: "It's on a link you sent, so it's hidden instead." };
+    return { error: WITHDRAWN_INSTEAD };
   }
-  await sql`delete from listings where listing_key = ${key} and owner_account_id = ${me.id}`;
   redirect("/dashboard/listings");
 }
 
@@ -343,9 +215,6 @@ export async function editMlsListing(key: string): Promise<void> {
     values (${fresh}, 'Active', ${sql.json(copy as never)}, ${me.id})`;
   redirect(`/dashboard/listings/${fresh}`);
 }
-
-// Where an uploaded video is kept in file storage: its uploader's folder, then a name of its own.
-const STORED = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.(mp4|mov|webm)$/;
 
 // One of their listings, with room for one more video: or what's in the way.
 async function ownWithRoom(key: string): Promise<{ error: string } | { me: Account; mine: OwnListing }> {

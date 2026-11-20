@@ -4,7 +4,16 @@ import { refresh } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { accountFor, DEV_COOKIE, devLoginEnabled, nameFromSignUp, requireUser, sitePath, VIEW_AS_COOKIE } from "@/lib/auth";
+import {
+  accountFor,
+  DEV_COOKIE,
+  devLoginEnabled,
+  INVITED_PREFIX,
+  nameFromSignUp,
+  requireUser,
+  sitePath,
+  VIEW_AS_COOKIE,
+} from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { readDevice } from "@/lib/engagement";
 import { ensureAccountVisitor } from "@/lib/public";
@@ -143,7 +152,10 @@ export async function testSignIn(input: { email: string; password: string; asAge
   }
   const [existing] = await sql<{ auth_user_id: string }[]>`
     select auth_user_id from accounts where lower(email) = ${email.data} order by created_at limit 1`;
-  const user = { id: existing?.auth_user_id ?? `test:${email.data}`, email: email.data };
+  // (An account the owner made for this email, not yet signed in to, is
+  // claimed by this sign-in like any other: lib/auth.ts accountFor.)
+  const known = existing && !existing.auth_user_id.startsWith(INVITED_PREFIX) ? existing.auth_user_id : null;
+  const user = { id: known ?? `test:${email.data}`, email: email.data };
   // Out of any emailed sign-in on this browser (only here), so it's this one.
   if (supabaseConfigured) await (await createSupabase()).auth.signOut({ scope: "local" });
   await setTestUser(user);

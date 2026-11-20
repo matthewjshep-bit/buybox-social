@@ -80,11 +80,28 @@ export const getCurrentUser = cache(
 // (What anyone types before proving an email is theirs, a name or "as an
 // agent", counts for half an hour and no longer: anyone can type anyone's
 // email, so it only ever shapes an account made, or named, soon after.)
+//
+// An account the site's owner made for this email ahead of time (the admin
+// API: auth_user_id 'invited:' + the email) is theirs at their first sign-in,
+// as it is, role and all: proving the inbox is what makes it theirs. Claimed
+// in one statement, so two sign-ins at once can't both claim it (the second
+// finds it claimed, below, by their id).
+export const INVITED_PREFIX = "invited:";
+
 export async function accountFor(user: { id: string; email: string }, role: Role = "buyer"): Promise<Account> {
+  // (No sign-in is ever an invitation itself.)
+  if (user.id.startsWith(INVITED_PREFIX)) throw new Error("accountFor: not a signed-in user");
   const [existing] = await sql<Account[]>`
     select id, email, full_name, role, brokerage, photo_data_url, brand_color
     from accounts where auth_user_id = ${user.id}`;
   if (existing?.role) return existing;
+  if (!existing) {
+    const [claimed] = await sql<Account[]>`
+      update accounts set auth_user_id = ${user.id}
+      where auth_user_id = ${INVITED_PREFIX + user.email.trim().toLowerCase()}
+      returning id, email, full_name, role, brokerage, photo_data_url, brand_color`;
+    if (claimed?.role) return claimed;
+  }
   // A name and phone from a sign-up form, only if just typed.
   const [signup] = await sql<{ full_name: string; phone: string }[]>`
     select full_name, phone from signups

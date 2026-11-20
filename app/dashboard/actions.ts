@@ -2,19 +2,25 @@
 
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
-import { after } from "next/server";
 import { z } from "zod";
-import { listedAgentNames, MLS_ID, sameAgent } from "@/lib/agent-listings";
 import { getCurrentUser, getViewAs, requireAgent, requireUser } from "@/lib/auth";
-import { isContactPhone, phoneDigits } from "@/lib/contact";
 import { sql } from "@/lib/db";
 import type { Listing } from "@/lib/listings/types";
 import { homesToSend } from "@/lib/send-search";
-import { BRAND_COLORS, escapeLike } from "@/lib/format";
-import { importMissing, runImportsAndContinue } from "@/lib/listings/imports";
-import { notifyClientAdded, notifyClientMoreHomes } from "@/lib/notify";
+import { escapeLike } from "@/lib/format";
 import { findable, NAME_LONGEST } from "@/lib/people";
 import { photoUrl } from "@/lib/person-photo";
+import {
+  AGENT_NAME_MOST,
+  BROKERAGE_MOST,
+  contactEmailSchema,
+  contactPhoneSchema,
+  isBrandColor,
+  isDuplicate,
+  JPEG_DATA_URL,
+  mlsAgentIdProblem,
+  PROFILE_PHOTO_MOST_CHARS,
+} from "@/lib/profile-fields";
 import { ensureAccountVisitor } from "@/lib/public";
 import {
   firstNameSchema,
@@ -23,13 +29,13 @@ import {
   type PersonOption,
   type PersonPick,
 } from "@/lib/people-picker";
+import { addHomesToLink, letThemKnow, ownShareOf as ownShare, replyToClient, sendHomes } from "@/lib/sending";
 import {
   confidantOf,
   ensureAgentProfile,
   invitePerson,
   isShareToken,
   newcomerProblem,
-  newShareToken,
   reserveSendTokenFor,
   resolvePicks,
   TOO_MANY_STRANGERS,
@@ -49,28 +55,16 @@ export type ProfileState = FormState & {
   values?: { brokerage: string; contactPhone: string; contactEmail: string; mlsAgentId: string };
 };
 
-const PHOTO_PATTERN = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/;
-
+// (Each part checked as lib/profile-fields.ts says, the same as the admin API.)
 const profileSchema = z.object({
-  fullName: z.string().trim().min(1).max(80),
-  brokerage: z.string().trim().max(80),
-  brandColor: z.string().refine((value) => BRAND_COLORS.some((c) => c.value === value)),
+  fullName: z.string().trim().min(1).max(AGENT_NAME_MOST),
+  brokerage: z.string().trim().max(BROKERAGE_MOST),
+  brandColor: z.string().refine(isBrandColor),
   photo: z
     .string()
-    .max(200_000)
-    .refine((value) => value === "" || PHOTO_PATTERN.test(value)),
+    .max(PROFILE_PHOTO_MOST_CHARS)
+    .refine((value) => value === "" || JPEG_DATA_URL.test(value)),
 });
-
-// A phone for clients: empty, or a real number with its area code. Kept as
-// digits only, so the text and call links on a link are built from nothing else.
-const contactPhoneSchema = z
-  .string()
-  .max(30)
-  .regex(/^[\d\s().+-]*$/)
-  .transform(phoneDigits)
-  .refine((digits) => digits === "" || isContactPhone(digits));
-
-const contactEmailSchema = z.union([z.literal(""), z.email().max(254)]);
 
 export async function saveProfile(_: ProfileState, form: FormData): Promise<ProfileState> {
   const agent = await requireAgent();
@@ -97,19 +91,10 @@ export async function saveProfile(_: ProfileState, form: FormData): Promise<Prof
   if (!email.success) {
     return { error: "Please enter a valid email address, or leave it empty.", field: "contactEmail", values };
   }
-  // Their MLS ID: empty, or letters, numbers and dashes. Their listings go by it.
-  if (values.mlsAgentId && !MLS_ID.test(values.mlsAgentId)) {
-    return { error: "Letters, numbers and dashes only, or leave it empty.", field: "mlsAgentId", values };
-  }
-  // An MLS ID is public, so it's theirs only when its listings are under
-  // their name. (One no listing has yet is kept; its listings show once they
-  // are under their name too.)
-  if (values.mlsAgentId) {
-    const listed = await listedAgentNames(values.mlsAgentId);
-    if (listed.length > 0 && !listed.some((name) => sameAgent(parsed.data.fullName, name))) {
-      return { error: "That MLS ID is listed under another name.", field: "mlsAgentId", values };
-    }
-  }
+  // Their MLS ID: empty, or letters, numbers and dashes, and only one whose
+  // listings are under their name. Their listings go by it.
+  const mlsProblem = await mlsAgentIdProblem(values.mlsAgentId, parsed.data.fullName);
+  if (mlsProblem) return { error: mlsProblem, field: "mlsAgentId", values };
   try {
     await sql`
       update accounts set
@@ -139,29 +124,13 @@ export async function saveProfile(_: ProfileState, form: FormData): Promise<Prof
   redirect("/dashboard");
 }
 
-const shareSchema = z.object({
-  listingKeys: z.array(z.string().max(100)).min(1).max(3),
-  people: z.array(pickSchema).max(6),
-  note: z.string().trim().max(500),
-});
-
-// A database error for a row that's already there (someone added twice at once).
-const isDuplicate = (error: unknown) => (error as { code?: string } | null)?.code === "23505";
-
-// People the agent added who are on Porchcard: they hear from us, with their
-// own link (lib/notify.ts), after the page has answered. The agent's own
-// profile is made too, so the homes can say who they're from. Never while an
-// admin is looking at the site as the agent: nobody is emailed on their behalf.
-async function letThemKnow(agentId: string, participantIds: string[]) {
-  if (participantIds.length === 0) return;
-  await ensureAgentProfile(agentId);
-  if (await getViewAs()) return;
-  for (const id of participantIds) after(() => notifyClientAdded(id));
-}
+// Whether people on Porchcard may hear from us about what the agent just did.
+// Never while an admin is looking at the site as the agent: nobody is emailed
+// on their behalf.
+const mayNotify = async () => ({ notify: !(await getViewAs()) });
 
 // A new link: its homes, a note, and the people it's for, each with their
-// own link. It's named for them (by the database, as they're added); with
-// nobody added, anyone with it can join, and it's named for whoever does.
+// own link (lib/sending.ts, the same as the API sends them).
 export async function createShare(input: {
   listingKeys: string[];
   people: PersonPick[];
@@ -169,70 +138,14 @@ export async function createShare(input: {
 }): Promise<FormState> {
   // (Anyone signed in can send homes; an agent's go to their clients.)
   const agent = await requireUser();
-  const parsed = shareSchema.safeParse(input);
-  if (!parsed.success) {
-    const field = parsed.error.issues[0]?.path[0];
-    if (field === "people") return { error: pickError(input?.people) };
-    if (field === "note") return { error: "Notes can be up to 500 characters." };
-    return { error: "Pick between 1 and 3 homes." };
-  }
-  const keys = [...new Set(parsed.data.listingKeys)];
-  // A home found by its address that isn't here yet is brought in first.
-  if (await importMissing(keys)) after(() => runImportsAndContinue());
-
-  // Only homes still for sale, the same as adding homes to a link later.
-  const found = await sql`
-    select listing_key from listings
-    where listing_key in ${sql(keys)} and standard_status = 'Active'`;
-  if (found.length !== keys.length) return { error: "One of those homes is no longer available." };
-
-  const resolved = await resolvePicks(sql, agent.id, parsed.data.people);
-  if ("error" in resolved) return { error: resolved.error };
-  if (await tooManyStrangers(sql, agent.id, resolved.people)) return { error: TOO_MANY_STRANGERS };
-
-  const made = await sql.begin(async (tx) => {
-    const [share] = await tx<{ id: string; token: string }[]>`
-      insert into shares (token, agent_id, note)
-      values (${newShareToken()}, ${agent.id}, ${parsed.data.note})
-      returning id, token`;
-    // Everyone gets their own link, so what each of them likes is theirs, in
-    // the order the agent added them (which is the order the link names them).
-    const bound: string[] = [];
-    for (const person of resolved.people) {
-      const added = await invitePerson(share.id, person, tx);
-      if (person.accountId) bound.push(added.id);
-    }
-    for (const [position, key] of keys.entries()) {
-      await tx`
-        insert into share_listings (share_id, listing_key, position)
-        values (${share.id}, ${key}, ${position})`;
-    }
-    // The link the agent goes through next: the first person's, or the one anyone can use.
-    const [first] = await tx<{ token: string }[]>`
-      select token from participants
-      where share_id = ${share.id} and token is not null
-      order by invited_at nulls last, position nulls last, created_at, first_name
-      limit 1`;
-    return { shareId: share.id, bound, token: first?.token ?? share.token };
-  });
-  // The agent's own profile, so their face is on their notes and their
-  // clients can follow them.
-  await ensureAgentProfile(agent.id);
-  await letThemKnow(agent.id, made.bound);
+  const made = await sendHomes(agent, input, await mayNotify());
+  if ("error" in made) return { error: made.error };
   // On to the link as their client will see it, to like and say what they
   // think (the last step), and from there to the link, ready to copy.
   redirect(`/s/${made.token}?step=thoughts`);
 }
 
 const uuid = z.uuid();
-
-// The signed-in agent's own share, or null.
-async function ownShare(agentId: string, shareId: string) {
-  if (!uuid.safeParse(shareId).success) return null;
-  const [share] = await sql<{ id: string }[]>`
-    select id from shares where id = ${shareId} and agent_id = ${agentId}`;
-  return share ?? null;
-}
 
 // Homes as an agent types one's address (or MLS number) on the way to
 // sending it: a few, the closest first, each with only what a suggestion
@@ -459,7 +372,7 @@ export async function addPerson(shareId: string, _: AddPersonState, form: FormDa
     if (isDuplicate(error)) return { error: `${person.firstName} is already on this link.` };
     throw error;
   }
-  if (person.accountId) await letThemKnow(agent.id, [added.id]);
+  if (person.accountId) await letThemKnow(agent.id, [added.id], await mayNotify());
   refresh();
   return {};
 }
@@ -515,10 +428,10 @@ export async function removePerson(shareId: string, personId: string): Promise<F
 }
 
 // A suggested home, added straight to the package, from the link's own page:
-// the agent stays there.
+// the agent stays there. (Nobody is emailed about it, as it's always been.)
 export async function addSuggestedHome(shareId: string, listingKey: string): Promise<void> {
   const agent = await requireAgent();
-  const result = await addHomes(agent.id, shareId, [listingKey]);
+  const result = await addHomesToLink(agent.id, shareId, [listingKey], { notify: false });
   if ("error" in result) return;
   redirect(`/dashboard/shares/${shareId}`);
 }
@@ -551,62 +464,20 @@ export async function setHomeRemoved(shareId: string, listingKey: string, remove
   refresh();
 }
 
-// Homes onto a link the agent has already sent, after the ones there. What
-// went wrong, or how many of them weren't on it before.
-async function addHomes(
-  agentId: string,
-  shareId: string,
-  listingKeys: string[],
-): Promise<{ error: string } | { added: number }> {
-  const keys = z.array(z.string().max(100)).min(1).max(3).safeParse(listingKeys);
-  if (!keys.success) return { error: "Pick between 1 and 3 homes." };
-  if (!(await ownShare(agentId, shareId))) return { error: "We couldn't find that client." };
-  const unique = [...new Set(keys.data)];
-  if (await importMissing(unique)) after(() => runImportsAndContinue());
-  const found = await sql`
-    select listing_key from listings
-    where listing_key in ${sql(unique)} and standard_status = 'Active'`;
-  if (found.length !== unique.length) return { error: "One of those homes is no longer available." };
-  const added = await sql.begin(async (tx) => {
-    const there = await tx<{ listing_key: string }[]>`
-      select listing_key from share_listings
-      where share_id = ${shareId} and removed_at is null and listing_key in ${sql(unique)}`;
-    const [{ next }] = await tx<{ next: number }[]>`
-      select coalesce(max(position), -1) + 1 as next from share_listings where share_id = ${shareId}`;
-    for (const [offset, key] of unique.entries()) {
-      // A home sent before and removed comes back, with its history intact.
-      await tx`
-        insert into share_listings (share_id, listing_key, position)
-        values (${shareId}, ${key}, ${next + offset})
-        on conflict (share_id, listing_key) do update set removed_at = null`;
-    }
-    return unique.length - there.length;
-  });
-  return { added };
-}
-
 // "Send more homes": more homes onto a link, and then the link, ready to
 // copy or send again, as when it was first made. Whoever on it is on
-// Porchcard hears about the new homes from us (lib/notify.ts: once a day at
-// most from each agent, with being added), after the page has answered. Never
-// while an admin is looking at the site as the agent.
+// Porchcard hears about the new homes from us (lib/sending.ts), after the
+// page has answered.
 export async function addHomesToShare(shareId: string, listingKeys: string[]): Promise<FormState> {
   const agent = await requireAgent();
-  const result = await addHomes(agent.id, shareId, listingKeys);
-  if ("error" in result) return result;
-  const { added } = result;
-  if (added > 0 && !(await getViewAs())) {
-    const people = await sql<{ id: string }[]>`
-      select p.id from participants p
-      where p.share_id = ${shareId} and p.account_id is not null and p.account_id <> ${agent.id}`;
-    for (const person of people) after(() => notifyClientMoreHomes(person.id, added));
-  }
+  const result = await addHomesToLink(agent.id, shareId, listingKeys, await mayNotify());
+  if ("error" in result) return { error: result.error };
   redirect(`/dashboard/shares/${shareId}/sent`);
 }
 
-// The agent's word in a home's conversation on their link. `to`: the client
-// it answers (their likes or what they said), so on a link with several people
-// it sits under that person's line; only ever someone on that link.
+// The agent's word in a home's conversation on their link (lib/sending.ts).
+// `to`: the client it answers, so on a link with several people it sits under
+// that person's line.
 export async function replyAsAgent(
   shareId: string,
   listingKey: string,
@@ -614,38 +485,8 @@ export async function replyAsAgent(
   to: string | null = null,
 ): Promise<FormState> {
   const agent = await requireAgent();
-  const text = z.string().trim().min(1).max(1000).safeParse(body);
-  if (!text.success || !uuid.safeParse(shareId).success || (to !== null && !uuid.safeParse(to).success)) {
-    return { error: "Replies can be up to 1,000 characters." };
-  }
-  // The join limits this to the signed-in agent's own shares.
-  const inserted = await sql`
-    insert into comments (share_id, listing_key, agent_id, body, reply_to_participant)
-    select sl.share_id, sl.listing_key, ${agent.id}, ${text.data},
-      (select p.id from participants p where p.id = ${to}::uuid and p.share_id = sl.share_id)
-    from share_listings sl join shares s on s.id = sl.share_id
-    where sl.share_id = ${shareId} and sl.listing_key = ${listingKey} and s.agent_id = ${agent.id}
-    returning id`;
-  if (inserted.length === 0) return { error: "We couldn't find that conversation." };
-  // Answering is having seen it: the "new" dot beside them clears from Home
-  // too, where there's no page of the link to open. Only as far as what was
-  // answered (the newest thing they said or asked in this conversation; with
-  // no `to`, anyone on the link), as markShareSeen has it: whatever came
-  // after, or from someone else on the link, still counts as new.
-  await sql`
-    update shares s set agent_seen_at = greatest(s.agent_seen_at, answered.at)
-    from (
-      select max(x.at) as at from (
-        select c.created_at as at from comments c
-        where c.share_id = ${shareId} and c.listing_key = ${listingKey} and c.participant_id is not null
-          and (${to}::uuid is null or c.participant_id = ${to}::uuid)
-        union all
-        select a.asked_at from share_asks a
-        where a.share_id = ${shareId} and a.listing_key = ${listingKey}
-          and (${to}::uuid is null or a.participant_id = ${to}::uuid)
-      ) x
-    ) answered
-    where s.id = ${shareId} and s.agent_id = ${agent.id} and answered.at is not null`;
+  const result = await replyToClient(agent.id, shareId, listingKey, body, to);
+  if ("error" in result) return { error: result.error };
   refresh();
   return {};
 }
@@ -693,7 +534,9 @@ export async function claimQuickShare(input: { token: string; listingKey: string
   const claimed = await sql.begin(async (tx) => {
     // Only homes still for sale, as on any new link.
     const [home] = await tx`
-      select 1 from listings where listing_key = ${listingKey} and standard_status = 'Active'`;
+      select 1 from listings where listing_key = ${listingKey} and standard_status = 'Active'
+        and (owner_account_id is null or owner_account_id = ${agent.id}
+             or coalesce((data->>'Hidden')::boolean, false) = false)`;
     if (!home) return null;
     // Only a name this agent was given, in the last day, and only once.
     const [fresh] = await tx`
@@ -902,7 +745,10 @@ export async function moveQuickShare(shareId: string, targetShareId: string): Pr
   const agent = await requireAgent();
   if (!uuid.safeParse(shareId).success || shareId === targetShareId) return { error: "We couldn't find that link." };
   const [home] = await sql<{ listing_key: string; active: boolean }[]>`
-    select sl.listing_key, l.standard_status = 'Active' as active
+    select sl.listing_key,
+      l.standard_status = 'Active'
+        and (l.owner_account_id is null or l.owner_account_id = ${agent.id}
+             or coalesce((l.data->>'Hidden')::boolean, false) = false) as active
     from shares s
     join share_listings sl on sl.share_id = s.id
     join listings l on l.listing_key = sl.listing_key

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { becomeAgent } from "@/app/login/actions";
 import { AGENT_HEADLINE, AgentFeatures, AgentPicture, Eyebrow } from "@/components/marketing-home";
 import { getCurrentUser } from "@/lib/auth";
-import { button } from "@/lib/ui";
+import { cn } from "@/lib/format";
+import { button, link } from "@/lib/ui";
 
 export const metadata = {
   title: "For agents · Porchcard",
@@ -55,6 +56,14 @@ export default async function ForAgentsPage() {
               </form>
             )}
           </div>
+          {/* For the agent whose CRM, Zapier or Make should do the sending:
+              one quiet line, under the one thing the page asks. */}
+          <p className="mt-6 text-meta text-muted">
+            Use GoHighLevel, Zapier or Make?{" "}
+            <Link href="/developers" className={cn(link, "hit-44")}>
+              Connect them with the Porchcard API
+            </Link>
+          </p>
         </div>
         <AgentPicture />
       </section>

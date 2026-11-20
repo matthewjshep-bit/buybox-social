@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Keeps the signed-in person's Supabase session fresh. Every page shows who is
-// signed in, so this runs everywhere except static files.
+// signed in, so this runs everywhere except static files (and the API).
 //
 // It also notes the page asked for, as `x-path` on the request the pages see:
 // someone stopped at a page that takes an account is sent to sign in, and
@@ -48,6 +48,9 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
+// Not the API (/api/v1, and the owner's /api/admin/v1): it knows a request
+// only by its key, never a session, so there's no session to keep fresh
+// there, and no cookie should ever come back on its answers.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|sample/).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|sample/|api/v1/|api/admin/).*)"],
 };

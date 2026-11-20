@@ -178,7 +178,9 @@ test("the page for agents tells the home page's pitch, and its button says what 
   const main = anon.getByRole("main");
   await expect(main.getByRole("heading", { level: 1 })).toHaveText(headline);
   expect(await main.getByRole("listitem").allInnerTexts()).toEqual(lines);
-  await expect(main.getByRole("link")).toHaveText(["Start free", "See homes"]);
+  // (And under them, for everyone, one quiet line to the API, for an agent whose CRM does the sending.)
+  await expect(main.getByRole("link")).toHaveText(["Start free", "See homes", "Connect them with the Porchcard API"]);
+  await expect(main.getByRole("link", { name: "Connect them with the Porchcard API" })).toHaveAttribute("href", "/developers");
   await expect(main.getByRole("link", { name: "Start free" })).toHaveAttribute("href", "/login?as=agent");
   await expect(main.getByRole("link", { name: "See homes" })).toHaveAttribute("href", "/browse");
   await expect(main.getByRole("link", { name: "Start free" })).toBeInViewport({ ratio: 1 });
@@ -190,7 +192,7 @@ test("the page for agents tells the home page's pitch, and its button says what 
   const become = buyer.getByRole("main").getByRole("button", { name: "Make my account an agent's" });
   await expect(become).toHaveAccessibleDescription("You'll get a Clients page for the people you send homes to. Your likes and follows stay.");
   await expect(buyer.getByRole("main").getByText("You'll get a Clients page for the people you send homes to. Your likes and follows stay.")).toBeVisible();
-  await expect(buyer.getByRole("main").getByRole("link")).toHaveCount(0);
+  await expect(buyer.getByRole("main").getByRole("link")).toHaveText(["Connect them with the Porchcard API"]);
   // It does what it says: an agent's account, by the name they have. Their
   // details are among their profile settings.
   await become.click();
@@ -199,7 +201,7 @@ test("the page for agents tells the home page's pitch, and its button says what 
 
   // An agent: their dashboard, by its name.
   await buyer.goto("/for-agents");
-  await expect(buyer.getByRole("main").getByRole("link")).toHaveText(["Go to your clients"]);
+  await expect(buyer.getByRole("main").getByRole("link")).toHaveText(["Go to your clients", "Connect them with the Porchcard API"]);
   await expect(buyer.getByRole("main").getByRole("link", { name: "Go to your clients" })).toHaveAttribute("href", "/dashboard");
 });
 

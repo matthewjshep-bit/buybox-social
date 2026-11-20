@@ -4,6 +4,7 @@ import { refresh } from "next/cache";
 import { after } from "next/server";
 import { firstName as accountFirstName, getCurrentUser } from "@/lib/auth";
 import { copyEarlierTake } from "@/lib/agent-take";
+import { emitLinkEvent } from "@/lib/api/webhooks";
 import { sql } from "@/lib/db";
 import {
   checkAnchor,
@@ -158,6 +159,10 @@ export async function recordOpen(token: string, photosSeen?: unknown): Promise<v
         { open: true },
       );
     });
+    // And the agent's own tools, if they asked to be told (every device's
+    // first open, not held back as the email is). On its own, so nothing the
+    // email does can keep it from going.
+    after(() => emitLinkEvent(found.share.id, "link.opened", { participantId: participant?.id ?? null }));
   }
 }
 
@@ -347,6 +352,12 @@ export async function setReaction(
         anchor: `home-${listingKey}`,
       });
     });
+    after(() =>
+      emitLinkEvent(actor.share.id, state.reaction === "like" ? "home.liked" : "home.passed", {
+        participantId: actor.participant.id,
+        listingKey,
+      }),
+    );
   }
   refresh();
   return { ok: true };
@@ -397,6 +408,14 @@ export async function addComment(
       anchor: `comment-${comment.id}`,
     });
   });
+  after(() =>
+    emitLinkEvent(actor.share.id, "comment.created", {
+      participantId: actor.participant.id,
+      listingKey,
+      commentId: comment.id,
+      body: parsed.data,
+    }),
+  );
   refresh();
   return { ok: true };
 }
@@ -444,6 +463,7 @@ export async function askToSee(token: string, listingKey: string): Promise<AskRe
       anchor: `comment-${asked}`,
     });
   });
+  after(() => emitLinkEvent(found.share.id, "showing.requested", { participantId: participant.id, listingKey }));
   refresh();
   return { ok: true, already: false };
 }

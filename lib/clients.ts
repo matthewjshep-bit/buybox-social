@@ -276,6 +276,34 @@ function personKeys(people: PersonRow[]) {
   );
 }
 
+// Which client of this agent one participant is, by the same key the client
+// book gives them (personKeys, above), for something said about one person
+// outside the book (a webhook). Null when they aren't on one of the agent's
+// links, or are the agent themselves (never their own client).
+export async function clientKeyFor(agentId: string, participantId: string): Promise<string | null> {
+  if (typeof participantId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(participantId)) {
+    return null;
+  }
+  const [person] = await sql<{ account_id: string | null; first_name: string }[]>`
+    select p.account_id, p.first_name from participants p join shares s on s.id = p.share_id
+    where p.id = ${participantId} and s.agent_id = ${agentId}
+      and (p.account_id is null or p.account_id <> s.agent_id)`;
+  if (!person) return null;
+  if (person.account_id) return `acct:${person.account_id}`;
+  const name = person.first_name.trim().toLowerCase();
+  if (!name) return `p:${participantId}`;
+  // Everyone signed up on the agent's links (as loadPeople reads them), to
+  // see whether exactly one of them goes by this name. (Matched here as
+  // personKeys matches them, so the key is the same one.)
+  const signedUp = await sql<{ account_id: string; first_name: string }[]>`
+    select distinct p.account_id, p.first_name from participants p join shares s on s.id = p.share_id
+    where s.agent_id = ${agentId} and p.account_id is not null and p.account_id <> s.agent_id`;
+  const accounts = new Set(
+    signedUp.filter((row) => row.first_name.trim().toLowerCase() === name).map((row) => row.account_id),
+  );
+  return accounts.size === 1 ? `acct:${[...accounts][0]}` : `name:${name}`;
+}
+
 // What's waiting on the agent is said ahead of "Looking now", so the sentence
 // about someone who's waiting always says what for.
 function statusOf(c: Omit<Client, "status">, said: PersonRow | undefined): ClientStatus {

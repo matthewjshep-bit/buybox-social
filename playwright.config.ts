@@ -45,6 +45,8 @@ export default defineConfig({
         ANTHROPIC_API_KEY: "",
         // A home that's sold, beside the sample homes for sale (scripts/db-setup.ts).
         E2E_FIXTURES: "true",
+        // Webhooks may go to a receiver the test runs on 127.0.0.1 (lib/api/safe-request.ts).
+        API_WEBHOOKS_ALLOW_LOCAL: "true",
       },
     },
   ],

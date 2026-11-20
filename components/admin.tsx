@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, LayoutGrid, MessageSquare, ShieldCheck, Users } from "lucide-react";
+import { Building2, KeyRound, LayoutGrid, MessageSquare, ShieldCheck, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useActionState, useId, useRef, useState, useTransition } from "react";
@@ -18,8 +18,12 @@ const NAV = [
   { href: "/admin/comments", label: "Comments", icon: MessageSquare },
 ];
 
-// Only the owner sees who the admins are, and changes them.
-const OWNER_NAV = [{ href: "/admin/team", label: "Admins", icon: ShieldCheck }];
+// Only the owner sees who the admins are, and changes them, and has the API
+// that can change any account.
+const OWNER_NAV = [
+  { href: "/admin/team", label: "Admins", icon: ShieldCheck },
+  { href: "/admin/api", label: "API", icon: KeyRound },
+];
 
 // Down the side on a wide screen; a row of tabs across the top on a phone.
 export function AdminNav({ superAdmin }: { superAdmin: boolean }) {

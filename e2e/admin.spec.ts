@@ -117,7 +117,9 @@ test("the owner alone decides who else is an admin", async ({ browser }) => {
   await helper.goto("/admin/people");
   await expect(helper.getByRole("heading", { level: 1 })).toHaveText("People");
   await expect(helper.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "Admins" })).toHaveCount(0);
+  await expect(helper.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "API" })).toHaveCount(0);
   expect((await helper.goto("/admin/team"))!.status()).toBe(404);
+  expect((await helper.goto("/admin/api"))!.status()).toBe(404);
 
   // The owner can't be added twice, or taken off.
   await owner.reload();
@@ -133,6 +135,27 @@ test("the owner alone decides who else is an admin", async ({ browser }) => {
   await helperRow.getByRole("button", { name: /^Remove / }).click();
   await expect(owner.getByRole("listitem").filter({ hasText: "helper@example.com" })).toHaveCount(0);
   expect((await helper.goto("/admin/people"))!.status()).toBe(404);
+
+  // The owner's API: a key shown once, then only its first characters, and revoked after asking.
+  await owner.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "API" }).click();
+  await expect(owner.getByRole("heading", { level: 1 })).toHaveText("API");
+  await owner.getByLabel("Name", { exact: true }).fill("Owner script");
+  await owner.getByRole("button", { name: "Make a key" }).click();
+  const shown = owner.getByRole("group", { name: "Your admin key for Owner script" });
+  await expect(shown).toContainText("Copy it now. You won't see it again.");
+  const key = await shown.getByRole("textbox").inputValue();
+  expect(key).toMatch(/^pc_admin_[A-Za-z0-9]{32}$/);
+  await shown.getByRole("button", { name: "Done" }).click();
+  const keyRow = owner.getByRole("list", { name: "Your admin keys" }).getByRole("listitem").filter({ hasText: "Owner script" });
+  await expect(keyRow).toContainText(`${key.slice(0, 14)}…`);
+  await expect(owner.getByText(key)).toHaveCount(0);
+  // It works (on the agents' API, without saying which agent: a 400, not a 401), until it's revoked.
+  const asOwner = { headers: { Authorization: `Bearer ${key}` } };
+  expect((await owner.request.get("/api/v1/me", asOwner)).status()).toBe(400);
+  await keyRow.getByRole("button", { name: "Revoke the admin key for Owner script" }).click();
+  await keyRow.getByRole("button", { name: "Revoke key" }).click();
+  await expect(owner.getByText("No admin keys yet.")).toBeVisible();
+  expect((await owner.request.get("/api/v1/me", asOwner)).status()).toBe(401);
 });
 
 // Every link, button and field on the page that a fingertip can miss: taps
@@ -172,7 +195,7 @@ test("on a phone, everything in the admin takes a fingertip and fits the screen,
 
   // (A phone at its narrowest: 360 wide.)
   const admin = await signIn(browser, OWNER, { viewport: { width: 360, height: 640 } });
-  for (const path of ["/admin", "/admin/people", "/admin/homes", "/admin/homes/SAMPLE-1006", "/admin/comments", "/admin/team"]) {
+  for (const path of ["/admin", "/admin/people", "/admin/homes", "/admin/homes/SAMPLE-1006", "/admin/comments", "/admin/team", "/admin/api"]) {
     await admin.goto(path);
     await expect(admin.getByRole("heading", { level: 1 })).toBeVisible();
     expect(await tooSmall(admin), path).toEqual([]);

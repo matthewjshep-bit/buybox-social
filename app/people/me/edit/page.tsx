@@ -1,14 +1,17 @@
-import { ArrowLeft, Building2 } from "lucide-react";
+import { ArrowLeft, BookOpen, Building2 } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { EditAbout } from "@/app/people/[id]/about";
 import { PhotoControls, Toast } from "@/app/people/[id]/client";
 import { Avatar } from "@/components/ui";
+import { ApiCard } from "./api-card";
 import { BannerPicker } from "./banner-picker";
 import { LinkPrivacy } from "./link-privacy";
 import { NameForm } from "./name-form";
 import { LayoutPicker } from "@/app/dashboard/listings/look";
 import { ProfileForm } from "@/app/dashboard/profile/form";
+import { listApiKeys } from "@/lib/api/keys";
+import { listWebhooks } from "@/lib/api/webhooks";
 import { getCurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { cn } from "@/lib/format";
@@ -22,7 +25,8 @@ export const metadata = { title: "Edit profile · Porchcard" };
 // Your profile's settings, away from the page itself: your photo, your name
 // (a buyer's; an agent's is among their details: name, company, how clients
 // reach them, MLS ID, colour), the band across the top (a scene, nothing, or
-// your own image), a few words about yourself, and (an agent) your links.
+// your own image), a few words about yourself, (an agent) your links, and
+// (an agent) the keys and webhooks that connect their own tools.
 // Only ever your own. Every card saves itself and stays on the page: the
 // photo, banner and layout as they're picked, the rest by a button that says
 // what it saves, then "Saved". "Your profile" at the top is the way back.
@@ -43,6 +47,10 @@ export default async function EditProfilePage() {
   const name = person.name.trim() || account.full_name.trim() || account.email;
   // How an agent's listings are laid out on their profile.
   const look = account.role === "agent" ? await getListingsLook(account.id) : null;
+  // An agent's API keys and webhooks: only theirs, and never a key or a
+  // secret itself (those are shown once, as they're made).
+  const [apiKeys, webhooks] =
+    account.role === "agent" ? await Promise.all([listApiKeys(account.id), listWebhooks(account.id)]) : [[], []];
 
   return (
     <main className={pageColumn()}>
@@ -144,6 +152,23 @@ export default async function EditProfilePage() {
         </h2>
         <LinkPrivacy shown={!person.hideLinks} />
       </section>
+
+      {/* An agent's own tools (a CRM, Zapier, Make) working as them: a key
+          for each, and webhooks to tell them when a client does something. */}
+      {details && (
+        <section id="api" aria-labelledby="api-title" className={cn(card, "mt-4 scroll-mt-4 p-5")}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="api-title" className="text-lg font-semibold">
+              Connect your tools
+            </h2>
+            <Link href="/developers" className={button({ kind: "secondary" })}>
+              <BookOpen aria-hidden size={16} /> How it works
+            </Link>
+          </div>
+          <p className="mt-1 text-body text-muted">Let your CRM, Zapier or Make send homes and add listings as you.</p>
+          <ApiCard keys={apiKeys} webhooks={webhooks} />
+        </section>
+      )}
       <Toast />
     </main>
   );
