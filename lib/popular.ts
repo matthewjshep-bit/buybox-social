@@ -79,7 +79,12 @@ const ranked = (period: PopularPeriod) => sql`
     select listing_key, 0, 1, created_at from comments
     where participant_id is not null ${since(period, "created_at")}
   ) x
-  join listings l on l.listing_key = x.listing_key and l.standard_status = 'Active'
+  -- (Homes for sale, and an agent's own deals they've closed and still show:
+  -- people like and talk about those too.)
+  join listings l on l.listing_key = x.listing_key
+    and (l.standard_status = 'Active'
+      or (l.owner_account_id is not null and l.standard_status = 'Closed'
+        and coalesce((l.data->>'Hidden')::boolean, false) = false))
   group by x.listing_key`;
 
 const inOrder = sql`r.likes + r.comments desc, r.likes desc, r.last_at desc, r.listing_key`;

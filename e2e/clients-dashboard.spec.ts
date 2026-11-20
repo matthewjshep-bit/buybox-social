@@ -98,11 +98,11 @@ test("whoever wants a showing leads the Clients page, with Reply, until the agen
   await expect(top.getByRole("link", { name: "Reply to Jo" })).toHaveClass(/bg-brand/);
   await expect(top.getByRole("link", { name: "Send more homes" })).not.toHaveClass(/bg-brand/);
   await expect(top.getByRole("button", { name: "Copy link for Jo" })).toBeVisible();
-  // And her feedback as a whole, once she's done anything: what she likes and doesn't.
-  await expect(top.getByRole("button", { name: "Feedback from Jo" })).toBeVisible();
+  // And her feedback as a whole, on her page under this: what she likes and doesn't.
+  await expect(fern.getByRole("region", { name: "Jo's feedback" })).toBeVisible();
   // And her own profile, now she's signed up: a link to it, under her name.
   await expect(top.getByRole("link", { name: "View profile", exact: true })).toHaveAttribute("href", /^\/people\/[\w-]+$/);
-  await expect(top.getByRole("link").or(top.getByRole("button"))).toHaveCount(6);
+  await expect(top.getByRole("link").or(top.getByRole("button"))).toHaveCount(5);
 
   // What she did, on this page: her asking to see the home first, said
   // across the top of its card, with a box to answer her right there.

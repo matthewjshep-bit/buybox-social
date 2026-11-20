@@ -1,7 +1,7 @@
 import { ArrowLeft, Plus, UserRound } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ClientFeedbackButton } from "@/components/client-feedback";
+import { ClientFeedbackSection } from "@/components/client-feedback";
 import { factsOf, LinkRow, lookAlikes, StatusSentence } from "@/components/client-list";
 import { CopyLink } from "@/components/copy-link";
 import { ClientFeed } from "@/components/home/client-feed";
@@ -118,8 +118,8 @@ export default async function ClientPage({ params }: Props) {
         <div className="mt-6 flex flex-wrap gap-3">
           {/* While they're waiting, Reply is the one filled button, and goes
               down the page to what they said; otherwise the thing to do is
-              send them more. Their feedback, once there is any: what they like
-              and don't, across every home. Their link, to send again, always. */}
+              send them more. Their link, to send again, always. (Their
+              feedback, rolled up, is the section under this.) */}
           {client.reply && (
             <Link href={did ? "#did" : replyHref(client.reply)} className={button({ kind: "primary", size: "lg" })}>
               Reply<span className="sr-only"> to {client.name}</span>
@@ -132,10 +132,13 @@ export default async function ClientPage({ params }: Props) {
           >
             <Plus aria-hidden size={20} /> Send more homes
           </Link>
-          {feedback.any && <ClientFeedbackButton name={client.name} feedback={feedback} />}
           <CopyLink path={client.linkPath} name={client.name} />
         </div>
       </section>
+
+      {/* Their feedback, rolled up across every home they were sent: on
+          their page, before what they did home by home. */}
+      {feedback.sent > 0 && <ClientFeedbackSection name={client.name} feedback={feedback} />}
 
       {did && (
         <section id="did" aria-labelledby="did-title" className="mt-10 scroll-mt-4">

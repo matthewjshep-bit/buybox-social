@@ -2,10 +2,12 @@ import { Bookmark, Building2, House, Send, UserRoundSearch } from "lucide-react"
 import Image from "next/image";
 import Link from "next/link";
 import { HomeShell, ProfileRail, type RailLink } from "@/components/home/home-shell";
+import { ClientActivity } from "@/components/home/client-activity";
 import { PeopleCard } from "@/components/home/people-card";
 import { FollowingFeed } from "@/components/home-feed";
 import { Avatar } from "@/components/ui";
 import type { BannerChoice } from "@/lib/banner";
+import type { ClientEvent } from "@/lib/client-activity";
 import type { ClientBook } from "@/lib/clients";
 import type { FollowCounts } from "@/lib/follows";
 import { cn } from "@/lib/format";
@@ -112,7 +114,7 @@ export function Home({
   mine: Record<string, ReactionState>;
   // An agent, and so their clients too (and what those clients did on the
   // homes they were sent): everything else is anyone's home.
-  agent?: { book: ClientBook; brokerage: string; brandColor: string; listings?: string };
+  agent?: { book: ClientBook; brokerage: string; brandColor: string; listings?: string; activity: ClientEvent[] };
 }) {
   const agentName = links[0] && (links[0].agent.firstName || links[0].agent.name);
   // Only what the bar at the top doesn't have (it has Search, Send,
@@ -132,9 +134,13 @@ export function Home({
   // tablet): the same card, in the middle. In a feed with cards in it, after
   // the caught-up line (or the third card), so a long feed doesn't bury it;
   // with no feed yet, once, under it.
-  const peopleInline = (where: string) => (
-    <PeopleCard people={suggestions} id={`people-${where}`} className="lg:hidden" />
-  );
+  // (A pro's is what their clients are doing instead.)
+  const peopleInline = (where: string) =>
+    agent ? (
+      <ClientActivity events={agent.activity} id={`activity-${where}`} className="lg:hidden" live={false} />
+    ) : (
+      <PeopleCard people={suggestions} id={`people-${where}`} className="lg:hidden" />
+    );
   const quiet = feed.length === 0;
   // One feed for everyone: what the people they follow did, woven together
   // with what's popular, new deals and listings, homes near them and homes
@@ -193,7 +199,15 @@ export function Home({
           links={places}
         />
       }
-      right={<PeopleCard people={suggestions} id="people-rail" />}
+      // Beside the feed: a pro's clients, as they act on what was sent them;
+      // for anyone else, people to follow.
+      right={
+        agent ? (
+          <ClientActivity events={agent.activity} id="activity-rail" />
+        ) : (
+          <PeopleCard people={suggestions} id="people-rail" />
+        )
+      }
     >
       {/* Shaped like a box to type in, with the bar's own paper plane in it:
           the steps for sending homes (an agent's, to a client). */}

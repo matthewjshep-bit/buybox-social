@@ -40,12 +40,13 @@ test("an agent's home is everyone's home, a feed with nothing of their clients o
   await expect(agent.getByRole("region", { name: "Your clients" })).toHaveCount(0);
   await expect(agent.getByRole("group", { name: "Show" })).toHaveCount(0);
   await expect(agent.getByText("Send your first homes")).toHaveCount(0);
-  const people = agent.getByRole("region", { name: "People to follow" });
-  await expect(people).toHaveCount(1);
-  await expect(people.getByRole("listitem").first()).toContainText("Prudence");
-  await expect(people.getByRole("listitem").first()).toContainText("Follows you");
-  // (Her own client isn't someone to follow: she follows her already.)
-  await expect(people.getByRole("link", { name: /^Jo\b/ })).toHaveCount(0);
+  // Beside the feed, what her clients are doing (only she sees it): Jo
+  // opened the link and liked a home. People to follow are for everyone else.
+  await expect(agent.getByRole("region", { name: "People to follow" })).toHaveCount(0);
+  const activity = agent.getByRole("region", { name: /^Client activity/ });
+  await expect(activity).toContainText("Only you see this");
+  await expect(activity.getByRole("link", { name: /Jo liked 1204 Quillan St SE/ })).toBeVisible();
+  await expect(activity.getByRole("link", { name: /Jo opened your link/ })).toBeVisible();
 
   // Jo asks something.
   const chat = await openComments(jo, quillan);
@@ -53,10 +54,17 @@ test("an agent's home is everyone's home, a feed with nothing of their clients o
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByLabel("Add a comment")).toHaveValue("");
 
-  // [P] What she said on her link is on Clients, never in the feed.
+  // [P] What she said on her link is in Client activity, never in the feed;
+  // a tap there goes to what she did, on her page among the agent's clients.
   await agent.reload();
   const stream = agent.getByRole("region", { name: "Your feed" });
-  await expect(stream.getByText("Is the basement finished?").filter({ visible: true })).toHaveCount(0);
+  // (No home's card in the feed has it: a card's link says "address: why".)
+  const homeCards = stream.getByRole("listitem").filter({ has: agent.getByRole("link", { name: /^[^:]+: / }) });
+  await expect(homeCards.filter({ hasText: "Is the basement finished?" })).toHaveCount(0);
+  const said = activity.getByRole("link", { name: /Jo commented on 1204 Quillan St SE/ });
+  await expect(said).toContainText("Is the basement finished?");
+  await said.click();
+  await agent.waitForURL(/\/dashboard\/clients\/acct%3A[\w-]+#did$/);
 
   // Her page among the agent's clients: what she said, and Reply right
   // there. Her card opens her homes in a pop-out over the page, on that one;

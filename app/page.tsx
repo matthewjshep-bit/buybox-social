@@ -4,6 +4,7 @@ import { PEOPLE_SHOWN } from "@/components/home/people-card";
 import { MarketingHome } from "@/components/marketing-home";
 import { getBanner } from "@/lib/banner";
 import { devLoginEnabled, firstName, getCurrentUser, getViewAs } from "@/lib/auth";
+import { getClientActivity } from "@/lib/client-activity";
 import { getClientBook } from "@/lib/clients";
 import { readDevice } from "@/lib/engagement";
 import { getFollowCounts } from "@/lib/follows";
@@ -73,7 +74,11 @@ export default async function HomePage() {
         said: entry.said.map((quote) => ({ ...quote, who: marked(quote.who) })),
       }))
     : everyone;
-  const mine = await myReactions(visitorId, feedKeys(feed));
+  const [mine, activity] = await Promise.all([
+    myReactions(visitorId, feedKeys(feed)),
+    // What their clients are doing on the links they sent, beside the feed.
+    book ? getClientActivity(user.id, book) : [],
+  ]);
   return (
     <Home
       firstName={firstName(user)}
@@ -86,7 +91,13 @@ export default async function HomePage() {
       mine={mine}
       agent={
         book
-          ? { book, brokerage: user.brokerage, brandColor: user.brand_color, listings: listingWords(kindOf(user)).Many }
+          ? {
+              book,
+              brokerage: user.brokerage,
+              brandColor: user.brand_color,
+              listings: listingWords(kindOf(user)).Many,
+              activity,
+            }
           : undefined
       }
     />

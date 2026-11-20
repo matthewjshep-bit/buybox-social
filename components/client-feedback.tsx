@@ -1,47 +1,41 @@
-"use client";
-
 import { ChevronRight, ClipboardList, Heart, MessageCircle, ThumbsDown } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
-import { Sheet } from "@/components/sheet";
 import { HomeThumb } from "@/components/ui";
 import type { ClientFeedback, FeedbackThing } from "@/lib/client-feedback";
 import { cn } from "@/lib/format";
-import { button } from "@/lib/ui";
+import { card } from "@/lib/ui";
 
-// "Feedback" on a client's page: what they like and don't, rolled up from
-// every home their agent sent them, in a sheet. First the things (what they
-// keep liking, what puts them off, what depends on the home), then each home
-// with what they made of it, a tap from that home's own feedback. Only the
-// agent ever sees it.
-export function ClientFeedbackButton({ name, feedback }: { name: string; feedback: ClientFeedback }) {
-  const [open, setOpen] = useState(false);
+// A client's feedback, rolled up, on their page: what they like and don't
+// across every home their agent sent them (what they keep liking, what puts
+// them off, what depends on the home), then each home with what they made
+// of it, a tap from that home's own feedback. Only the agent ever sees it.
+export function ClientFeedbackSection({ name, feedback }: { name: string; feedback: ClientFeedback }) {
   const answered = feedback.liked + feedback.passed;
+  const things = feedback.likes.length + feedback.dislikes.length + feedback.mixed.length;
   return (
-    <>
-      <button type="button" aria-haspopup="dialog" onClick={() => setOpen(true)} className={button({ kind: "secondary", size: "lg" })}>
-        <ClipboardList aria-hidden size={20} /> Feedback
-        <span className="sr-only"> from {name}</span>
-      </button>
-      <Sheet open={open} onClose={() => setOpen(false)} label={`Feedback from ${name}`} title={`${name}'s feedback`}>
-        <div className="flex flex-col gap-5 pb-2">
-          <p className="text-body text-stone-700">
-            {answered === 0
-              ? `${feedback.sent} ${feedback.sent === 1 ? "home" : "homes"} sent.`
-              : [
-                  `Liked ${feedback.liked} of ${feedback.sent}`,
-                  feedback.passed > 0 && `passed on ${feedback.passed}`,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-          </p>
-          <Things title="Liked" side="like" things={feedback.likes} />
-          <Things title="Didn't like" side="dislike" things={feedback.dislikes} />
-          <Things title="Depends on the home" things={feedback.mixed.map((thing) => ({ thing, homes: 1 }))} />
-          {feedback.likes.length + feedback.dislikes.length + feedback.mixed.length === 0 && (
-            <p className="text-body text-muted">Nothing picked out yet.</p>
-          )}
+    <section id="feedback" aria-labelledby="feedback-title" className="mt-10 scroll-mt-4">
+      <h2 id="feedback-title" className="flex items-center gap-2 font-display text-2xl">
+        <ClipboardList aria-hidden size={22} className="text-stone-500" /> {name}&apos;s feedback
+      </h2>
+      <div className={cn(card, "mt-4 flex flex-col gap-5 p-5")}>
+        <p className="text-body font-semibold text-stone-800">
+          {answered === 0
+            ? `${feedback.sent} ${feedback.sent === 1 ? "home" : "homes"} sent. What ${name} likes and doesn't shows here as they go through them.`
+            : [`Liked ${feedback.liked} of ${feedback.sent}`, feedback.passed > 0 && `passed on ${feedback.passed}`]
+                .filter(Boolean)
+                .join(" · ")}
+        </p>
+        {things > 0 ? (
+          <div className="flex flex-col gap-4">
+            <Things title="Liked" side="like" things={feedback.likes} />
+            <Things title="Didn't like" side="dislike" things={feedback.dislikes} />
+            <Things title="Depends on the home" things={feedback.mixed.map((thing) => ({ thing, homes: 1 }))} />
+          </div>
+        ) : (
+          answered > 0 && <p className="text-body text-muted">Nothing picked out yet.</p>
+        )}
 
+        {feedback.homes.length > 0 && (
           <section aria-labelledby="feedback-homes">
             <h3 id="feedback-homes" className="text-meta font-semibold text-muted">
               Home by home
@@ -95,9 +89,9 @@ export function ClientFeedbackButton({ name, feedback }: { name: string; feedbac
               })}
             </ul>
           </section>
-        </div>
-      </Sheet>
-    </>
+        )}
+      </div>
+    </section>
   );
 }
 

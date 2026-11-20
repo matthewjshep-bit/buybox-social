@@ -118,11 +118,13 @@ test("an agent's client page: what they want, remove and restore, add homes, pri
   await expect(agent.getByRole("main")).toContainText("Passed on 1");
   await expect(agent.getByRole("main")).not.toContainText("Stella");
 
-  // Feedback, for the client as a whole: what he likes and doesn't across
-  // every home he was sent, then each home with what he made of it.
-  await agent.getByRole("button", { name: "Feedback from Joe" }).click();
-  const feedback = agent.getByRole("dialog", { name: "Feedback from Joe" });
-  await expect(feedback.getByRole("heading", { name: "Joe's feedback" })).toBeVisible();
+  // Feedback, for the client as a whole, right on his page: what he likes
+  // and doesn't across every home he was sent, then each home with what he
+  // made of it. Before what he did, home by home.
+  const feedback = agent.getByRole("region", { name: "Joe's feedback" });
+  await expect(feedback).toBeVisible();
+  const did = agent.getByRole("region", { name: "What Joe did" });
+  if (await did.count()) expect((await feedback.boundingBox())!.y).toBeLessThan((await did.boundingBox())!.y);
   await expect(feedback).toContainText("Liked 1 of 3 · passed on 1");
   await expect(feedback.getByRole("region", { name: "Liked", exact: true })).toContainText(/floating staircase/i);
   await expect(feedback.getByRole("region", { name: "Didn't like" })).toContainText("Exterior");
