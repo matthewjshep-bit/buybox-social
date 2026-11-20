@@ -223,6 +223,19 @@ test("people brought in like, pass, dislike a spot in a photo and comment on a h
     expectError(result, 401, "unauthorized");
   }
 
+  // The comments brought in (and the owner's) are listed, and one can be taken back.
+  const listed2 = await admin.get(`/homes/${homeKey}/comments`);
+  expect(listed2.status, listed2.text).toBe(200);
+  expect(listed2.body.comments.map((c: { body: string; visitor: string }) => [c.visitor === "owner", c.body])).toEqual([
+    [false, words.body],
+    [true, "Fair. We priced it for a full rehab."],
+  ]);
+  const ownerComment = listed2.body.comments[1].id as string;
+  expect((await admin.delete(`/homes/${homeKey}/comments/${ownerComment}`)).status).toBe(204);
+  expectError(await admin.delete(`/homes/${homeKey}/comments/${ownerComment}`), 404, "not_found");
+  expect((await admin.get(`/homes/${homeKey}/comments`)).body.comments).toHaveLength(1);
+  expectError(await agentAdmin.get(`/homes/${homeKey}/comments`), 401, "unauthorized");
+
   // Deleted, with all they said (and the reply under their likes); never a person who joined on their own.
   expectError(await admin.delete(`/visitors/${ownerVisitor}`), 404, "not_found");
   const gone = await admin.delete(`/visitors/${person.id}`);

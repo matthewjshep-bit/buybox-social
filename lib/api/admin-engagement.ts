@@ -325,3 +325,42 @@ export async function deleteAnyLink(id: string, agent: string | null): Promise<s
   if (!gone) throw none();
   return gone.agent_id;
 }
+
+// --- Comments brought in (or the owner's), listed and taken back -----------
+
+// A home's comments from people brought in and from the owner, oldest first,
+// with who said each: to find one again and take it back. Nobody else's.
+export async function listImportedComments(key: string, owner: { id: string }) {
+  await home(key);
+  const rows = await sql<
+    { id: string; visitor_id: string; first_name: string; body: string; media_key: string | null; spot: string | null; parent_id: string | null; reply_to_visitor: string | null; created_at: Date; is_owner: boolean }[]
+  >`
+    select c.id, c.visitor_id, v.first_name, c.body, c.media_key, c.spot, c.parent_id, c.reply_to_visitor, c.created_at,
+      (v.account_id = ${owner.id}) as is_owner
+    from public_comments c join visitors v on v.id = c.visitor_id
+    where c.listing_key = ${key}
+      and (v.device_token like ${IMPORTED + "%"} or v.account_id = ${owner.id})
+    order by c.created_at, c.id`;
+  return rows.map((r) => ({
+    id: r.id,
+    visitor: r.is_owner ? OWNER : r.visitor_id,
+    first_name: r.first_name,
+    body: r.body,
+    media_key: r.media_key,
+    spot: r.spot,
+    parent: r.parent_id ?? (r.reply_to_visitor ? `like:${r.reply_to_visitor}` : null),
+    created_at: r.created_at.toISOString(),
+  }));
+}
+
+// One of those, gone (with any replies under it).
+export async function deleteImportedComment(key: string, id: string, owner: { id: string }) {
+  const none = () => new ApiError(404, "not_found", "No comment on this home from someone brought in, or the owner, with that id.");
+  if (!isUuid(id)) throw none();
+  const [gone] = await sql`
+    delete from public_comments c using visitors v
+    where c.id = ${id} and c.listing_key = ${key} and v.id = c.visitor_id
+      and (v.device_token like ${IMPORTED + "%"} or v.account_id = ${owner.id})
+    returning 1`;
+  if (!gone) throw none();
+}

@@ -1,4 +1,4 @@
-import { homeKeyOf, addImportedComment, importedCommentSchema } from "@/lib/api/admin-engagement";
+import { homeKeyOf, addImportedComment, importedCommentSchema, listImportedComments } from "@/lib/api/admin-engagement";
 import { adminRoute, apiJson } from "@/lib/api/http";
 
 // A comment on a home's page from a person brought in (or "owner"): about
@@ -6,6 +6,11 @@ import { adminRoute, apiJson } from "@/lib/api/http";
 // comment or someone's likes (parent), dated when it was really said (at).
 // Send an Idempotency-Key, so a retry doesn't say it twice.
 export const dynamic = "force-dynamic";
+
+// The comments on it from people brought in and from the owner (no one else's).
+export const GET = adminRoute<{ key: string }>(async ({ params, owner }) =>
+  apiJson({ comments: await listImportedComments(homeKeyOf(params.key), owner) }),
+);
 
 export const POST = adminRoute<{ key: string }>(
   async ({ params, json, owner }) => {
