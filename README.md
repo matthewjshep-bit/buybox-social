@@ -80,6 +80,14 @@ Then send yourself a link by text to check the preview image.
 
 The owner, `SUPER_ADMIN_EMAIL` in `lib/auth.ts`, is always an admin, and is the only one who can add or remove other admins (Admins, in the admin's menu). Admins they add see everything else. Anyone else sees "not found". Locally, sign in with the owner's email to open it. Private chats between buyers and their agents show as counts there, never their words. For anything the admin doesn't cover, Supabase's Table Editor has the raw tables.
 
+The owner's admin API (`app/api/admin/v1`, a `pc_admin_` key made on `/admin/api`) also brings in what people said about homes somewhere else, as public likes, passes, photo-spot likes and comments on the homes' pages (`lib/api/admin-engagement.ts`):
+
+- `POST /visitors {first_name, ref}`: a person with a first name and no account; the same `ref` finds them again. `GET /visitors` lists them; `DELETE /visitors/{id}` takes them and everything they said away.
+- `PUT /homes/{key}/reactions {visitor, reaction, liked, disliked}` and `PUT /homes/{key}/photo-reactions {visitor, media_key, tag, reaction}`.
+- `POST /homes/{key}/comments {visitor, body, media_key?, spot?, parent?, at?}`: on the home, a spot in a photo (`@x,y` in percent), or answering a comment or someone's likes (`like:<visitor id>`), dated `at`. `visitor` is a person brought in, or `owner`.
+- `POST /sample-data/clear`: the demo's visitors, views and sign-ups, and the sample homes (not on a link). The demo's accounts go through `DELETE /accounts/{id}`. `pnpm db:setup` syncs the sample homes again.
+- `DELETE /links/{id}?agent=<agent id>`: any agent's link, opened or not.
+
 ## Going live with real listings
 
 Before any real listing is shown, the broker should get written answers from NWMLS:
