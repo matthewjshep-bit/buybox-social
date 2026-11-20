@@ -36,11 +36,11 @@ export async function GET(request: NextRequest) {
       const agent = account.role === "agent";
       // An agent, with nowhere else asked for: straight to their dashboard.
       const to = next ?? (agent ? "/dashboard" : "/");
-      // A buyer with no name yet (they asked from the sign-in page, which
-      // takes only an email): their first name first, then on (the sign-in
-      // page asks, for anyone signed in with none).
-      if (!agent && !fullName.trim()) {
-        return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(to)}`, here));
+      // New here (they haven't said what they are), or a buyer with no
+      // name yet: asked a step at a time, then on.
+      if (!account.kind || (!agent && !fullName.trim())) {
+        const asked = new URLSearchParams({ ...(next && { next }), ...(agent && !account.kind && { as: "agent" }) });
+        return NextResponse.redirect(new URL(`/welcome${asked.size ? `?${asked}` : ""}`, here));
       }
       return NextResponse.redirect(new URL(to, here));
     }

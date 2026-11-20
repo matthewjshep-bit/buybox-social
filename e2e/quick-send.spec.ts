@@ -376,7 +376,7 @@ test("a buyer's Send goes on to the three steps, and visitors still share the pu
   await fresh.getByLabel("Email").fill("nell-noname@example.com");
   await fresh.getByRole("button", { name: "Continue" }).click();
   await enterCode(fresh);
-  await fresh.waitForURL("**/dashboard/profile");
+  await fresh.waitForURL("**/welcome**");
   await fresh.context().addInitScript(stubShareSheet);
   await fresh.goto("/homes/SAMPLE-1004");
   await sendButton(fresh, "96 Fernhollow Ln").click();
@@ -549,4 +549,40 @@ test("what follows a Send downloads only for an agent, never for anyone else on 
   const agentScripts = scriptsOf(agent);
   await agent.goto("/homes/SAMPLE-1004");
   await expect.poll(async () => (await agentScripts()).includes(SHEETS), { timeout: 15_000 }).toBe(true);
+});
+
+test("every home has Send in its photo's top left corner: a client's link for an agent, Send homes for anyone else, the link signed out", async ({
+  browser,
+}) => {
+  test.setTimeout(90_000);
+  // An agent, on a phone: the paper plane alone, and the same sheet as the rail's Send.
+  const agent = await signInAgent(browser, "cora-corner@example.com", "Cora Corner");
+  await agentOnHome(agent);
+  const home = homeIn(agent, "96 Fernhollow Ln");
+  const corner = home.getByRole("button", { name: "Send 96 Fernhollow Ln" });
+  await expect(corner).toBeVisible();
+  // (In the photo's top left: above and to the left of its middle.)
+  const photo = (await home.getByRole("img").first().boundingBox())!;
+  const box = (await corner.boundingBox())!;
+  expect(box.x).toBeLessThan(photo.x + photo.width / 2);
+  expect(box.y).toBeLessThan(photo.y + photo.height / 2);
+  await corner.click();
+  await expect(agent.getByRole("dialog", { name: "Sent. Who's it for?" })).toBeVisible();
+  const [handed] = await shared(agent);
+  expect(handed.url).toMatch(/\/s\/[\w-]{32}$/);
+
+  // On a wide screen it says what it does; an agent's own listings have it too.
+  const wide = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  await wide.goto("/homes/SAMPLE-1004");
+  await expect(homeIn(wide, "96 Fernhollow Ln").getByRole("button", { name: "Share 96 Fernhollow Ln" })).toContainText(
+    "Share this home",
+  );
+
+  // A buyer: on to Send homes, with this one picked.
+  const buyer = await signUpBuyer(browser, `cal.corner.${Date.now()}@example.com`, "Cal");
+  await buyer.goto("/homes/SAMPLE-1004");
+  await homeIn(buyer, "96 Fernhollow Ln").getByRole("button", { name: "Send 96 Fernhollow Ln" }).click();
+  await buyer.waitForURL(/\/send\?home=SAMPLE-1004/);
+  await expect(buyer.getByRole("heading", { name: "Send this home" })).toBeVisible();
+  await expect(buyer.getByRole("button", { name: /96 Fernhollow Ln/ })).toHaveAttribute("aria-pressed", "true");
 });

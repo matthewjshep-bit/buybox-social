@@ -3,6 +3,43 @@ import { sql } from "./db";
 import type { Listing } from "./listings/types";
 import { getCopiedKeys, getListingsLook, getPinnedListings, getShownOwnListings } from "./own-listings";
 
+// How an agent's listings can be put in order on their page: as they chose
+// (the one they feature first), newest first, or the most liked and talked
+// about first.
+export const LISTING_SORTS = ["featured", "newest", "active"] as const;
+export type ListingSort = (typeof LISTING_SORTS)[number];
+export const isListingSort = (value: unknown): value is ListingSort =>
+  typeof value === "string" && (LISTING_SORTS as readonly string[]).includes(value);
+
+// When a listing went up: added here, or on the market.
+const listedAt = (listing: Listing) => Date.parse(listing.OriginalEntryTimestamp ?? listing.OnMarketDate ?? "") || 0;
+
+// What their page starts with: as they chose, when they feature one (which
+// then leads), or newest first.
+export const defaultListingSort = (listings: Listing[], featured: string | null): ListingSort =>
+  featured && listings.some((listing) => listing.ListingKey === featured) ? "featured" : "newest";
+
+// Their listings in the order asked for. (Ties keep the order they came in.)
+export function sortListings(
+  listings: Listing[],
+  sort: ListingSort,
+  counts?: Map<string, { likes: number; comments: number }>,
+): Listing[] {
+  // (Those still available before the ones they've closed, in Featured and
+  // Newest; Most active goes by what people did, closed or not.)
+  const closed = (listing: Listing) => listing.StandardStatus === "Closed";
+  const openFirst = (list: Listing[]) => [...list.filter((listing) => !closed(listing)), ...list.filter(closed)];
+  // (The one they feature leads, whatever it is.)
+  if (sort === "featured") return listings.length > 0 ? [listings[0], ...openFirst(listings.slice(1))] : listings;
+  const newest = (a: Listing, b: Listing) => listedAt(b) - listedAt(a);
+  if (sort === "newest") return openFirst([...listings].sort(newest));
+  const activity = (listing: Listing) => {
+    const count = counts?.get(listing.ListingKey);
+    return count ? count.likes + count.comments : 0;
+  };
+  return [...listings].sort((a, b) => activity(b) - activity(a) || newest(a, b));
+}
+
 // What an MLS ID may be (also checked by the database).
 export const MLS_ID = /^[A-Za-z0-9-]{1,20}$/;
 const MOST = 60;

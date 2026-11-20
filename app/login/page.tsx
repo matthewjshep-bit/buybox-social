@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { devLoginEnabled, getCurrentUser, sitePath } from "@/lib/auth";
 import { testSignInEnabled } from "@/lib/test-sign-in";
 import { LoginForm } from "./form";
-import { NameStep } from "./name-step";
 import { TestSignIn } from "./test-sign-in";
 
 export const metadata = { title: "Sign in or sign up · Porchcard" };
@@ -20,19 +19,16 @@ export default async function LoginPage({
   // Back to the page they came from, once signed in (only a page of this site).
   const next = sitePath(asked) ?? undefined;
   const user = await getCurrentUser();
-  // Signed in with only an email, so no first name yet (a buyer: an agent
-  // gives their full name with their brand): asked here, the one thing on
-  // the page, before going on. Whichever way they just signed in (the code,
-  // the emailed link, the test password), this is where it leaves them.
-  if (user && !agent && user.role !== "agent" && !user.full_name.trim()) {
-    return (
-      <main className="mx-auto max-w-md px-6 py-16">
-        <h1 className="font-display text-3xl">What&apos;s your first name?</h1>
-        <p className="mt-2 text-stone-700">It shows beside your likes and comments.</p>
-        {/* (Never back to this page: Skip would only come round again.) */}
-        <NameStep next={next && !next.startsWith("/login") ? next : "/"} />
-      </main>
-    );
+  // New here (they haven't said what they are), or a buyer with no first
+  // name yet: asked a step at a time at /welcome, then on to `next`.
+  // Whichever way they just signed in (the code, the emailed link, the test
+  // password), this is where it leaves them.
+  if (user && (!user.kind || (user.role !== "agent" && !user.full_name.trim()))) {
+    const asked = new URLSearchParams({
+      ...(next && !next.startsWith("/login") && { next }),
+      ...(agent && { as: "agent" }),
+    });
+    redirect(`/welcome${asked.size ? `?${asked}` : ""}`);
   }
   if (user) redirect(next ?? (agent ? "/for-agents" : "/"));
   return (

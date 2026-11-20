@@ -128,6 +128,8 @@ export type PopularPerson = {
   name: string;
   face: string;
   agent: boolean;
+  // What a pro is (lib/kinds.ts): the chip beside their name.
+  kind: string | null;
   brokerage: string | null;
   photo: string | null;
   likes: number;
@@ -160,6 +162,7 @@ export async function getPopularPeople(
       name: string;
       face: string;
       is_agent: boolean;
+      kind: string | null;
       brokerage: string | null;
       photo_v: string | null;
       likes: number;
@@ -172,6 +175,7 @@ export async function getPopularPeople(
       case when a.role = 'agent' then btrim(a.full_name) else btrim(v.first_name) end as name,
       btrim(v.first_name) as face,
       a.role = 'agent' as is_agent,
+      a.kind,
       case when a.role = 'agent' then nullif(btrim(a.brokerage), '') end as brokerage,
       left(md5(a.photo_data_url), 10) as photo_v,
       d.likes, d.comments,
@@ -189,6 +193,7 @@ export async function getPopularPeople(
     name: row.name,
     face: row.face,
     agent: row.is_agent,
+    kind: row.kind,
     brokerage: row.brokerage,
     photo: photoUrl(row.id, row.photo_v),
     likes: row.likes,

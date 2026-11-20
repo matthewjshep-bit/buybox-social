@@ -1,10 +1,12 @@
 import { z } from "zod";
-import { getAgentListings } from "./agent-listings";
+import { defaultListingSort, getAgentListings, isListingSort, sortListings } from "./agent-listings";
 import { getCurrentUser, type Account } from "./auth";
 import { sql } from "./db";
 import { readDevice } from "./engagement";
 import { follows, getFollowedIds } from "./follows";
 import { namesOrOthers } from "./format";
+import { getListingCounts } from "./listing-counts";
+import { getListingsLook } from "./own-listings";
 import { feedKeys, getHomeFeed, getPicks, type FeedWho } from "./home-feed";
 import type { Listing } from "./listings/types";
 import { photoUrl } from "./person-photo";
@@ -44,6 +46,7 @@ import {
 import { describeTake } from "./shares";
 import { ANONYMOUS_BUYER } from "./timeline";
 import { yourClient } from "./your-client";
+import { listingWords } from "./kinds";
 
 // The homes a feed opens full screen (or in the pop-out over it), in its
 // order, the way back to it, and what it's about (whose homes, and the take
@@ -54,7 +57,7 @@ import { yourClient } from "./your-client";
 // - "picks": homes picked for you (signed in);
 // - "client:<participant>": every home an agent sent that client (the agent only);
 // - "share:<link>": the homes on one of an agent's links (the agent only);
-// - "listings:<page id>": an agent's own listings, as their page shows them (anyone).
+// - "listings:<page id>[:newest|:active]": an agent's own listings, as their page shows them (anyone), in the order picked there.
 // - "saved": the homes you saved, newest first (yours alone, signed in);
 // - "popular:<week|month|all>": the homes on Popular, the most liked and
 //   talked about first (anyone).
@@ -116,24 +119,32 @@ export async function homesFrom(from: string, filters: ReelFilters = {}): Promis
   return personScope(from, filters ?? {}, viewer, visitorId);
 }
 
-// An agent's own listings, in their page's order. Public: listing data only,
-// with no one's take on any of them.
-async function listingsScope(id: string, viewer: Account | null, visitorId: string | null): Promise<ReelScope | null> {
-  if (!z.uuid().safeParse(id).success) return null;
+// An agent's own listings, in their page's order (or newest, or most active,
+// as picked there). Public: listing data only, with no one's take on any of them.
+async function listingsScope(asked: string, viewer: Account | null, visitorId: string | null): Promise<ReelScope | null> {
+  const [id, picked, ...rest] = asked.split(":");
+  if (!z.uuid().safeParse(id).success || (picked !== undefined && !isListingSort(picked)) || rest.length) return null;
   const person = await getProfilePerson(id);
   if (!person?.isAgent) return null;
-  const listings = await getAgentListings(person.mlsAgentId, person.agentName, person.accountId);
-  if (listings.length === 0) return null;
+  const found = await getAgentListings(person.mlsAgentId, person.agentName, person.accountId);
+  if (found.length === 0) return null;
+  // (None picked: what their page starts with.)
+  const order = picked ?? defaultListingSort(found, (await getListingsLook(person.accountId)).featured);
+  const listings = sortListings(
+    found,
+    order,
+    order === "active" ? await getListingCounts(found.map((listing) => listing.ListingKey)) : undefined,
+  );
   const isMe = visitorId === person.id;
   const name = person.name.trim() || "An agent";
   const keys = listings.map((listing) => listing.ListingKey);
   const href = `/people/${person.id}?tab=listings`;
   return {
     keys,
-    back: { href, label: `Back to ${isMe ? "your" : possessive(name)} listings` },
+    back: { href, label: `Back to ${isMe ? "your" : possessive(name)} ${listingWords(person.kind).many}` },
     context: {
       kind: "listings",
-      title: `${isMe ? "Your" : possessive(name)} listings`,
+      title: `${isMe ? "Your" : possessive(name)} ${listingWords(person.kind).many}`,
       who: { name: isMe ? "You" : name, profileId: person.id, photo: person.photo, agent: true },
       filter: null,
       keys,
@@ -144,7 +155,7 @@ async function listingsScope(id: string, viewer: Account | null, visitorId: stri
       following: await follows(visitorId, person.id),
       canFollow: Boolean(viewer),
     },
-    query: new URLSearchParams({ from: `listings:${person.id}` }).toString(),
+    query: new URLSearchParams({ from: `listings:${asked}` }).toString(),
     filters: ALL,
     host: person.id,
     // (And what they marked and noted on their own links, as their page shows it.)

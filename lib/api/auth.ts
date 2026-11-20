@@ -95,7 +95,7 @@ const asApiAgent = (row: Omit<Row, "key_id" | "key_name" | "key_prefix" | "key_k
 // it isn't an agent's. (`id` must already be a uuid.)
 export async function agentById(id: string): Promise<ApiAgent | null> {
   const [row] = await sql<Omit<Row, "key_id" | "key_name" | "key_prefix" | "key_kind" | "used_lately">[]>`
-    select id, email, full_name, role, brokerage, photo_data_url, brand_color, mls_agent_id
+    select id, email, full_name, role, kind, brokerage, photo_data_url, brand_color, mls_agent_id
     from accounts where id = ${id} and role = 'agent'`;
   return row ? asApiAgent(row) : null;
 }

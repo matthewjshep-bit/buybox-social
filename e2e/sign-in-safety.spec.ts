@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, enterCode, pastNameStep, signInAgent, signUpBuyer } from "./helpers";
+import { createShare, enterCode, pastNameStep, signInAgent, signUpBuyer, throughWelcome } from "./helpers";
 
 // Signing in, kept safe and kept simple: typing someone else's email on the
 // agents' form changes nothing of theirs; a page that takes an account brings
@@ -64,6 +64,8 @@ test("someone else typing your email on the agents' form never makes your accoun
   await vic.waitForURL("**/login");
   await vic.goto("/login?as=agent");
   await emailAndCode(vic, email);
+  // (Which kind of pro: asked, a step at a time.)
+  await throughWelcome(vic, "agent", { name: "Vic Valid" });
   await vic.waitForURL(/\/dashboard/);
 });
 
@@ -118,20 +120,22 @@ test("signing up on the sign-in page with only an email asks a first name, once"
   await page.goto("/login");
   await emailAndCode(page, email);
 
-  // One thing on the page: the name, Continue, and a quiet way past it.
+  // First what she is (shopping), then one thing on the page: the name,
+  // Finish, and a quiet way past it.
+  await page.getByRole("button", { name: /^I'm shopping for a home/ }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("What's your first name?");
-  const step = page.getByRole("form", { name: "Your name" });
+  const step = page.getByRole("form", { name: "What's your first name?" });
   const name = step.getByLabel("First name");
   await expect(name).toBeFocused();
   await expect(step.getByRole("textbox")).toHaveCount(1);
-  const skip = (await step.getByRole("link", { name: "Skip" }).boundingBox())!;
+  const skip = (await step.getByRole("button", { name: "Skip" }).boundingBox())!;
   expect(skip.height).toBeGreaterThanOrEqual(44);
   // [P] Never an email for a name.
   await name.fill(email);
-  await step.getByRole("button", { name: "Continue" }).click();
+  await step.getByRole("button", { name: "Finish" }).click();
   await expect(step.getByRole("alert")).toHaveText("Type a first name, not an email");
   await name.fill("Nora");
-  await step.getByRole("button", { name: "Continue" }).click();
+  await step.getByRole("button", { name: "Finish" }).click();
 
   // Home, and her card says who she is.
   await page.waitForURL((url) => url.pathname === "/");
@@ -145,16 +149,17 @@ test("signing up on the sign-in page with only an email asks a first name, once"
   await page.waitForURL("**/login");
   await emailAndCode(page, email);
   await page.waitForURL((url) => url.pathname === "/");
-  await expect(page.getByRole("form", { name: "Your name" })).toHaveCount(0);
+  await expect(page.getByRole("form", { name: "What's your first name?" })).toHaveCount(0);
 
   // Someone who'd rather not say goes on without one, and is asked the next
   // time they sign in, not on every page in between.
   const quiet = await (await browser.newContext(DESKTOP)).newPage();
   await quiet.goto("/login?next=%2Fsearch");
   await emailAndCode(quiet, `quiet.${Date.now()}@example.com`);
-  await quiet.getByRole("form", { name: "Your name" }).getByRole("link", { name: "Skip" }).click();
+  await quiet.getByRole("button", { name: /^I'm shopping for a home/ }).click();
+  await quiet.getByRole("form", { name: "What's your first name?" }).getByRole("button", { name: "Skip" }).click();
   await quiet.waitForURL((url) => url.pathname === "/search");
   await quiet.goto("/");
   await expect(quiet).toHaveURL(/localhost:\d+\/$/);
-  await expect(quiet.getByRole("form", { name: "Your name" })).toHaveCount(0);
+  await expect(quiet.getByRole("form", { name: "What's your first name?" })).toHaveCount(0);
 });

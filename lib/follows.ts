@@ -60,6 +60,7 @@ type FollowPerson = {
   id: string;
   name: string;
   isAgent: boolean;
+  kind: string | null;
   agentName: string | null;
   brokerage: string | null;
   since: string;
@@ -81,6 +82,7 @@ export async function getFollowList(
       id: string;
       name: string;
       is_agent: boolean;
+      kind: string | null;
       agent_name: string | null;
       brokerage: string | null;
       since: Date;
@@ -89,7 +91,7 @@ export async function getFollowList(
   >`
     select v.id,
       case when a.id is not null and btrim(a.full_name) = '' then '' else v.first_name end as name,
-      coalesce(a.role = 'agent', false) as is_agent, f.created_at as since, left(md5(a.photo_data_url), 10) as photo_v,
+      coalesce(a.role = 'agent', false) as is_agent, a.kind, f.created_at as since, left(md5(a.photo_data_url), 10) as photo_v,
       case when a.role = 'agent' then nullif(btrim(a.full_name), '') end as agent_name,
       case when a.role = 'agent' then nullif(btrim(a.brokerage), '') end as brokerage
     from follows f
@@ -103,6 +105,7 @@ export async function getFollowList(
     id: row.id,
     name: row.name,
     isAgent: row.is_agent,
+    kind: row.kind,
     agentName: row.agent_name,
     brokerage: row.brokerage,
     since: row.since.toISOString(),

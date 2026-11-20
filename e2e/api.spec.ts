@@ -6,6 +6,8 @@
 // Only ever as that one agent, only ever their own clients, links and
 // listings, and never anything private: no email address, no device's token,
 // no surname a client gave. (Webhooks: api-webhooks.spec.ts.)
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import sharp from "sharp";
 import { expect, test, type Page } from "@playwright/test";
 import { Api, answers, expectError, expectNothingPrivate, makeKey, toolsCard } from "./api-helpers";
@@ -344,7 +346,8 @@ test("a tool that sends the same link twice with one Idempotency-Key makes one l
   // No homes, too many, a note too long, an email where a first name goes.
   expectError(await tool.post("/links", { homes: [] }), 400, "invalid_request", "homes");
   expectError(
-    await tool.post("/links", { homes: ["SAMPLE-1001", "SAMPLE-1002", "SAMPLE-1003", "SAMPLE-1004"] }),
+    // (As many as anyone likes, but not more than 100 in one request.)
+    await tool.post("/links", { homes: Array.from({ length: 101 }, (_, n) => `SAMPLE-${1001 + n}`) }),
     400,
     "invalid_request",
     "homes",
@@ -537,6 +540,82 @@ test("a tool adds an agent's own listing (a deal) with photos, closes it, hides 
   expect(typeof withdrawn.body.message).toBe("string");
   await visitor.goto(profile);
   await expect(visitor.getByRole("main")).not.toContainText(`${address} Unit 2`);
+});
+
+test("a tool adds videos to an agent's listing: a YouTube link, or a link straight to a video file; anything else is refused", async ({
+  browser,
+}) => {
+  test.setTimeout(90_000);
+  const id = unique();
+  const address = `${id.slice(-5)} Video Api Ave`;
+  const agent = await signInAgent(browser, `api.videos.${id}@example.com`, "Vida Videos");
+  const tool = await Api.as(await makeKey(agent, "Make"));
+  const made = await tool.post("/listings", {
+    address, city: "Tacoma", state: "WA", zip: "98402", price: 410000, beds: 3, baths: 2, sqft: 1500,
+  });
+  expect(made.status, made.text).toBe(201);
+  const key = made.body.listing.key;
+  expect(made.body.listing.videos).toEqual([]);
+  await tool.post(`/listings/${key}/photos`, { data: await pngDataUrl(800, 600) });
+
+  // A server here with a video file, a page that isn't one, and a file too big.
+  const files = createServer((req, res) => {
+    if (req.url === "/walk.mp4") res.writeHead(200, { "Content-Type": "video/mp4", "Content-Length": "2048" });
+    else if (req.url === "/huge.mp4") res.writeHead(200, { "Content-Type": "video/mp4", "Content-Length": String(60 * 1024 * 1024) });
+    else res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(req.method === "HEAD" ? undefined : "x");
+  });
+  await new Promise<void>((done) => files.listen(0, "127.0.0.1", done));
+  const at = `http://127.0.0.1:${(files.address() as AddressInfo).port}`;
+  try {
+    const link = await tool.post(`/listings/${key}/videos`, { url: "https://youtu.be/dQw4w9WgXcQ" });
+    expect(link.status, link.text).toBe(201);
+    expect(link.body.video).toMatchObject({
+      kind: "link",
+      url: "https://youtu.be/dQw4w9WgXcQ",
+      embed_url: "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
+    });
+    expectError(await tool.post(`/listings/${key}/videos`, { url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" }), 409, "conflict", "url");
+
+    const file = await tool.post(`/listings/${key}/videos`, { url: `${at}/walk.mp4` });
+    expect(file.status, file.text).toBe(201);
+    expect(file.body.video).toMatchObject({ kind: "file", url: `${at}/walk.mp4`, embed_url: null });
+    expectError(await tool.post(`/listings/${key}/videos`, { url: `${at}/page` }), 400, "invalid_request", "url");
+    expectError(await tool.post(`/listings/${key}/videos`, { url: `${at}/huge.mp4` }), 400, "invalid_request", "url");
+    expectError(await tool.post(`/listings/${key}/videos`, { url: "https://10.0.0.1/walk.mp4" }), 400, "invalid_request", "url");
+    expectError(await tool.post(`/listings/${key}/videos`, { link: "https://youtu.be/dQw4w9WgXcQ" }), 400, "invalid_request");
+
+    // Three at most.
+    expect((await tool.post(`/listings/${key}/videos`, { url: "https://vimeo.com/76979871" })).status).toBe(201);
+    expectError(await tool.post(`/listings/${key}/videos`, { url: "https://youtu.be/aqz-KE-bpKQ" }), 422, "limit_reached");
+
+    const listed = await tool.get(`/listings/${key}/videos`);
+    expect(listed.body.videos.map((video: { kind: string }) => video.kind)).toEqual(["link", "file", "link"]);
+    const shown = await tool.get(`/listings/${key}`);
+    expect(shown.body.listing.videos).toHaveLength(3);
+    // Photos stay photos.
+    expect(shown.body.listing.photos).toHaveLength(1);
+
+    // On the home, after its photo: the file plays by itself, silently, with its sound a tap away.
+    const visitor = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+    await visitor.goto(`/homes/${key}`);
+    const home = visitor.getByRole("article", { name: address });
+    await home.getByRole("button", { name: "Next photo" }).click();
+    await home.getByRole("button", { name: "Next photo" }).click();
+    const player = home.locator(`video[src="${at}/walk.mp4"]`);
+    await expect(player).toHaveCount(1);
+    await expect.poll(() => player.evaluate((el: HTMLVideoElement) => el.muted)).toBe(true);
+    await home.getByRole("button", { name: "Turn sound on" }).click();
+    await expect.poll(() => player.evaluate((el: HTMLVideoElement) => el.muted)).toBe(false);
+
+    // Taken off by its id.
+    const gone = await tool.delete(`/listings/${key}/videos/${encodeURIComponent(file.body.video.id)}`);
+    expect(gone.status, gone.text).toBe(200);
+    expect(gone.body.listing.videos.map((video: { kind: string }) => video.kind)).toEqual(["link", "link"]);
+    expectError(await tool.delete(`/listings/${key}/videos/nope`), 404, "not_found");
+  } finally {
+    files.close();
+  }
 });
 
 test("one agent's key never reaches another agent's clients, links or listings", async ({ browser }) => {

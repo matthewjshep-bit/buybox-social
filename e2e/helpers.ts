@@ -3,8 +3,59 @@ import { expect, type Browser, type Locator, type Page } from "@playwright/test"
 const PNG_1PX =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAEBgIApD5fRAAAAABJRU5ErkJggg==";
 
+// Getting started (/welcome), a question a screen: what they are, then
+// (for a pro) their whole name, company, MLS ID (an agent), photo and color;
+// (someone shopping) their first name, unless they gave it signing up.
+// Each answered from `answers`, or skipped where it may be.
+export const WELCOME_CHOICE = {
+  agent: "I'm an agent",
+  investor: "I'm an investor",
+  lender: "I'm a lender",
+  buyer: "I'm shopping for a home",
+} as const;
+export async function throughWelcome(
+  page: Page,
+  kind: keyof typeof WELCOME_CHOICE,
+  answers: { name?: string; company?: string; mlsId?: string; photo?: boolean; color?: string } = {},
+) {
+  await page.waitForURL("**/welcome**");
+  await page.getByRole("button", { name: new RegExp(`^${WELCOME_CHOICE[kind]}`) }).click();
+  const step = (label: string) => page.getByRole("form", { name: label });
+  const next = async (form: Locator, value: string | undefined, field?: string) => {
+    if (value !== undefined && field) await form.getByLabel(field, { exact: true }).fill(value);
+    await form.getByRole("button", { name: value !== undefined || !field ? /^(Continue|Finish)$/ : "Skip" }).click();
+  };
+  if (kind === "buyer") {
+    const name = step("What's your first name?");
+    // (Asked only when they didn't give it signing up.)
+    await expect(async () => {
+      expect(!new URL(page.url()).pathname.startsWith("/welcome") || (await name.isVisible())).toBe(true);
+    }).toPass({ timeout: 15_000 });
+    if (await name.isVisible()) await next(name, answers.name, "First name");
+  } else {
+    await next(step("What's your full name?"), answers.name ?? "Pat Pro", "Full name");
+    const company = page.getByRole("form", { name: /^What('s| brokerage| company)/ });
+    await next(company, answers.company, "Company");
+    if (kind === "agent") await next(step("What's your MLS ID?"), answers.mlsId, "MLS ID");
+    const photo = step("Add a photo of you");
+    if (answers.photo) {
+      await photo.getByLabel("Your photo").setInputFiles({
+        name: "me.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(PNG_1PX, "base64"),
+      });
+      await expect(photo.getByRole("img", { name: "Your photo" })).toBeVisible();
+      await photo.getByRole("button", { name: "Continue" }).click();
+    } else await photo.getByRole("button", { name: "Skip" }).click();
+    const color = step("Pick your color");
+    if (answers.color) await color.getByRole("button", { name: answers.color }).click();
+    await color.getByRole("button", { name: "Finish" }).click();
+  }
+  await page.waitForURL((url) => !url.pathname.startsWith("/welcome"));
+}
+
 // An agent signs up the way agents do: "Start free" on the For agents page,
-// then their name and brand.
+// then, a step at a time, what they are, their name and brand.
 export async function signInAgent(browser: Browser, email: string, name: string) {
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -14,17 +65,7 @@ export async function signInAgent(browser: Browser, email: string, name: string)
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Continue" }).click();
   await enterCode(page);
-  await page.waitForURL("**/dashboard/profile");
-  await page.getByLabel("Full name").fill(name);
-  await page.getByLabel("Company (optional)").fill("Harbor & Pine Realty");
-  await page.getByRole("button", { name: "Merlot" }).click();
-  await page.getByLabel("Your photo").setInputFiles({
-    name: "me.png",
-    mimeType: "image/png",
-    buffer: Buffer.from(PNG_1PX, "base64"),
-  });
-  await expect(page.getByRole("img", { name })).toBeVisible();
-  await page.getByRole("button", { name: "Save" }).click();
+  await throughWelcome(page, "agent", { name, company: "Harbor & Pine Realty", photo: true, color: "Merlot" });
   await page.waitForURL("**/dashboard");
   return page;
 }
@@ -124,6 +165,8 @@ export async function signUpBuyer(browser: Browser, email: string, name: string,
   await form.getByLabel("Email").fill(email);
   await form.getByRole("button", { name: "Sign up free" }).click();
   await enterCode(page.getByRole("form", { name: "Sign up" }).first());
+  // New here: what they are (shopping), and back to the page.
+  await throughWelcome(page, "buyer");
   await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
   await expect(page.getByRole("form", { name: "Sign up" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Send homes to someone" })).toBeVisible();
@@ -153,23 +196,29 @@ export async function signedIn(
   return page;
 }
 
-// Just signed in on the sign-in page (the code, or the test password): a
-// buyer with no first name yet is asked it there, the one thing on the page,
-// before going on. Given here (`name`), or skipped. Anyone with a name, and
-// any agent, goes straight on, and there's nothing to do.
+// Just signed in on the sign-in page (the code, or the test password):
+// someone new is asked what they are, then (shopping, with no first name
+// yet) their first name, at /welcome, before going on. Here: shopping, and
+// the name given (`name`), or skipped. Anyone who's been here before goes
+// straight on, and there's nothing to do.
 export async function pastNameStep(page: Page, name?: string) {
-  const step = page.getByRole("form", { name: "Your name" });
   await expect(async () => {
-    expect(!new URL(page.url()).pathname.startsWith("/login") || (await step.isVisible())).toBe(true);
+    const path = new URL(page.url()).pathname;
+    expect(!path.startsWith("/login")).toBe(true);
   }).toPass({ timeout: 15_000 });
-  if (!(await step.isVisible())) return;
-  if (name) {
-    await step.getByLabel("First name").fill(name);
-    await step.getByRole("button", { name: "Continue" }).click();
-  } else {
-    await step.getByRole("link", { name: "Skip" }).click();
+  if (!new URL(page.url()).pathname.startsWith("/welcome")) return;
+  const kind = page.getByRole("group", { name: "What brings you to Porchcard?" });
+  const step = page.getByRole("form", { name: "What's your first name?" });
+  await expect(kind.or(step)).toBeVisible();
+  if (await kind.isVisible()) {
+    await throughWelcome(page, "buyer", { name });
+    return;
   }
-  await page.waitForURL((url) => !url.pathname.startsWith("/login"));
+  if (name) {
+    await step.getByLabel("First name", { exact: true }).fill(name);
+    await step.getByRole("button", { name: /^(Continue|Finish)$/ }).click();
+  } else await step.getByRole("button", { name: "Skip" }).click();
+  await page.waitForURL((url) => !url.pathname.startsWith("/welcome"));
 }
 
 // The code from the email, typed where it was asked for: locally there's no

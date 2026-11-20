@@ -96,6 +96,7 @@ export function AccountMenu({
   name,
   email,
   agent,
+  listings = "Listings",
   admin = false,
   dashboard = false,
   overlay,
@@ -110,6 +111,8 @@ export function AccountMenu({
   name: string;
   email: string;
   agent: boolean;
+  // What their own homes are called: "Listings", or an investor's "Deals".
+  listings?: string;
   // Runs the site: Admin is in here too.
   admin?: boolean;
   // An agent on someone's link, where there's no bar to hold their
@@ -277,7 +280,7 @@ export function AccountMenu({
               their profile, so here with it and not among their clients. */}
           {agent && (
             <MenuLink href="/dashboard/listings" section icon={<Building2 aria-hidden size={18} />} onGo={close}>
-              Listings
+              {listings}
             </MenuLink>
           )}
           {/* Two places the bar has no room for: the homes you saved (only

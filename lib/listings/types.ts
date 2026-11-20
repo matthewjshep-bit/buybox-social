@@ -63,6 +63,8 @@ export type Listing = {
   Latitude?: number;
   Longitude?: number;
   OnMarketDate?: string;
+  // RESO: when it was first entered (a listing an agent adds themselves).
+  OriginalEntryTimestamp?: string;
   ListOfficeName?: string;
   Media: ListingMedia[];
 };

@@ -433,16 +433,16 @@ test("on someone's link, which has no bar, an agent's Clients is under their fac
   expect(await agent.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test("an agent with no name yet goes straight to add it: a real redirect, not the dashboard first", async ({ page }) => {
+test("an agent new here goes straight to getting started: a real redirect, not the dashboard first", async ({ page }) => {
   await page.goto("/for-agents");
   await page.getByRole("link", { name: "Start free" }).click();
   await page.getByLabel("Email").fill("nameless-header@example.com");
   await page.getByRole("button", { name: "Continue" }).click();
   await enterCode(page);
-  await page.waitForURL("**/dashboard/profile");
+  await page.waitForURL("**/welcome**");
   const response = await page.request.get("/dashboard", { maxRedirects: 0 });
   expect(response.status()).toBe(307);
-  expect(response.headers().location).toBe("/dashboard/profile");
+  expect(response.headers().location).toBe("/welcome");
 });
 
 test("an address that isn't here: a 404 with a way home and to Search", async ({ page, request }) => {

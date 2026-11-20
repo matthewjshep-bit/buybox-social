@@ -2,7 +2,7 @@
 
 import useEmblaCarousel from "embla-carousel-react";
 import { WheelGesturesPlugin } from "embla-carousel-wheel-gestures";
-import { ChevronLeft, ChevronRight, Heart, Play } from "lucide-react";
+import { ChevronLeft, ChevronRight, Heart, Play, Volume2, VolumeX } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { cn } from "@/lib/format";
@@ -116,7 +116,7 @@ function sizesFor(photo: ListingMedia, beside = false) {
 
 // Its top edge, or the header's foot when the photo runs on under the header:
 // where anything pinned to the top of the photo goes.
-const photoHead = (photo: ListingMedia | undefined) => `max(${photoPlace(photo).top}, ${TOP})`;
+export const photoHead = (photo: ListingMedia | undefined) => `max(${photoPlace(photo).top}, ${TOP})`;
 
 // A box exactly the size and place of the photo as shown (whole, letterboxed
 // over its blurred copy), so anything inside can point at a spot in the photo
@@ -610,53 +610,84 @@ function Filmstrip({
   );
 }
 
-// A video on another site (YouTube, Vimeo, Loom): its still (or a plain dark
-// ground) with a play button, until it's tapped; then that site's own player,
-// in place, with its own controls. Moving on to another photo puts it away.
-// (Taps on it are its own: they never count as taps on a photo.)
-function ReelEmbed({ embed, poster, on, label }: { embed: string; poster?: string; on: boolean; label: string }) {
-  const [started, setStarted] = useState(false);
+// Sound on or off for a video, in the photo's top corner (clear of the arrows): a
+// video starts playing silently, as soon as it's on screen (browsers only let
+// a video start itself that way), and a tap here brings its sound in.
+function SoundButton({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
   const mine = (event: { stopPropagation: () => void }) => event.stopPropagation();
-  if (started && on) {
-    return (
-      <div className="absolute inset-0" onPointerDown={mine} onPointerUp={mine} onClick={mine}>
-        <iframe
-          src={`${embed}${embed.includes("?") ? "&" : "?"}autoplay=1&playsinline=1&rel=0`}
-          title={label}
-          allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-          allowFullScreen
-          className="absolute inset-0 h-full w-full border-0 bg-black"
-        />
-      </div>
-    );
-  }
   return (
     <button
       type="button"
-      aria-label={`Play video: ${label}`}
+      aria-label={on ? "Turn sound off" : "Turn sound on"}
+      aria-pressed={on}
       onPointerDown={mine}
       onPointerUp={mine}
       onClick={(event) => {
         event.stopPropagation();
-        setStarted(true);
+        onChange(!on);
       }}
-      className="absolute inset-0 grid place-items-center bg-stone-900"
+      className="absolute right-3 top-[calc(0.75rem+var(--photo-label-drop,0px))] z-10 grid size-11 place-items-center rounded-full bg-black/55 text-white ring-1 ring-white/30 backdrop-blur-sm"
     >
+      {on ? <Volume2 aria-hidden size={20} /> : <VolumeX aria-hidden size={20} />}
+    </button>
+  );
+}
+
+// A video player's address, set to start by itself: silent, and with no
+// controls of its own (a moving picture you can swipe past), or with its
+// sound and its controls once that's asked for. (Each site reads its own
+// words: YouTube "mute", Vimeo and Loom "muted"; the rest pass by.)
+function playerSrc(embed: string, sound: boolean) {
+  const words = sound
+    ? "autoplay=1&mute=0&muted=0&playsinline=1&rel=0&controls=1"
+    : "autoplay=1&mute=1&muted=1&playsinline=1&rel=0&controls=0&loop=1&hideEmbedTopBar=true";
+  return `${embed}${embed.includes("?") ? "&" : "?"}${words}`;
+}
+
+// A video on another site (YouTube, Vimeo, Loom): its still until it's on
+// screen; then that site's player, playing by itself, silently. Silent, it's
+// only a picture (taps and swipes go on to the photos, as on any photo); with
+// its sound on, it's that site's own player, with its own controls.
+function ReelEmbed({ embed, poster, on, label }: { embed: string; poster?: string; on: boolean; label: string }) {
+  const [sound, setSound] = useState(false);
+  const mine = (event: { stopPropagation: () => void }) => event.stopPropagation();
+  if (on) {
+    return (
+      <>
+        <div
+          className={cn("absolute inset-0", !sound && "pointer-events-none")}
+          {...(sound && { onPointerDown: mine, onPointerUp: mine, onClick: mine })}
+        >
+          <iframe
+            // (A new address, so a new start, when the sound comes on.)
+            key={String(sound)}
+            src={playerSrc(embed, sound)}
+            title={label}
+            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+            allowFullScreen
+            className="absolute inset-0 h-full w-full border-0 bg-black"
+          />
+        </div>
+        <SoundButton on={sound} onChange={setSound} />
+      </>
+    );
+  }
+  return (
+    <div aria-label={label} role="img" className="absolute inset-0 bg-stone-900">
       {poster && (
         // A still from the video's own site, shown as it is.
         // eslint-disable-next-line @next/next/no-img-element
         <img src={poster} alt="" draggable={false} className="absolute inset-0 h-full w-full object-cover opacity-80" />
       )}
-      <span className="relative grid size-16 place-items-center rounded-full bg-black/60 ring-2 ring-white/80">
-        <Play aria-hidden size={28} className="ml-1 fill-white text-white" />
-      </span>
-    </button>
+    </div>
   );
 }
 
-// Plays muted and on a loop while on screen, like a reel.
+// Plays by itself, silently and on a loop, while on screen, like a reel; its
+// sound a tap away.
 function ReelVideo({ src, playing, label }: { src: string; playing: boolean; label?: string }) {
   const video = useRef<HTMLVideoElement>(null);
+  const [sound, setSound] = useState(false);
   useEffect(() => {
     const el = video.current;
     if (!el) return;
@@ -664,15 +695,19 @@ function ReelVideo({ src, playing, label }: { src: string; playing: boolean; lab
     else el.pause();
   }, [playing]);
   return (
-    <video
-      ref={video}
-      src={src}
-      aria-label={label}
-      muted
-      loop
-      playsInline
-      preload="metadata"
-      className="absolute inset-0 h-full w-full object-contain"
-    />
+    <>
+      <video
+        ref={video}
+        src={src}
+        aria-label={label}
+        muted={!sound}
+        autoPlay={playing}
+        loop
+        playsInline
+        preload="metadata"
+        className="absolute inset-0 h-full w-full object-contain"
+      />
+      <SoundButton on={sound} onChange={setSound} />
+    </>
   );
 }

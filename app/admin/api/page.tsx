@@ -74,6 +74,7 @@ export default async function AdminApiPage() {
     id: JORDAN,
     email: "jordan@harborpine.com",
     role: "agent",
+    kind: "agent",
     signed_in: false,
     owner: false,
     full_name: "Jordan Rivera",
@@ -212,7 +213,7 @@ export default async function AdminApiPage() {
               {call(`${admin}/accounts`, "POST", {
                 body: {
                   email: "jordan@harborpine.com",
-                  role: "agent",
+                  kind: "agent",
                   full_name: "Jordan Rivera",
                   brokerage: "Harbor & Pine Realty",
                   photo: { url: "https://photos.example.com/jordan.jpg" },
@@ -313,11 +314,13 @@ export default async function AdminApiPage() {
                     children: "What they'll sign in with.",
                   },
                   {
-                    name: "role",
+                    name: "kind",
                     required: true,
                     children: (
                       <>
-                        <C>agent</C> or <C>buyer</C>.
+                        What they are: <C>agent</C>, <C>investor</C> (whose listings are deals), <C>lender</C> or{" "}
+                        <C>buyer</C> (shopping). It&apos;s the chip beside their name, and they aren&apos;t asked it when
+                        they sign in. (Or send <C>role</C>, <C>agent</C> or <C>buyer</C>, as before.)
                       </>
                     ),
                   },
@@ -328,7 +331,7 @@ export default async function AdminApiPage() {
                 {call(`${admin}/accounts`, "POST", {
                   body: {
                     email: "jordan@harborpine.com",
-                    role: "agent",
+                    kind: "agent",
                     full_name: "Jordan Rivera",
                     phone: "206-555-0188",
                     brokerage: "Harbor & Pine Realty",

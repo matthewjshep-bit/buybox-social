@@ -26,6 +26,7 @@ import {
   mlsAgentIdProblem,
   PROFILE_PHOTO_MOST_CHARS,
 } from "../profile-fields";
+import { isProKind, KINDS, type Kind } from "../kinds";
 import { ensureAccountVisitor } from "../public";
 import { ApiError, isUuid } from "./http";
 import { jpegWithin, photoBytes, photoPixels, photoSchema } from "./photos";
@@ -52,6 +53,7 @@ type Row = {
   auth_user_id: string;
   email: string;
   role: "agent" | "buyer" | null;
+  kind: Kind | null;
   full_name: string;
   phone: string;
   brokerage: string;
@@ -69,7 +71,7 @@ type Row = {
 };
 
 const columns = sql`
-  a.id, a.auth_user_id, a.email, a.role, a.full_name, a.phone, a.brokerage, a.mls_agent_id,
+  a.id, a.auth_user_id, a.email, a.role, a.kind, a.full_name, a.phone, a.brokerage, a.mls_agent_id,
   a.contact_phone, a.contact_email, a.bio, a.profile_links, a.brand_color, a.created_at, a.banner,
   left(md5(a.photo_data_url), 10) as photo_v, left(md5(a.banner_data_url), 10) as banner_v,
   v.id as profile_id`;
@@ -94,6 +96,9 @@ function accountJson(row: Row) {
     id: row.id,
     email: row.email,
     role: row.role,
+    // What they are: an agent, an investor, a lender, or someone shopping
+    // ("buyer"). The first three have an agent's account.
+    kind: row.kind ?? (row.role === "agent" ? "agent" : row.role === "buyer" ? "buyer" : null),
     signed_in: !row.auth_user_id.startsWith(INVITED_PREFIX),
     owner: isOwnerEmail(row.email),
     full_name: row.full_name,
@@ -190,6 +195,7 @@ export async function listAccounts({ q, role, limit, offset }: AccountQuery) {
 const FIELDS = [
   "email",
   "role",
+  "kind",
   "full_name",
   "phone",
   "brokerage",
@@ -228,6 +234,7 @@ const email = z
   .pipe(z.email({ error: "Enter a valid email address." }).max(254, { error: "Enter a valid email address." }));
 
 const role = z.enum(["agent", "buyer"], { error: "Use “agent” or “buyer”." });
+const kind = z.enum(KINDS, { error: "Use “agent”, “investor”, “lender” or “buyer”." });
 
 const image = z.union([photoSchema, z.null()], {
   error: "Send { “url”: “https://…” } or { “data”: “data:image/jpeg;base64,…” }, or null to take it off.",
@@ -253,9 +260,17 @@ const fields = {
 
 const notAnObject = { error: "Send the account as a JSON object." };
 
-export const newAccountSchema = z.looseObject({ email, role, ...fields }, notAnObject).superRefine(onlyKnown);
+// (A new account says what it is: its role, or its kind, or both.)
+export const newAccountSchema = z
+  .looseObject({ email, role: role.optional(), kind: kind.optional(), ...fields }, notAnObject)
+  .superRefine(onlyKnown)
+  .superRefine((value, ctx) => {
+    if (!value.role && !value.kind) {
+      ctx.addIssue({ code: "custom", path: ["kind"], message: "Say what they are: “kind” (agent, investor, lender or buyer)." });
+    }
+  });
 export const accountChangeSchema = z
-  .looseObject({ email: email.optional(), role: role.optional(), ...fields }, notAnObject)
+  .looseObject({ email: email.optional(), role: role.optional(), kind: kind.optional(), ...fields }, notAnObject)
   .superRefine(onlyKnown);
 
 type Change = z.infer<typeof accountChangeSchema>;
@@ -266,17 +281,36 @@ const wrong = (field: string, message: string) => new ApiError(400, "invalid_req
 // Checking what was sent, as the profile pages check it
 
 // The account as it is, for a change to start from.
-type Current = { id: string; email: string; auth_user_id: string; role: "agent" | "buyer" | null; full_name: string; mls_agent_id: string };
+type Current = {
+  id: string;
+  email: string;
+  auth_user_id: string;
+  role: "agent" | "buyer" | null;
+  kind: Kind | null;
+  full_name: string;
+  mls_agent_id: string;
+};
 
 // The columns to write, from what was sent: each checked, and anything only
 // an agent's profile has refused for anyone else. (Photos are made apart:
 // see `images`.)
 async function columnsFrom(body: Change, current: Current | null) {
   const out: Record<string, unknown> = {};
-  const roleNow = body.role ?? current?.role ?? null;
+  // What they are and their role go together: an agent, an investor or a
+  // lender has an agent's account; someone shopping, a buyer's.
+  if (body.kind !== undefined && body.role !== undefined && (isProKind(body.kind) ? "agent" : "buyer") !== body.role) {
+    throw wrong("kind", "“kind” and “role” disagree: an agent, investor or lender has the role “agent”; a buyer, “buyer”.");
+  }
+  if (body.kind !== undefined) {
+    out.kind = body.kind;
+    out.role = isProKind(body.kind) ? "agent" : "buyer";
+  } else if (body.role !== undefined) {
+    out.role = body.role;
+    // (A pro stays the pro they were; anyone else made an agent is one.)
+    out.kind = body.role === "agent" ? (isProKind(current?.kind) ? current.kind : "agent") : "buyer";
+  }
+  const roleNow = (out.role as string | undefined) ?? current?.role ?? null;
   const isAgent = roleNow === "agent";
-
-  if (body.role !== undefined) out.role = body.role;
 
   if (body.full_name !== undefined) {
     if (isAgent) {
@@ -491,7 +525,7 @@ function duplicate(error: unknown) {
 // as it is now (as saving a name on the site does).
 async function ensureProfile(id: string) {
   const [account] = await sql<Account[]>`
-    select id, email, full_name, role, brokerage, photo_data_url, brand_color from accounts where id = ${id}`;
+    select id, email, full_name, role, kind, brokerage, photo_data_url, brand_color from accounts where id = ${id}`;
   if (account) await ensureAccountVisitor(account);
 }
 
@@ -509,7 +543,6 @@ export async function createAccount(body: z.infer<typeof newAccountSchema>): Pro
         ...columns,
         ...pictures,
         email: body.email,
-        role: body.role,
         auth_user_id: INVITED_PREFIX + body.email,
       });
       const [made] = await tx<{ id: string }[]>`insert into accounts ${sql(values)} returning id`;
@@ -532,8 +565,10 @@ export async function updateAccount(id: string, body: Change): Promise<void> {
   const current = await rowOf(id);
   if (!current) throw NO_ACCOUNT();
   const owner = isOwnerEmail(current.email);
-  if (owner && body.role !== undefined && body.role !== current.role) {
-    throw new ApiError(409, "conflict", "The owner's account keeps its role.", "role");
+  // (The owner may be any kind of pro, as long as the account stays an agent's.)
+  const roleAsked = body.kind !== undefined ? (isProKind(body.kind) ? "agent" : "buyer") : body.role;
+  if (owner && roleAsked !== undefined && roleAsked !== current.role) {
+    throw new ApiError(409, "conflict", "The owner's account keeps its role.", body.kind !== undefined ? "kind" : "role");
   }
   const changingEmail = body.email !== undefined && body.email !== current.email.trim().toLowerCase();
   if (owner && changingEmail) {

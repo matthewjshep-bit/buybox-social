@@ -919,7 +919,7 @@ test("on a phone, picked homes stay in view whatever the search, and a bar leads
   await expect(next).toHaveCount(0);
 
   await pickHome(agent, "1204 Quillan");
-  await expect(agent.getByText("1 of 3 picked")).toBeVisible();
+  await expect(agent.getByText("1 picked", { exact: true })).toBeVisible();
   await expect(next).toBeVisible();
 
   // Typing looks for another: what's picked stays put, above the homes that
@@ -936,20 +936,20 @@ test("on a phone, picked homes stay in view whatever the search, and a bar leads
   await expect(next).toHaveCount(0);
   await expect(agent.getByRole("button", { name: "Pick a home" })).toBeVisible();
 
-  // Three picked: one row of them that slides rather than widening the page,
-  // and Next goes to who it's for, ready to type.
+  // As many as they like (four here): one row of them that slides rather
+  // than widening the page, and Next goes to who it's for, ready to type.
   await box.fill("");
   await expect(offered).toHaveCount(0);
-  for (const address of ["1204 Quillan", "719 Saltmarsh", "812 N Corbel"]) await pickHome(agent, address);
-  await expect(agent.getByText("3 of 3 picked")).toBeVisible();
-  await expect(tray.getByRole("listitem")).toHaveCount(3);
+  for (const address of ["1204 Quillan", "719 Saltmarsh", "812 N Corbel", "96 Fernhollow"]) await pickHome(agent, address);
+  await expect(agent.getByText("4 picked", { exact: true })).toBeVisible();
+  await expect(tray.getByRole("listitem")).toHaveCount(4);
   expect(await pageWidth()).toBeLessThanOrEqual(393);
   await next.click();
   await expect(agent.getByText("Step 2 of 3")).toBeVisible();
   const name = agent.getByRole("combobox", { name: "Who's it for?" });
   await expect(name).toBeFocused();
   await expect(name).toBeInViewport();
-  await expect(agent.getByText("3 of 3 picked")).toHaveCount(0);
+  await expect(agent.getByText("4 picked", { exact: true })).toHaveCount(0);
 });
 
 test("Remove and Restore keep the keyboard with the home, and each person's link buttons say whose they are", async ({

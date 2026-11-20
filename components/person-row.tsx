@@ -15,6 +15,7 @@ export function PersonRow({
   face,
   photo,
   agent,
+  kind,
   line,
   action,
   rank,
@@ -26,6 +27,8 @@ export function PersonRow({
   face: string;
   photo: string | null;
   agent: boolean;
+  // What a pro is (lib/kinds.ts), for the chip: an agent, an investor, a lender.
+  kind?: string | null;
   line?: ReactNode;
   // The control at the end of the row: Follow.
   action?: ReactNode;
@@ -45,7 +48,7 @@ export function PersonRow({
       <Link href={href} className="group flex min-h-11 min-w-0 flex-1 flex-col justify-center">
         <span className="flex min-w-0 items-center gap-1.5">
           <span className="truncate font-semibold underline-offset-2 group-hover:underline">{name}</span>
-          <RoleChip role={agent ? "agent" : null} small />
+          <RoleChip role={agent ? (kind && kind !== "buyer" ? kind : "agent") : null} small />
         </span>
         {line && <span className="block truncate text-sm text-muted">{line}</span>}
       </Link>

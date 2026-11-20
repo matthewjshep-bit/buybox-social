@@ -114,6 +114,7 @@ export async function FollowListPage({ id, which }: { id: string; which: Which }
                 face={someone.name}
                 photo={someone.photo}
                 agent={someone.isAgent}
+                kind={someone.kind}
                 line={someone.brokerage ?? undefined}
                 action={
                   someone.id !== visitor?.id && (

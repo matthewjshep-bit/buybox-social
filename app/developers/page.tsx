@@ -130,6 +130,7 @@ export default function DevelopersPage() {
     arv: 520000,
     rehab: 85000,
     show_price_per_sqft: true,
+    videos: [],
     updated_at: "2026-11-19T16:20:31.000Z",
     edit_url: `${site}/dashboard/listings/${OWN}`,
   };
@@ -176,7 +177,7 @@ export default function DevelopersPage() {
         <ul className="flex list-disc flex-col gap-2 pl-5">
           <li>See your clients, who’s waiting on you, and what each one liked and passed on.</li>
           <li>Find homes by address, city, ZIP or MLS number.</li>
-          <li>Send a client 1 to 3 homes and get their link back, for your CRM to text them.</li>
+          <li>Send a client homes and get their link back, for your CRM to text them.</li>
           <li>Add homes to a link you sent, and reply to a client on a home.</li>
           <li>Add, change, close and delete your own listings (deals with ARV and rehab too), with photos.</li>
           <li>Be told the moment a client opens a link, likes or passes on a home, comments, or asks to see one.</li>
@@ -251,7 +252,7 @@ export default function DevelopersPage() {
             </a>
             .
           </li>
-          <li>A link has 1 to 3 homes and up to 6 people, and a note of up to 500 characters.</li>
+          <li>A link can have as many homes as you like (up to 100 in one request) and up to 6 people, and a note of up to 500 characters.</li>
           <li>A reply can be up to 1,000 characters. A listing’s description, up to 2,000.</li>
           <li>You can keep up to 50 listings of your own, each with up to 15 photos.</li>
           <li>Up to 10 keys and 5 webhooks.</li>
@@ -540,7 +541,7 @@ export default function DevelopersPage() {
                   required: true,
                   children: (
                     <>
-                      1 to 3 home keys, from <C>GET /homes</C> or <C>GET /listings</C>. Each must be for sale.
+                      One or more home keys (up to 100), from <C>GET /homes</C> or <C>GET /listings</C>. Each must be for sale.
                     </>
                   ),
                 },
@@ -596,7 +597,7 @@ export default function DevelopersPage() {
               comes back. People on it who are on Porchcard get an email from us about it, at most once a day; nobody
               else is told. <C>added</C> counts the homes that weren’t on it already.
             </p>
-            <Fields fields={[{ name: "homes", required: true, children: "1 to 3 home keys, each for sale." }]} />
+            <Fields fields={[{ name: "homes", required: true, children: "One or more home keys (up to 100), each for sale." }]} />
             <Code label="Request">
               {curl(base, "POST", `/links/${LINK_ID}/homes`, {
                 body: { homes: [OTHER_HOME] },
@@ -833,9 +834,65 @@ export default function DevelopersPage() {
               Takes a photo off one of your listings. <C>photoId</C> is the <C>id</C> that adding it gave back (it’s
               also the last part of a photo’s address, <C>…/listing-photo/{"{id}"}</C>), or the photo’s whole address
               as it is in <C>photos</C>, URL-encoded. The answer is <C>{"{ \"listing\": { … } }"}</C> without it.
-              Videos are taken off on the site.
             </p>
             <Code label="Request">{curl(base, "DELETE", `/listings/${OWN}/photos/${PHOTO}`)}</Code>
+          </Endpoint>
+
+          <Endpoint id="post-listing-videos" method="POST" path="/listings/{key}/videos">
+            <p>
+              Adds a video to one of your listings, after its photos. It plays by itself, silently, when someone gets to
+              it, with a tap for sound. A listing has room for 3 videos; a 4th is a <C>422</C>, and the same video twice
+              is a <C>409</C>.
+            </p>
+            <Fields
+              title="Body"
+              fields={[
+                {
+                  name: "url",
+                  required: true,
+                  children: (
+                    <>
+                      A YouTube, Vimeo or Loom link (the best way), or an <C>https://</C> link straight to an MP4, MOV or
+                      WebM file, up to 50 MB. A file plays from where it is, so keep it there. Anything else is a{" "}
+                      <C>400</C> about <C>url</C>, saying why.
+                    </>
+                  ),
+                },
+              ]}
+            />
+            <Code label="Request">
+              {curl(base, "POST", `/listings/${OWN}/videos`, {
+                body: { url: "https://youtu.be/dQw4w9WgXcQ" },
+                idempotent: "yakima-walkthrough",
+              })}
+            </Code>
+            <Code label="Answer (201)">
+              {JSON.stringify(
+                {
+                  video: {
+                    id: "3f0c6a52-9a1e-4d8b-b1f7-7b2d1f0c9e41",
+                    url: "https://youtu.be/dQw4w9WgXcQ",
+                    kind: "link",
+                    embed_url: "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
+                  },
+                  listing: "LISTING",
+                },
+                null,
+                2,
+              ).replace('"LISTING"', "{ … the listing, with the new video last in videos … }")}
+            </Code>
+            <p>
+              <C>GET /listings/{"{key}"}/videos</C> lists them; each listing also carries its <C>videos</C>. A video’s{" "}
+              <C>kind</C> is <C>link</C> (YouTube, Vimeo or Loom) or <C>file</C>.
+            </p>
+          </Endpoint>
+
+          <Endpoint id="delete-listing-video" method="DELETE" path="/listings/{key}/videos/{videoId}">
+            <p>
+              Takes a video off one of your listings, by the <C>id</C> in its <C>videos</C>. A video you uploaded on the
+              site is taken off there (a <C>409</C> here).
+            </p>
+            <Code label="Request">{curl(base, "DELETE", `/listings/${OWN}/videos/3f0c6a52-9a1e-4d8b-b1f7-7b2d1f0c9e41`)}</Code>
           </Endpoint>
         </Group>
 

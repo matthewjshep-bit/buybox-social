@@ -3,12 +3,14 @@ import type postgres from "postgres";
 import { z } from "zod";
 import type { Account } from "./auth";
 import { sql } from "./db";
+import { placeOf } from "./geocode";
 import type { Listing } from "./listings/types";
 import {
   getOwnListing,
   isVideoMedia,
   OWN_LISTINGS_MOST,
   OWN_PHOTOS_MOST,
+  OWN_VIDEOS_MOST,
   OWN_PREFIX,
   photosOf,
   videosOf,
@@ -192,6 +194,15 @@ export function listingInputOf(own: OwnListing): ListingInput {
   };
 }
 
+// Where the listing's address is on the map, if that can be found.
+const placeOfFacts = (facts: ListingFacts) =>
+  placeOf({
+    street: String(facts.UnparsedAddress ?? ""),
+    city: String(facts.City ?? ""),
+    state: String(facts.StateOrProvince ?? ""),
+    zip: String(facts.PostalCode ?? ""),
+  });
+
 // The facts as they're kept: nothing for what was left empty.
 const stored = <T extends Record<string, unknown>>(facts: T) =>
   Object.fromEntries(Object.entries(facts).filter(([, value]) => value !== null));
@@ -211,10 +222,14 @@ export async function createOwnListing(
   // (Only agents keep listings; the Listings page and the API both see to it.)
   if (agent.role !== "agent") return { error: "Sign in as an agent to add a listing." };
   const key = `${OWN_PREFIX}${randomUUID()}`;
+  const place = await placeOfFacts(facts);
   const listing: Listing = {
     ListingKey: key,
     ListingId: "",
     ...(stored(facts) as Omit<Listing, "ListingKey" | "ListingId" | "Media">),
+    ...(place ? { Latitude: place.latitude, Longitude: place.longitude } : {}),
+    // (When it was added, for "Newest" on their page.)
+    OriginalEntryTimestamp: new Date().toISOString(),
     ListAgentFullName: agent.full_name,
     ListOfficeName: agent.brokerage,
     Media: [],
@@ -239,9 +254,25 @@ export async function createOwnListing(
 // Writes the facts over one of theirs (found already), still listed under the
 // name and brokerage on their brand. What was left empty comes off it; what
 // isn't a fact here (its photos, its MLS number, what it's a copy of) stays.
-async function writeFacts(agent: Account, key: string, facts: ListingFacts) {
-  const kept = { ...stored(facts), ListAgentFullName: agent.full_name, ListOfficeName: agent.brokerage };
-  const dropped = Object.entries(facts).flatMap(([name, value]) => (value === null ? [name] : []));
+// (Where it is on the map is looked up again only when where it is changed,
+// or when it was never found; a new address that can't be found takes the
+// old pin off rather than leave it in the wrong place.)
+async function writeFacts(agent: Account, key: string, facts: ListingFacts, before: Listing) {
+  const moved = (["UnparsedAddress", "City", "StateOrProvince", "PostalCode"] as const).some(
+    (name) => String(before[name] ?? "").trim().toLowerCase() !== String(facts[name] ?? "").trim().toLowerCase(),
+  );
+  const unplaced = before.Latitude == null || before.Longitude == null;
+  const place = moved || unplaced ? await placeOfFacts(facts) : null;
+  const kept = {
+    ...stored(facts),
+    ListAgentFullName: agent.full_name,
+    ListOfficeName: agent.brokerage,
+    ...(place ? { Latitude: place.latitude, Longitude: place.longitude } : {}),
+  };
+  const dropped = [
+    ...Object.entries(facts).flatMap(([name, value]) => (value === null ? [name] : [])),
+    ...(moved && !place ? ["Latitude", "Longitude"] : []),
+  ];
   await sql`
     update listings set standard_status = ${facts.StandardStatus},
       data = (data - ${dropped}::text[]) || ${sql.json(kept as never)}, updated_at = now()
@@ -255,8 +286,9 @@ export async function updateOwnListing(
   key: string,
   facts: ListingFacts,
 ): Promise<{ ok: true } | { error: string; field?: ListingField }> {
-  if (!ownKey(key) || !(await getOwnListing(agent.id, key))) return { error: NOT_FOUND };
-  await writeFacts(agent, key, facts);
+  const mine = ownKey(key) ? await getOwnListing(agent.id, key) : null;
+  if (!mine) return { error: NOT_FOUND };
+  await writeFacts(agent, key, facts, mine.listing);
   return { ok: true };
 }
 
@@ -274,7 +306,7 @@ export async function patchOwnListing(
   const given = Object.fromEntries(Object.entries(partial ?? {}).filter(([, value]) => value !== undefined));
   const checked = listingFacts({ ...listingInputOf(mine), ...given });
   if ("error" in checked) return checked;
-  await writeFacts(agent, key, checked.facts);
+  await writeFacts(agent, key, checked.facts, mine.listing);
   return { ok: true };
 }
 
@@ -363,6 +395,28 @@ export async function addOwnListingPhoto(
     const photo = { MediaKey: id, MediaURL: url, Order: 0, MediaCategory: "Photo", ImageWidth: width, ImageHeight: height };
     await setOwnListingMedia(agentId, key, [...photosOf(listing), photo, ...videosOf(listing)], tx);
     return { id, url };
+  });
+}
+
+// One more video, after the others: a YouTube, Vimeo or Loom video by its
+// link, or a video file on the web by its address (the API checks it first).
+// Held while it's added, as a photo is, so the most a listing has holds.
+export async function addOwnListingVideo(
+  agentId: string,
+  key: string,
+  video: Listing["Media"][number],
+): Promise<{ ok: true } | { error: string; limit?: true; duplicate?: true }> {
+  if (!ownKey(key)) return { error: NOT_FOUND };
+  return sql.begin(async (tx): Promise<{ ok: true } | { error: string; limit?: true; duplicate?: true }> => {
+    const listing = await heldListing(tx, agentId, key);
+    if (!listing) return { error: NOT_FOUND };
+    const videos = videosOf(listing);
+    if (videos.length >= OWN_VIDEOS_MOST) return { error: `A listing can have up to ${OWN_VIDEOS_MOST} videos.`, limit: true };
+    const same = (item: Listing["Media"][number]) =>
+      video.VideoEmbed ? item.VideoEmbed === video.VideoEmbed : item.MediaURL === video.MediaURL;
+    if (videos.some(same)) return { error: "That video is already on it.", duplicate: true };
+    await setOwnListingMedia(agentId, key, [...listing.Media, video], tx);
+    return { ok: true };
   });
 }
 

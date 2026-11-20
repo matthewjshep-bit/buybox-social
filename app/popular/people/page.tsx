@@ -48,6 +48,7 @@ export default async function PopularPeoplePage({
               face={person.face}
               photo={person.photo}
               agent={person.agent}
+              kind={person.kind}
               line={tally(person.likes, person.comments)}
               action={
                 person.me ? undefined : (

@@ -19,6 +19,8 @@ import { getListingsLook } from "@/lib/own-listings";
 import { getProfilePerson } from "@/lib/profile";
 import { ensureAccountVisitor } from "@/lib/public";
 import { backLink, button, card, pageColumn, pageTitle } from "@/lib/ui";
+import { isProKind, listingWords } from "@/lib/kinds";
+import { KindPicker } from "./kind-picker";
 
 export const metadata = { title: "Edit profile · Porchcard" };
 
@@ -79,6 +81,11 @@ export default async function EditProfilePage() {
           <h2 id="details-title" className="mb-4 text-lg font-semibold">
             Your details
           </h2>
+          {/* What they are: the chip beside their name, and an investor's "Deals". */}
+          <p className="mb-2 text-sm font-medium">You are</p>
+          <div className="mb-5">
+            <KindPicker kind={isProKind(account.kind) ? account.kind : "agent"} />
+          </div>
           <ProfileForm
             embedded
             fullName={account.full_name}
@@ -122,11 +129,11 @@ export default async function EditProfilePage() {
         <section id="layout" aria-labelledby="layout-title" className={cn(card, "mt-4 scroll-mt-4 p-5")}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 id="layout-title" className="text-lg font-semibold">
-              Listings
+              {listingWords(account.kind).Many}
             </h2>
             {/* Adding one, changing one: their own page for it. */}
             <Link href="/dashboard/listings" className={button({ kind: "secondary" })}>
-              <Building2 aria-hidden size={16} /> Manage listings
+              <Building2 aria-hidden size={16} /> Manage {listingWords(account.kind).many}
             </Link>
           </div>
           <p className="mt-3 text-body font-semibold">Layout on your profile</p>

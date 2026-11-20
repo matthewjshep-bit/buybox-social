@@ -79,8 +79,12 @@ export function SignUpForm({ devMode, className }: { devMode: boolean; className
         label="Sign up"
         submitLabel="Sign up free"
         note={devMode ? "Local demo, no email sent." : "Free. No password."}
-        // Signed in where they are: the page becomes their feed.
-        onDone={() => router.refresh()}
+        // Signed in where they are: the page becomes their feed. New here:
+        // what they are first (a step at a time), then back here.
+        onDone={({ welcome }) => {
+          if (welcome) router.push(`/welcome?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+          router.refresh();
+        }}
       />
     </div>
   );

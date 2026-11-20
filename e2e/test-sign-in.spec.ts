@@ -47,7 +47,7 @@ test("the test password signs in as an account already there, or a new one, and 
   await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
   await page.waitForURL("**/login");
   await testSignIn(page, `casey.${stamp}@example.com`);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("What's your first name?");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("What brings you to Porchcard?");
   await pastNameStep(page);
   await page.waitForURL((url) => url.pathname === "/");
   await me.click();

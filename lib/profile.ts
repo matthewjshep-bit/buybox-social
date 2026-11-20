@@ -1,4 +1,5 @@
 import { isContactPhone, looksLikeEmail, phoneDigits } from "./contact";
+import { kindOf } from "./kinds";
 import { cache } from "react";
 import { bannerUrl } from "./banner";
 import { sql } from "./db";
@@ -642,6 +643,7 @@ export const getProfilePerson = cache(async (visitorId: string) => {
       hide_links: boolean;
       taste_hidden: unknown;
       is_agent: boolean;
+      kind: string | null;
       photo_v: string | null;
       account_id: string | null;
       bio: string | null;
@@ -662,7 +664,7 @@ export const getProfilePerson = cache(async (visitorId: string) => {
       -- An account with no name yet has none here either, even where an
       -- older visitor row stood in with "Someone".
       case when a.id is not null and btrim(a.full_name) = '' then '' else v.first_name end as first_name,
-      coalesce(a.role = 'agent', false) as is_agent, left(md5(a.photo_data_url), 10) as photo_v
+      coalesce(a.role = 'agent', false) as is_agent, a.kind, left(md5(a.photo_data_url), 10) as photo_v
     from visitors v left join accounts a on a.id = v.account_id
     where v.id = ${visitorId}`;
   if (!visitor) return null;
@@ -672,6 +674,8 @@ export const getProfilePerson = cache(async (visitorId: string) => {
     name: visitor.first_name,
     since: visitor.created_at.toISOString(),
     isAgent: visitor.is_agent,
+    // What they are: an agent, an investor, a lender, or someone shopping.
+    kind: kindOf({ kind: visitor.kind, role: visitor.is_agent ? "agent" : "buyer" }),
     // Their own photo, where they've added one.
     photo: photoUrl(visitor.id, visitor.photo_v),
     hidePasses: visitor.hide_passes,

@@ -394,13 +394,24 @@ test("a video by its link plays with the photos, after them; a link that isn't o
   await expect(agent.getByRole("main")).toContainText("On your profile");
   await expect(agent.getByRole("region", { name: "Photos" }).getByRole("list", { name: "Photos" }).getByRole("listitem")).toHaveCount(1);
 
-  // On the home: its photo first, then the video, waiting to be played.
+  // On the home: its photo first, then the video, its still until it's on screen.
   const visitor = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   await visitor.goto(`/homes/${key}`);
   const home = visitor.getByRole("article", { name: "5 Walkthrough Way" });
-  const play = home.getByRole("button", { name: /^Play video/ });
-  await expect(play).toHaveCount(1);
-  await expect(play.locator("img")).toHaveAttribute("src", "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg");
+  const still = home.getByRole("img", { name: "YouTube video" });
+  await expect(still).toHaveCount(1);
+  await expect(still.locator("img")).toHaveAttribute("src", "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg");
+  await expect(home.locator("iframe")).toHaveCount(0);
+  // On it, it plays by itself, silently, and its sound is a tap away.
+  await home.getByRole("button", { name: "Next photo" }).click();
+  const player = home.locator("iframe");
+  await expect(player).toHaveAttribute("src", /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ\?autoplay=1&mute=1/);
+  await expect(home).toBeInViewport({ ratio: 0.9 });
+  await expect(async () => {
+    await home.getByRole("button", { name: "Turn sound on" }).click({ timeout: 2000 });
+    await expect(player).toHaveAttribute("src", /autoplay=1&mute=0/, { timeout: 1000 });
+  }).toPass();
+  await expect(home.getByRole("button", { name: "Turn sound off" })).toHaveAttribute("aria-pressed", "true");
 
   // Taken off again.
   await videos.getByRole("button", { name: "Remove video 1" }).click();
@@ -566,4 +577,85 @@ test("on a phone a listing's address and price are never cut short, and Send sta
   await expect(row.getByRole("link", { name: `Send ${LONG}` })).toHaveCount(0);
   await expect(row.getByRole("link", { name: `Edit ${LONG}` })).toBeVisible();
   await expect(row.getByRole("button", { name: `Feature ${LONG}` })).toBeVisible();
+});
+
+test("an agent's listings sort newest or most active, and a closed deal still takes likes and comments", async ({
+  browser,
+}) => {
+  test.setTimeout(150_000);
+  const agent = await signInAgent(browser, "sol.sorter@example.com", "Sol Sorter");
+  const add = async (address: string) => {
+    await agent.goto("/dashboard/listings/new");
+    const form = await enterListingYourself(agent);
+    await form.getByLabel("Add photos").setInputFiles([{ name: "one.png", mimeType: "image/png", buffer: PNG }]);
+    await form.getByLabel("Street address").fill(address);
+    await form.getByLabel("City").fill("Burien");
+    await form.getByLabel("ZIP").fill("98166");
+    await form.getByLabel("Price", { exact: true }).fill("450000");
+    await form.getByLabel("Beds").fill("3");
+    await form.getByLabel("Baths").fill("2");
+    await form.getByLabel("Sq ft", { exact: true }).fill("1400");
+    await form.getByRole("button", { name: "Add listing" }).click();
+    await agent.waitForURL(/\/dashboard\/listings$/);
+  };
+  await add("1 Sort Ln");
+  await add("2 Sort Ln");
+  await add("3 Sort Ln");
+  // The newest is a deal done: it goes after the ones still available.
+  await agent.getByRole("link", { name: "Edit 3 Sort Ln" }).click();
+  const details = agent.getByRole("form", { name: "Listing details" });
+  await details.getByText("Closed", { exact: true }).click();
+  await details.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(details.getByRole("status")).toHaveText("Saved");
+  await agent.goto("/people/me");
+  await agent.waitForURL(/\/people\/[\w-]+$/);
+  const profile = new URL(agent.url()).pathname;
+
+  // Nothing featured: newest first (the closed one last), with Newest and
+  // Most active to pick from.
+  const fan = await signUpBuyer(browser, `cleo.closed.${Date.now()}@example.com`, "Cleo");
+  await fan.goto(profile);
+  const sorts = fan.getByRole("group", { name: "Sort listings" });
+  await expect(sorts.getByRole("link")).toHaveText(["Newest", "Most active"]);
+  await expect(sorts.getByRole("link", { name: "Newest" })).toHaveAttribute("aria-current", "true");
+  const tiles = fan.getByRole("list", { name: "Listings" }).getByRole("listitem");
+  await expect(tiles.nth(0)).toContainText("2 Sort Ln");
+  await expect(tiles.nth(1)).toContainText("1 Sort Ln");
+  await expect(tiles.nth(2)).toContainText("3 Sort Ln");
+
+  // The closed one takes a like and a comment from someone signed in.
+  await tiles.nth(2).getByRole("link").first().click();
+  await fan.waitForURL(/\/reel\?from=listings/);
+  const closed = fan.getByRole("article", { name: "3 Sort Ln" });
+  await heartOf(closed).click();
+  await expect(heartOf(closed)).toHaveAttribute("aria-pressed", "true");
+  await closed.getByRole("button", { name: "Add a comment…" }).click();
+  const sheet = fan.getByRole("dialog", { name: "Comments" });
+  await sheet.getByLabel("Add a comment").fill("What a project");
+  await sheet.getByLabel("Add a comment").press("Enter");
+  await expect(sheet).toContainText("What a project");
+  await expect(sheet).not.toContainText("sign in");
+
+  // Most active: the closed one leads now, and the homes opened from there go in that order.
+  await fan.goto(profile);
+  await sorts.getByRole("link", { name: "Most active" }).click();
+  await expect(sorts.getByRole("link", { name: "Most active" })).toHaveAttribute("aria-current", "true");
+  await expect(tiles.nth(0)).toContainText("3 Sort Ln");
+  await expect(tiles.nth(1)).toContainText("2 Sort Ln");
+  await tiles.nth(0).getByRole("link").first().click();
+  await fan.waitForURL(/from=listings%3A[\w-]+%3Aactive|from=listings:[\w-]+:active/);
+  await expect(fan.getByText(/· 1 of 3$/).filter({ visible: true }).first()).toBeVisible();
+
+  // One featured: Featured is the first choice, and it leads there.
+  await agent.goto("/dashboard/listings");
+  await agent.getByRole("button", { name: "Feature 2 Sort Ln" }).click();
+  await expect(agent.getByRole("button", { name: "2 Sort Ln is featured" })).toHaveAttribute("aria-pressed", "true");
+  await fan.goto(profile);
+  await expect(sorts.getByRole("link")).toHaveText(["Featured", "Newest", "Most active"]);
+  await expect(tiles.nth(0)).toContainText("2 Sort Ln");
+  await expect(tiles.nth(2)).toContainText("3 Sort Ln");
+  await sorts.getByRole("link", { name: "Newest" }).click();
+  await expect(sorts.getByRole("link", { name: "Newest" })).toHaveAttribute("aria-current", "true");
+  await expect(tiles.nth(0)).toContainText("2 Sort Ln");
+  await expect(tiles.nth(2)).toContainText("3 Sort Ln");
 });

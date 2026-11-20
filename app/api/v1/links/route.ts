@@ -1,3 +1,4 @@
+import { SEND_HOMES_MOST } from "@/lib/send-limits";
 import { z } from "zod";
 import { apiJson, apiRoute, ApiError } from "@/lib/api/http";
 import { linkJson } from "@/lib/api/serialize";
@@ -72,9 +73,9 @@ const homeKey = z
 
 const newLink = z.object({
   homes: z
-    .array(homeKey, { error: "homes is a list of 1 to 3 home keys, like [\"N12345678\"]." })
-    .min(1, "Send between 1 and 3 homes.")
-    .max(3, "Send between 1 and 3 homes."),
+    .array(homeKey, { error: "homes is a list of home keys, like [\"N12345678\"]." })
+    .min(1, "Send at least one home.")
+    .max(SEND_HOMES_MOST, `Send up to ${SEND_HOMES_MOST} homes at a time.`),
   people: z
     .array(person, { error: "people is a list, like [{ \"first_name\": \"Jenny\" }]." })
     .max(6, "A link can be for up to 6 people.")

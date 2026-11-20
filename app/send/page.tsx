@@ -41,7 +41,7 @@ export default async function SendPage({ searchParams }: { searchParams: Promise
     <main className={pageColumn({ tray: true })}>
       <ShareBuilder
         heading="Send homes"
-        intro={start ? "" : "Pick up to 3 homes."}
+        intro={start ? "" : "Pick the homes to send."}
         results={[]}
         groups={[{ title: "Homes you've liked, saved or sent", homes: offer.touched }].filter((group) => group.homes.length > 0)}
         start={start?.data}

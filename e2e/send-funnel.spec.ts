@@ -36,7 +36,7 @@ test("a home from a pasted Zillow link, nobody named, their thoughts skipped: th
   await expect(agent.getByRole("list", { name: "Picked homes" })).toContainText("1204 Quillan St SE");
   await expect(search).toHaveValue("");
   await expect(agent.getByRole("listbox", { name: "Homes that match" })).toHaveCount(0);
-  await expect(agent.getByText("1 of 3 picked")).toBeVisible();
+  await expect(agent.getByText("1 picked", { exact: true })).toBeVisible();
   // One that's picked isn't offered again; nothing that matches says so.
   await search.fill("quil");
   await expect(agent.getByRole("listbox", { name: "Homes that match" })).toContainText("No homes match that.");
@@ -59,9 +59,9 @@ test("a home from a pasted Zillow link, nobody named, their thoughts skipped: th
   // A tap picks too.
   await search.fill("Saltm");
   await agent.getByRole("option", { name: /719 Saltmarsh Ln/ }).click();
-  await expect(agent.getByText("2 of 3 picked")).toBeVisible();
+  await expect(agent.getByText("2 picked", { exact: true })).toBeVisible();
   await agent.getByRole("list", { name: "Picked homes" }).getByRole("button", { name: "Remove 719 Saltmarsh Ln" }).click();
-  await expect(agent.getByText("1 of 3 picked")).toBeVisible();
+  await expect(agent.getByText("1 picked", { exact: true })).toBeVisible();
   await agent.getByRole("button", { name: "Next", exact: true }).click();
 
   // Who it's for: Back keeps the home picked; left empty, it's a link anyone can use.

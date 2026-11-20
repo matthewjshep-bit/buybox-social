@@ -30,6 +30,8 @@ export type FoundPerson = {
   // Their first name: the initial on their face, and "Follow Reed".
   face: string;
   agent: boolean;
+  // What a pro is (lib/kinds.ts): the chip beside their name.
+  kind: string | null;
   // An agent's company, where they've said one.
   brokerage: string | null;
   photo: string | null;
@@ -109,6 +111,7 @@ type Row = {
   name: string;
   face: string;
   is_agent: boolean;
+  kind: string | null;
   brokerage: string | null;
   photo_v: string | null;
 };
@@ -118,6 +121,7 @@ const person = (row: Row) => ({
   name: row.name,
   face: row.face,
   agent: row.is_agent,
+  kind: row.kind,
   brokerage: row.brokerage,
   photo: photoUrl(row.id, row.photo_v),
 });
@@ -128,6 +132,7 @@ const shown = () => sql`
   case when a.role = 'agent' then btrim(a.full_name) else btrim(v.first_name) end as name,
   btrim(v.first_name) as face,
   a.role = 'agent' as is_agent,
+  a.kind,
   case when a.role = 'agent' then nullif(btrim(a.brokerage), '') end as brokerage,
   left(md5(a.photo_data_url), 10) as photo_v`;
 

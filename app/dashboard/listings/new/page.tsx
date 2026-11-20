@@ -8,6 +8,7 @@ import { backLink, card, pageTitle } from "@/lib/ui";
 import { OWN_PHOTOS_MOST } from "@/lib/own-listings";
 import { FindListing } from "../find";
 import { EnterItYourself } from "../form";
+import { listingWords } from "@/lib/kinds";
 
 export const metadata = { title: "Add a listing · Porchcard" };
 
@@ -25,16 +26,16 @@ export default async function NewListingPage({ searchParams }: { searchParams: P
   return (
     <>
       <Link href="/dashboard/listings" className={backLink}>
-        <ArrowLeft aria-hidden size={18} /> Listings
+        <ArrowLeft aria-hidden size={18} /> {listingWords(agent.kind).Many}
       </Link>
-      <h1 className={cn(pageTitle, "mt-2")}>Add a listing</h1>
+      <h1 className={cn(pageTitle, "mt-2")}>Add a {listingWords(agent.kind).one}</h1>
       <section aria-labelledby="find-title" className={cn(card, "mt-6 p-5")}>
         <h2 id="find-title" className="mb-3 text-lg font-semibold">
           Find it
         </h2>
         <FindListing have={have} />
       </section>
-      <EnterItYourself open={manual === "1"} most={OWN_PHOTOS_MOST} />
+      <EnterItYourself open={manual === "1"} most={OWN_PHOTOS_MOST} noun={listingWords(agent.kind).one} />
     </>
   );
 }

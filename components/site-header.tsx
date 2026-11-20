@@ -9,6 +9,7 @@ import { getMyLinks, type MyLink } from "@/lib/my-links";
 import { photoUrl, photoVersion } from "@/lib/person-photo";
 import { getPublicIdentity } from "@/lib/public";
 import { button } from "@/lib/ui";
+import { kindOf, listingWords } from "@/lib/kinds";
 
 // On every page, one bar across the top: the logo, then the same few places
 // for everyone signed in (Home, Popular, Search, the bell, and you: your
@@ -130,6 +131,7 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
               name={user.full_name.trim()}
               email={user.email}
               agent={agent}
+              listings={listingWords(kindOf(user)).Many}
               admin={admin}
               overlay={overlay}
               links={menuLinks(links)}

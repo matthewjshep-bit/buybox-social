@@ -9,6 +9,15 @@ import { formatPhone } from "@/lib/contact";
 import { cn } from "@/lib/format";
 import { sinceLabel, type ProfileLink } from "@/lib/profile";
 import { button, card } from "@/lib/ui";
+import type { Kind } from "@/lib/kinds";
+
+// Under a pro's name, with no company given: what they do.
+const PRO_LINE: Record<Kind, string> = {
+  agent: "Real estate agent",
+  investor: "Real estate investor",
+  lender: "Lender",
+  buyer: "Real estate agent",
+};
 
 // The top of someone's page: a band (theirs to choose: components/banner.tsx), their
 // face, name, how long they've been looking, and what they say about
@@ -25,6 +34,7 @@ export function ProfileHeader({
   onLink = false,
   unnamed = false,
   agent = false,
+  kind,
   since,
   people,
   followsYou = false,
@@ -53,6 +63,8 @@ export function ProfileHeader({
   unnamed?: boolean;
   // An agent's face is ink, as everywhere.
   agent?: boolean;
+  // What they are (lib/kinds.ts): the chip beside their name.
+  kind?: Kind;
   since: string;
   // Their followers and whom they follow: how many, and the page listing each.
   people?: { followers: number; following: number; href: string };
@@ -122,11 +134,11 @@ export function ProfileHeader({
           <h1 id="profile-name" tabIndex={-1} className="min-w-0 break-words font-display text-[30px] leading-tight outline-none sm:text-[34px]">
             {isMe ? (unnamed ? "Your profile" : `${fullName || name} (you)`) : fullName || name}
           </h1>
-          <RoleChip role={agent ? "agent" : null} />
+          <RoleChip role={agent ? (kind ?? "agent") : null} />
         </div>
         {isMe && unnamed && <AddFirstName />}
         <p className="mt-1 text-body text-stone-700">
-          {agent ? brokerage || "Real estate agent" : `Looking since ${sinceLabel(since)}`}
+          {agent ? brokerage || PRO_LINE[kind ?? "agent"] : `Looking since ${sinceLabel(since)}`}
         </p>
         {client && (
           <div className="mt-3 flex flex-wrap items-center gap-2">

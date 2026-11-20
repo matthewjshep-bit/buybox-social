@@ -2,6 +2,7 @@ import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 import { sql } from "./db";
+import type { Kind } from "./kinds";
 import { createSupabase, supabaseConfigured } from "./supabase/server";
 import { readTestUser } from "./test-sign-in";
 
@@ -12,6 +13,8 @@ export type Account = {
   email: string;
   full_name: string;
   role: Role | null;
+  // What they are (lib/kinds.ts): null until they've said.
+  kind?: Kind | null;
   brokerage: string;
   photo_data_url: string | null;
   brand_color: string;
@@ -63,7 +66,7 @@ export const getViewAs = cache(async (): Promise<{ as: Account; admin: Account }
   const admin = await getSignedInUser();
   if (!admin || admin.id === id || !(await isAdmin(admin))) return null;
   const [as] = await sql<Account[]>`
-    select id, email, full_name, role, brokerage, photo_data_url, brand_color
+    select id, email, full_name, role, kind, brokerage, photo_data_url, brand_color
     from accounts where id = ${id} and role is not null`;
   return as ? { as, admin } : null;
 });
@@ -92,14 +95,14 @@ export async function accountFor(user: { id: string; email: string }, role: Role
   // (No sign-in is ever an invitation itself.)
   if (user.id.startsWith(INVITED_PREFIX)) throw new Error("accountFor: not a signed-in user");
   const [existing] = await sql<Account[]>`
-    select id, email, full_name, role, brokerage, photo_data_url, brand_color
+    select id, email, full_name, role, kind, brokerage, photo_data_url, brand_color
     from accounts where auth_user_id = ${user.id}`;
   if (existing?.role) return existing;
   if (!existing) {
     const [claimed] = await sql<Account[]>`
       update accounts set auth_user_id = ${user.id}
       where auth_user_id = ${INVITED_PREFIX + user.email.trim().toLowerCase()}
-      returning id, email, full_name, role, brokerage, photo_data_url, brand_color`;
+      returning id, email, full_name, role, kind, brokerage, photo_data_url, brand_color`;
     if (claimed?.role) return claimed;
   }
   // A name and phone from a sign-up form, only if just typed.
@@ -114,7 +117,7 @@ export async function accountFor(user: { id: string; email: string }, role: Role
       role = coalesce(accounts.role, excluded.role),
       full_name = coalesce(nullif(accounts.full_name, ''), excluded.full_name),
       phone = coalesce(nullif(accounts.phone, ''), excluded.phone)
-    returning id, email, full_name, role, brokerage, photo_data_url, brand_color`;
+    returning id, email, full_name, role, kind, brokerage, photo_data_url, brand_color`;
   return created;
 }
 

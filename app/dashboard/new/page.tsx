@@ -7,6 +7,7 @@ import { sql } from "@/lib/db";
 import type { Listing } from "@/lib/listings/types";
 import { linkTitle } from "@/lib/people-picker";
 import { ShareBuilder } from "./builder";
+import { listingWords } from "@/lib/kinds";
 
 export const metadata = { title: "Send homes · Porchcard" };
 
@@ -18,6 +19,9 @@ export default async function NewSharePage({
   searchParams: Promise<{ q?: string; share?: string; home?: string }>;
 }) {
   const agent = await requireAgent();
+  // New here: what they are and the rest, a step at a time; an older
+  // account with no name yet, its details.
+  if (!agent.kind) redirect("/welcome");
   if (!agent.full_name) redirect("/dashboard/profile");
 
   const { q, share: shareId, home: homeKey } = await searchParams;
@@ -63,14 +67,14 @@ export default async function NewSharePage({
       }
       intro={
         addTo
-          ? "Pick up to 3 more."
+          ? "Pick the homes to add."
           : start
             ? ""
-            : "Pick up to 3 homes."
+            : "Pick the homes to send."
       }
       results={results}
       groups={[
-        { title: "Your listings", homes: offer.mine },
+        { title: `Your ${listingWords(agent.kind).many}`, homes: offer.mine },
         { title: "Homes you've liked, saved or sent", homes: offer.touched },
       ].filter((group) => group.homes.length > 0)}
       addTo={addTo}

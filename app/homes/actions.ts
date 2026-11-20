@@ -57,14 +57,20 @@ export async function joinPublic(firstName: string): Promise<ActionResult> {
   return { ok: true };
 }
 
-// Public engagement only applies to listings that are still active, and only
-// to someone signed in.
-async function resolveVisitor(listingKey: string) {
+// Public engagement is on homes still for sale, and on an agent's own deals
+// marked Closed (on their profile, a deal done that people still cheer on),
+// and only for someone signed in. What's wrong comes back in words.
+async function resolveVisitor(
+  listingKey: string,
+): Promise<Awaited<ReturnType<typeof ensureAccountVisitor>> | string> {
   const [listing] = await sql`
-    select 1 from listings where listing_key = ${listingKey} and standard_status = 'Active'`;
-  if (!listing) return null;
+    select 1 from listings where listing_key = ${listingKey}
+      and (standard_status = 'Active'
+        or (owner_account_id is not null and standard_status = 'Closed'
+            and coalesce((data->>'Hidden')::boolean, false) = false))`;
+  if (!listing) return "This home isn't taking comments anymore.";
   const account = await getCurrentUser();
-  return account?.role ? ensureAccountVisitor(account) : null;
+  return account?.role ? ensureAccountVisitor(account) : "Please sign up or sign in first.";
 }
 
 async function saveReaction(listingKey: string, input: ReactionState): Promise<ActionResult> {
@@ -72,7 +78,7 @@ async function saveReaction(listingKey: string, input: ReactionState): Promise<A
   if (!parsed.success) return fail("We couldn't save that reaction.");
   const state = parsed.data;
   const visitor = await resolveVisitor(listingKey);
-  if (!visitor) return fail("Please sign up or sign in first.");
+  if (typeof visitor === "string") return fail(visitor);
 
   if (state.reaction === null) {
     await sql`
@@ -104,7 +110,7 @@ async function savePhotoLike(
   const input = photoLikeSchema.safeParse({ listingKey, mediaKey, tag, reaction });
   if (!input.success) return fail("We couldn't save that.");
   const visitor = await resolveVisitor(listingKey);
-  if (!visitor) return fail("Please sign up or sign in first.");
+  if (typeof visitor === "string") return fail(visitor);
   const spot = await findSpot(listingKey, mediaKey, tag);
   if (!spot) return fail("That photo isn't there anymore.");
   const where = sql`listing_key = ${listingKey} and visitor_id = ${visitor.id} and media_key = ${mediaKey} and tag = ${tag}`;
@@ -154,7 +160,7 @@ async function saveComment(
   const parsed = commentSchema.safeParse(body);
   if (!parsed.success) return fail("Comments can be up to 1,000 characters.");
   const visitor = await resolveVisitor(listingKey);
-  if (!visitor) return fail("Please sign up or sign in first.");
+  if (typeof visitor === "string") return fail(visitor);
   const anchor = parentId === null ? await checkAnchor(listingKey, spot) : null;
   if (anchor === false) return fail("That photo isn't there anymore.");
 
@@ -203,7 +209,7 @@ async function saveCommentLike(commentId: string, liked: boolean): Promise<Actio
     select listing_key, visitor_id from public_comments where id::text = ${commentId}`;
   if (!comment) return fail("That comment isn't there anymore.");
   const visitor = await resolveVisitor(comment.listing_key);
-  if (!visitor) return fail("Please sign up or sign in first.");
+  if (typeof visitor === "string") return fail(visitor);
   if (liked) {
     await sql`
       insert into public_comment_likes (comment_id, visitor_id)

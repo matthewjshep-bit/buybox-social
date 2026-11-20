@@ -8,6 +8,7 @@ import { supabaseConfigured } from "@/lib/supabase/server";
 import { backLink, button, card, pageTitle } from "@/lib/ui";
 import { ListingForm } from "../form";
 import { DeleteListing, ListingPhotos, ListingVideos } from "../photos";
+import { listingWords } from "@/lib/kinds";
 
 export const metadata = { title: "Edit listing · Porchcard" };
 
@@ -24,7 +25,7 @@ export default async function EditListingPage({ params }: { params: Promise<{ ke
   return (
     <>
       <Link href="/dashboard/listings" className={backLink}>
-        <ArrowLeft aria-hidden size={18} /> Listings
+        <ArrowLeft aria-hidden size={18} /> {listingWords(agent.kind).Many}
       </Link>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
         <h1 className={cn(pageTitle, "min-w-0")}>{listing.UnparsedAddress}</h1>

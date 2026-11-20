@@ -9,9 +9,11 @@ import type { Listing } from "@/lib/listings/types";
 import { addressFromLink, looksLikeLink } from "@/lib/listing-link";
 import { peopleTitle } from "@/lib/people-picker";
 import { backLink, button, card as cardClass, field, groupLabel, pageTitle } from "@/lib/ui";
+import { SEND_HOMES_MOST } from "@/lib/send-limits";
 import { addHomesToShare, createShare, suggestHomes } from "../actions";
 
-const MAX_LISTINGS = 3;
+// (As many as they like: the guard is only against a tool gone wrong.)
+const MAX_LISTINGS = SEND_HOMES_MOST;
 const MAX_PEOPLE = 6;
 
 // Sending homes, one thing at a time: which home (found by its address or
@@ -411,7 +413,7 @@ export function ShareBuilder({
           <div className="sticky bottom-0 z-30 -mx-4 mt-5 border-t border-stone-200 bg-surface px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-semibold text-stone-700">
-                {picked.length} of {MAX_LISTINGS} picked
+                {picked.length} picked
               </p>
               <button
                 type="button"

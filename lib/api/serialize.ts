@@ -1,7 +1,7 @@
 import type { ClientLink, Client, ClientStatus } from "../clients";
 import { appUrl } from "../format";
 import type { Listing } from "../listings/types";
-import { photosOf, type OwnListing } from "../own-listings";
+import { photosOf, videosOf, type OwnListing } from "../own-listings";
 
 // What the API gives back, made from what the site already reads: names in
 // snake_case, dates as ISO strings, every address on the site in full (a
@@ -70,6 +70,17 @@ export function homeJson(listing: Listing) {
 
 export type HomeJson = ReturnType<typeof homeJson>;
 
+// A video on a listing: its id (to take it off), the address it was added
+// with, and where it plays inside a page when it's on YouTube, Vimeo or Loom.
+export function videoJson(video: Listing["Media"][number]) {
+  return {
+    id: video.MediaKey ?? video.MediaURL,
+    url: absoluteUrl(video.MediaURL),
+    kind: video.VideoEmbed ? ("link" as const) : ("file" as const),
+    embed_url: video.VideoEmbed ?? null,
+  };
+}
+
 // One of the agent's own listings (a deal), with what only its owner sees:
 // whether it's on their profile, what they've said about the deal, and where
 // to change it on the site.
@@ -83,6 +94,8 @@ export function ownListingJson(own: OwnListing) {
     arv: numberOrNull(listing.AfterRepairValue),
     rehab: numberOrNull(listing.EstimatedRehab),
     show_price_per_sqft: !listing.HidePricePerSqFt,
+    // Its videos, after the photos, in their order.
+    videos: videosOf({ ...listing, Media: [...(listing.Media ?? [])].sort((a, b) => a.Order - b.Order) }).map(videoJson),
     updated_at: iso(own.updatedAt),
     edit_url: `${appUrl()}/dashboard/listings/${encodeURIComponent(listing.ListingKey)}`,
   };

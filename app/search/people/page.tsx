@@ -94,6 +94,7 @@ export default async function PeopleSearchPage({
                 face={person.face}
                 photo={person.photo}
                 agent={person.agent}
+                kind={person.kind}
                 line={[person.brokerage, person.reason].filter(Boolean).join(" · ") || undefined}
                 action={
                   <FollowButton small stay personId={person.profileId} name={person.name} following={person.iFollow} />

@@ -14,7 +14,14 @@ import { ProfileHeader } from "@/components/profile-header";
 import { TasteControls } from "@/components/taste-controls";
 import { TasteStoryCard } from "@/components/taste-story-card";
 import { EmptyState } from "@/components/ui";
-import { getAgentListings, sameAgent } from "@/lib/agent-listings";
+import {
+  defaultListingSort,
+  getAgentListings,
+  isListingSort,
+  sameAgent,
+  sortListings,
+  type ListingSort,
+} from "@/lib/agent-listings";
 import { getCurrentUser } from "@/lib/auth";
 import { getBetween } from "@/lib/between";
 import { readDevice } from "@/lib/engagement";
@@ -43,6 +50,7 @@ import { storyOf } from "@/lib/taste-story";
 import { ANONYMOUS_BUYER } from "@/lib/timeline";
 import { yourClient, type YourClient } from "@/lib/your-client";
 import { button, link as linkClass, pageLabel, pill, tab as tabClass } from "@/lib/ui";
+import { listingWords } from "@/lib/kinds";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -227,6 +235,18 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   );
   const taste = showTaste && tab === "activity";
 
+  // Their listings, in the order picked over them: as they chose (when they
+  // feature one), newest first, or the most liked and talked about first.
+  const look = tab === "listings" ? await getListingsLook(person.accountId) : null;
+  const counts = tab === "listings" ? await getListingCounts(listings.map((listing) => listing.ListingKey)) : null;
+  const start = defaultListingSort(listings, look?.featured ?? null);
+  const sorts: ListingSort[] = start === "featured" ? ["featured", "newest", "active"] : ["newest", "active"];
+  const sort = isListingSort(query.sort) && sorts.includes(query.sort) ? query.sort : start;
+  const ordered = counts ? sortListings(listings, sort, counts) : listings;
+  // (What it starts with goes without saying.)
+  const listingsFrom = `listings:${person.id}${sort === start ? "" : `:${sort}`}`;
+  const SORT_LABEL: Record<ListingSort, string> = { featured: "Featured", newest: "Newest", active: "Most active" };
+
   // Who they are, across the top; under it, what's theirs: an agent's
   // listings (and where they are), or what they've done, their taste beside it.
   return (
@@ -246,6 +266,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
         onLink={onLink && person.hideLinks}
         unnamed={unnamed}
         agent={person.isAgent}
+        kind={person.kind}
         since={person.since}
         people={{ ...people, href: `/people/${person.id}` }}
         photo={person.photo}
@@ -291,7 +312,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                 aria-current={tab === key ? "page" : undefined}
                 className={tabClass(tab === key)}
               >
-                {key === "listings" ? "Listings" : "Activity"}
+                {key === "listings" ? listingWords(person.kind).Many : "Activity"}
                 {key === "listings" && <span className="text-muted tabular-nums">{listings.length}</span>}
               </Link>
             ))}
@@ -302,7 +323,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
               href="/dashboard/listings"
               className={cn(linkClass, "ml-auto flex min-h-11 items-center gap-1.5 px-2 text-sm")}
             >
-              <Pencil aria-hidden size={15} /> Edit listings
+              <Pencil aria-hidden size={15} /> Edit {listingWords(person.kind).many}
             </Link>
           )}
         </div>
@@ -342,12 +363,33 @@ export default async function ProfilePage({ params, searchParams }: Props) {
         )}
         {tab === "listings" ? (
           <>
+          {listings.length > 1 && (
+            <div role="group" aria-label={`Sort ${listingWords(person.kind).many}`} className="mb-3 flex gap-1.5 px-0.5">
+              {sorts.map((key) => (
+                <Link
+                  key={key}
+                  href={`/people/${person.id}?tab=listings&sort=${key}`}
+                  scroll={false}
+                  replace
+                  aria-current={key === sort ? "true" : undefined}
+                  className={cn(
+                    // (A 44px touch area around a 36px pill.)
+                    "flex h-9 items-center rounded-full px-3.5 text-sm font-semibold transition-colors hit-44",
+                    key === sort ? "bg-ink text-white" : "text-ink hover:bg-black/5",
+                  )}
+                >
+                  {SORT_LABEL[key]}
+                </Link>
+              ))}
+            </div>
+          )}
           <ListingGrid
-            listings={listings}
-            from={`listings:${person.id}`}
-            counts={await getListingCounts(listings.map((listing) => listing.ListingKey))}
+            label={listingWords(person.kind).Many}
+            listings={ordered}
+            from={listingsFrom}
+            counts={counts ?? undefined}
             // As they chose to lay them out.
-            layout={(await getListingsLook(person.accountId)).layout}
+            layout={look?.layout ?? "featured"}
             // A home they put here that someone else listed says who did.
             credit={(listing) =>
               listing.ListAgentFullName && !sameAgent(person.agentName, listing.ListAgentFullName)
@@ -361,7 +403,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                 : undefined
             }
           />
-            {pins.length > 0 && <ListingsMap homes={pins} from={`listings:${person.id}`} />}
+            {pins.length > 0 && <ListingsMap homes={pins} from={listingsFrom} />}
           </>
         ) : savedView ? (
           <section aria-labelledby="saved-title">

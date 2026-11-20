@@ -187,7 +187,7 @@ const EMPTY: ListingValues = {
 // its photos follow one by one, with how far along it is; then it's back to
 // their listings, where it is. With no photo it's kept, and says it needs one
 // to show on their profile.
-export function NewListingForm({ most }: { most: number }) {
+export function NewListingForm({ most, noun = "listing" }: { most: number; noun?: string }) {
   const router = useRouter();
   const [state, setState] = useState<ListingState>({});
   const [photos, setPhotos] = useState<{ file: File; url: string }[]>([]);
@@ -285,7 +285,7 @@ export function NewListingForm({ most }: { most: number }) {
       <Fields values={state.values ?? EMPTY} state={state} />
       <div className="flex items-center gap-3">
         <button type="submit" disabled={pending} className={button({ kind: "primary", size: "lg" })}>
-          {pending ? "Adding…" : "Add listing"}
+          {pending ? "Adding…" : `Add ${noun}`}
         </button>
         {progress && (
           <p role="status" className="text-meta text-muted">
@@ -302,7 +302,7 @@ export function NewListingForm({ most }: { most: number }) {
 // when it's pressed, the cursor in its first box. The page's address then
 // says it's open (?manual=1, which the page reads as `open`), so a reload
 // keeps it open; nothing moves the cursor then.
-export function EnterItYourself({ open, most }: { open: boolean; most: number }) {
+export function EnterItYourself({ open, most, noun }: { open: boolean; most: number; noun?: string }) {
   const [asked, setAsked] = useState(false);
   const section = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -331,7 +331,7 @@ export function EnterItYourself({ open, most }: { open: boolean; most: number })
       <h2 id="enter-title" className="mb-3 text-lg font-semibold">
         Enter it yourself
       </h2>
-      <NewListingForm most={most} />
+      <NewListingForm most={most} noun={noun} />
     </section>
   );
 }

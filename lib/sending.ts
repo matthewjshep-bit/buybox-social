@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { z } from "zod";
+import { SEND_HOMES_MOST } from "./send-limits";
 import type { Account } from "./auth";
 import { sql } from "./db";
 import { importMissing, runImportsAndContinue } from "./listings/imports";
@@ -30,12 +31,19 @@ export type SendOptions = { notify?: boolean };
 const uuid = z.uuid();
 
 const shareSchema = z.object({
-  listingKeys: z.array(z.string().max(100)).min(1).max(3),
+  listingKeys: z.array(z.string().max(100)).min(1).max(SEND_HOMES_MOST),
   people: z.array(pickSchema).max(6),
   note: z.string().trim().max(500),
 });
 
-const homesSchema = z.array(z.string().max(100)).min(1).max(3);
+const homesSchema = z.array(z.string().max(100)).min(1).max(SEND_HOMES_MOST);
+
+// What's wrong with the homes picked: none, or (only ever from a tool) more
+// than one send takes.
+const pickHomes = (keys: unknown) =>
+  Array.isArray(keys) && keys.length > SEND_HOMES_MOST
+    ? `Send up to ${SEND_HOMES_MOST} homes at a time.`
+    : "Pick at least one home.";
 
 // The agent's own share, or null: a link that isn't theirs is no link at all.
 export async function ownShareOf(agentId: string, shareId: string): Promise<{ id: string } | null> {
@@ -104,7 +112,7 @@ export async function sendHomes(
     const field = parsed.error.issues[0]?.path[0];
     if (field === "people") return { error: pickError(input?.people), field: "people" };
     if (field === "note") return { error: "Notes can be up to 500 characters.", field: "note" };
-    return { error: "Pick between 1 and 3 homes.", field: "homes" };
+    return { error: pickHomes(input?.listingKeys), field: "homes" };
   }
   const keys = [...new Set(parsed.data.listingKeys)];
   if (!(await allForSale(agent.id, keys))) return { error: "One of those homes is no longer available.", unavailable: true };
@@ -165,7 +173,7 @@ export async function addHomesToLink(
   opts: SendOptions = {},
 ): Promise<AddHomesError | { added: number }> {
   const keys = homesSchema.safeParse(listingKeys);
-  if (!keys.success) return { error: "Pick between 1 and 3 homes." };
+  if (!keys.success) return { error: pickHomes(listingKeys) };
   if (!(await ownShareOf(agentId, shareId))) return { error: "We couldn't find that client.", notFound: true };
   const unique = [...new Set(keys.data)];
   if (!(await allForSale(agentId, unique))) return { error: "One of those homes is no longer available.", unavailable: true };

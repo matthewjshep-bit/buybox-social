@@ -120,7 +120,7 @@ export function Home({
   lens: { initial: string; fromUrl: boolean };
   // An agent, and so their clients too (and what those clients did on the
   // homes they were sent): everything else is anyone's home.
-  agent?: { book: ClientBook; cards: ClientCard[]; brokerage: string; brandColor: string };
+  agent?: { book: ClientBook; cards: ClientCard[]; brokerage: string; brandColor: string; listings?: string };
 }) {
   // An agent's feed opens on Following, the same every time (whoever is
   // waiting is in "Your clients", straight over it). Whichever they last
@@ -133,7 +133,7 @@ export function Home({
   const saved: RailLink = { href: "/people/me?show=saved", label: "Saved homes", icon: <Bookmark size={18} /> };
   const people: RailLink = { href: "/search/people", label: "Find people", icon: <UserRoundSearch size={18} /> };
   const places: RailLink[] = agent
-    ? [{ href: "/dashboard/listings", label: "Listings", icon: <Building2 size={18} /> }, saved, people]
+    ? [{ href: "/dashboard/listings", label: agent.listings ?? "Listings", icon: <Building2 size={18} /> }, saved, people]
     : [
         ...(links[0] ? [{ href: `/s/${links[0].token}`, label: `Homes from ${agentName}`, icon: <House size={18} /> }] : []),
         saved,

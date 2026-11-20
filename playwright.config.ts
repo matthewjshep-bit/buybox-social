@@ -47,6 +47,8 @@ export default defineConfig({
         E2E_FIXTURES: "true",
         // Webhooks may go to a receiver the test runs on 127.0.0.1 (lib/api/safe-request.ts).
         API_WEBHOOKS_ALLOW_LOCAL: "true",
+        // (A listing's map pin is looked up online: never in tests.)
+        GEOCODER: "off",
       },
     },
   ],

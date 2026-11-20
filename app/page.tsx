@@ -13,6 +13,7 @@ import { getMyLinks } from "@/lib/my-links";
 import { suggestPeopleFor } from "@/lib/people";
 import { photoUrl, photoVersion } from "@/lib/person-photo";
 import { ensureAccountVisitor, getPublicIdentity } from "@/lib/public";
+import { kindOf, listingWords } from "@/lib/kinds";
 
 // The home page. Signed out: what Porchcard is, for agents and for buyers,
 // and a way to start (MarketingHome). Signed in, it's one page for everyone
@@ -95,7 +96,11 @@ export default async function HomePage({
       mine={mine}
       seenAt={seenAt}
       lens={lens}
-      agent={book ? { book, cards, brokerage: user.brokerage, brandColor: user.brand_color } : undefined}
+      agent={
+        book
+          ? { book, cards, brokerage: user.brokerage, brandColor: user.brand_color, listings: listingWords(kindOf(user)).Many }
+          : undefined
+      }
     />
   );
 }

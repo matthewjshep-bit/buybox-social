@@ -45,7 +45,7 @@ export function CodeSignIn({
   nameHint?: string;
   // Signed in. `needsName`: a buyer's account with no first name yet (this
   // form didn't ask one), for the page to ask next.
-  onDone: (done: { agent: boolean; needsName: boolean; firstName?: string }) => void;
+  onDone: (done: { agent: boolean; needsName: boolean; welcome: boolean; firstName?: string }) => void;
 }) {
   const id = useId();
   const [state, setState] = useState<CodeState>({});

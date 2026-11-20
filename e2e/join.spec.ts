@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, detailsForm, enterCode, scrollToEnd, signInAgent, signUpBuyer, toDetails, toFirstHome } from "./helpers";
+import { createShare, detailsForm, enterCode, scrollToEnd, signInAgent, signUpBuyer, throughWelcome, toDetails, toFirstHome } from "./helpers";
 
 const SMALL = { viewport: { width: 360, height: 640 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
 const ON_ITS_SIDE = { viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
@@ -86,6 +86,8 @@ test("signed out, the home page says what this is; See homes shows three homes s
   await gate.getByLabel(/^Phone/).fill("(206) 555-0100");
   await gate.getByRole("button", { name: "Sign up free" }).click();
   await enterCode(page.getByRole("form", { name: "Sign up" }).last());
+  // New here: what they are (shopping; their name they gave), then back.
+  await throughWelcome(page, "buyer");
   await expect(page.getByRole("button", { name: "Account menu" })).toContainText("R");
   await expect(page).toHaveURL(/localhost:\d+\/browse$/);
 
@@ -225,28 +227,31 @@ test("each sign-in form has a quiet way to the other, and a new agent's first sc
   await expect(main.getByRole("link", { name: "Not an agent?" })).toHaveAttribute("href", "/login");
   await expect(main.getByRole("link", { name: "I'm an agent" })).toHaveCount(0);
 
-  // Signed up as an agent: one screen, their name the one thing it needs.
-  // A photo, a name, a company and a colour; nothing about phones or the MLS.
+  // Signed up as an agent: one question a screen, the first what they are
+  // (the pros first), then their name, alone on its screen.
   await page.getByLabel("Email").fill("fay-firstrun@example.com");
   await page.getByRole("button", { name: "Continue" }).click();
   await enterCode(page);
-  await page.waitForURL("**/dashboard/profile");
-  await expect(page).toHaveTitle("Your details · Porchcard");
-  await expect(main.getByRole("heading", { level: 1 })).toHaveText("Your details");
-  await expect(main.getByText("Add your name to start.")).toBeVisible();
-  const first = detailsForm(page);
-  await expect(first.getByRole("textbox")).toHaveCount(2);
-  await expect(first.getByLabel("Full name")).toBeVisible();
-  await expect(first.getByLabel("Company (optional)")).toBeVisible();
-  await expect(first.getByLabel("Your photo")).toBeAttached();
-  await expect(first.getByRole("group", { name: "Brand color" })).toBeVisible();
-  for (const label of ["Phone for clients (optional)", "Email for clients (optional)", "MLS ID (optional)"]) {
-    await expect(first.getByLabel(label)).toHaveCount(0);
-  }
+  await page.waitForURL("**/welcome?as=agent");
+  await expect(page).toHaveTitle("Welcome · Porchcard");
+  await expect(main.getByRole("heading", { level: 1 })).toHaveText("What brings you to Porchcard?");
+  await expect(main.getByRole("textbox")).toHaveCount(0);
   // No tabs to places that would only send them back here.
   await expect(page.getByRole("navigation", { name: "Clients" })).toHaveCount(0);
-  await first.getByLabel("Full name").fill("Fay Firstrun");
-  await first.getByRole("button", { name: "Save" }).click();
+  await main.getByRole("button", { name: /^I'm an agent/ }).click();
+  await expect(main.getByRole("heading", { level: 1 })).toHaveText("What's your full name?");
+  await expect(main.getByRole("textbox")).toHaveCount(1);
+  await expect(main.getByRole("textbox", { name: "Full name" })).toBeFocused();
+  await main.getByRole("textbox", { name: "Full name" }).fill("Fay Firstrun");
+  await main.getByRole("button", { name: "Continue" }).click();
+  // The rest may each be skipped (the color has one picked already), and
+  // nothing about phones on the way: those are on Edit profile.
+  for (const heading of ["What brokerage are you with?", "What's your MLS ID?", "Add a photo of you"]) {
+    await expect(main.getByRole("heading", { level: 1 })).toHaveText(heading);
+    await main.getByRole("button", { name: "Skip" }).click();
+  }
+  await expect(main.getByRole("heading", { level: 1 })).toHaveText("Pick your color");
+  await main.getByRole("button", { name: "Finish" }).click();
   await page.waitForURL("**/dashboard");
 
   // What wasn't asked is in Edit profile, empty, for when they want it.

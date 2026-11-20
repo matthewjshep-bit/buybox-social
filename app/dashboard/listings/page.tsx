@@ -13,6 +13,7 @@ import { button, card, link, pageTitle, sectionTitle } from "@/lib/ui";
 import { editMlsListing } from "./actions";
 import { RemoveFound } from "./find";
 import { FeatureButton } from "./look";
+import { listingWords } from "@/lib/kinds";
 
 export const metadata = { title: "Listings · Porchcard" };
 
@@ -24,6 +25,8 @@ export const metadata = { title: "Listings · Porchcard" };
 // to a link for a client, with that home already picked.
 export default async function ListingsPage() {
   const agent = await requireAgent();
+  // An investor's are deals; everyone else's, listings.
+  const words = listingWords(agent.kind);
   const [{ mls_agent_id: mlsId }] = await sql<{ mls_agent_id: string }[]>`
     select mls_agent_id from accounts where id = ${agent.id}`;
   const [own, found, look, matched] = await Promise.all([
@@ -45,9 +48,9 @@ export default async function ListingsPage() {
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-        <h1 className={pageTitle}>Listings</h1>
+        <h1 className={pageTitle}>{words.Many}</h1>
         <Link href="/dashboard/listings/new" className={cn(button({ kind: "primary", size: "lg" }), "shrink-0 whitespace-nowrap")}>
-          <Plus aria-hidden size={20} /> Add a listing
+          <Plus aria-hidden size={20} /> Add a {words.one}
         </Link>
       </div>
       {/* What the star on a row is for, said once (on a touch screen nothing else
@@ -58,7 +61,7 @@ export default async function ListingsPage() {
           {starred && (
             <>
               <Star aria-hidden size={16} className="-mt-0.5 mr-1 inline fill-current text-amber-500" />
-              The starred listing shows first on your profile.{" "}
+              The starred {words.one} shows first on your profile.{" "}
             </>
           )}
           <Link href="/people/me/edit#layout" className={link}>
@@ -67,8 +70,8 @@ export default async function ListingsPage() {
         </p>
       )}
       {added === 0 && fromMls.length === 0 && (
-        <EmptyState icon={Home} title="Add your first listing" className="mt-8">
-          Your listings show on your profile.
+        <EmptyState icon={Home} title={`Add your first ${words.one}`} className="mt-8">
+          Your {words.many} show on your profile.
         </EmptyState>
       )}
       {added > 0 && (
@@ -78,7 +81,7 @@ export default async function ListingsPage() {
               Added by you
             </h2>
           )}
-          <ul aria-label="Your listings" className={cn(card, "divide-y divide-stone-200")}>
+          <ul aria-label={`Your ${words.many}`} className={cn(card, "divide-y divide-stone-200")}>
             {own.map(({ listing, active, closed }) => {
               const photo = photosOf(listing)[0];
               const status = !active ? "Hidden" : !photo ? "Add a photo to show it" : closed ? "Closed · On your profile" : "On your profile";

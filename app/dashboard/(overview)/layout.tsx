@@ -6,6 +6,9 @@ import { requireAgent } from "@/lib/auth";
 // flash of the dashboard first.
 export default async function OverviewLayout({ children }: { children: React.ReactNode }) {
   const agent = await requireAgent();
+  // New here: what they are and the rest, a step at a time; an older
+  // account with no name yet, its details.
+  if (!agent.kind) redirect("/welcome");
   if (!agent.full_name) redirect("/dashboard/profile");
   return children;
 }

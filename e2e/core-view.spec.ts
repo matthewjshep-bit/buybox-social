@@ -454,7 +454,11 @@ test("on a desktop, the photo has a stage of its own with nothing on it but the 
   const names = [/^Comments/, "Save 1880 Tamsen Ridge Pl SE", "Share", "More options"];
   await expect(actions.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(actions.getByRole("button").nth(i)).toHaveAccessibleName(name);
-  for (const name of names) await expect(home.getByRole("button", { name })).toHaveCount(1);
+  for (const name of names) {
+    await expect(home.getByRole("button", typeof name === "string" ? { name, exact: true } : { name })).toHaveCount(1);
+  }
+  // And, on the photo's top left corner, a quick way to send it on.
+  await expect(home.getByRole("button", { name: "Share 1880 Tamsen Ridge Pl SE" })).toHaveText("Share this home");
   // Share has its word beside it, as Save has.
   await expect(actions.getByRole("button", { name: "Share", exact: true })).toHaveText("Share");
   const row = await box(actions);

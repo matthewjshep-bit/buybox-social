@@ -39,7 +39,9 @@ export type CodeState = {
   // Signed in. `agent`: their account is an agent's (to their dashboard).
   // `needsName`: a buyer's with no first name yet, to ask for (an agent gives
   // their full name with their brand, on their dashboard).
-  done?: { agent: boolean; needsName: boolean };
+  // `welcome`: new here (they haven't said what they are yet), to be asked
+  // that and the rest a step at a time (/welcome).
+  done?: { agent: boolean; needsName: boolean; welcome: boolean };
 };
 
 const DEV_CODE = "123456";
@@ -177,8 +179,9 @@ async function signingUpAsAgent(email: string) {
 async function signedIn(user: { id: string; email: string }, { asAgent }: { asAgent: boolean }): Promise<CodeState> {
   let account = await accountFor(user, asAgent ? "agent" : "buyer");
   if (asAgent && account.role !== "agent") {
-    await sql`update accounts set role = 'agent' where id = ${account.id}`;
-    account = { ...account, role: "agent" };
+    // (Shopping until now: which kind of pro is asked next, at /welcome.)
+    await sql`update accounts set role = 'agent', kind = null where id = ${account.id}`;
+    account = { ...account, role: "agent", kind: null };
   }
   // Settled here, so what was noted for the email's link is done with.
   await sql`delete from account_intents where email = ${user.email}`;
@@ -194,14 +197,14 @@ async function signedIn(user: { id: string; email: string }, { asAgent }: { asAg
   // browser's own page has become theirs, above; the name as it is now.)
   if (account.role && fullName.trim()) await ensureAccountVisitor({ ...account, full_name: fullName });
   const agent = account.role === "agent";
-  return { done: { agent, needsName: !agent && !fullName.trim() } };
+  return { done: { agent, needsName: !agent && !fullName.trim(), welcome: !account.kind } };
 }
 
 // A buyer who sends homes to clients after all: an agent's account, then
 // their name and brand.
 export async function becomeAgent() {
   const user = await requireUser();
-  if (user.role !== "agent") await sql`update accounts set role = 'agent' where id = ${user.id}`;
+  if (user.role !== "agent") await sql`update accounts set role = 'agent', kind = 'agent' where id = ${user.id}`;
   // The bar is drawn again too: the Dashboard they were just told they'd get
   // is in it when they land, in place of Send.
   refresh();

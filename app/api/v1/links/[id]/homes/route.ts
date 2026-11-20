@@ -1,3 +1,4 @@
+import { SEND_HOMES_MOST } from "@/lib/send-limits";
 import { z } from "zod";
 import { apiJson, apiRoute, ApiError, isUuid } from "@/lib/api/http";
 import { linkJson } from "@/lib/api/serialize";
@@ -17,9 +18,9 @@ const homeKey = z
 
 const moreHomes = z.object({
   homes: z
-    .array(homeKey, { error: "homes is a list of 1 to 3 home keys, like [\"N12345678\"]." })
-    .min(1, "Add between 1 and 3 homes.")
-    .max(3, "Add between 1 and 3 homes."),
+    .array(homeKey, { error: "homes is a list of home keys, like [\"N12345678\"]." })
+    .min(1, "Add at least one home.")
+    .max(SEND_HOMES_MOST, `Add up to ${SEND_HOMES_MOST} homes at a time.`),
 });
 
 export const POST = apiRoute<{ id: string }>(

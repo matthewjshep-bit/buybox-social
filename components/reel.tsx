@@ -64,7 +64,7 @@ import {
   type PickedSpot,
   type SpotLight,
 } from "@/components/photo-spots";
-import { photoFoot, photoPlace, ReelPhotos, STAGE_BAND, stageBlock, stageFoot } from "@/components/reel-photos";
+import { photoFoot, photoHead, photoPlace, ReelPhotos, STAGE_BAND, stageBlock, stageFoot } from "@/components/reel-photos";
 import { TakeCard, type TakeEyebrow } from "@/components/reel-take";
 import { ScorecardBody } from "@/components/scorecard";
 import { useSignedIn } from "@/components/session";
@@ -1939,6 +1939,47 @@ function Panel({
     </>
   );
 
+  // Sending it on, in a tap, from the photo's top left corner, wherever a
+  // home is shown: to a client (an agent), on to Send homes with it picked
+  // (anyone else signed in), or its link (anyone else, or a home that's sold).
+  // On a wide screen it says so; on a phone it's the paper plane alone.
+  // (Beside the map, the page has its own; on a client's link, Invite is on
+  // the rail.)
+  const sendCorner = !hidden && !bare && !onOpen && !lean && onShare && shareAs && shareAs !== "invite" && (
+    <button
+      type="button"
+      data-keep-clear
+      data-send-corner
+      aria-label={
+        shareAs === "share"
+          ? `Share ${listing.UnparsedAddress}`
+          : shareAs === "sending"
+            ? "Send this home, getting a new link…"
+            : `Send ${listing.UnparsedAddress}`
+      }
+      aria-disabled={shareAs === "sending" || undefined}
+      onClick={() => {
+        if (shareAs !== "sending") onShare();
+      }}
+      style={{ top: `calc(${photoHead(current)} + 0.75rem)`, left: `calc(${photoPlace(current).left} + 0.75rem)` }}
+      className={cn(
+        "absolute z-10 flex h-12 min-w-12 items-center justify-center gap-2 rounded-full bg-white px-3.5 font-semibold text-ink shadow-lg ring-1 ring-stone-200 hover:bg-stone-50 split:px-5",
+        shareAs === "sending" && "cursor-progress text-muted",
+      )}
+    >
+      {shareAs === "sending" ? (
+        <LoaderCircle aria-hidden size={19} className="animate-spin motion-reduce:animate-none" />
+      ) : shareAs === "share" ? (
+        <Share2 aria-hidden size={19} />
+      ) : (
+        <Send aria-hidden size={19} />
+      )}
+      <span aria-hidden className="hidden split:inline">
+        {shareAs === "share" ? "Share this home" : "Send this home"}
+      </span>
+    </button>
+  );
+
   return (
     <article
       ref={home}
@@ -1963,6 +2004,8 @@ function Panel({
       className={cn(
         "relative h-full snap-start snap-always overflow-hidden bg-night",
         "[--photo-fit:1] [--backdrop-shade:0.4]",
+        // (The photo's label steps down, clear of Send in its corner.)
+        sendCorner && "[--photo-label-drop:3.5rem]",
         bare
           ? "[--backdrop-bottom:0px] [--backdrop-top:0px] [--photo-align:0.5] [--photo-bottom:env(safe-area-inset-bottom)] [--photo-top:env(safe-area-inset-top)]"
           : cn(
@@ -2073,6 +2116,7 @@ function Panel({
                 </div>
               )}
               {yesNo}
+              {sendCorner}
               {bare && (
                 // Never stuck with nothing to tap: one way back, at the foot
                 // of the photo (with the words gone, its own bottom edge).
