@@ -30,8 +30,21 @@ export const startsWithPlace = (text: string) =>
 
 // The homes a search finds, in its order: their keys, for the reel to show.
 export async function searchHomeKeys(filters: SearchFilters): Promise<string[]> {
-  // (Not the listings people added themselves: those are on their profiles.)
-  const conditions = [sql`l.standard_status = 'Active' and l.owner_account_id is null`];
+  // For sale: from the MLS, or added by someone themselves (a deal, their own
+  // listing) when it's one anyone may see on their profile: not hidden, with
+  // a photo. (Closed ones stay on their profiles. A copy an agent made of
+  // their MLS listing, to change it, isn't the home twice: while the MLS one
+  // is for sale, that's the one found.)
+  const conditions = [
+    sql`l.standard_status = 'Active' and (l.owner_account_id is null or (
+      coalesce((l.data->>'Hidden')::boolean, false) = false
+      and exists (
+        select 1 from jsonb_array_elements(coalesce(l.data->'Media', '[]'::jsonb)) m
+        where coalesce(m->>'MediaCategory', 'Photo') <> 'Video' and m->>'VideoEmbed' is null)
+      and not exists (
+        select 1 from listings o
+        where o.listing_key = l.data->>'CopiedFrom' and o.standard_status = 'Active' and o.owner_account_id is null)))`,
+  ];
   // (Only commas in the box is nothing to look for: no homes, not every home.)
   if (filters.q) conditions.push(placeWords(filters.q).length ? matchesPlace(filters.q) : sql`false`);
   if (filters.minPrice) conditions.push(sql`(l.data->>'ListPrice')::numeric >= ${filters.minPrice}`);

@@ -41,13 +41,13 @@ function oneOf<T extends string>(params: URLSearchParams, name: string, options:
   throw new ApiError(400, "invalid_request", `${name} is one of: ${Object.keys(options).join(", ")}.`, name);
 }
 
-// The listings with these keys, in the order of the keys: MLS homes only, as
-// the search found them.
+// The listings with these keys, in the order of the keys, as the search found
+// them (MLS homes, and ones people added themselves that anyone may see).
 async function listingsInOrder(keys: string[]): Promise<Listing[]> {
   if (keys.length === 0) return [];
   const rows = await sql<{ listing_key: string; data: Listing }[]>`
     select listing_key, data from listings
-    where listing_key in ${sql(keys)} and owner_account_id is null`;
+    where listing_key in ${sql(keys)}`;
   const byKey = new Map(rows.map((row) => [row.listing_key, row.data]));
   return keys.flatMap((key) => byKey.get(key) ?? []);
 }

@@ -30,7 +30,7 @@ async function expectOneLine(row: Locator, names: string[]) {
   }
 }
 
-test("an agent adds a listing with photos; it leads their profile, opens full screen, and stays out of what everyone browses", async ({
+test("an agent adds a listing with photos; it leads their profile, opens full screen, and is found in Search until it's hidden", async ({
   browser,
 }) => {
   test.setTimeout(120_000);
@@ -107,9 +107,10 @@ test("an agent adds a listing with photos; it leads their profile, opens full sc
   // link: they swipe, and open it themselves.)
   const src = await grid.getByRole("group", { name: `Photos of ${ADDRESS}` }).locator("img").first().getAttribute("src");
   expect(src).toContain("listing-photo");
-  // Not in the homes everyone browses, nor in a search for its street.
+  // Found in Search, by its street, beside the MLS homes. (Not in Browse.)
+  const searchFor = async () => (await visitor.request.get(`/search?q=${encodeURIComponent("Dealmaker")}`)).text();
+  expect(await searchFor()).toContain(ADDRESS);
   expect(await (await visitor.request.get("/reel")).text()).not.toContain(ADDRESS);
-  expect(await (await visitor.request.get(`/search?q=${encodeURIComponent("Dealmaker")}`)).text()).not.toContain(ADDRESS);
   // Its own page works for anyone with the address.
   await visitor.goto(`/homes/${key}`);
   const home = visitor.getByRole("article", { name: ADDRESS });
@@ -132,6 +133,8 @@ test("an agent adds a listing with photos; it leads their profile, opens full sc
   await expect(agent.getByRole("main")).toContainText("Hidden");
   await visitor.goto(profile);
   await expect(visitor.getByRole("main")).not.toContainText(ADDRESS);
+  // Hidden, it's out of Search too.
+  expect(await searchFor()).not.toContain(ADDRESS);
   await agent.goto("/dashboard/listings");
   await expect(agent.getByRole("list", { name: "Your listings" })).toContainText(ADDRESS);
 
