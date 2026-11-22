@@ -146,7 +146,8 @@ test("Send on a home goes on to the three steps with that home picked: in Browse
   test.setTimeout(150_000);
   const stamp = Date.now();
   const noor = await signUpBuyer(browser, `noor.sends.${stamp}@example.com`, "Noor");
-  const send = (address: string) => homeIn(noor, address).getByRole("button", { name: "Send to someone", exact: true });
+  // (Send, on the photo's corner.)
+  const send = (address: string) => homeIn(noor, address).getByRole("button", { name: `Send ${address}`, exact: true });
 
   // A home on its own page: Send, and the first step has it, with no searching.
   await noor.goto("/homes/SAMPLE-1009");
@@ -166,14 +167,21 @@ test("Send on a home goes on to the three steps with that home picked: in Browse
   await noor.waitForURL(/\/people\/[\w-]+$/);
   const pin = noor.locator('a[href^="/reel?from="][href*="home=SAMPLE-1009"]').first();
   const picked = new URL((await pin.getAttribute("href"))!, "http://x").searchParams.get("home")!;
-  await pin.click();
+  // (A tap on the card's photo opens it, as a person would: the photos swipe,
+  // over the card's own link, which is there for the keyboard.)
+  await noor
+    .getByRole("listitem")
+    .filter({ has: noor.locator('a[data-card-link][href*="home=SAMPLE-1009"]') })
+    .first()
+    .getByRole("group", { name: /^Photos of / })
+    .click();
   await noor.waitForURL(/\/reel\?from=[\w-]+&home=SAMPLE-1009/);
   const stage = noor.getByRole("dialog", { name: "Homes" });
   const open = stage.locator(`[data-home="${picked}"]`);
   await expect(open).toBeInViewport({ ratio: 0.9 });
   const address = (await open.getAttribute("aria-label"))!;
-  await expect(open.getByRole("button", { name: "Share", exact: true })).toHaveCount(0);
-  await open.getByRole("button", { name: "Send to someone", exact: true }).click();
+  await expect(open.getByRole("button", { name: /^Share/ })).toHaveCount(0);
+  await open.getByRole("button", { name: `Send ${address}`, exact: true }).click();
   await noor.waitForURL(new RegExp(`/send\\?home=${picked}$`));
   await expect(noor.getByRole("heading", { level: 1 })).toHaveText("Send this home");
   await expect(noor.getByRole("main")).toContainText(address);

@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import type { Listing } from "../lib/listings/types";
-import { signedIn, toFirstHome, createShare, heartOf, homeIn, joinAs, openComments, pick, settle, signInAgent, signUpBuyer, tapPhoto, passOn, keepLinksPrivate } from "./helpers";
+import { signedIn, toFirstHome, createShare, enterCode, heartOf, homeIn, joinAs, openComments, pastNameStep, pick, settle, signInAgent, signUpBuyer, tapPhoto, passOn, keepLinksPrivate } from "./helpers";
 
 // The line at the photo's foot: what people did on the photo on screen, one
 // at a time, each with a hotspot on the spot where they did it. Timers run on
@@ -38,6 +38,20 @@ async function stillPage(browser: Browser, options = {}) {
   return page;
 }
 
+// The same, signed in first (a card on a spot is for someone who can like it:
+// anyone else is asked to sign up before one opens).
+async function signedInStillPage(browser: Browser, options = {}) {
+  const page = await (await browser.newContext(options)).newPage();
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(`still.${Date.now()}${Math.floor(Math.random() * 1e4)}@example.com`);
+  await page.getByRole("button", { name: "Continue" }).click();
+  await enterCode(page);
+  await pastNameStep(page);
+  await page.clock.install();
+  await page.clock.pauseAt(new Date(Date.now() + 1000));
+  return page;
+}
+
 // Moves the page's clock on, then lets it draw what that did.
 async function tick(page: Page, ms: number) {
   await page.clock.runFor(ms);
@@ -59,11 +73,15 @@ async function likeThings(browser: Browser, key: string, address: string, name: 
       await expect(home.getByText(new RegExp(`^Photo ${at + 2} of \\d+$`))).toBeAttached();
     }
     for (const thing of things) {
+      // Signed out, picking it asks them to sign up first; then its card opens.
+      if (!joined) {
+        await home.getByRole("button", { name: `Select ${thing}` }).press("Enter");
+        await joinAs(page, name);
+        joined = true;
+      }
       const card = await pick(home, thing);
       const like = card.getByRole("button", { name: new RegExp(`^Like ${thing}(,|$)`) });
       await like.click();
-      if (!joined) await joinAs(page, name);
-      joined = true;
       await expect(like).toHaveAttribute("aria-pressed", "true");
       await card.getByRole("button", { name: "Close" }).click();
     }
@@ -115,7 +133,7 @@ test("it holds on the newest, then goes round what's on the photo, a hotspot rig
   expect(Math.abs(at.y - (frame.y + frame.height * sconces.y))).toBeLessThanOrEqual(3);
 
   // Round it goes, one at a time, the caption's foot never moving, nor the price.
-  const price = (await home.getByRole("button", { name: /^\$[\d,]+/ }).boundingBox())!;
+  const price = (await home.locator('[data-fact="Price"]').boundingBox())!;
   const lines = new Set<string>();
   for (let i = 0; i < 4; i++) {
     const was = (await lineOf(home).getAttribute("aria-label"))!;
@@ -124,7 +142,7 @@ test("it holds on the newest, then goes round what's on the photo, a hotspot rig
     await expect(lineOf(home)).not.toHaveAttribute("aria-label", was);
     const now = (await activityOf(home).boundingBox())!;
     expect(Math.abs(now.y + now.height - (slot.y + slot.height))).toBeLessThanOrEqual(1);
-    expect((await home.getByRole("button", { name: /^\$[\d,]+/ }).boundingBox())!.y).toBe(price.y);
+    expect((await home.locator('[data-fact="Price"]').boundingBox())!.y).toBe(price.y);
   }
   expect(lines.size).toBeGreaterThanOrEqual(2);
   // Only the one showing is on the page.
@@ -204,7 +222,9 @@ test("it keeps to the photo on screen: on another photo, what was done there, an
   await home.getByRole("button", { name: "Next photo" }).click();
   await expect(home.getByText("Photo 3 of 3")).toBeAttached();
   await expect(lineOf(home)).toHaveAccessibleName(/^Cy liked the natural light\. .+\. Show it on the photo\.$/);
+  // (Signed out: shown the spot, then asked to sign up before its card opens.)
   await lineOf(home).click();
+  await joinAs(page, "Dot");
   const card = home.getByRole("group", { name: "Natural light" });
   await expect(card).toBeVisible();
   // The line steps aside for the card, and is back on it once it's closed.
@@ -270,7 +290,7 @@ test("side by side too, after its rounds it rests on who liked the home", async 
 });
 
 test("a pointer on the line holds it; a card open on the photo holds it, and once it's gone, it goes on", async ({ browser }) => {
-  const page = await stillPage(browser, DESKTOP);
+  const page = await signedInStillPage(browser, DESKTOP);
   await page.goto("/homes/SAMPLE-1007");
   const home = homeIn(page, WEXFORD);
   await settled(home);
@@ -318,7 +338,8 @@ test("opened from someone's profile, the line says only what they did", async ({
   await page.clock.install();
   await page.goto(profile!);
   // (A card opens their page's homes in the pop-out, on the photo it's about: `?photo=`.)
-  await page.locator('a[href*="home=SAMPLE-1007"]').first().click();
+  // (By its top corner: the photos in the middle swipe, and open it themselves.)
+  await page.locator('a[href*="home=SAMPLE-1007"]').first().click({ position: { x: 20, y: 20 } });
   await page.waitForURL(/\/reel\?from=/);
   const home = homeIn(page.getByRole("dialog", { name: "Homes" }), WEXFORD);
   await expect(home).toBeVisible();

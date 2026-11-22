@@ -38,13 +38,13 @@ const ratioOf = (photo: ListingMedia | undefined) =>
       ? 16 / 9
       : null;
 
-// Where a photo goes: as big as it can be, whole, never cropped. On a phone it
-// sits at the top of the clear space, right under the header, with the words
-// below it. With the words over it (a phone on its side), it
-// grows past the clear space, under the words, when there's room to show more
-// of it. Without a known size (a video, some photos), it takes all that space
-// and shows whole inside it. Measured against the nearest box with
-// `container-type: size`.
+// Where a photo goes: as big as it can be, whole, never cropped (a flyer's
+// words run to its edges, and a spot there has to be tappable). On an upright
+// phone it sits in the middle of the clear space, with the words below it.
+// With the words over it (a phone on its side), it grows past the clear
+// space, under the words, when there's room to show more of it. Without a
+// known size (a video, some photos), it takes all that space and shows whole
+// inside it. Measured against the nearest box with `container-type: size`.
 export function photoPlace(photo: ListingMedia | undefined) {
   const ratio = ratioOf(photo);
   const room = `(100cqw - ${LEFT} - ${RIGHT})`;

@@ -90,6 +90,8 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   browser,
 }) => {
   const agent = await signInAgent(browser, "una-kit@example.com", "Una Kit");
+  // (Signing in lands on Home: their Clients page is a tap away.)
+  await agent.goto("/dashboard");
   // (Once the page itself is there, not its loading outline.)
   await expect(agent.getByRole("main").getByRole("link", { name: /Send homes|Choose homes/ }).first()).toBeVisible();
   await expectKitButtons(agent, "dashboard");

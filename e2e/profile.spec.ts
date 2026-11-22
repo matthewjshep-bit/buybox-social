@@ -3,7 +3,7 @@
 // ones no later spec counts likes on (the Porchcard's quiet Heron and counted
 // Alder are left alone, or left as they were found).
 import { readFileSync } from "node:fs";
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import type { Listing } from "../lib/listings/types";
 import {
   buildCards,
@@ -43,7 +43,6 @@ import { enterCode,
   openMore,
   pastNameStep,
   pick,
-  settle,
   signInAgent,
   signUpBuyer,
   passOn,
@@ -65,6 +64,24 @@ const cardLinks = (page: Page) => page.locator('main li > a[aria-label*=": "]');
 // The one word on the first day's line that chooses what the feed shows.
 const filterOf = (page: Page) => page.locator("main [data-feed-filter]");
 
+// A finger's swipe to the left across something: Chromium's own touch
+// gesture, so the browser scrolls it just as it would under a thumb.
+async function swipeLeft(target: Locator) {
+  const page = target.page();
+  await target.scrollIntoViewIfNeeded();
+  const box = (await target.boundingBox())!;
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Input.synthesizeScrollGesture", {
+    x: Math.round(box.x + box.width * 0.8),
+    y: Math.round(box.y + box.height / 2),
+    xDistance: -Math.round(box.width * 0.6),
+    yDistance: 0,
+    gestureSourceType: "touch",
+    speed: 1600,
+  });
+  await cdp.detach();
+}
+
 test("a profile is one card per home per day, with the photo and the spots picked in it", async ({ browser }) => {
   test.setTimeout(90_000);
   const lena = await signUpBuyer(browser, "lena@example.com", "Lena Park");
@@ -72,7 +89,8 @@ test("a profile is one card per home per day, with the photo and the spots picke
   lena.on("pageerror", (error) => pageErrors.push(error.message));
 
   // Several things on one home: the home itself, the porch (liked and talked
-  // about), the shingles (not liked) and the price.
+  // about) and the shingles (not liked). (The price is just words on the
+  // home now: a fact liked before still shows, as buildCards below has it.)
   await lena.goto("/homes/SAMPLE-1003");
   const corbel = homeIn(lena, CORBEL);
   await heartOf(corbel).click();
@@ -90,12 +108,6 @@ test("a profile is one card per home per day, with the photo and the spots picke
     "true",
   );
   await shingles.getByRole("button", { name: "Close" }).click();
-  await corbel.getByRole("button", { name: /^\$[\d,]+/ }).click();
-  const price = corbel.getByRole("group", { name: "Price" });
-  await expect(price).toBeVisible();
-  await settle(price);
-  await price.getByRole("button", { name: "Like the price", exact: true }).click();
-  await expect(price.getByRole("button", { name: "Like the price, 1 like", exact: true })).toHaveAttribute("aria-pressed", "true");
 
   // And just a like on another.
   await lena.goto("/homes/SAMPLE-1009");
@@ -141,15 +153,13 @@ test("a profile is one card per home per day, with the photo and the spots picke
   await expect(lena.getByRole("heading", { level: 2, name: "Today" })).toBeVisible();
   await expect(cardLinks(lena)).toHaveCount(2);
   await expect(cardLinks(lena).first()).toHaveAttribute("aria-label", `${QUILLAN}: liked this`);
-  // The price they liked is a chip, so the sentence keeps to the photo.
   const sentence = "liked the wraparound porch but not the cedar shingles";
   const link = lena.getByRole("link", { name: `${CORBEL}: ${sentence}`, exact: true });
   await expect(link).toHaveAttribute("href", /^\/reel\?from=[\w-]+&home=SAMPLE-1003&photo=0$/);
   const card = cardOf(lena, `${CORBEL}: ${sentence}`);
   await expect(card).toContainText(`You ${sentence}`);
   await expect(card.getByRole("img", { name: "Shingled home with a wraparound porch and green lawn" })).toBeVisible();
-  // The fact they liked, and what they said, about the spot they said it about.
-  await expect(card.getByRole("listitem").filter({ hasText: "Liked" })).toHaveText("Liked the price");
+  // What they said, about the spot they said it about.
   await expect(card).toContainText("the wraparound porch");
   await expect(card).toContainText("That porch is the whole reason I'd move.");
   // A hotspot lands on each spot: the newest (the shingles), and the porch.
@@ -247,7 +257,8 @@ test("a card opens its home over the page, on the photo it's about with the spot
   const link = noor.getByRole("link", { name: `${CORBEL}: liked the subway backsplash`, exact: true });
   await expect(link).toHaveAttribute("href", /^\/reel\?from=[\w-]+&home=SAMPLE-1003&photo=2$/);
   // It opens her page's homes in a pop-out over it, on this one, on the photo it was about.
-  await link.click();
+  // (Tapped by its top corner: the photos in the middle swipe, and open it themselves.)
+  await link.click({ position: { x: 20, y: 20 } });
   await noor.waitForURL(/\/reel\?from=/);
   const popout = noor.getByRole("dialog", { name: "Homes" });
   const home = homeIn(popout, CORBEL);
@@ -267,6 +278,134 @@ test("a card opens its home over the page, on the photo it's about with the spot
   await expect(popout).toHaveCount(0);
   await noor.waitForURL(/\/people\/[0-9a-f-]{36}$/);
   await expect(link).toBeFocused();
+});
+
+test("a card's photos swipe sideways right on the page; a swipe isn't a tap, and a tap opens the photo showing", async ({
+  browser,
+}) => {
+  test.setTimeout(60_000);
+  const kai = await signUpBuyer(browser, "kai.swipe@example.com", "Kai Swipe");
+  await kai.goto("/homes/SAMPLE-1003");
+  const corbel = homeIn(kai, CORBEL);
+  await heartOf(corbel).click();
+  await expect(heartOf(corbel)).toHaveAttribute("aria-pressed", "true");
+
+  await kai.goto("/people/me");
+  await kai.waitForURL(/\/people\/[0-9a-f-]{36}$/);
+  const profileUrl = kai.url();
+  const photos = cardOf(kai, `${CORBEL}: liked this`).getByRole("group", { name: `Photos of ${CORBEL}` });
+  const count = photos.locator("[data-photo-count]");
+  await expect(count).toHaveText("1 of 3");
+  await expect(photos.getByRole("group", { name: "1 of 3" }).getByRole("img", { name: "Shingled home with a wraparound porch and green lawn" })).toBeVisible();
+  // On a phone, no arrows over it: a finger swipes, and the page stays put.
+  await expect(photos.getByRole("button", { name: "Next photo" })).toBeHidden();
+  await swipeLeft(photos);
+  await expect(count).toHaveText("2 of 3");
+  expect(kai.url()).toBe(profileUrl);
+  // Nothing runs off the side of the phone.
+  expect(await kai.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  // A tap opens her page's homes full screen, on the photo showing.
+  await photos.getByRole("group", { name: "2 of 3" }).click();
+  await kai.waitForURL(/\/reel\?from=[\w-]+&home=SAMPLE-1003&photo=1$/);
+  await expect(homeIn(kai.getByRole("dialog", { name: "Homes" }), CORBEL)).toBeInViewport({ ratio: 0.5 });
+
+  // With a mouse: arrows over the photos, Back hidden at the first.
+  const desk = await (
+    await browser.newContext({
+      storageState: await kai.context().storageState(),
+      viewport: { width: 1280, height: 900 },
+      isMobile: false,
+      hasTouch: false,
+    })
+  ).newPage();
+  await desk.goto(profileUrl);
+  const deskPhotos = cardOf(desk, `${CORBEL}: liked this`).getByRole("group", { name: `Photos of ${CORBEL}` });
+  await deskPhotos.hover();
+  await expect(deskPhotos.getByRole("button", { name: "Previous photo" })).toHaveAttribute("aria-disabled", "true");
+  await deskPhotos.getByRole("button", { name: "Next photo" }).click();
+  await expect(deskPhotos.locator("[data-photo-count]")).toHaveText("2 of 3");
+  await expect(desk).toHaveURL(profileUrl);
+  // At the last, Next goes and the keyboard is on Back.
+  await deskPhotos.getByRole("button", { name: "Next photo" }).click();
+  await expect(deskPhotos.locator("[data-photo-count]")).toHaveText("3 of 3");
+  await expect(deskPhotos.getByRole("button", { name: "Next photo" })).toHaveAttribute("aria-disabled", "true");
+  await expect(deskPhotos.getByRole("button", { name: "Previous photo" })).toBeFocused();
+});
+
+test("a day someone only commented: what they said is the card's top line, and the photo with the spot leads", async ({
+  browser,
+}) => {
+  test.setTimeout(60_000);
+  const ray = await signUpBuyer(browser, "ray.said@example.com", "Ray Said");
+  await ray.goto("/homes/SAMPLE-1003");
+  const corbel = homeIn(ray, CORBEL);
+  const sheet = await openComments(ray, corbel);
+  await sheet.getByLabel("Add a comment").fill("Sketch of the house");
+  await sheet.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(sheet).toContainText("Sketch of the house");
+  await ray.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+
+  await ray.goto("/people/me");
+  await ray.waitForURL(/\/people\/[0-9a-f-]{36}$/);
+  const profileUrl = ray.url();
+  const card = cardOf(ray, `${CORBEL}: commented on this home`);
+  const said = (where: Locator, words: string) => where.getByText(words).filter({ visible: true });
+  // One line: who, what they said, when; no bubble under the photo saying it again.
+  await expect(card.locator("[data-card-line]")).toHaveText(/^You commented “Sketch of the house”\s·\s(just now|\d+m)$/);
+  await expect(said(card, "Sketch of the house")).toHaveCount(1);
+  // Anyone else reads it by her name.
+  const anon = await (await browser.newContext()).newPage();
+  await anon.goto(profileUrl);
+  await expect(cardOf(anon, `${CORBEL}: commented on this home`).locator("[data-card-line]")).toHaveText(
+    /^Ray commented “Sketch of the house”\s·\s/,
+  );
+
+  // Then a word about a spot: the newest leads, its photo first with the
+  // spot marked, and what she said before stays under it.
+  await ray.goto("/homes/SAMPLE-1003");
+  const shingles = await pick(corbel, "the cedar shingles");
+  await shingles.getByRole("button", { name: "Comment" }).click();
+  const spotSheet = ray.getByRole("dialog", { name: "Comments" });
+  await spotSheet.getByLabel("Comment on the cedar shingles").fill("Not sold on the shingles.");
+  await spotSheet.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(spotSheet).toBeHidden();
+  await ray.goto(profileUrl);
+  await expect(card.locator("[data-card-line]")).toHaveText(/^You commented “Not sold on the shingles\.”\s·\s/);
+  await expect(said(card, "Not sold on the shingles.")).toHaveCount(1);
+  await expect(said(card, "Sketch of the house")).toHaveCount(1);
+  await expect(card.locator("[data-card-line]")).not.toContainText("Sketch of the house");
+  const photos = card.getByRole("group", { name: `Photos of ${CORBEL}` });
+  await expect(
+    photos.getByRole("group", { name: "1 of 3" }).getByRole("img", { name: "Shingled home with a wraparound porch and green lawn" }),
+  ).toBeVisible();
+  await expect(photos.locator("[data-pin=comment]")).toHaveAttribute("style", /left: ?25%; ?top: ?42%/);
+
+  // A long one is cut short at about three lines on a phone, beside her
+  // card's menu, and the time still shows after it.
+  const LONG =
+    "We drove by on Sunday and the street was quiet, the yard gets sun all afternoon, and the neighbors said the roof was redone two years ago. Worth a second look?";
+  await ray.goto("/homes/SAMPLE-1003");
+  const longSheet = await openComments(ray, corbel);
+  await longSheet.getByLabel("Add a comment").fill(LONG);
+  await longSheet.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(longSheet).toContainText("Worth a second look?");
+  await ray.setViewportSize({ width: 390, height: 844 });
+  await ray.goto(profileUrl);
+  const line = card.locator("[data-card-line]");
+  await expect(line.locator("[data-said]")).toHaveText(/^“We drove by on Sunday[^”]*…”$/);
+  // (All of it for a screen reader.)
+  await expect(line).toContainText(LONG);
+  const time = line.locator("time");
+  await expect(time).toBeVisible();
+  const [lineBox, timeBox] = [(await line.boundingBox())!, (await time.boundingBox())!];
+  expect(timeBox.y + timeBox.height).toBeLessThanOrEqual(lineBox.y + lineBox.height + 1);
+  const lines = await line.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return Math.round((el.getBoundingClientRect().height - parseFloat(style.paddingTop)) / parseFloat(style.lineHeight));
+  });
+  expect(lines).toBeLessThanOrEqual(3);
 });
 
 test("an empty page says what will show up there", async ({ browser }) => {
@@ -577,6 +716,15 @@ test("cards group by home and Seattle day, under Today, Yesterday and dates", ()
   ]);
   // Yesterday's photo is the one with the shelves in it.
   expect(cards[1].photo?.index).toBe(1);
+  // It leads the photos to swipe through, the rest of the home's after it,
+  // each once, in their order; a card carries at most twelve.
+  const swipe = cards[1].photos.map((photo) => photo.index);
+  expect(swipe[0]).toBe(1);
+  expect(new Set(swipe).size).toBe(swipe.length);
+  expect(swipe.slice(1)).toEqual([...swipe.slice(1)].sort((a, b) => a - b));
+  expect(swipe.length).toBe(Math.min(12, cards[1].photoCount));
+  // Today's pins are on its first photo, as the card's own are.
+  expect(today.photos[0].pins ?? []).toEqual(today.pins);
   expect(cards[2].comments[0].replyTo).toEqual({ name: "Sam", profileId: "sam" });
 
   const keys = (list: ProfileCard[]) => list.map((card) => `${card.home.key} ${card.day}`);

@@ -1,26 +1,21 @@
 import { Heart, Lock, ThumbsDown } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CardMenu } from "@/app/people/[id]/client";
 import { CommentBubble } from "@/components/comment-bubble";
-import { Hotspot } from "@/components/spot-highlight";
+import { PhotoSwipe } from "@/components/photo-swipe";
+import { SaidLine } from "@/components/said-line";
 import { Avatar, Badge } from "@/components/ui";
 import { cn, formatPrice } from "@/lib/format";
 import { cardTime, dayHeading, dayName, type FeedFilters, type ProfileCard } from "@/lib/profile";
 import { filterParams } from "@/lib/reel-context";
-import { button, card as cardClass, glass } from "@/lib/ui";
+import { button, card as cardClass } from "@/lib/ui";
 
 // Everything someone has done, Facebook-style: one card per home per day,
-// under "Today", "Yesterday" and so on. Each card shows the photo with the
-// spots they picked out, the home, and what they said, and opens the homes
-// full screen, in this page's order, on that one.
-
-// Where a pin sits, in percent of the photo, to a tenth.
-const at = ({ x, y }: { x: number; y: number }) => ({
-  left: `${Math.round(x * 1000) / 10}%`,
-  top: `${Math.round(y * 1000) / 10}%`,
-});
+// under "Today", "Yesterday" and so on. Each card shows the photos (the one
+// with the spots they picked out first, the rest a swipe away), the home,
+// and what they said, and opens the homes full screen, in this page's order,
+// on that one.
 
 export function ProfileFeed({
   cards,
@@ -139,9 +134,19 @@ export function ActivityCard({
   // Under it all: the agent's replies, and their own box to reply in.
   footer?: ReactNode;
 }) {
-  const { home, photo } = card;
+  const { home } = card;
   // A day when all they did was like someone's comment: a small card, no photo.
   const { quiet } = card;
+  // A day they only commented: what they said is the line at the top ("Matt
+  // commented “Sketch of the house”"), the newest of it; anything else they
+  // said that day stays under the photo.
+  const said = /^commented\b/.test(card.sentence) ? card.comments.at(-1) : undefined;
+  const rest = said ? card.comments.slice(0, -1) : card.comments;
+  const who = nameHref ? name : isMe ? "You" : name;
+  const time = cardTime(card.at);
+  const tail = said ? counts(said) : null;
+  // The letters around what they said: name, time, counts, lock.
+  const around = who.length + time.length + 3 + (tail?.length ?? 0) + (only ? 3 : 0);
   return (
     <li className={cn(cardClass, "relative overflow-hidden")}>
       {/* The whole card opens the home. Links and buttons in it sit above this.
@@ -155,7 +160,10 @@ export function ActivityCard({
       {header}
       <div className="flex items-start gap-3 p-4 pb-3">
         <Avatar name={face} tone={agent ? "agent" : "person"} size={8} photo={avatarPhoto} />
-        <p className="min-w-0 flex-1 pt-1 text-body leading-snug text-ink">
+        <p
+          data-card-line
+          className={cn("min-w-0 flex-1 pt-1 text-body leading-snug text-ink", said && "break-words")}
+        >
           {nameHref ? (
             <Link
               href={nameHref}
@@ -164,14 +172,15 @@ export function ActivityCard({
               {name}
             </Link>
           ) : (
-            <strong className="font-semibold">{isMe ? "You" : name}</strong>
+            <strong className="font-semibold">{who}</strong>
           )}{" "}
-          {card.sentence}
+          {said ? <SaidLine said={said} around={around} /> : card.sentence}
           {/* Held to the last word, so the time never starts a line on its own. */}
           {"\u00a0"}
           <span className="whitespace-nowrap text-meta text-muted">
             {"· "}
-            <time dateTime={card.at}>{cardTime(card.at)}</time>
+            <time dateTime={card.at}>{time}</time>
+            {tail}
             {only && (
               <>
                 {" · "}
@@ -187,7 +196,7 @@ export function ActivityCard({
         )}
       </div>
 
-      {photo && !quiet && <CardPhoto card={card} />}
+      {card.photos.length > 0 && !quiet && <CardPhotos card={card} href={href} />}
 
       <div className={cn("px-4", quiet ? "pt-0" : "pt-3")}>
         <p className="flex flex-wrap items-baseline gap-x-1.5">
@@ -226,9 +235,9 @@ export function ActivityCard({
         </ul>
       )}
 
-      {card.comments.length > 0 && (
+      {rest.length > 0 && (
         <ul className="flex flex-col gap-2 px-4 pt-3">
-          {card.comments.map((comment) => (
+          {rest.map((comment) => (
             <li key={comment.id}>
               <CommentBubble
                 name={isMe ? "You" : name}
@@ -294,44 +303,34 @@ function commentMeta(comment: ProfileCard["comments"][number]) {
   ));
 }
 
-// The photo at its own shape, with a soft hotspot on each spot they picked
-// out, as on a home's own photos: where, not what they thought of it (the
-// sentence above says that).
-function CardPhoto({ card }: { card: ProfileCard }) {
-  const photo = card.photo!;
-  const ratio = photo.width && photo.height ? photo.width / photo.height : null;
+// " · 3 likes · 2 replies" after the time, or nothing.
+function counts(comment: ProfileCard["comments"][number]) {
+  const parts = [
+    comment.likes > 0 && `${comment.likes} ${comment.likes === 1 ? "like" : "likes"}`,
+    comment.replies > 0 && `${comment.replies} ${comment.replies === 1 ? "reply" : "replies"}`,
+  ].filter(Boolean);
+  return parts.length > 0 ? ` · ${parts.join(" · ")}` : "";
+}
+
+// The photos, to swipe through: the one they did something on first, whole
+// at its own shape, with a soft hotspot on each spot they picked out, as on
+// a home's own photos (where, not what they thought of it: the line above
+// says that). The frame takes that first photo's shape (within reason), and
+// is never taller than 36rem. A tap opens the home full screen on the photo
+// showing.
+function CardPhotos({ card, href }: { card: ProfileCard; href: string }) {
+  const first = card.photos[0];
+  const ratio = first.width && first.height ? Math.min(16 / 9, Math.max(3 / 4, first.width / first.height)) : null;
   return (
-    <div className="bg-stone-100">
-      <div
-        className={cn("relative mx-auto overflow-hidden", !ratio && "aspect-[4/3]")}
-        // Never taller than 36rem: a tall photo narrows instead.
-        style={ratio ? { aspectRatio: String(ratio), width: `min(100%, ${36 * ratio}rem)` } : undefined}
-      >
-        <Image
-          src={photo.url}
-          alt={photo.alt}
-          fill
-          sizes="(min-width: 1024px) 600px, (min-width: 640px) 576px, 100vw"
-          className={ratio ? "object-contain" : "object-cover"}
-        />
-        {card.pins.map((pin, i) => (
-          <span
-            key={i}
-            aria-hidden
-            data-pin={pin.kind}
-            data-newest={i === 0 || undefined}
-            className="pointer-events-none absolute size-0"
-            style={at(pin)}
-          >
-            <Hotspot small />
-          </span>
-        ))}
-        {card.otherPhotos > 0 && (
-          <span className={cn(glass, "absolute bottom-3 right-3 rounded-full px-2.5 py-1 text-meta font-semibold")}>
-            +{card.otherPhotos} {card.otherPhotos === 1 ? "photo" : "photos"}
-          </span>
-        )}
-      </div>
-    </div>
+    <PhotoSwipe
+      photos={card.photos}
+      total={card.photoCount}
+      href={href}
+      label={card.home.address}
+      fit="contain"
+      sizes="(min-width: 1024px) 600px, (min-width: 640px) 576px, 100vw"
+      className={cn("w-full bg-stone-100", !ratio && "aspect-[4/3]")}
+      style={ratio ? { aspectRatio: String(ratio), maxHeight: "36rem" } : undefined}
+    />
   );
 }

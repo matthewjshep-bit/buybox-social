@@ -34,19 +34,21 @@ test("a buyer saves a home where the Porchcard was; it's under Saved on their ow
   let home = homeIn(sasha, TAMSEN);
   await expect(home).toBeInViewport({ ratio: 0.9 });
 
-  // Comments, Save, Send, More: no Porchcard for a buyer. (The heart and the X are on the photo.)
-  const rail = home.locator("[data-rail]");
-  const names = [/^Comments/, `Save ${TAMSEN}`, "Send to someone", "More options"];
+  // The comment bar with its count, Save, More, in one row under the words:
+  // no Porchcard for a buyer. (The heart, the X and Send are on the photo.)
+  const rail = home.locator("[data-bar-row]");
+  const names = ["Add a comment…", /^Comments/, `Save ${TAMSEN}`, "More options"];
   await expect(rail.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(rail.getByRole("button").nth(i)).toHaveAccessibleName(name);
+  await expect(home.getByRole("button", { name: `Send ${TAMSEN}`, exact: true })).toBeVisible();
   await expect(porchcardOf(sasha)).toHaveCount(0);
   await expect(saveOf(home, TAMSEN)).toHaveAttribute("aria-pressed", "false");
-  await expect(saveOf(home, TAMSEN)).toHaveText("Save");
+  await expect(saveOf(home, TAMSEN)).toHaveAttribute("title", "Save");
 
   // A tap saves it: the button says so at once, and still does on a fresh page.
   await Promise.all([kept(sasha), saveOf(home, TAMSEN).click()]);
   await expect(savedOf(home, TAMSEN)).toHaveAttribute("aria-pressed", "true");
-  await expect(savedOf(home, TAMSEN)).toHaveText("Saved");
+  await expect(savedOf(home, TAMSEN)).toHaveAttribute("title", "Saved");
   await sasha.reload();
   await expect(savedOf(homeIn(sasha, TAMSEN), TAMSEN)).toHaveAttribute("aria-pressed", "true");
   // On the home's own page too, where there's no Porchcard either.
@@ -167,13 +169,18 @@ test("what someone saved is theirs alone: nobody else gets the choice, the list,
   await expect(said).not.toContainText(/Zelda|saved/i);
   await other.keyboard.press("Escape");
 
-  // Signed out, Save asks them to sign in first, and comes back to the home.
+  // Signed out, Save asks them to sign up right there, on the home, and
+  // saves it once they're in (nothing saved if they don't).
   await anon.goto("/homes/SAMPLE-1002");
   const home = homeIn(anon, TAMSEN);
   await expect(home).toBeInViewport({ ratio: 0.9 });
   await saveOf(home, TAMSEN).click();
-  await anon.waitForURL((url) => url.pathname === "/login");
-  expect(new URL(anon.url()).searchParams.get("next")).toBe("/homes/SAMPLE-1002");
+  const join = anon.getByRole("dialog", { name: "Sign up to like and comment" });
+  await expect(join).toBeVisible();
+  expect(new URL(anon.url()).pathname).toBe("/homes/SAMPLE-1002");
+  await join.getByRole("button", { name: "Not now" }).click();
+  await expect(join).toBeHidden();
+  await expect(saveOf(home, TAMSEN)).toHaveAttribute("aria-pressed", "false");
 });
 
 test("from the box on your own page, a home is saved with nothing said, and it's under Saved, not a post", async ({ browser }) => {
@@ -222,8 +229,8 @@ test("the Porchcard is an agent's, going through a link's homes or a client's: n
   await agent.waitForURL(/\/reel\?from=share(:|%3A)[0-9a-f-]{36}&home=SAMPLE-1002/);
   let home = homeIn(agent, TAMSEN);
   await expect(home).toBeInViewport({ ratio: 0.9 });
-  const names = [/^Comments/, "Feedback", "Send to a client", "More options"];
-  const rail = home.locator("[data-rail]");
+  const names = [/…$/, /^Comments/, "Feedback", "More options"];
+  const rail = home.locator("[data-bar-row]");
   await expect(rail.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(rail.getByRole("button").nth(i)).toHaveAccessibleName(name);
   await expect(home.getByRole("button", { name: /^Saved? / })).toHaveCount(0);
@@ -236,10 +243,10 @@ test("the Porchcard is an agent's, going through a link's homes or a client's: n
   const jamie = await signedIn(browser);
   await jamie.goto(url);
   const onLink = homeIn(jamie, TAMSEN);
-  const linkNames = [/^Comments/, "More options"];
-  await expect(onLink.locator("[data-rail]").getByRole("button")).toHaveCount(linkNames.length);
+  const linkNames = [/what you think…$/, /^Comments/, "More options"];
+  await expect(onLink.locator("[data-bar-row]").getByRole("button")).toHaveCount(linkNames.length);
   for (const [i, name] of linkNames.entries()) {
-    await expect(onLink.locator("[data-rail]").getByRole("button").nth(i)).toHaveAccessibleName(name);
+    await expect(onLink.locator("[data-bar-row]").getByRole("button").nth(i)).toHaveAccessibleName(name);
   }
   await expect(porchcardOf(jamie)).toHaveCount(0);
   await Promise.all([kept(jamie), heartOf(onLink).click()]);
@@ -261,7 +268,8 @@ test("the Porchcard is an agent's, going through a link's homes or a client's: n
     await agent.reload();
     await expect(open).toHaveAttribute("href", /^\/reel\?from=client%3A[\w-]+&home=SAMPLE-1002/, { timeout: 1500 });
   }).toPass({ timeout: 30_000 });
-  await open.click();
+  // (By its top corner: the photos in the middle swipe, and open it themselves.)
+  await open.click({ position: { x: 20, y: 20 } });
   await agent.waitForURL(/\/reel\?from=client%3A[\w-]+&home=SAMPLE-1002/);
   const popout = agent.getByRole("dialog", { name: "Homes" });
   home = homeIn(popout, TAMSEN);

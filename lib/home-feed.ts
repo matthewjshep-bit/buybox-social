@@ -3,12 +3,11 @@ import type { Account } from "./auth";
 import { sql } from "./db";
 import { getReel, type FeedPost } from "./feed";
 import { getFollowedIds } from "./follows";
-import { buildCards, getProfilePerson, getProfileRows, withoutPasses, type ProfileCard } from "./profile";
+import { buildCards, cardPhotos, getProfilePerson, getProfileRows, withoutPasses, type CardPhoto, type ProfileCard } from "./profile";
 import type { ReactionState } from "./reactions";
 import { getTaste } from "./taste";
 import { isProKind, listingWords } from "./kinds";
 import type { Listing } from "./listings/types";
-import { isVideoMedia } from "./own-listings";
 import { photoUrl } from "./person-photo";
 import { getPopularHomes, type PopularHome } from "./popular";
 import { US_STATES } from "./places";
@@ -36,7 +35,9 @@ export type FeedWho = {
 };
 
 // A home as a card shows it: the facts, and the photo it's about (the one
-// with the newest thing they liked, else the first), large.
+// with the newest thing they liked, else the first), large; then the rest of
+// its photos to swipe through (a few: full screen has them all), and how
+// many it has in all.
 type FeedHome = {
   key: string;
   address: string;
@@ -47,6 +48,8 @@ type FeedHome = {
   sqft: number;
   active: boolean;
   photo: { url: string; index: number; alt: string; width?: number; height?: number } | null;
+  photos: CardPhoto[];
+  photoCount: number;
 };
 
 // Why a home is in your feed, for the card and for the reel's take on it:
@@ -66,7 +69,9 @@ export type HomeFeedEntry = {
   home: FeedHome;
   why: FeedWhy;
   // What was said, with who said it, newest first: the card's quote bubbles.
-  said: { who: FeedWho; body: string }[];
+  // (From someone's page: who it answered, and the spot or fact it's about,
+  // as their page says it.)
+  said: { who: FeedWho; body: string; replyTo?: ProfileCard["comments"][number]["replyTo"]; spot?: ProfileCard["comments"][number]["spot"] }[];
   // Whether anyone liked it, rather than only saying something about it.
   liked: boolean;
   // Not from anyone you follow: why it's here instead.
@@ -136,18 +141,28 @@ function entriesOf(takes: Take[]): HomeFeedEntry[] {
       const who = [...newest.filter(likedIt), ...newest.filter((take) => !likedIt(take))].map((take) => take.who);
       const top = newest[0].card;
       const said = newest
-        .flatMap((take) => take.card.comments.map((comment) => ({ who: take.who, body: comment.body, at: comment.at })))
+        .flatMap((take) =>
+          take.card.comments.map((comment) => ({
+            who: take.who,
+            body: comment.body,
+            at: comment.at,
+            replyTo: comment.replyTo,
+            spot: comment.spot,
+          })),
+        )
         .sort((a, b) => b.at.localeCompare(a.at))
         .slice(0, QUOTES)
-        .map(({ who, body }) => ({ who, body }));
+        .map(({ who, body, replyTo, spot }) => ({ who, body, replyTo, spot }));
       // The photo with the newest thing anyone liked or said something about
-      // in it, else the newest card's (the home's first photo).
-      const photo = newest.find((take) => take.card.pins.length > 0)?.card.photo ?? top.photo;
+      // in it, else the newest card's (the home's first photo), and the rest
+      // of the photos after it.
+      const lead = newest.find((take) => take.card.pins.length > 0)?.card ?? top;
+      const photo = lead.photo;
       return {
         id,
         at: top.at,
         day: top.day,
-        home: { ...top.home, photo },
+        home: { ...top.home, photo, photos: lead.photos, photoCount: lead.photoCount },
         why: {
           key: top.home.key,
           who,
@@ -170,10 +185,12 @@ async function followingEntries(visitorId: string | null): Promise<HomeFeedEntry
   return entriesOf(takes).slice(0, FEED_MOST);
 }
 
-// A home as a card shows it, from the listing: its first photo, large.
+// A home as a card shows it, from the listing: its first photo, large, and
+// the rest after it.
 function feedHomeOf(listing: Listing): FeedHome {
-  const photos = [...(listing.Media ?? [])].sort((a, b) => a.Order - b.Order).filter((media) => !isVideoMedia(media));
-  const first = photos[0];
+  const sorted = { ...listing, Media: [...(listing.Media ?? [])].sort((a, b) => a.Order - b.Order) };
+  const swipe = cardPhotos(sorted);
+  const first = swipe.photos[0];
   return {
     key: listing.ListingKey,
     address: listing.UnparsedAddress,
@@ -183,15 +200,9 @@ function feedHomeOf(listing: Listing): FeedHome {
     baths: listing.BathroomsTotalInteger ?? 0,
     sqft: listing.LivingArea ?? 0,
     active: listing.StandardStatus === "Active",
-    photo: first
-      ? {
-          url: first.MediaURL,
-          index: 0,
-          alt: first.ShortDescription ?? `${listing.UnparsedAddress}, photo 1`,
-          width: first.ImageWidth,
-          height: first.ImageHeight,
-        }
-      : null,
+    photo: first ?? null,
+    photos: swipe.photos,
+    photoCount: swipe.count,
   };
 }
 
@@ -209,7 +220,7 @@ function entryOf(
     at,
     day: at.slice(0, 10),
     home,
-    why: { key: home.key, who: why.who ?? [], sentence: why.sentence ?? "", quotes: (why.said ?? []).map((quote) => quote.body), photo: 0 },
+    why: { key: home.key, who: why.who ?? [], sentence: why.sentence ?? "", quotes: (why.said ?? []).map((quote) => quote.body), photo: home.photo?.index ?? 0 },
     said: why.said ?? [],
     liked: false,
     ...(why.reason && { reason: why.reason }),

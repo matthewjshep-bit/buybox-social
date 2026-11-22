@@ -361,7 +361,8 @@ test("the owner makes an agent, fills their profile, adds a listing with a photo
 
   // Nora signs in with her email (any case): the same account, an agent, her listing there.
   const nora = await testSignIn(browser, email.toUpperCase());
-  await expect(nora).toHaveURL(/\/dashboard/);
+  // (Home, like everyone, not her Clients page.)
+  await expect.poll(() => new URL(nora.url()).pathname).toBe("/");
   await nora.goto("/dashboard/listings");
   await expect(nora.getByRole("main")).toContainText(address);
   await nora.goto("/people/me");

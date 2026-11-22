@@ -87,7 +87,8 @@ test("an agent's home is everyone's home, a feed with nothing of their clients o
   await expect(card.getByRole("textbox", { name: "Reply to Jo" })).toBeVisible();
   const open = card.getByRole("link", { name: /^1204 Quillan St SE: / });
   await expect(open).toHaveAttribute("href", /^\/reel\?from=client%3A[\w-]+&home=SAMPLE-\d+/);
-  await open.click();
+  // (By its top corner: the photos in the middle swipe, and open it themselves.)
+  await open.click({ position: { x: 20, y: 20 } });
   await agent.waitForURL(/\/reel\?from=client%3A[\w-]+&home=SAMPLE-/);
   const popout = agent.getByRole("dialog", { name: "Homes" });
   await expect(homeIn(popout, "1204 Quillan St SE")).toBeInViewport({ ratio: 0.9 });
@@ -140,7 +141,11 @@ test("an agent's home is everyone's home, a feed with nothing of their clients o
   const fromAgent = jo.getByRole("region", { name: "1 new home for you" });
   await expect(fromAgent).toContainText("From Fern Feed");
   await expect(fromAgent).toContainText("1 of 2 rated");
-  await expect(fromAgent.getByRole("link", { name: /^See them/ })).toHaveAttribute("href", link);
+  // See them opens her link on the home still waiting, not the one she rated.
+  await expect(fromAgent.getByRole("link", { name: /^See them/ })).toHaveAttribute(
+    "href",
+    new RegExp(`^${link}\\?home=SAMPLE-\\d+$`),
+  );
   // Fern's answer is there too.
   await expect(fromAgent).toContainText("Fern: Yes, it was finished in 2019.");
   // And from anywhere, under her initial.

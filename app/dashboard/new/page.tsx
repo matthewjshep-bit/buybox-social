@@ -2,7 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { requireAgent } from "@/lib/auth";
 import { ensureAccountVisitor } from "@/lib/public";
-import { homesToOffer, homesToSend } from "@/lib/send-search";
+import { homesToSend } from "@/lib/send-search";
+import { sendHomesOffer, type SendOffer } from "@/lib/send-suggestions";
 import { sql } from "@/lib/db";
 import type { Listing } from "@/lib/listings/types";
 import { linkTitle } from "@/lib/people-picker";
@@ -10,6 +11,8 @@ import { ShareBuilder } from "./builder";
 import { listingWords } from "@/lib/kinds";
 
 export const metadata = { title: "Send homes · Porchcard" };
+
+const NO_OFFER: SendOffer = { mine: [], touched: [], more: [] };
 
 // Picks homes for a new client link, or (with ?share=) adds homes to an existing one.
 // With ?home=, that home is already picked: the longer way to send one home.
@@ -43,16 +46,25 @@ export default async function NewSharePage({
 
   const query = (typeof q === "string" ? q : "").trim().slice(0, 100);
   const me = await ensureAccountVisitor(agent);
-  const [[start], results, offer] = await Promise.all([
-    // Only a home still for sale; anything else and the usual search shows.
+  // Only a home still for sale; anything else and the usual search shows.
+  const findStart: Promise<{ data: Listing }[]> =
     !addTo && typeof homeKey === "string" && homeKey.length <= 100
-      ? sql<{ data: Listing }[]>`
-          select data from listings where listing_key = ${homeKey} and standard_status = 'Active'`
-      : [],
-    // (Asked for by address in the page's own address, the old way: still answered.)
-    query ? homesToSend(agent.id, query, { onLink }) : [],
-    // Before anything's typed: their own listings, and homes they've had to do with.
-    homesToOffer(agent, me.id, { onLink }),
+      ? Promise.resolve(sql<{ data: Listing }[]>`
+          select data from listings where listing_key = ${homeKey} and standard_status = 'Active'`)
+      : Promise.resolve([]);
+  // (Asked for by address in the page's own address, the old way: still answered.)
+  const findResults: Promise<Listing[]> = query ? homesToSend(agent.id, query, { onLink }) : Promise.resolve([]);
+  const [[start], results, offer] = await Promise.all([
+    findStart,
+    findResults,
+    // Before anything's typed: their own listings, homes they've had to do
+    // with, then more to send (near them, popular, new), so it's never empty.
+    // The page shows these only when there's no home to start with and
+    // nothing found by address, so they're looked for only then. (With
+    // nothing asked for, as is usual, both answers are already there.)
+    Promise.all([findStart, findResults]).then(([[found], foundByAddress]) =>
+      found || foundByAddress.length > 0 ? NO_OFFER : sendHomesOffer(agent, me.id, { onLink }),
+    ),
   ]);
 
   return (
@@ -76,6 +88,7 @@ export default async function NewSharePage({
       groups={[
         { title: `Your ${listingWords(agent.kind).many}`, homes: offer.mine },
         { title: "Homes you've liked, saved or sent", homes: offer.touched },
+        { title: "Homes to send", homes: offer.more },
       ].filter((group) => group.homes.length > 0)}
       addTo={addTo}
       start={start?.data}

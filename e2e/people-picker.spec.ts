@@ -326,7 +326,8 @@ test("a home from Send named for Toby: whoever opens it as Toby is Toby, once; a
   test.setTimeout(120_000);
   const agent = await signInAgent(browser, "tad-toby@example.com", "Tad Sender");
   await readyToSend(agent);
-  const send = homeIn(agent, "96 Fernhollow Ln").getByRole("button", { name: "Send to a client", exact: true });
+  // (Send, on the photo's corner.)
+  const send = homeIn(agent, "96 Fernhollow Ln").getByRole("button", { name: "Send 96 Fernhollow Ln", exact: true });
   const sheet = agent.getByRole("dialog", { name: "Sent. Who's it for?" });
 
   await send.click();

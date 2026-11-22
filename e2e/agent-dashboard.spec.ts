@@ -914,8 +914,10 @@ test("on a phone, picked homes stay in view whatever the search, and a bar leads
   const next = agent.getByRole("button", { name: "Next", exact: true });
   const tray = agent.getByRole("list", { name: "Picked homes" });
   const pageWidth = () => agent.evaluate(() => document.documentElement.scrollWidth);
-  // New here, with no listings and nothing liked or sent: no homes listed until they type.
-  await expect(cards).toHaveCount(0);
+  // New here, with no listings and nothing liked or sent: still homes to
+  // pick from, under the box, before anything's typed.
+  await expect(agent.getByRole("region", { name: "Homes to send" })).toBeVisible();
+  await expect(cards.first()).toBeVisible();
   await expect(next).toHaveCount(0);
 
   await pickHome(agent, "1204 Quillan");

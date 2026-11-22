@@ -33,10 +33,12 @@ test("the test password signs in as an account already there, or a new one, and 
   await expect(form.getByRole("alert")).toHaveText("That isn't the test password.");
   await expect(page).toHaveURL(/\/login$/);
 
-  // The password: the agent's own account, straight to their dashboard.
+  // The password: the agent's own account, on Home like everyone.
   await form.getByLabel("Test password").fill(PASSWORD);
   await form.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("**/dashboard");
+  await page.waitForURL((url) => url.pathname === "/");
+  // (Her Clients page is a tap away in the bar.)
+  await expect(page.getByRole("banner").getByRole("link", { name: "Clients", exact: true })).toBeVisible();
   // (Robin's face is the photo she added on signing up.)
   const me = page.getByRole("banner").getByRole("button", { name: "Account menu" });
   await expect(me.locator("img")).toBeVisible();

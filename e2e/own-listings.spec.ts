@@ -103,8 +103,9 @@ test("an agent adds a listing with photos; it leads their profile, opens full sc
   const tile = grid.getByRole("link", { name: new RegExp(ADDRESS) });
   await expect(tile).toContainText("$425,000");
   await expect(tile).toHaveAttribute("href", new RegExp(`^/reel\\?from=listings%3A[\\w-]+&home=${key}$`));
-  // Its photo is served as a plain image.
-  const src = await tile.locator("img").getAttribute("src");
+  // Its photo is served as a plain image. (The photos sit beside the words'
+  // link: they swipe, and open it themselves.)
+  const src = await grid.getByRole("group", { name: `Photos of ${ADDRESS}` }).locator("img").first().getAttribute("src");
   expect(src).toContain("listing-photo");
   // Not in the homes everyone browses, nor in a search for its street.
   expect(await (await visitor.request.get("/reel")).text()).not.toContain(ADDRESS);
@@ -113,7 +114,10 @@ test("an agent adds a listing with photos; it leads their profile, opens full sc
   await visitor.goto(`/homes/${key}`);
   const home = visitor.getByRole("article", { name: ADDRESS });
   await expect(home).toContainText("$425,000");
-  await expect(home).toContainText("Listed by Liv Listings");
+  // (Who listed it is in More.)
+  await home.getByRole("button", { name: "More options" }).click();
+  await expect(visitor.getByRole("dialog", { name: "More" })).toContainText("Listed by Liv Listings");
+  await visitor.keyboard.press("Escape");
 
   // The price changed; then hidden: off the profile, still theirs.
   await agent.goto(editUrl);

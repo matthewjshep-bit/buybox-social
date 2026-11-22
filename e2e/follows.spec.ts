@@ -1,8 +1,26 @@
-import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, signInAgent, signUpBuyer } from "./helpers";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import { commentIn, createShare, heartOf, homeIn, joinAs, openComments, signInAgent, signUpBuyer } from "./helpers";
 
 const saved = (page: Page) =>
   page.waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
+
+// A finger's swipe to the left across something: Chromium's own touch
+// gesture, so the browser scrolls it just as it would under a thumb.
+async function swipeLeft(target: Locator) {
+  const page = target.page();
+  await target.scrollIntoViewIfNeeded();
+  const box = (await target.boundingBox())!;
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Input.synthesizeScrollGesture", {
+    x: Math.round(box.x + box.width * 0.8),
+    y: Math.round(box.y + box.height / 2),
+    xDistance: -Math.round(box.width * 0.6),
+    yDistance: 0,
+    gestureSourceType: "touch",
+    speed: 1600,
+  });
+  await cdp.detach();
+}
 
 // Someone's own page, from wherever they are.
 async function pageOf(page: Page) {
@@ -47,8 +65,9 @@ test("following: from someone's page, what they like comes first in your feed, a
   const item = bo.getByRole("listitem").filter({ has: card });
   await expect(item.getByRole("link", { name: "Ana", exact: true })).toHaveAttribute("href", anaPage);
   // Tapped, the feed's homes open in a pop-out over it, on that one, saying
-  // it's her; its X closes it, back to the feed.
-  await card.click();
+  // it's her; its X closes it, back to the feed. (Tapped by its top corner:
+  // the photos in the middle swipe, and open it themselves.)
+  await card.click({ position: { x: 20, y: 20 } });
   await bo.waitForURL(/\/reel\?from=feed&home=/);
   const popout = bo.getByRole("dialog", { name: "Homes" });
   const opened = popout.getByRole("article", { name: address });
@@ -181,11 +200,78 @@ test("the Following stream: one card per home however many people liked it, only
   await expect(heart).toHaveAttribute("aria-pressed", "true");
 
   // The card opens the stream's homes in the pop-out, on that one.
-  await card.click();
+  await card.click({ position: { x: 20, y: 20 } });
   await dee.waitForURL(/\/reel\?from=feed&home=SAMPLE-1002/);
   await expect(dee.getByRole("dialog", { name: "Homes" }).getByRole("article", { name: TAMSEN })).toBeInViewport({
     ratio: 0.9,
   });
+});
+
+test("in the feed, a day someone only commented leads with what they said, and the home's photos swipe right there", async ({
+  browser,
+}) => {
+  test.setTimeout(150_000);
+  const CORBEL = "812 N Corbel St";
+  // Gus says something about a home, and nothing more.
+  const gus = await signUpBuyer(browser, "gus.said@example.com", "Gus Said");
+  const gusPage = await pageOf(gus);
+  await gus.goto("/homes/SAMPLE-1003");
+  const sheet = await openComments(gus, homeIn(gus, CORBEL));
+  await sheet.getByLabel("Add a comment").fill("Is the porch covered?");
+  await sheet.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(sheet).toContainText("Is the porch covered?");
+
+  // Hal follows him.
+  const hal = await signUpBuyer(browser, "hal.said@example.com", "Hal Said");
+  await hal.goto(gusPage);
+  await Promise.all([saved(hal), hal.getByRole("button", { name: "Follow Gus" }).click()]);
+  await expect(hal.getByRole("button", { name: "Following Gus" })).toBeVisible();
+
+  // One line at the top: who, what he said, when; not said again under the photo.
+  await hal.goto("/");
+  const item = hal
+    .getByRole("listitem")
+    .filter({ has: hal.getByRole("link", { name: `${CORBEL}: Gus commented on this home`, exact: true }) });
+  await expect(item.locator("[data-card-line]")).toHaveText(/^Gus commented “Is the porch covered\?”\s·\s/);
+  await expect(item.getByText("Is the porch covered?").filter({ visible: true })).toHaveCount(1);
+
+  // Its photos swipe on the card, and the feed stays where it is.
+  const photos = item.getByRole("group", { name: `Photos of ${CORBEL}` });
+  await expect(photos.locator("[data-photo-count]")).toHaveText("1 of 3");
+  await swipeLeft(photos);
+  await expect(photos.locator("[data-photo-count]")).toHaveText("2 of 3");
+  await expect(hal).toHaveURL(/\/$/);
+
+  // A reply says whom it answered, in the feed as on his own page.
+  const TAMSEN = "1880 Tamsen Ridge Pl SE";
+  const ivy = await signUpBuyer(browser, "ivy.said@example.com", "Ivy Said");
+  await ivy.goto("/homes/SAMPLE-1002");
+  const ivyChat = await openComments(ivy, homeIn(ivy, TAMSEN));
+  await ivyChat.getByLabel("Add a comment").fill("Love the yard.");
+  await ivyChat.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(ivyChat).toContainText("Love the yard.");
+  await gus.goto("/homes/SAMPLE-1002");
+  const gusChat = await openComments(gus, homeIn(gus, TAMSEN));
+  await commentIn(gusChat, "Ivy", "Love the yard.").getByRole("button", { name: "Reply to Ivy", exact: true }).click();
+  await gusChat.getByLabel("Reply to Ivy").fill("Same here.");
+  await gusChat.getByRole("button", { name: "Post", exact: true }).first().click();
+  await expect(gusChat.getByRole("list", { name: "Replies to Ivy" }).getByText("Same here.")).toBeVisible();
+  await gus.goto(gusPage);
+  await expect(
+    gus
+      .getByRole("listitem")
+      .filter({ has: gus.getByRole("link", { name: `${TAMSEN}: commented on this home`, exact: true }) })
+      .locator("[data-card-line]"),
+  ).toHaveText(/^You replied to Ivy “Same here\.”\s·\s/);
+  await hal.goto("/");
+  const reply = hal
+    .getByRole("listitem")
+    .filter({ has: hal.getByRole("link", { name: `${TAMSEN}: Gus commented on this home`, exact: true }) });
+  await expect(reply.locator("[data-card-line]")).toHaveText(/^Gus replied to Ivy “Same here\.”\s·\s/);
+  await expect(reply.locator("[data-card-line]").getByRole("link", { name: "Ivy", exact: true })).toHaveAttribute(
+    "href",
+    /^\/people\/[0-9a-f-]{36}$/,
+  );
 });
 
 test("an agent's clients are in neither list nor either number to anyone else; the agent and each client still see each other", async ({

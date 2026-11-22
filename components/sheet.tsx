@@ -12,6 +12,10 @@ const HEADER = 56;
 // there's no room for two heights: a sheet with them opens just under the
 // header, so the comment box, who sees it, and a comment or two all show.
 const SHORT = 520;
+// For this long after it opens over the page, a tap above it or a drag
+// doesn't close it, and (as it slides up) what's in it can't be pressed.
+const OPEN_GUARD = 450;
+const SETTLING = 300;
 
 // How far a notch reaches down from the top of the screen, if there is one.
 function notch() {
@@ -23,16 +27,23 @@ function notch() {
   return at;
 }
 
-// How much of the window's foot a phone's on-screen keyboard covers, and how
-// far the page has been slid up under it. A phone doesn't shrink the window
-// for its keyboard: without this, a sheet's foot (the comment box, Continue)
-// sits underneath it. (Zoomed in, the visible part is smaller for another
-// reason: left alone.)
-function keyboard() {
+// The part of the screen that can be seen, in the terms `position: fixed`
+// uses: its top (`top`, the page slid up under a keyboard), where it ends
+// (`foot`), and where `bottom: 0` would put a sheet's foot (`fixedFoot`). A
+// phone doesn't shrink the window for its keyboard, and Safari's toolbar can
+// float over the page's foot: without this, a sheet's foot (the comment box,
+// Continue) sits under either. Measured, not taken from `innerHeight`, which
+// a phone's browser doesn't always keep in step with where `bottom: 0` is.
+// (Zoomed in, the visible part is smaller for another reason: left alone.)
+function seen() {
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:fixed;left:0;bottom:0;width:0;height:0;visibility:hidden;pointer-events:none";
+  document.body.append(probe);
+  const fixedFoot = probe.getBoundingClientRect().top;
+  probe.remove();
   const view = window.visualViewport;
-  if (!view || Math.abs(view.scale - 1) > 0.01) return { covers: 0, top: 0 };
-  const covers = innerHeight - view.offsetTop - view.height;
-  return covers > 60 ? { covers, top: view.offsetTop } : { covers: 0, top: 0 };
+  if (!view || Math.abs(view.scale - 1) > 0.01) return { top: 0, foot: fixedFoot, fixedFoot };
+  return { top: view.offsetTop, foot: Math.min(fixedFoot, view.offsetTop + view.height), fixedFoot };
 }
 
 // The keyboard goes back to what opened a sheet, as soon as that can take it
@@ -150,6 +161,11 @@ export function Sheet({
     returnRef.current = returnTo;
   });
   const minTop = detents?.minTop;
+  // When it last opened over the page. The tap that opened it is often one
+  // of two (a double tap, or a second, slower one): what follows straight
+  // after mustn't close it again, or press what's slid up under the finger.
+  const openedAt = useRef(-Infinity);
+  const justOpened = () => performance.now() - openedAt.current < OPEN_GUARD;
 
   const anchorBox = () => anchor?.current?.getBoundingClientRect() ?? new DOMRect(0, 0, innerWidth, innerHeight);
   // Where its top goes at each height, on screen.
@@ -181,14 +197,19 @@ export function Sheet({
     el.style.left = `${box.left + (box.width - width) / 2}px`;
     el.style.top = "";
     el.style.width = `${width}px`;
-    // Above a phone's keyboard when it's up, and no taller than what's left.
-    const keys = keyboard();
-    const foot = Math.max(0, innerHeight - box.bottom, keys.covers);
-    const room = keys.covers ? innerHeight - foot - keys.top - 8 : Infinity;
-    el.style.bottom = `${foot}px`;
+    // Its foot on what can be seen: above a phone's keyboard when it's up
+    // (and a toolbar over the page's foot), and no taller than what's left,
+    // so the box being typed in and the button under it stay in reach (what
+    // doesn't fit scrolls, inside it).
+    const view = seen();
+    notchAt.current ??= notch();
+    const footAt = Math.min(box.bottom, view.foot);
+    const lift = Math.max(0, view.fixedFoot - footAt);
+    const room = footAt - Math.max(view.top, view.top === 0 ? notchAt.current : 0) - 8;
+    el.style.bottom = `${lift}px`;
     // Rising from a box above the window's foot (the white panel), its
     // bottom corners follow the box's round ones.
-    el.style.borderBottomLeftRadius = el.style.borderBottomRightRadius = innerHeight - box.bottom > 1 ? "1rem" : "";
+    el.style.borderBottomLeftRadius = el.style.borderBottomRightRadius = view.fixedFoot - box.bottom > 1 ? "1rem" : "";
     if (minTop !== undefined) {
       const { medium, large } = tops(box);
       setOneHeight(medium === large);
@@ -244,19 +265,46 @@ export function Sheet({
       } else {
         place(el);
         el.showModal();
+        openedAt.current = performance.now();
       }
     } else {
       place(el);
     }
     const resize = () => place(el);
+    // A phone's keyboard coming up or going away (the window itself doesn't
+    // change): placed over it, and the box being typed in scrolled into
+    // sight inside the sheet, should the sheet now be shorter than it.
+    // Only the sheet's own scrolling box moves: `scrollIntoView` would scroll
+    // the page under it too, fighting Safari's own scroll to the box as the
+    // keyboard rises, and leaving the sheet out of place until it settles.
+    const keys = () => {
+      place(el);
+      const typing = document.activeElement;
+      if (!(typing instanceof HTMLElement) || !el.contains(typing) || !typing.matches("input, textarea, select")) return;
+      for (let box = typing.parentElement; box && el.contains(box); box = box.parentElement) {
+        if (box.scrollHeight <= box.clientHeight || !/auto|scroll/.test(getComputedStyle(box).overflowY)) continue;
+        const at = typing.getBoundingClientRect();
+        const room = box.getBoundingClientRect();
+        if (at.top < room.top + 8) box.scrollTop -= room.top + 8 - at.top;
+        else if (at.bottom > room.bottom - 8) box.scrollTop += at.bottom - (room.bottom - 8);
+        break;
+      }
+    };
+    // Pressable once it has slid up (the Close button, and Escape, at once).
+    const settling = docked ? 0 : SETTLING - (performance.now() - openedAt.current);
+    if (settling > 0) el.dataset.opening = "";
+    const settled = setTimeout(() => {
+      delete el.dataset.opening;
+    }, Math.max(0, settling));
     window.addEventListener("resize", resize);
-    // A phone's keyboard coming up or going away (the window itself doesn't change).
     const view = window.visualViewport;
-    view?.addEventListener("resize", resize);
+    view?.addEventListener("resize", keys);
     view?.addEventListener("scroll", resize);
     return () => {
+      clearTimeout(settled);
+      delete el.dataset.opening;
       window.removeEventListener("resize", resize);
-      view?.removeEventListener("resize", resize);
+      view?.removeEventListener("resize", keys);
       view?.removeEventListener("scroll", resize);
     };
     // `place` reads only what's listed.
@@ -351,13 +399,14 @@ export function Sheet({
         dismiss();
       }}
       onClick={(event) => {
-        if (!docked && event.target === event.currentTarget) dismiss();
+        if (!docked && event.target === event.currentTarget && !justOpened()) dismiss();
       }}
       className={cn(
-        "inset-auto m-0 max-w-none flex-col overflow-hidden bg-white p-0 text-ink open:flex motion-reduce:open:animate-none",
+        "group/sheet inset-auto m-0 max-w-none flex-col overflow-hidden bg-white p-0 text-ink open:flex motion-reduce:open:animate-none",
         docked
           ? "absolute z-30 rounded-2xl shadow-[-8px_0_40px_rgb(0_0_0/0.25)] open:animate-[sheet-in_260ms_cubic-bezier(0.2,0.8,0.2,1)]"
-          : "fixed rounded-t-3xl shadow-[0_-8px_40px_rgb(0_0_0/0.25)] backdrop:bg-black/25 open:animate-[sheet-up_260ms_cubic-bezier(0.2,0.8,0.2,1)]",
+          : // (Never taller than the screen with a phone's browser bars showing, whatever it's told.)
+            "fixed max-h-[calc(100svh-env(safe-area-inset-top))] rounded-t-3xl shadow-[0_-8px_40px_rgb(0_0_0/0.25)] backdrop:bg-black/25 open:animate-[sheet-up_260ms_cubic-bezier(0.2,0.8,0.2,1)]",
         className,
       )}
     >
@@ -422,9 +471,11 @@ export function Sheet({
             const el = dialog.current;
             if (!moved || !el) return;
             const speed = moved.dy / Math.max(1, event.timeStamp - moved.at);
-            const flickDown = moved.dy > 30 && speed > 0.6;
+            // (Just opened, it's a second tap, or a slip: never closing.)
+            const flickDown = moved.dy > 30 && speed > 0.6 && !justOpened();
+            const away = !justOpened();
             if (minTop === undefined) {
-              if (moved.dy > 110 || flickDown) return dismiss();
+              if ((moved.dy > 110 && away) || flickDown) return dismiss();
               el.style.transition = "transform 200ms ease-out";
               el.style.transform = "";
               return;
@@ -433,7 +484,7 @@ export function Sheet({
             if (moved.handle && Math.abs(moved.dy) < 6) return switchHeight();
             const { medium, large } = tops(anchorBox());
             const top = moved.top + moved.dy;
-            if (top > medium + 110 || (flickDown && detent.current === "medium")) return dismiss();
+            if ((top > medium + 110 && away) || (flickDown && detent.current === "medium")) return dismiss();
             const flickUp = moved.dy < -30 && speed < -0.6;
             toDetent(flickUp ? "large" : flickDown ? "medium" : top - large < medium - top ? "large" : "medium");
             settleAt(el);
@@ -481,7 +532,7 @@ export function Sheet({
       <div
         ref={bodyRef}
         className={cn(
-          "min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2",
+          "min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 group-data-opening/sheet:pointer-events-none",
           // At the foot of the screen, with nothing under it: clear of a
           // phone's home bar, as the footer is when there is one.
           !docked && (!footer || footerHidden) ? "pb-[max(1rem,env(safe-area-inset-bottom))]" : "pb-4",
@@ -493,7 +544,7 @@ export function Sheet({
         <div
           hidden={footerHidden}
           className={cn(
-            "shrink-0 bg-white",
+            "shrink-0 bg-white group-data-opening/sheet:pointer-events-none",
             docked
               ? "border-t border-stone-200 p-3"
               : "border-t border-stone-100 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2",

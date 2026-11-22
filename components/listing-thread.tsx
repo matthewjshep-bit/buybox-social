@@ -63,7 +63,9 @@ type SpotLinks = { name: (spot: SpotRef) => string; show: (spot: SpotRef) => voi
 // see your comment and first name." `private`: only some people (a lock).
 export type SeenBy = { text: string; private: boolean };
 
-type ThreadValue = { actions: ThreadActions; ensureName: () => Promise<boolean>; seenBy?: SeenBy };
+// `canReact`: they can like and say things now (signed in, or just joined).
+// Anyone else is asked to sign up first, before anything else opens.
+type ThreadValue = { actions: ThreadActions; ensureName: () => Promise<boolean>; seenBy?: SeenBy; canReact: boolean };
 const ThreadContext = createContext<ThreadValue | null>(null);
 
 export const useThread = () => {
@@ -106,20 +108,36 @@ export function NameGate({
   const router = useRouter();
   const nameBox = useRef<HTMLInputElement>(null);
   const resolver = useRef<((joined: boolean) => void) | null>(null);
+  // How it ended, said once the sheet has gone (see `finish`).
+  const outcome = useRef<boolean | null>(null);
   const joined = useRef(false);
+  // The same, for what's drawn: once joined, a tap does what it says.
+  const [joinedNow, setJoinedNow] = useState(false);
+  const markJoined = () => {
+    joined.current = true;
+    setJoinedNow(true);
+  };
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   // A page and the pop-out over it can each have one of these.
   const id = useId();
 
   const ask = (as: "join" | "name") => {
-    // Open, and the cursor in the first box, in the same tap: a phone only
-    // shows its keyboard for that.
+    outcome.current = null;
     flushSync(() => {
       setError(null);
       setMode(as);
       setAsking(true);
     });
+    // With a mouse, the cursor starts in the first box. On a touchscreen the
+    // whole sheet shows first, with the keyboard down, so nothing of it is
+    // hidden under the keyboard before it's read; a tap on a box brings the
+    // keyboard up, and the sheet rises over it.
+    if (!matchMedia("(pointer: fine)").matches) {
+      return new Promise<boolean>((resolve) => {
+        resolver.current = resolve;
+      });
+    }
     const first = as === "name" ? nameBox.current : document.querySelector<HTMLInputElement>(`[data-join="${id}"] input`);
     first?.focus();
     first?.select();
@@ -134,21 +152,35 @@ export function NameGate({
     // Signed in, and new to this conversation: in by their account's name.
     const result = await actions.join("").catch(() => ({ ok: false as const, error: "" }));
     if (result.ok) {
-      joined.current = true;
+      markJoined();
       router.refresh();
       return true;
     }
     return ask("name");
   };
+  const canReact = signedIn || joinedNow;
 
+  // Whatever was waiting on it goes on only once the sheet has shut and
+  // given the keyboard back (to what opened it): what opens next (the
+  // comments) then starts from there, and gives the keyboard back there
+  // when it closes, rather than to a box in the sheet that's gone.
+  // (The first word is the one that counts: the sheet's own close, after
+  // joining, comes after it.)
   const finish = (result: boolean) => {
+    if (outcome.current !== null) return;
+    if (resolver.current) outcome.current = result;
     setAsking(false);
+  };
+  useEffect(() => {
+    if (asking || outcome.current === null) return;
+    const result = outcome.current;
+    outcome.current = null;
     resolver.current?.(result);
     resolver.current = null;
-  };
+  }, [asking]);
 
   return (
-    <ThreadContext.Provider value={{ actions, ensureName, seenBy }}>
+    <ThreadContext.Provider value={{ actions, ensureName, seenBy, canReact }}>
       {children}
       <Sheet
         open={asking}
@@ -176,7 +208,7 @@ export function NameGate({
                   const result = await actions.join(firstName ?? "").catch(() => ({ ok: false as const, error: "" }));
                   router.refresh();
                   if (result.ok) {
-                    joined.current = true;
+                    markJoined();
                     finish(true);
                   } else {
                     setError(result.error || "That didn't save. Try again.");
@@ -205,7 +237,7 @@ export function NameGate({
             startTransition(async () => {
               const result = await actions.join(name);
               if (result.ok) {
-                joined.current = true;
+                markJoined();
                 finish(true);
               } else {
                 setError(result.error);

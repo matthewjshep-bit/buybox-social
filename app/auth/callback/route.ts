@@ -34,8 +34,8 @@ export async function GET(request: NextRequest) {
       const account = await accountFor(proved, asked ? "agent" : "buyer");
       const fullName = await nameFromSignUp(account);
       const agent = account.role === "agent";
-      // An agent, with nowhere else asked for: straight to their dashboard.
-      const to = next ?? (agent ? "/dashboard" : "/");
+      // Nowhere else asked for: Home, agents too (Clients is a tap away).
+      const to = next ?? "/";
       // New here (they haven't said what they are), or a buyer with no
       // name yet: asked a step at a time, then on.
       if (!account.kind || (!agent && !fullName.trim())) {

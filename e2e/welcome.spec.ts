@@ -54,7 +54,8 @@ test("an investor joins a step at a time, wears an Investor chip, and their list
   await expect(page.getByText("Step 6 of 6")).toBeVisible();
   await page.getByRole("button", { name: "Plum" }).click();
   await page.getByRole("button", { name: "Finish" }).click();
-  await page.waitForURL("**/dashboard");
+  // Done: Home, like everyone.
+  await page.waitForURL((url) => url.pathname === "/");
 
   // Their own homes are deals: in the menu, on the page for them, and adding one.
   await page.getByRole("button", { name: "Account menu" }).click();
@@ -134,7 +135,7 @@ test("someone shopping for a home says so and their first name, and has no chip;
   await lender.waitForURL("**/welcome**");
   await expect(lender.getByRole("group", { name: "What brings you to Porchcard?" }).getByRole("button").first()).toHaveText(/^I'm an agent/);
   await throughWelcome(lender, "lender", { name: "Lee Lender", company: "Harbor Home Loans" });
-  await lender.waitForURL("**/dashboard");
+  await lender.waitForURL((url) => url.pathname === "/");
   await lender.goto("/people/me");
   await expect(lender.getByText("Lender", { exact: true })).toBeVisible();
 });

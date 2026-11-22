@@ -331,7 +331,7 @@ export async function setReaction(
   const actor = await resolveActor(token, listingKey);
   if (!actor) return fail("Please sign up or sign in first.");
   // The heart on a home is the client's say; the agent's is in their notes.
-  if ("preview" in actor) return fail("The heart is for your client. Tap the price, or anything in a photo, to leave a note.");
+  if ("preview" in actor) return fail("The heart is for your client. Tap anything in a photo to leave a note.");
 
   if (state.reaction === null) {
     await sql`

@@ -55,11 +55,13 @@ test("a quiet home, for an agent going through a link's homes: the rail's Porchc
   const home = await linkHomes(agent, dashboardUrl, "SAMPLE-1010", HERON);
   await settled(home);
 
-  // Like, Comments, Porchcard, Send, More, down the rail.
-  const rail = home.locator("[data-rail]");
-  const names = [/^Comments/, "Feedback", "Send to a client", "More options"];
+  // The comment bar with its count, then Feedback and More, in one row under
+  // the words (the heart, the X and Send are on the photo).
+  const rail = home.locator("[data-bar-row]");
+  const names = [/…$/, /^Comments/, "Feedback", "More options"];
   await expect(rail.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(rail.getByRole("button").nth(i)).toHaveAccessibleName(name);
+  await expect(home.getByRole("button", { name: `Send ${HERON}`, exact: true })).toBeVisible();
 
   // Nobody's said or liked anything: one card for it all, then the rest in order.
   const card = await openScorecard(agent, home);
@@ -107,11 +109,13 @@ test("for everyone else there's no Porchcard: Save is in its place, and the line
   const home = homeIn(page, HERON);
   await settled(home);
 
-  // Comments, Save, Share, More, down the rail. (The heart and the X are on the photo.)
-  const rail = home.locator("[data-rail]");
-  const names = [/^Comments/, `Save ${HERON}`, "Share", "More options"];
+  // The comment bar with its count, Save and More, in a row. (The heart, the
+  // X and Share are on the photo.)
+  const rail = home.locator("[data-bar-row]");
+  const names = ["Add a comment…", /^Comments/, `Save ${HERON}`, "More options"];
   await expect(rail.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(rail.getByRole("button").nth(i)).toHaveAccessibleName(name);
+  await expect(home.getByRole("button", { name: `Share ${HERON}`, exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
 
   // A like, and the line above the price says so: about the home as a whole,
@@ -200,17 +204,19 @@ test("public and private: a link's people, passes and words stay on the link, an
   await heartOf(wesHome).click();
   await expect(heartOf(wesHome)).toHaveAttribute("aria-pressed", "true");
   // No Porchcard for him: Save where it was, and the description's "more"
-  // opens the rest right there.
-  const wesRail = wesHome.locator("[data-rail]");
-  // (Signed in now, having said something: Send where a visitor has Share.)
-  const inPublic = [/^Comments/, `Save ${ALDER}`, "Send to someone", "More options"];
+  // opens the rest in More.
+  const wesRail = wesHome.locator("[data-bar-row]");
+  const inPublic = ["Add a comment…", /^Comments/, `Save ${ALDER}`, "More options"];
   await expect(wesRail.getByRole("button")).toHaveCount(inPublic.length);
   for (const [i, name] of inPublic.entries()) await expect(wesRail.getByRole("button").nth(i)).toHaveAccessibleName(name);
+  // (Signed in now, having said something: Send on the photo, where a visitor has Share.)
+  await expect(wesHome.getByRole("button", { name: `Send ${ALDER}`, exact: true })).toBeVisible();
   const wesMore = wesHome.getByRole("button", { name: "more", exact: true });
-  await expect(wesMore).toHaveAttribute("aria-expanded", "false");
+  await expect(wesMore).toHaveAttribute("aria-haspopup", "dialog");
   await wesMore.click();
-  await expect(wesHome.getByRole("button", { name: "less", exact: true })).toHaveAttribute("aria-expanded", "true");
+  await expect(wes.getByRole("dialog", { name: "More" })).toBeVisible();
   await expect(wes.getByRole("dialog", { name: "Feedback" })).toHaveCount(0);
+  await wes.keyboard.press("Escape");
   for (const path of ["/", "/homes/SAMPLE-1011"]) {
     const html = await (await wes.request.get(path)).text();
     expect(html).not.toContain(UMA_SAYS);
@@ -260,17 +266,19 @@ test("public and private: a link's people, passes and words stay on the link, an
   await settle(spot);
   await spot.getByRole("button", { name: "Close" }).click();
 
-  // The description's "more" opens the Porchcard at "About this home".
+  // The description's "more" opens More: all of it, every detail, who listed it.
   await tessHome.getByRole("button", { name: "more", exact: true }).click();
-  await expect(card).toBeVisible();
-  await expect(card.getByRole("heading", { name: "About this home" })).toBeInViewport();
+  const tessMore = tess.getByRole("dialog", { name: "More" });
+  await expect(tessMore).toBeVisible();
+  await expect(tessMore.getByRole("heading", { name: "About this home" })).toBeInViewport();
+  await expect(tessMore.getByText(/^Listed by /)).toBeVisible();
   await tess.keyboard.press("Escape");
 
   // On the link: Like, Comments and More down the side (no Share on a link
   // of one's own, nothing to save, and no Porchcard).
   await uma.reload();
-  const umaRail = homeIn(uma, ALDER).locator("[data-rail]");
-  const onLink = [/^Comments/, "More options"];
+  const umaRail = homeIn(uma, ALDER).locator("[data-bar-row]");
+  const onLink = [/what you think…$/, /^Comments/, "More options"];
   await expect(umaRail.getByRole("button")).toHaveCount(onLink.length);
   for (const [i, name] of onLink.entries()) await expect(umaRail.getByRole("button").nth(i)).toHaveAccessibleName(name);
   await expect(uma.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);

@@ -1,4 +1,4 @@
-import { Bookmark, Building2, House, Send, UserRoundSearch } from "lucide-react";
+import { Bookmark, Building2, House, ListChecks, Send, UserRoundSearch } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { HomeShell, ProfileRail, type RailLink } from "@/components/home/home-shell";
@@ -12,7 +12,7 @@ import type { ClientBook } from "@/lib/clients";
 import type { FollowCounts } from "@/lib/follows";
 import { cn } from "@/lib/format";
 import type { HomeFeedEntry } from "@/lib/home-feed";
-import type { MyLink } from "@/lib/my-links";
+import { hasRated, waitingLinks, type MyLink } from "@/lib/my-links";
 import type { FoundPerson } from "@/lib/people";
 import type { ReactionState } from "@/lib/reactions";
 import { button, card } from "@/lib/ui";
@@ -30,19 +30,32 @@ import { button, card } from "@/lib/ui";
 // (everything their clients did on the homes they were sent, theirs alone to
 // see).
 
-// "Bellevue · Kirkland · 3 of 9 rated"
-function metaOf(link: MyLink) {
+// "3 of 9 rated", then "Bellevue · Kirkland": the count first, so a narrow
+// phone cuts the cities, never how far along they are.
+function MetaOf({ link }: { link: MyLink }) {
   const rated = Math.max(0, link.homes - link.unrated);
-  return [...link.cities.slice(0, 3), `${rated} of ${link.homes} rated`].join(" · ");
+  const cities = link.cities.slice(0, 3).join(" · ");
+  return (
+    <p className="flex min-w-0 gap-1 text-meta text-white/90">
+      <span className="shrink-0">{`${rated} of ${link.homes} rated`}</span>
+      {cities && <span className="min-w-0 truncate">· {cities}</span>}
+    </p>
+  );
 }
 
+// Their link, opened on the first home still waiting, not on ones they've
+// already rated.
+const openOn = (link: MyLink) =>
+  link.firstWaiting ? `/s/${link.token}?home=${encodeURIComponent(link.firstWaiting)}` : `/s/${link.token}`;
+
 // The homes their agent sent, over a photo of one of them: how many are
-// waiting, and the agent's latest word.
+// waiting, and the agent's latest word. Only while some are waiting: once
+// they've rated them all it's gone, and those homes are under Rated homes.
 function FromYourAgent({ links }: { links: MyLink[] }) {
   const [link, ...others] = links;
   const first = link.agent.firstName || link.agent.name;
-  const title =
-    link.unrated > 0 ? `${link.unrated} new ${link.unrated === 1 ? "home" : "homes"} for you` : `Homes from ${first}`;
+  // (Only links with a home still waiting come here: waitingLinks.)
+  const title = `${link.unrated} new ${link.unrated === 1 ? "home" : "homes"} for you`;
   return (
     <section aria-labelledby="from-agent-title" className="flex flex-col gap-1.5">
       <div className="relative h-[184px] overflow-hidden rounded-2xl bg-stone-700 text-white">
@@ -52,22 +65,21 @@ function FromYourAgent({ links }: { links: MyLink[] }) {
         <div aria-hidden className="absolute inset-0 bg-linear-to-t from-black/80 via-black/35 to-black/5" />
         <div className="absolute inset-x-0 bottom-0 flex items-end gap-3 p-4">
           <div className="min-w-0 flex-1 [text-shadow:0_1px_3px_rgb(0_0_0/0.45)]">
-            {/* Who from, unless the title already says so. */}
             <p className="flex items-center gap-2 text-meta font-semibold">
               <Avatar name={link.agent.name} tone="agent" photo={link.agent.photo} size={6} className="ring-1 ring-white/60" />
-              {link.unrated > 0 && `From ${link.agent.name}`}
+              From {link.agent.name}
             </p>
             <h2 id="from-agent-title" className="mt-0.5 font-display text-2xl leading-tight">
               {title}
             </h2>
-            <p className="truncate text-meta text-white/90">{metaOf(link)}</p>
+            <MetaOf link={link} />
             {link.latestAgentReply && (
               <p className="truncate text-meta text-white/90">
                 <span className="font-semibold">{first}:</span> {link.latestAgentReply.body}
               </p>
             )}
           </div>
-          <Link href={`/s/${link.token}`} className={cn(button({ kind: "light" }), "shrink-0")}>
+          <Link href={openOn(link)} className={cn(button({ kind: "light" }), "shrink-0")}>
             See them<span className="sr-only">, the homes from {link.agent.name}</span>
           </Link>
         </div>
@@ -78,7 +90,7 @@ function FromYourAgent({ links }: { links: MyLink[] }) {
           {others.slice(0, 3).map((other) => (
             <Link
               key={other.shareId}
-              href={`/s/${other.token}`}
+              href={openOn(other)}
               className="inline-flex min-h-11 items-center font-semibold text-brand hover:underline"
             >
               Homes from {other.agent.firstName || other.agent.name}
@@ -117,17 +129,21 @@ export function Home({
   agent?: { book: ClientBook; brokerage: string; brandColor: string; listings?: string; activity: ClientEvent[] };
 }) {
   const agentName = links[0] && (links[0].agent.firstName || links[0].agent.name);
+  // The card at the top: only the links with homes still waiting.
+  const waiting = waitingLinks(links);
   // Only what the bar at the top doesn't have (it has Search, Send,
-  // the Dashboard, and their own page under their face).
+  // the Dashboard, and their own page under their face). Someone on an
+  // agent's link (a pro too, when they're someone's client): the way back to
+  // it, and the homes they've already liked or passed on.
   const saved: RailLink = { href: "/people/me?show=saved", label: "Saved homes", icon: <Bookmark size={18} /> };
   const people: RailLink = { href: "/search/people", label: "Find people", icon: <UserRoundSearch size={18} /> };
+  const sent: RailLink[] = [
+    ...(links[0] ? [{ href: `/s/${links[0].token}`, label: `Homes from ${agentName}`, icon: <House size={18} /> }] : []),
+    ...(hasRated(links) ? [{ href: "/people/me/rated", label: "Rated homes", icon: <ListChecks size={18} /> }] : []),
+  ];
   const places: RailLink[] = agent
-    ? [{ href: "/dashboard/listings", label: agent.listings ?? "Listings", icon: <Building2 size={18} /> }, saved, people]
-    : [
-        ...(links[0] ? [{ href: `/s/${links[0].token}`, label: `Homes from ${agentName}`, icon: <House size={18} /> }] : []),
-        saved,
-        people,
-      ];
+    ? [{ href: "/dashboard/listings", label: agent.listings ?? "Listings", icon: <Building2 size={18} /> }, ...sent, saved, people]
+    : [...sent, saved, people];
   const listOf = (which: "following" | "followers") =>
     profileHref.endsWith("/me") ? profileHref : `${profileHref}/${which}`;
   // People to follow where there's no rail beside the feed (a phone, a
@@ -223,7 +239,7 @@ export function Home({
         </Link>
       </div>
       {/* (An agent's clients, and what they did, are on Clients.) */}
-      {links.length > 0 && <FromYourAgent links={links} />}
+      {waiting.length > 0 && <FromYourAgent links={waiting} />}
       <section aria-labelledby="stream-title">
         <h2 id="stream-title" className="sr-only">
           Your feed

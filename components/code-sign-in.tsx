@@ -200,6 +200,16 @@ export function CodeSignIn({
               name="firstName"
               value={firstName}
               onChange={(event) => setFirstName(event.target.value)}
+              // A name the page filled in is ready to type over, however the
+              // box is reached (a tap too: a phone's caret lands after the
+              // tap, hence the moment's wait).
+              onFocus={(event) => {
+                const box = event.currentTarget;
+                if (!suggestedName || box.value !== suggestedName) return;
+                setTimeout(() => {
+                  if (document.activeElement === box && box.value === suggestedName) box.select();
+                }, 0);
+              }}
               required
               maxLength={40}
               autoComplete="given-name"

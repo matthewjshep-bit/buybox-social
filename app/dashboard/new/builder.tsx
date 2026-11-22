@@ -40,8 +40,9 @@ export function ShareBuilder({
   heading: string;
   intro: string;
   results: Listing[];
-  // With nothing typed: not every home there is, just theirs (their listings,
-  // and the homes they've liked, commented on or sent before), under a title each.
+  // With nothing typed: theirs first (their listings, and the homes they've
+  // liked, commented on or sent before), then more to send (near them,
+  // popular, new), under a title each. So the page is never empty.
   groups?: { title: string; homes: Listing[] }[];
   // Anyone who isn't an agent, sending homes to a friend: the same steps.
   peer?: boolean;
@@ -154,7 +155,8 @@ export function ShareBuilder({
     const selected = picked.some((l) => l.ListingKey === listing.ListingKey);
     const disabled = !selected && picked.length >= MAX_LISTINGS;
     return (
-      <li key={listing.ListingKey}>
+      // (min-w-0: a long address is cut short rather than widening the list past the screen.)
+      <li key={listing.ListingKey} className="min-w-0">
         <button
           type="button"
           aria-pressed={selected}
@@ -172,12 +174,24 @@ export function ShareBuilder({
               </span>
             )}
           </HomeThumb>
-          <span className="min-w-0">
+          <span className="min-w-0 flex-1">
             <span className="block font-display text-lg leading-snug">{formatPrice(listing.ListPrice)}</span>
             <span className="block truncate text-sm">{listing.UnparsedAddress}</span>
             <span className="block truncate text-sm text-stone-700">
               {listing.City} · {listing.BedroomsTotal} bd · {listing.BathroomsTotalInteger} ba
             </span>
+          </span>
+          {/* Says what a tap does. (The whole card is the button, and it's
+              pressed or not: this is only the word for it.) */}
+          <span
+            aria-hidden
+            className={cn(
+              "inline-flex min-h-9 shrink-0 items-center gap-1 rounded-full px-3 text-sm font-semibold",
+              selected ? "bg-brand text-white" : "bg-stone-100 text-ink",
+            )}
+          >
+            {selected ? <Check size={16} /> : <Plus size={16} />}
+            {selected ? "Picked" : "Pick"}
           </span>
         </button>
       </li>

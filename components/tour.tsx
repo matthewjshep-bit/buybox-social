@@ -261,15 +261,14 @@ export function tourSteps(
   kind: TourKind,
   { agent, notesFor, agentTake }: { agent: string; notesFor?: string; agentTake: boolean },
 ): TourStep[] {
-  const facts = { target: '[data-tour="facts"]', at: '[data-fact="Price"]' };
   const photo = { target: '[aria-roledescription="carousel"] [data-photo-frame]', spot: true };
   const heart = { target: '[data-tour="heart"]' };
   const Agent = agent.charAt(0).toUpperCase() + agent.slice(1);
   if (kind === "notes") {
     const who = notesFor ?? "your client";
     return [
-      { ...facts, title: "Add your feedback", body: "Tap the price, or any detail." },
-      { ...photo, title: "Point things out", body: "Tap anything in a photo." },
+      // (The price and the details are just to read: feedback goes on the photo, or in a comment.)
+      { ...photo, title: "Add your feedback", body: "Tap anything in a photo." },
       {
         target: '[data-tour="done"]',
         title: `${who.charAt(0).toUpperCase() + who.slice(1)} sees your feedback`,
@@ -287,7 +286,6 @@ export function tourSteps(
           },
         ]
       : []),
-    { ...facts, title: "Tap any detail", body: "Like it, or say something." },
     {
       ...photo,
       title: "Tap anything in a photo",

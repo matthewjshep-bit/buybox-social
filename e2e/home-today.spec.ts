@@ -57,7 +57,10 @@ test("someone who follows nobody still has a full feed: popular homes, a new lis
   // Each says why it's there.
   // (However many others like it too, in a run with other tests.)
   await expect(stream.getByText(/^Popular this week · \d+ likes?/).first()).toBeVisible();
-  await expect(stream.getByRole("link", { name: /^1204 Quillan St SE: Popular this week/ })).toHaveCount(1);
+  // The home Pia liked is in it, once: as popular, or (in a run with other
+  // tests, busier homes ahead of it in the week's popular) as near Una in
+  // Olympia, whichever comes first.
+  await expect(stream.getByRole("link", { name: /^1204 Quillan St SE: (Popular this week|Near you in Olympia)/ })).toHaveCount(1);
   await expect(stream.getByText("Lin Newlisting", { exact: true }).first()).toBeVisible();
   await expect(stream.getByRole("link", { name: "77 Fresh Start Rd: Lin Newlisting added a new listing" })).toHaveCount(1);
   // (Olympia's one home is in it as popular already: the rest of Washington, then.)
@@ -80,7 +83,8 @@ test("someone who follows nobody still has a full feed: popular homes, a new lis
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 
   // A card opens the feed's homes full screen, on that one.
-  await stream.getByRole("link", { name: /^1204 Quillan St SE: / }).click();
+  // (By its top corner: the photos in the middle swipe, and open it themselves.)
+  await stream.getByRole("link", { name: /^1204 Quillan St SE: / }).click({ position: { x: 20, y: 20 } });
   await page.waitForURL(/\/reel\?from=feed&home=SAMPLE-1009/);
   await expect(page.getByRole("article", { name: "1204 Quillan St SE" })).toBeInViewport({ ratio: 0.5 });
 });

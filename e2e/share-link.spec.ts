@@ -219,7 +219,7 @@ test("the agent's own Preview is their first pass: what they like and say there 
   // [P] The heart on the home is Dana's to give.
   await heartOf(home).click();
   await expect(home.getByRole("alert")).toHaveText(
-    "The heart is for your client. Tap the price, or anything in a photo, to leave a note.",
+    "The heart is for your client. Tap anything in a photo to leave a note.",
   );
   // A like in a photo, and a note: the agent's own. (A dislike is there too.)
   const card = await pick(home, "the red front door");
@@ -257,7 +257,14 @@ test("the agent's own Preview is their first pass: what they like and say there 
   const dana = await (await browser.newContext()).newPage();
   await dana.goto(url);
   const hers = homeIn(dana, "1204 Quillan St SE");
-  const doorCard = await pick(hers, "the red front door");
+  // Not signed up yet: picking the door asks her to first, then its card opens.
+  await hers.scrollIntoViewIfNeeded();
+  await expect(hers).toBeInViewport({ ratio: 0.9 });
+  await hers.getByRole("button", { name: "Select the red front door" }).press("Enter");
+  await expect(hers.locator("[data-spot-card]")).toHaveCount(0);
+  await joinAs(dana, "Dana");
+  const doorCard = hers.getByRole("group", { name: /^red front door$/i });
+  await expect(doorCard).toBeVisible();
   const take = doorCard.locator("[data-agent-take]");
   await expect(take).toContainText("Priya, your agent");
   await expect(take).toContainText("Likes this");
@@ -356,8 +363,8 @@ test("the agent's Porchcard for the link says who on it hasn't weighed in yet; t
   await heartOf(home).click();
   await expect(heartOf(home)).toHaveAttribute("aria-pressed", "true");
   await liked;
-  // Comments and More on his link (the heart and the X are on the photo): the Porchcard is the agent's.
-  await expect(home.locator("[data-rail]").getByRole("button")).toHaveCount(2);
+  // The comment bar, its count and More on his link (the heart and the X are on the photo): the Porchcard is the agent's.
+  await expect(home.locator("[data-bar-row]").getByRole("button")).toHaveCount(3);
   await noFeedback(owen);
   // Two people on it: never "only you".
   const chat = await openComments(owen, home);

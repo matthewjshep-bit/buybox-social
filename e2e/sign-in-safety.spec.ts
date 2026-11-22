@@ -66,7 +66,9 @@ test("someone else typing your email on the agents' form never makes your accoun
   await emailAndCode(vic, email);
   // (Which kind of pro: asked, a step at a time.)
   await throughWelcome(vic, "agent", { name: "Vic Valid" });
-  await vic.waitForURL(/\/dashboard/);
+  // Home, like everyone, with his Clients a tap away in the bar.
+  await vic.waitForURL((url) => url.pathname === "/");
+  await expect(vic.getByRole("banner").getByRole("link", { name: "Clients", exact: true })).toBeVisible();
 });
 
 test("signed out at a page that takes an account, signing in lands on that page", async ({ browser }) => {

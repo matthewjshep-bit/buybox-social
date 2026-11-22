@@ -102,6 +102,11 @@ export type ProfileCard = {
   pins: { x: number; y: number; kind: PinKind }[];
   // Other photos of the home they did something on that day.
   otherPhotos: number;
+  // The photos to swipe through on the card: `photo` first, with its pins,
+  // then the others they did something on (with theirs), then the rest; and
+  // how many the home has in all.
+  photos: CardPhoto[];
+  photoCount: number;
   // The facts they liked or didn't: "the price" (and its tag, "Price", to open it).
   facts: { kind: "like" | "dislike"; phrase: string; tag: string }[];
   // Everything they picked out in the photos that day, newest first, each
@@ -222,6 +227,66 @@ export { spotName };
 
 export const isVideo = (photo: ListingMedia) =>
   photo.MediaCategory === "Video" || /\.(mp4|webm|mov)(\?|$)/i.test(photo.MediaURL);
+
+// A home's photo as a card shows it, to swipe through: `index` is its place
+// in the home's photos (what `?photo=` opens full screen on); `pins`, where
+// on it someone picked things out, when it's of known size.
+export type CardPhoto = {
+  url: string;
+  index: number;
+  alt: string;
+  width?: number;
+  height?: number;
+  pins?: { x: number; y: number; kind: "like" | "dislike" | "comment" }[];
+};
+
+// The line at the top of a card that says what someone said ("Matt commented
+// “…” · 3m"), in letters: three lines on a phone, even beside your own card's
+// menu (about 32 letters a line there). What they said is cut short to fit
+// (`clipSaid`), so the time, and anything after it, still shows.
+export const SAID_LINE = 90;
+
+// What someone said, to `room` letters: cut at a word, with "…". (Never so
+// short it says nothing.)
+export function clipSaid(body: string, room: number) {
+  const text = body.replace(/\s+/g, " ").trim();
+  const most = Math.max(room, 24);
+  if (text.length <= most) return text;
+  const cut = text.slice(0, most - 1);
+  const atWord = cut.replace(/\s+\S*$/, "");
+  return `${(atWord.length >= cut.length * 0.6 ? atWord : cut).replace(/[\s,.;:!?-]+$/, "")}…`;
+}
+
+// Photos a card carries to swipe through: enough to look around a home, not
+// so many that a feed gets heavy. Full screen has the rest.
+export const CARD_PHOTOS = 12;
+
+// A home's photos for a card, `lead` first (the ones it's about), then the
+// rest in order, never a video; and how many photos it has in all. `Media`
+// is in its order already.
+export function cardPhotos(
+  listing: Listing,
+  lead: number[] = [],
+  pinsAt?: (index: number) => CardPhoto["pins"],
+): { photos: CardPhoto[]; count: number } {
+  const media = listing.Media ?? [];
+  const still = (i: number) => i >= 0 && i < media.length && !isVideo(media[i]) && !media[i].VideoEmbed;
+  const order = [...new Set([...lead, ...media.map((_, i) => i)])].filter(still);
+  return {
+    photos: order.slice(0, CARD_PHOTOS).map((i) => {
+      const m = media[i];
+      const pins = pinsAt?.(i);
+      return {
+        url: m.MediaURL,
+        index: i,
+        alt: m.ShortDescription ?? `${listing.UnparsedAddress}, photo ${i + 1}`,
+        ...(m.ImageWidth && m.ImageHeight && { width: m.ImageWidth, height: m.ImageHeight }),
+        ...(pins?.length && { pins }),
+      };
+    }),
+    count: order.length,
+  };
+}
 
 const names = namesList;
 
@@ -911,18 +976,22 @@ export function buildCards(rows: ProfileRows): ProfileCard[] {
 
       const index = onPhotos[0]?.index ?? listing.Media.findIndex((m) => !isVideo(m));
       const media = index >= 0 ? listing.Media[index] : undefined;
-      // Pins only land in the right place on a photo of known size.
-      const sized = media?.ImageWidth && media?.ImageHeight ? media : null;
-      const pinned = new Set<string>();
-      const pins = sized
-        ? onPhotos
-            .filter((spot) => spot.index === index && !pinned.has(spot.tag) && Boolean(pinned.add(spot.tag)))
-            .flatMap((spot) => {
-              const at = tagPosition(sized, spot.tag);
-              return at ? [{ ...at, kind: spot.kind }] : [];
-            })
-            .slice(0, 4)
-        : [];
+      // Where on one photo, newest first, each spot once. Pins only land in
+      // the right place on a photo of known size.
+      const pinsAt = (at: number) => {
+        const sized = listing.Media[at]?.ImageWidth && listing.Media[at]?.ImageHeight ? listing.Media[at] : null;
+        if (!sized) return [];
+        const pinned = new Set<string>();
+        return onPhotos
+          .filter((spot) => spot.index === at && !pinned.has(spot.tag) && Boolean(pinned.add(spot.tag)))
+          .flatMap((spot) => {
+            const where = tagPosition(sized, spot.tag);
+            return where ? [{ ...where, kind: spot.kind }] : [];
+          })
+          .slice(0, 4);
+      };
+      const pins = media ? pinsAt(index) : [];
+      const swipe = cardPhotos(listing, [index, ...onPhotos.map((spot) => spot.index)], pinsAt);
 
       // What it's about on each side: the specifics, and the things spots are on.
       const topics = (aspects: Aspect[], list: SpotRow[]) => {
@@ -974,6 +1043,8 @@ export function buildCards(rows: ProfileRows): ProfileCard[] {
           : null,
         pins,
         otherPhotos: new Set(onPhotos.map((spot) => spot.index).filter((i) => i !== index)).size,
+        photos: swipe.photos,
+        photoCount: swipe.count,
         facts: [
           ...likes.filter((row) => row.media_key === FACTS).map((row) => ({ kind: "like" as const, row })),
           ...dislikes.filter((row) => row.media_key === FACTS).map((row) => ({ kind: "dislike" as const, row })),

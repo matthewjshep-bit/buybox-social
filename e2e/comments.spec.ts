@@ -12,13 +12,13 @@ test("comments rise from the comment bar under the description, like a reel", as
   const home = homeIn(page, BRACKENFIELD);
   await expect(home).toBeInViewport({ ratio: 0.9 });
 
-  // The bar sits right under the description, at the bottom of the screen.
+  // The bar sits right under the words, at the bottom of the screen.
   const bar = home.getByRole("button", { name: "Add a comment…" });
   await expect(bar).toBeVisible();
-  const listedBy = (await home.getByText(/^Listed by/).boundingBox())!;
+  const address = (await home.locator('[data-fact="Address"]').boundingBox())!;
   const barBox = (await bar.boundingBox())!;
   const { height } = page.viewportSize()!;
-  expect(barBox.y).toBeGreaterThan(listedBy.y);
+  expect(barBox.y).toBeGreaterThan(address.y);
   expect(barBox.y + barBox.height).toBeGreaterThan(height - 40);
 
   // Tapping it raises the comments from the bottom, ready to type, to the
@@ -26,7 +26,9 @@ test("comments rise from the comment bar under the description, like a reel", as
   // just as it was.
   const photo = home.getByRole("img", { name: "Brick-front home with a wide lawn" });
   const photoBefore = (await photo.boundingBox())!;
+  // (Signed out, signing up comes first; then the comments, where they were going.)
   await bar.click();
+  await joinAs(page, "Avery");
   const sheet = page.getByRole("dialog", { name: "Comments" });
   await expect(sheet).toBeVisible();
   const field = sheet.getByLabel("Add a comment");
@@ -47,7 +49,6 @@ test("comments rise from the comment bar under the description, like a reel", as
   await expect(field).toHaveValue("🔥");
   await field.fill("That lawn 🔥");
   await field.press("Enter");
-  await joinAs(page, "Avery");
   const mine = commentIn(sheet, "Avery", "That lawn 🔥");
   await expect(mine).toBeVisible();
   await expect(sheet.getByRole("heading", { name: "1 comment" })).toBeVisible();

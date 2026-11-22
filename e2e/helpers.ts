@@ -56,8 +56,9 @@ export async function throughWelcome(
 }
 
 // An agent signs up the way agents do: "Start free" on the For agents page,
-// then, a step at a time, what they are, their name and brand.
-export async function signInAgent(browser: Browser, email: string, name: string) {
+// then, a step at a time, what they are, their name and brand (and where
+// they are, when `place` is given). Then Home, like everyone (Clients is in the bar).
+export async function signInAgent(browser: Browser, email: string, name: string, place?: string) {
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto("/for-agents");
@@ -66,8 +67,8 @@ export async function signInAgent(browser: Browser, email: string, name: string)
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Continue" }).click();
   await enterCode(page);
-  await throughWelcome(page, "agent", { name, company: "Harbor & Pine Realty", photo: true, color: "Merlot" });
-  await page.waitForURL("**/dashboard");
+  await throughWelcome(page, "agent", { name, place, company: "Harbor & Pine Realty", photo: true, color: "Merlot" });
+  await page.waitForURL((url) => url.pathname === "/");
   return page;
 }
 
@@ -119,8 +120,8 @@ export async function linkMade(page: Page) {
 }
 
 // On Send homes: a home found by typing its address, and picked from what's
-// offered under the box. (With nothing typed, only the agent's own listings
-// and homes they've had to do with are listed.)
+// offered under the box. (With nothing typed, the agent's own listings, homes
+// they've had to do with, then "Homes to send", each picked with a tap.)
 export async function pickHome(page: Page, address: string) {
   const search = page.getByRole("combobox", { name: "Address, MLS number, or a link to the home" });
   await search.fill(address);

@@ -36,7 +36,7 @@ export type CodeState = {
   sent?: string;
   // Locally: the code, since no email goes out.
   devCode?: string;
-  // Signed in. `agent`: their account is an agent's (to their dashboard).
+  // Signed in. `agent`: their account is an agent's.
   // `needsName`: a buyer's with no first name yet, to ask for (an agent gives
   // their full name with their brand, on their dashboard).
   // `welcome`: new here (they haven't said what they are yet), to be asked

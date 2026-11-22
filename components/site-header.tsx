@@ -5,7 +5,7 @@ import { countUnreadActivity } from "@/lib/activity";
 import { getCurrentUser, isAdmin } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
 import { agentFirstName, cn } from "@/lib/format";
-import { getMyLinks, type MyLink } from "@/lib/my-links";
+import { getMyLinks, hasRated, type MyLink } from "@/lib/my-links";
 import { photoUrl, photoVersion } from "@/lib/person-photo";
 import { getPublicIdentity } from "@/lib/public";
 import { button } from "@/lib/ui";
@@ -27,8 +27,9 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
   const [unread, admin, links] = await Promise.all([
     visitor ? countUnreadActivity(visitor.id) : 0,
     isAdmin(user),
-    // Someone on an agent's link: the way back to it, under their initial.
-    user?.role && user.role !== "agent" ? getMyLinks(user.id) : [],
+    // Someone on an agent's link (a pro too, when they're someone's client):
+    // the way back to it, under their initial, and the homes they've rated.
+    user?.role ? getMyLinks(user.id) : [],
   ]);
   // Each place in the bar: its icon over its name, at every width (nobody
   // has to guess what two people or a stack of photos mean), and a line
@@ -135,6 +136,7 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
               admin={admin}
               overlay={overlay}
               links={menuLinks(links)}
+              rated={hasRated(links)}
             />
           </div>
         ) : (

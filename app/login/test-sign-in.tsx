@@ -47,7 +47,7 @@ export function TestSignIn({ asAgent = false, next }: { asAgent?: boolean; next?
             if (result.done.welcome || result.done.needsName) {
               const asked = new URLSearchParams({ ...(next && { next }), ...(asAgent && { as: "agent" }) });
               router.replace(`/welcome${asked.size ? `?${asked}` : ""}`);
-            } else router.replace(next ?? (result.done.agent ? "/dashboard" : "/"));
+            } else router.replace(next ?? "/");
             router.refresh();
           }
         });

@@ -104,7 +104,8 @@ test("a card on someone's page opens their highlights on a stage that takes the 
   await page.goto(inesPage);
   await expect(cardLinks(page)).toHaveCount(3);
   const card = cardTo(page, "SAMPLE-1013");
-  await card.click();
+  // (By its top corner: the photos in the middle swipe, and open it themselves.)
+  await card.click({ position: { x: 20, y: 20 } });
   await page.waitForURL(/\/reel\?from=[\w-]+&home=SAMPLE-1013/);
   const popout = page.getByRole("dialog", { name: "Homes" });
   const lakeview = homeIn(popout, LAKEVIEW);
@@ -142,16 +143,16 @@ test("a card on someone's page opens their highlights on a stage that takes the 
   await expect(why).toContainText(SAID);
   await expect(why.getByRole("button", { name: /^Didn't like/ })).toHaveCount(0);
   await expect(why).not.toContainText(/shingles|but not/);
-  // A spot she picked out: its card opens on the photo, right there.
-  const stools = corbel.getByRole("group", { name: /^bar stools$/i });
-  // (Tapped while the home is still coming to rest, the card can miss its
-  // photo; once settled, a tap opens it.)
-  await expect(async () => {
-    if (!(await stools.isVisible())) await why.getByRole("button", { name: "Liked the bar stools: show it" }).click();
-    await expect(stools).toBeVisible({ timeout: 2000 });
-  }).toPass({ timeout: 15_000 });
-  await stools.getByRole("button", { name: "Close" }).click();
-  await expect(stools).toBeHidden();
+  // A spot she picked out: its photo, right there. (Signed out, signing up
+  // comes before any card to like or comment on; Not now: just the photo.)
+  await why.getByRole("button", { name: "Liked the bar stools: show it" }).click();
+  const join = page.getByRole("dialog", { name: "Sign up to like and comment" });
+  await expect(join).toBeVisible();
+  await expect(corbel.locator("[data-spot-card]")).toHaveCount(0);
+  await join.getByRole("button", { name: "Not now" }).click();
+  await expect(join).toBeHidden();
+  await expect(corbel.getByRole("img", { name: KITCHEN })).toBeInViewport();
+  await expect(corbel.locator("[data-spot-card]")).toHaveCount(0);
 
   // The keyboard goes on too, and at the end, a stop: all of hers, and Follow.
   await page.keyboard.press("ArrowDown");
@@ -234,7 +235,7 @@ test("under a filter, the pop-out holds only what the page shows, and keeps the 
   await expect(cardLinks(page)).toHaveCount(1);
   const card = cardTo(page, "SAMPLE-1003");
   await expect(card).toHaveAttribute("href", /^\/reel\?from=[\w-]+&show=comments&home=SAMPLE-1003&photo=2$/);
-  await card.click();
+  await card.click({ position: { x: 20, y: 20 } });
   await page.waitForURL(/\/reel\?from=[\w-]+&show=comments&home=SAMPLE-1003/);
   const popout = page.getByRole("dialog", { name: "Homes" });
   await expect(homeIn(popout, CORBEL)).toBeInViewport({ ratio: 0.9 });
@@ -275,7 +276,7 @@ test("a card from further down the page (Show earlier) opens on itself, with the
     .getAttribute("datetime");
   await page.goto(`${inesPage}?before=${encodeURIComponent(corbelAt!)}`);
   await expect(cardLinks(page)).toHaveCount(1);
-  await cardTo(page, "SAMPLE-1002").click();
+  await cardTo(page, "SAMPLE-1002").click({ position: { x: 20, y: 20 } });
   await page.waitForURL(/home=SAMPLE-1002/);
   const popout = page.getByRole("dialog", { name: "Homes" });
   await expect(homeIn(popout, TAMSEN)).toBeInViewport({ ratio: 0.9 });
@@ -293,7 +294,7 @@ test("on a phone the pop-out is the whole screen, with whose take it is above th
   test.setTimeout(60_000);
   const page = await newPage(browser, PHONE);
   await page.goto(inesPage);
-  await cardTo(page, "SAMPLE-1003").click();
+  await cardTo(page, "SAMPLE-1003").click({ position: { x: 20, y: 20 } });
   await page.waitForURL(/home=SAMPLE-1003/);
   const popout = page.getByRole("dialog", { name: "Homes" });
   const corbel = homeIn(popout, CORBEL);
@@ -365,7 +366,7 @@ test("privacy: hidden passes stay out, only the owner sees what they didn't like
     await ines.goto(inesPage);
     await expect(ines.locator("main")).toContainText("You liked Otto's comment", { timeout: 1000 });
   }).toPass({ timeout: 20_000 });
-  await cardTo(ines, "SAMPLE-1003").click();
+  await cardTo(ines, "SAMPLE-1003").click({ position: { x: 20, y: 20 } });
   const popout = ines.getByRole("dialog", { name: "Homes" });
   const corbel = homeIn(popout, CORBEL);
   await expect(corbel).toBeInViewport({ ratio: 0.9 });
@@ -380,7 +381,7 @@ test("privacy: hidden passes stay out, only the owner sees what they didn't like
 
   // Anyone else: no dislike, and nothing she liked of others'.
   await visitor.goto(inesPage);
-  await cardTo(visitor, "SAMPLE-1003").click();
+  await cardTo(visitor, "SAMPLE-1003").click({ position: { x: 20, y: 20 } });
   const theirs = homeIn(visitor.getByRole("dialog", { name: "Homes" }), CORBEL).getByRole("region", { name: "Why it's here" });
   await theirs.getByRole("button", { expanded: false }).click();
   await expect(theirs.getByRole("button", { name: /^Liked the bar stools/ })).toBeVisible();
@@ -472,7 +473,7 @@ test("the third card opens on its own home, from someone's page and from the hom
   const page = await newPage(browser);
   await page.goto(inesPage);
   await expect(cardLinks(page)).toHaveCount(3);
-  await cardLinks(page).nth(2).click();
+  await cardLinks(page).nth(2).click({ position: { x: 20, y: 20 } });
   await page.waitForURL(/home=SAMPLE-1002/);
   await expect(homeIn(page.getByRole("dialog", { name: "Homes" }), TAMSEN)).toBeInViewport({ ratio: 0.9 });
 
@@ -492,7 +493,7 @@ test("the third card opens on its own home, from someone's page and from the hom
   ];
   await expect.poll(async () => (await homes()).length).toBeGreaterThanOrEqual(3);
   const third = (await homes())[2];
-  await follower.locator(`a[href^="/reel?from=feed&home=${third}"]`).first().click();
+  await follower.locator(`a[href^="/reel?from=feed&home=${third}"]`).first().click({ position: { x: 20, y: 20 } });
   await follower.waitForURL(new RegExp(`/reel\\?from=feed&home=${third}`));
   await expect(follower.getByRole("dialog", { name: "Homes" }).locator(`[data-home="${third}"]`)).toBeInViewport({
     ratio: 0.9,

@@ -11,7 +11,7 @@ export const metadata = { title: "Welcome · Porchcard" };
 // Getting started, once someone has signed up: what they are (an agent, an
 // investor, a lender, or shopping for a home), then a question at a time
 // about them, each on a screen of its own. Then on to where they were
-// going (`next`), or, for a pro, their Clients page.
+// going (`next`), or Home.
 export default async function WelcomePage({ searchParams }: { searchParams: Promise<{ next?: string; as?: string }> }) {
   const { next: asked, as } = await searchParams;
   const me = await getCurrentUser();
@@ -35,7 +35,7 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
     from accounts where id = ${me.id}`;
   const kind = isKind(row?.kind) ? row.kind : null;
   // Nothing left to ask: on their way.
-  if (kind && row.full_name.trim()) redirect(next ?? (me.role === "agent" ? "/dashboard" : "/"));
+  if (kind && row.full_name.trim()) redirect(next ?? "/");
   return (
     <main className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-md flex-col px-5 pb-10 pt-6 sm:pt-12">
       <Onboarding

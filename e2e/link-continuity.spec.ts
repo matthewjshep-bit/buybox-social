@@ -201,7 +201,7 @@ test("a quick Send named for someone, opened on a new device, starts the name pr
     });
   });
   await agent.goto("/homes/SAMPLE-1004");
-  await homeIn(agent, "96 Fernhollow Ln").getByRole("button", { name: "Send to a client", exact: true }).click();
+  await homeIn(agent, "96 Fernhollow Ln").getByRole("button", { name: "Send 96 Fernhollow Ln", exact: true }).click();
   const sheet = agent.getByRole("dialog", { name: "Sent. Who's it for?" });
   await expect(sheet).toBeVisible();
   const forWhom = sheet.getByRole("combobox", { name: "Who's it for? (optional)" });

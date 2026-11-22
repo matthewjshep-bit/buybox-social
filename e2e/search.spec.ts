@@ -136,7 +136,10 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   // The room goes to the photo: no row of round buttons. The comment bar
   // opens the comments, with Save and More beside it, all on one line.
   await expect(halvard.locator("[data-rail]")).toBeHidden();
-  await expect(halvard.getByRole("button", { name: /^Comments/ }).filter({ visible: true })).toHaveCount(0);
+  // (The comments' count is part of the comment bar, as on a phone: no
+  // button of its own anywhere else.)
+  await expect(halvard.getByRole("button", { name: /^Comments/ }).filter({ visible: true })).toHaveCount(1);
+  await expect(halvard.locator("[data-bar-row]").getByRole("button", { name: /^Comments/ })).toBeVisible();
   await expect(halvard.getByRole("button", { name: /^Send to/ }).filter({ visible: true })).toHaveCount(0);
   const bar = halvard.getByRole("button", { name: /^Add a comment…/ });
   const save = halvard.getByRole("button", { name: /^Save 10421 Halvard Way NE/ }).filter({ visible: true });
@@ -152,7 +155,8 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   // And the photo keeps its size: more than half the pane's height.
   const photoBox = (await halvard.getByRole("group", { name: /^Photos of/ }).locator("img").first().boundingBox())!;
   expect(photoBox.height).toBeGreaterThan((await page.locator('section[aria-label="Homes"]').boundingBox())!.height * 0.5);
-  await expect(halvard.getByRole("button", { name: /^\$1,349,000/ })).toBeVisible();
+  // (The price is words to read, not a button.)
+  await expect(halvard.locator('[data-fact="Price"]')).toHaveText("$1,349,000");
   // Full screen is a button in the pane's top right corner, a fingertip
   // wide; no big button under the words.
   await expect(halvard.getByRole("button", { name: /^Open full screen/ })).toHaveCount(0);
@@ -224,13 +228,15 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   // (No "Liked by buyers" among the filters: Sort has "Most liked".)
   await expect(page.getByText("Liked by buyers")).toHaveCount(0);
 
-  // A home's address, like its price, can be liked or talked about, and it
-  // opens the home here, beside the map.
+  // A home's More opens it here, beside the map. (Its address is just words.)
   await page.goto("/homes/SAMPLE-1006");
-  await page.getByRole("button", { name: /^2205 Brackenfield Ct NW, Issaquah/ }).click();
-  const address = page.getByRole("group", { name: "Address" });
-  await settle(address);
-  await address.getByRole("link", { name: "See it on the map" }).click();
+  const brackenfield = homeIn(page, "2205 Brackenfield Ct NW");
+  await expect(brackenfield).toBeInViewport({ ratio: 0.9 });
+  await expect(page.getByRole("button", { name: /^2205 Brackenfield Ct NW, Issaquah/ })).toHaveCount(0);
+  await brackenfield.getByRole("button", { name: "More options" }).filter({ visible: true }).first().click();
+  const moreSheet = page.getByRole("dialog", { name: "More" });
+  await settle(moreSheet);
+  await moreSheet.getByRole("link", { name: "See it on the map" }).click();
   await expect(page).toHaveURL(/\/search\?home=SAMPLE-1006$/);
   await expect(homeIn(page, "2205 Brackenfield Ct NW")).toBeInViewport({ ratio: 0.9 });
   await expect(page.getByRole("button", { name: "2205 Brackenfield Ct NW, $1,089,000" })).toHaveAttribute(

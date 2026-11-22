@@ -79,16 +79,17 @@ export function Onboarding(props: {
   const fileInput = useRef<HTMLInputElement>(null);
   const pro = isProKind(kind);
 
-  // Where they were going, once there's nothing more to ask.
-  const finish = (proNow: boolean) => {
-    router.replace(props.next ?? (proNow ? "/dashboard" : "/"));
+  // Where they were going, once there's nothing more to ask: or Home, pros
+  // too (their Clients is a tap away in the bar).
+  const finish = () => {
+    router.replace(props.next ?? "/");
     router.refresh();
   };
   // On to the next question, or, after the last, on their way.
   const forward = () => {
     setError(null);
     if (at + 1 < steps.length) return setAt(at + 1);
-    finish(pro);
+    finish();
   };
   const save = (work: () => Promise<StepResult>) =>
     start(async () => {
@@ -104,7 +105,7 @@ export function Onboarding(props: {
       setError(null);
       setKind(chosen);
       // (Shopping, with their name given already: nothing more to ask.)
-      if (stepsFor(chosen, { name: hadName, place: hadPlace }, askKind).length <= 1) return finish(isProKind(chosen));
+      if (stepsFor(chosen, { name: hadName, place: hadPlace }, askKind).length <= 1) return finish();
       setAt(1);
     });
 

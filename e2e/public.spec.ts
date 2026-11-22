@@ -78,8 +78,13 @@ test("public pages show activity, never private words, and private threads share
   await expect(activity).toContainText(`A buyer commented\u201c${SHARED}\u201d`);
   await expect(post).toContainText("A buyer commented privately", { timeout: 30_000 });
   await expect(activity).not.toContainText(SECRET);
-  await expect(post).toContainText("Listed by Priya Natarajan");
   await expect(post).toContainText(/Traditional brick-front home/);
+  // Who listed it is in More, with all of the description.
+  await post.getByRole("button", { name: "More options" }).click();
+  const more = page.getByRole("dialog", { name: "More" });
+  await expect(more).toContainText("Listed by Priya Natarajan");
+  await page.keyboard.press("Escape");
+  await expect(more).toBeHidden();
   await expect(post.getByRole("button", { name: `Like ${BRACKENFIELD}, 1 like` })).toBeVisible();
   let sheet = await openComments(page, post);
   // The private pass shows nowhere: not in the comments...

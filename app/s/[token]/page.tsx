@@ -9,6 +9,7 @@ import { getCurrentUser, getViewAs, isAdmin, type Account } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { agentFirstName } from "@/lib/format";
 import { readDevice } from "@/lib/engagement";
+import { getMyLinks, hasRated } from "@/lib/my-links";
 import { isSampleListing } from "@/lib/listings/types";
 import { photoUrl, photoVersion } from "@/lib/person-photo";
 import { NO_PHOTO_LIKES } from "@/lib/photos";
@@ -45,7 +46,11 @@ async function linkAccount(
   device: string | undefined,
 ): Promise<{ visitorId: string | null; menu: LinkAccount }> {
   const { visitor } = await getPublicIdentity(viewer, device);
-  const [unread, admin] = await Promise.all([visitor ? countUnreadActivity(visitor.id) : 0, isAdmin(viewer)]);
+  const [unread, admin, links] = await Promise.all([
+    visitor ? countUnreadActivity(visitor.id) : 0,
+    isAdmin(viewer),
+    getMyLinks(viewer.id),
+  ]);
   const menu: LinkAccount = {
     profile: visitor ? `/people/${visitor.id}` : "/people/me",
     photo: visitor ? photoUrl(visitor.id, photoVersion(viewer.photo_data_url)) : viewer.photo_data_url,
@@ -56,6 +61,9 @@ async function linkAccount(
     agent: viewer.role === "agent",
     admin,
     unread,
+    // The homes they've liked or passed on from an agent's links, as the
+    // site's header has them.
+    rated: hasRated(links),
   };
   return { visitorId: visitor?.id ?? null, menu };
 }

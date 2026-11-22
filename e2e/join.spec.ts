@@ -252,11 +252,63 @@ test("each sign-in form has a quiet way to the other, and a new agent's first sc
   }
   await expect(main.getByRole("heading", { level: 1 })).toHaveText("Pick your color");
   await main.getByRole("button", { name: "Finish" }).click();
-  await page.waitForURL("**/dashboard");
+  // Done: Home, like everyone (Clients is in the bar).
+  await page.waitForURL((url) => url.pathname === "/");
 
   // What wasn't asked is in Edit profile, empty, for when they want it.
   await toDetails(page);
   for (const label of ["Phone for clients (optional)", "Email for clients (optional)", "MLS ID (optional)"]) {
     await expect(detailsForm(page).getByLabel(label)).toHaveValue("");
   }
+});
+
+test("on a phone, signing up from a tap on the photo: the whole sheet in sight, then over the keyboard, its box and Continue in reach", async ({
+  browser,
+}) => {
+  const page = await (await browser.newContext(SMALL)).newPage();
+  await page.goto("/homes/SAMPLE-1001");
+  const home = page.getByRole("article", { name: "4127 Larkmoor Ave NE" });
+  await expect(home).toBeInViewport({ ratio: 0.9 });
+  await expect.poll(async () => Math.abs((await home.boundingBox())?.y ?? 99)).toBeLessThan(1);
+  const bottomOf = async (el: ReturnType<Page["locator"]>) => {
+    const box = (await el.boundingBox())!;
+    return box.y + box.height;
+  };
+
+  // A tap on the photo, signed out: the sign-up sheet, never a card about the spot first.
+  const photo = (await home.locator("[data-photo-frame]").first().boundingBox())!;
+  await page.touchscreen.tap(photo.x + photo.width * 0.6, photo.y + photo.height * 0.5);
+  const join = page.getByRole("dialog", { name: "Sign up to like and comment" });
+  await expect(join).toBeVisible();
+  await expect(home.locator("[data-spot-card]")).toHaveCount(0);
+  // All of it on screen, the keyboard still down (nothing focused yet).
+  await expect.poll(() => bottomOf(join)).toBeLessThanOrEqual(640);
+  expect((await join.boundingBox())!.y).toBeGreaterThanOrEqual(0);
+  await expect(join.getByRole("button", { name: "Continue" })).toBeInViewport({ ratio: 1 });
+  await expect(join.getByRole("textbox", { name: "First name" })).not.toBeFocused();
+
+  // A tap on a box brings the keyboard up, and the page is slid up under it,
+  // as an iPhone does: the sheet sits on what's left in sight, no taller
+  // than it, the box in sight, and Continue a scroll away inside it.
+  const keys = 300;
+  const slid = 40;
+  await join.getByLabel("Email").focus();
+  await page.evaluate(
+    ({ covered, top }) => {
+      const view = window.visualViewport!;
+      Object.defineProperty(view, "height", { configurable: true, get: () => innerHeight - covered - top });
+      Object.defineProperty(view, "offsetTop", { configurable: true, get: () => top });
+      view.dispatchEvent(new Event("resize"));
+    },
+    { covered: keys, top: slid },
+  );
+  const seenFoot = 640 - keys;
+  await expect.poll(() => bottomOf(join)).toBeLessThanOrEqual(seenFoot + 1);
+  expect((await join.boundingBox())!.y).toBeGreaterThanOrEqual(slid);
+  const email = join.getByLabel("Email");
+  expect(await bottomOf(email)).toBeLessThanOrEqual(seenFoot + 1);
+  expect((await email.boundingBox())!.y).toBeGreaterThanOrEqual(slid);
+  const go = join.getByRole("button", { name: "Continue" });
+  await go.scrollIntoViewIfNeeded();
+  expect(await bottomOf(go)).toBeLessThanOrEqual(seenFoot + 1);
 });

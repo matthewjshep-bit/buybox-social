@@ -3,7 +3,7 @@
 // thoughts, given on the homes themselves (a like, a note), or skipped; then
 // the link, ready to copy.
 import { expect, test } from "@playwright/test";
-import { homeIn, settle, signInAgent, pickHome } from "./helpers";
+import { homeIn, openComments, pick, signInAgent, pickHome } from "./helpers";
 
 test("a home from a pasted Zillow link, nobody named, their thoughts skipped: three steps and the link", async ({ browser }) => {
   test.setTimeout(90_000);
@@ -124,25 +124,22 @@ test("for two people, with the agent's like and note on the home: each has a lin
   await expect(agent.getByText("This link will be called Ana & Ben.")).toBeVisible();
   await agent.getByRole("button", { name: "Next", exact: true }).click();
 
-  // Step 3: the price liked, with a note on it.
+  // Step 3: a note, and the blue shutters liked. (The price is just words:
+  // what the agent thinks of it goes in the note.)
   await agent.waitForURL(/\/s\/[\w-]+\?step=thoughts$/);
   const home = homeIn(agent, "719 Saltmarsh Ln");
   await agent.getByRole("button", { name: "Add feedback" }).click();
   await expect(home).toBeInViewport({ ratio: 0.9 });
   // (Come to rest: a tap while it's still sliding into place can miss.)
   await expect.poll(async () => Math.abs((await home.boundingBox())?.y ?? 99)).toBeLessThan(1);
-  const price = home.locator('[data-fact="Price"]');
-  await price.click();
-  const card = home.getByRole("group", { name: "Price" });
-  await settle(card);
-  await card.getByRole("button", { name: /^Add a note on the price/ }).click();
-  const sheet = agent.getByRole("dialog", { name: "Comments" });
-  await sheet.getByLabel("Add a note on the price").fill("Priced to move. Worth seeing this week.");
+  const sheet = await openComments(agent, home);
+  await sheet.getByLabel("Add a note").fill("Priced to move. Worth seeing this week.");
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(sheet.getByText("Priced to move. Worth seeing this week.")).toBeVisible();
+  await agent.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
-  await price.click();
-  await settle(card);
-  const like = card.getByRole("button", { name: /^Like the price/ });
+  const card = await pick(home, "the blue shutters");
+  const like = card.getByRole("button", { name: /^Like the blue shutters(,|$)/ });
   await like.click();
   await expect(like).toHaveAttribute("aria-pressed", "true");
   await agent.keyboard.press("Escape");
@@ -173,11 +170,18 @@ test("for two people, with the agent's like and note on the home: each has a lin
   await expect(agent.getByText("You've already given feedback on this home, on another link.")).toBeVisible();
   await expect(top.getByRole("link", { name: "Skip", exact: true })).toBeVisible();
   await agent.getByRole("button", { name: "Use the same feedback" }).click();
-  // It's on this link now: Done, the step's screen and its offer gone, and their note on the price again.
+  // It's on this link now: Done, the step's screen and its offer gone, and their note and like again.
   await expect(top.getByRole("link", { name: "Done", exact: true })).toBeVisible();
   await expect(agent.getByRole("button", { name: "Use the same feedback" })).toHaveCount(0);
   await expect(agent.getByRole("heading", { level: 1, name: "Add your feedback" })).toHaveCount(0);
-  await expect(homeIn(agent, "719 Saltmarsh Ln").locator('[data-fact="Price"]')).toHaveAccessibleName(/your note, 1 like$/);
+  const again = homeIn(agent, "719 Saltmarsh Ln");
+  const thread = await openComments(agent, again);
+  await expect(thread.getByText("Priced to move. Worth seeing this week.")).toBeVisible();
+  await agent.keyboard.press("Escape");
+  await expect(thread).toBeHidden();
+  const shutters = await pick(again, "the blue shutters");
+  await expect(shutters.getByRole("button", { name: /^Like the blue shutters(,|$)/ })).toHaveAttribute("aria-pressed", "true");
+  await agent.keyboard.press("Escape");
   await top.getByRole("link", { name: "Done", exact: true }).click();
   await agent.waitForURL(/\/dashboard\/shares\/[\w-]+\/sent$/);
   const cal = await (await browser.newContext()).newPage();
@@ -190,4 +194,63 @@ test("for two people, with the agent's like and note on the home: each has a lin
   // Someone else's "ready" page isn't theirs to see.
   const other = await signInAgent(browser, "fox.funnel@example.com", "Fox Funnel");
   expect((await other.request.get(new URL(agent.url()).pathname)).status()).toBe(404);
+});
+
+test("a new agent with no listings still has homes to send on step 1, near where they are first, picked with a tap", async ({
+  browser,
+}) => {
+  test.setTimeout(150_000);
+  // Signed up in Olympia, with no listings and nothing liked or sent.
+  const agent = await signInAgent(browser, `nell.near.${Date.now()}@example.com`, "Nell Near", "Olympia, WA");
+  // Signing in lands on Home, like everyone.
+  expect(new URL(agent.url()).pathname).toBe("/");
+  // Where she is was kept (so the order below has it to go on).
+  await agent.goto("/people/me");
+  await expect(agent.getByText("Olympia, WA")).toBeVisible();
+  await agent.goto("/dashboard/new");
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send homes");
+  // Nothing of theirs: no groups for it, but never an empty page.
+  await expect(agent.getByRole("region", { name: /^Your / })).toHaveCount(0);
+  await expect(agent.getByRole("region", { name: "Homes you've liked, saved or sent" })).toHaveCount(0);
+  const more = agent.getByRole("region", { name: "Homes to send" });
+  const homes = more.getByRole("button", { name: /^\$/ });
+  await expect(homes.first()).toBeVisible();
+  expect(await homes.count()).toBeGreaterThanOrEqual(3);
+  // Near them first: a home in Olympia leads. (The sample listings have one
+  // home in Olympia, SAMPLE-1009, and one in Port Townsend, SAMPLE-1010; both
+  // for sale and from the MLS.)
+  await expect(homes.first()).toContainText("Olympia");
+  // Each home once.
+  const names = await homes.allInnerTexts();
+  expect(new Set(names).size).toBe(names.length);
+  // And it's where she is that puts it first, not that it's the newest or
+  // most liked (which would put it first for everyone): an agent in Port
+  // Townsend, the same in every other way, has a Port Townsend home first.
+  const other = await signInAgent(browser, `pia.near.${Date.now()}@example.com`, "Pia Near", "Port Townsend, WA");
+  await other.goto("/dashboard/new");
+  const theirs = other.getByRole("region", { name: "Homes to send" }).getByRole("button", { name: /^\$/ });
+  await expect(theirs.first()).toContainText("Port Townsend");
+  await other.context().close();
+  // Each one a big target: a photo, the price and the address, and "Pick".
+  const first = homes.first();
+  expect((await first.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await expect(first).toContainText("Pick");
+  await expect(first).toHaveAttribute("aria-pressed", "false");
+
+  // One tap picks it, the same as a home found by typing: the count, the
+  // tray, and the way on.
+  const address = (await first.locator("span.truncate").first().innerText()).trim();
+  await first.click();
+  await expect(first).toHaveAttribute("aria-pressed", "true");
+  await expect(first).toContainText("Picked");
+  await expect(agent.getByText("1 picked", { exact: true })).toBeVisible();
+  await expect(agent.getByRole("list", { name: "Picked homes" })).toContainText(address);
+  // A second tap puts it back.
+  await first.click();
+  await expect(agent.getByText("0 picked", { exact: true })).toBeVisible();
+  await expect(agent.getByRole("button", { name: "Pick a home" })).toBeDisabled();
+  await first.click();
+  await agent.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(agent.getByText("Step 2 of 3")).toBeVisible();
+  await expect(agent.getByRole("combobox", { name: "Who's it for?" })).toBeFocused();
 });

@@ -11,6 +11,7 @@ import {
   scrollToEnd,
   settle,
   signUpBuyer,
+  tapPhoto,
 } from "./helpers";
 
 // Today's picks lead the home page: their old address still gets there.
@@ -82,17 +83,27 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
   expect(pageErrors).toEqual([]);
 });
 
-// Facts to like, beside what's in the photo: "Like the price".
-const FACTS = ["Price", "Bedrooms", "Bathrooms", "Square footage"];
-async function likeFact(home: Locator, tag: string) {
-  await home.locator(`[data-fact="${tag}"]`).first().click();
-  const card = home.getByRole("group", { name: tag });
-  await settle(card);
-  const like = card.getByRole("button", { name: new RegExp(`^Like the ${tag.toLowerCase()}`) });
-  await like.click();
-  await expect(like).toHaveAttribute("aria-pressed", "true");
-  await card.getByRole("button", { name: "Close" }).click();
-  await expect(card).toBeHidden();
+// Spots of their own on the photo, liked, clear of the named things in it
+// (the price and the facts are just words now: nothing there to like), and
+// clear of its sides, which run a little past an upright phone's screen.
+const SPOTS = [
+  [0.3, 0.2],
+  [0.8, 0.2],
+  [0.2, 0.45],
+  [0.82, 0.62],
+] as const;
+async function likeSpots(home: Locator) {
+  for (const [x, y] of SPOTS) {
+    await tapPhoto(home, "Stone and shingle home with a three-car garage", x, y);
+    const card = home.locator("[data-spot-card]");
+    await expect(card).toBeVisible();
+    await settle(card);
+    const like = card.getByRole("button", { name: /^Like / });
+    await like.click();
+    await expect(like).toHaveAttribute("aria-pressed", "true");
+    await card.getByRole("button", { name: "Close" }).click();
+    await expect(card).toBeHidden();
+  }
 }
 
 test("replies, comment likes, the activity bell, trending, and who liked what", async ({ browser }) => {
@@ -134,7 +145,7 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   await heartOf(devHome).click();
   await expect(heartOf(devHome)).toHaveAttribute("aria-pressed", "true");
 
-  // Two more people like it, and plenty in its photo and its facts.
+  // Two more people like it, and plenty in its photo.
   // (Trending takes several people, and a place among the busiest homes this
   // week. The other tests make some homes busy too, so this one gets a clear
   // lead of its own: 22 things this week, well clear of theirs.)
@@ -147,7 +158,7 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
     const card = await likeInPhoto(fayHome, thing);
     await card.getByRole("button", { name: "Close" }).click();
   }
-  for (const fact of FACTS) await likeFact(fayHome, fact);
+  await likeSpots(fayHome);
   const gus = await (await browser.newContext()).newPage();
   await gus.goto("/homes/SAMPLE-1012");
   const gusHome = homeIn(gus, FOXGLOVE);
@@ -158,7 +169,7 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
     const card = await likeInPhoto(gusHome, thing);
     await card.getByRole("button", { name: "Close" }).click();
   }
-  for (const fact of FACTS) await likeFact(gusHome, fact);
+  await likeSpots(gusHome);
 
   // A third person comments on the home Cleo liked.
   const eli = await signUpBuyer(browser, "eli@example.com", "Eli Moss");

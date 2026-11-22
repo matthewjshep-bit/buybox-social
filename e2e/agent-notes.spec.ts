@@ -1,12 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
-import { toFirstHome, createShare, heartOf, homeIn, openComments, settle, signedIn, signInAgent } from "./helpers";
+import { toFirstHome, commentIn, createShare, heartOf, homeIn, joinAs, openComments, pick, signInAgent } from "./helpers";
 
 // The tour stays out of the way of scripted browsers unless they ask for it.
 const withTour = async (page: Page) => {
   await page.context().addInitScript(() => localStorage.setItem("buybox:tour:test", "1"));
 };
 
-test("an agent's take before they send: a note and a like on the price, a dislike on the bedrooms, which their client reads as theirs, first", async ({
+test("an agent's take before they send: a note, a like on the front door, a dislike on the fence, which their client reads as theirs, first", async ({
   browser,
 }) => {
   test.setTimeout(90_000);
@@ -24,41 +24,31 @@ test("an agent's take before they send: a note and a like on the price, a dislik
   await expect(home).toBeInViewport({ ratio: 0.9 });
   await expect(agent.getByRole("banner")).toContainText("your feedback for Wren");
 
-  // The price: a note, then a like. (A dislike is there too, as for anyone.)
-  const price = home.locator('[data-fact="Price"]');
-  await price.click();
-  const card = home.getByRole("group", { name: "Price" });
-  await expect(card).toBeVisible();
-  await settle(card);
-  await expect(card.getByRole("button", { name: /^Dislike the price/ })).toBeVisible();
-  await card.getByRole("button", { name: /^Add a note on the price/ }).click();
-  const sheet = agent.getByRole("dialog", { name: "Comments" });
+  // A note, in the comments. (The price and the facts are just words: what
+  // the agent thinks of them goes in a note.)
+  await expect(home.locator('[data-fact="Price"]').getByRole("button")).toHaveCount(0);
+  const sheet = await openComments(agent, home);
   await expect(sheet.getByText("Everyone on this link sees your feedback.")).toBeVisible();
-  await sheet.getByLabel("Add a note on the price").fill("Priced under the last two sales on this street.");
+  await sheet.getByLabel("Add a note").fill("Priced under the last two sales on this street.");
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(commentIn(sheet, "Nell Ortiz", "Priced under the last two sales on this street.")).toBeVisible();
+  await agent.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
-  // (The card goes with the comments, as it always does, then opens again.)
-  await expect(card).toBeHidden();
-  await price.click();
-  await settle(card);
-  await expect(card.locator("[data-agent-take]")).toContainText("Your note");
-  await expect(card.locator("[data-agent-take]")).toContainText("Priced under the last two sales on this street.");
-  const like = card.getByRole("button", { name: /^Like the price/ });
+
+  // The front door, in the photo: a like. (A dislike is there too, as for anyone.)
+  const door = await pick(home, "the red front door");
+  await expect(door.getByRole("button", { name: /^Dislike the red front door/ })).toBeVisible();
+  const like = door.getByRole("button", { name: /^Like the red front door(,|$)/ });
   await like.click();
   await expect(like).toHaveAttribute("aria-pressed", "true");
-  // Their face is on it now, for them too.
-  await expect(price).toHaveAccessibleName(/, your note, 1 like$/);
   await agent.keyboard.press("Escape");
 
-  // And what isn't right, with a dislike: the bedrooms.
-  const beds = home.locator('[data-fact="Bedrooms"]');
-  await beds.click();
-  const bedsCard = home.getByRole("group", { name: "Bedrooms" });
-  await settle(bedsCard);
-  const dislike = bedsCard.getByRole("button", { name: /^Dislike the bedrooms/ });
+  // And what isn't right, with a dislike: the fence.
+  const fence = await pick(home, "the picket fence");
+  const dislike = fence.getByRole("button", { name: /^Dislike the picket fence/ });
   await dislike.click();
   await expect(dislike).toHaveAttribute("aria-pressed", "true");
-  await expect(dislike).toHaveAccessibleName("Dislike the bedrooms, 1 dislike");
+  await expect(dislike).toHaveAccessibleName("Dislike the picket fence, 1 dislike");
 
   // Done: back to the link's page, which says the take is on it.
   await agent.keyboard.press("Escape");
@@ -75,8 +65,8 @@ test("an agent's take before they send: a note and a like on the price, a dislik
     .filter({ hasText: "Priced under the last two sales on this street." });
   await expect(note.locator('img[src^="/people/"]')).toBeVisible();
 
-  // Wren opens it: the agent's words lead the line on the photo, with their
-  // face on the price, and their note and like on its card.
+  // Wren opens it: the agent's words lead the line on the photo, and their
+  // like and dislike are on the door's and the fence's cards, as theirs.
   const wren = await (await browser.newContext()).newPage();
   const errors: string[] = [];
   wren.on("pageerror", (error) => errors.push(error.message));
@@ -85,27 +75,25 @@ test("an agent's take before they send: a note and a like on the price, a dislik
   const hers = homeIn(wren, "1204 Quillan St SE");
   await expect(hers.locator("[data-photo-caption]")).toContainText("Nell (your agent)");
   await expect(hers.locator("[data-photo-caption]")).toContainText("Priced under the last two sales");
-  const herPrice = hers.locator('[data-fact="Price"]');
-  await expect(herPrice).toHaveAccessibleName(/, with a note from Nell, your agent$/);
-  await herPrice.click();
-  const herCard = hers.getByRole("group", { name: "Price" });
-  await expect(herCard).toBeVisible();
-  const take = herCard.locator("[data-agent-take]");
+  // (A card on the photo is for someone signed up: that comes first.)
+  await hers.getByRole("button", { name: "Select the red front door" }).press("Enter");
+  await joinAs(wren, "Wren");
+  const herDoor = hers.getByRole("group", { name: /^red front door$/i });
+  await expect(herDoor).toBeVisible();
+  const take = herDoor.locator("[data-agent-take]");
   await expect(take).toContainText("Nell, your agent");
   await expect(take).toContainText("Likes this");
-  await expect(take).toContainText("Priced under the last two sales on this street.");
   // [P] The agent's like is theirs, not one of the link's own: no count on
-  // the price, none on the home, and Wren's own heart is still hers to give.
-  await expect(herCard.getByRole("button", { name: /^Like the price/ })).toHaveAccessibleName("Like the price");
-  await expect(herCard.getByRole("button", { name: /^Like the price/ })).toHaveAttribute("aria-pressed", "false");
+  // the door, none on the home, and Wren's own heart is still hers to give.
+  await expect(herDoor.getByRole("button", { name: /^Like the red front door/ })).toHaveAccessibleName("Like the red front door");
+  await expect(herDoor.getByRole("button", { name: /^Like the red front door/ })).toHaveAttribute("aria-pressed", "false");
   await wren.keyboard.press("Escape");
-  // The bedrooms: the agent doesn't like them, said as theirs, and Wren's
-  // own dislike is still hers to give.
-  await hers.locator('[data-fact="Bedrooms"]').click();
-  const herBeds = hers.getByRole("group", { name: "Bedrooms" });
-  await expect(herBeds.locator("[data-agent-take]")).toContainText("Doesn't like this");
-  await expect(herBeds.getByRole("button", { name: /^Dislike the bedrooms/ })).toHaveAccessibleName("Dislike the bedrooms");
-  await expect(herBeds.getByRole("button", { name: /^Dislike the bedrooms/ })).toHaveAttribute("aria-pressed", "false");
+  // The fence: the agent doesn't like it, said as theirs, and Wren's own
+  // dislike is still hers to give.
+  const herFence = await pick(hers, "the picket fence");
+  await expect(herFence.locator("[data-agent-take]")).toContainText("Doesn't like this");
+  await expect(herFence.getByRole("button", { name: /^Dislike the picket fence/ })).toHaveAccessibleName("Dislike the picket fence");
+  await expect(herFence.getByRole("button", { name: /^Dislike the picket fence/ })).toHaveAttribute("aria-pressed", "false");
   await wren.keyboard.press("Escape");
   await expect(heartOf(hers)).toHaveAttribute("aria-pressed", "false");
   await expect(heartOf(hers)).toHaveAccessibleName(/^Like 1204 Quillan St SE$/);
@@ -113,16 +101,12 @@ test("an agent's take before they send: a note and a like on the price, a dislik
   // Wren asks something on the link, and the agent answers her there.
   const ASKED = "Is the roof on this one new?";
   const ANSWER = "Replaced two summers ago, with the permit on file.";
-  // (Signed in, so what she says goes through at once.)
-  const asker = await signedIn(browser);
-  await asker.goto(url);
-  const theirs = homeIn(asker, "1204 Quillan St SE");
-  await theirs.scrollIntoViewIfNeeded();
-  await expect(theirs).toBeInViewport({ ratio: 0.9 });
-  const chat = await openComments(asker, theirs);
+  // (Signed up a moment ago, and the link's one person now, so what she says
+  // goes through at once.)
+  const chat = await openComments(wren, hers);
   await chat.getByLabel("Add a comment").fill(ASKED);
   await chat.getByRole("button", { name: "Post", exact: true }).click();
-  await expect(chat.getByText(ASKED)).toBeVisible();
+  await expect(commentIn(chat, "Wren", ASKED)).toBeVisible();
   // (Once it's saved, the agent has it.)
   const panel = agent.getByRole("region", { name: "1204 Quillan St SE" });
   await expect(async () => {
@@ -150,9 +134,8 @@ test("an agent's take before they send: a note and a like on the price, a dislik
     await guest.clock.runFor(5000);
     await guest.waitForTimeout(150);
   }
-  expect(said).toContainEqual(expect.stringContaining("Nell liked the price"));
-  // (Their note on the price is the same place as their like, so the line says it once.)
-  for (const line of said) expect(line).not.toMatch(/bedrooms|A buyer|Wren|roof|Replaced|privately/);
+  expect(said).toContainEqual(expect.stringContaining("Nell liked the red front door"));
+  for (const line of said) expect(line).not.toMatch(/picket fence|A buyer|Wren|roof|Replaced|privately/);
   const html = await (await guest.request.get(address)).text();
   for (const never of [ASKED, ANSWER]) expect(html).not.toContain(never);
   expect(errors).toEqual([]);
@@ -177,12 +160,12 @@ test("the first time, a quick tour shows what to tap, step by step, and then get
 
   const steps = page.locator("[data-tour-open]");
   await expect(steps).toBeVisible();
-  await expect(steps).toContainText("Tap any detail");
-  await expect(steps.getByLabel("Step 1 of 3")).toBeVisible();
-  await expect(steps.getByRole("button", { name: "Next", exact: true })).toBeFocused();
-  await steps.getByRole("button", { name: "Next", exact: true }).click();
+  // (The price and the details are just words: the tour starts on the photo.)
   await expect(steps).toContainText("Tap anything in a photo");
   await expect(steps).toContainText("Like it, or say something.");
+  await expect(steps).not.toContainText("Tap any detail");
+  await expect(steps.getByLabel("Step 1 of 2")).toBeVisible();
+  await expect(steps.getByRole("button", { name: "Next", exact: true })).toBeFocused();
   // A tap anywhere is the next step too.
   await page.mouse.click(20, 200);
   await expect(steps).toContainText("Love the home?");
@@ -206,7 +189,7 @@ test("the first time, a quick tour shows what to tap, step by step, and then get
   await guest.goto("/reel");
   await expect(guest.getByRole("article").first()).toBeInViewport({ ratio: 0.9 });
   const intro = guest.locator("[data-tour-open]");
-  await expect(intro).toContainText("Tap any detail");
+  await expect(intro).toContainText("Tap anything in a photo");
   await intro.getByRole("button", { name: "Skip" }).click();
   await expect(intro).toHaveCount(0);
   await guest.reload();
@@ -220,8 +203,7 @@ test("the first time, a quick tour shows what to tap, step by step, and then get
   await agent.getByRole("button", { name: "See the 2 homes" }).click();
   const theirs = agent.locator("[data-tour-open]");
   await expect(theirs).toContainText("Add your feedback");
-  await theirs.getByRole("button", { name: "Next", exact: true }).click();
-  await expect(theirs).toContainText("Point things out");
+  await expect(theirs).toContainText("Tap anything in a photo.");
   await theirs.getByRole("button", { name: "Next", exact: true }).click();
   await expect(theirs).toContainText("Rue sees your feedback");
   await agent.keyboard.press("Escape");

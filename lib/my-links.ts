@@ -16,6 +16,9 @@ export type MyLink = {
   homes: number;
   unrated: number;
   firstPhoto: string | null;
+  // The first home still waiting, to open the link on: not the ones they've
+  // already rated. Null when there's none.
+  firstWaiting: string | null;
   cities: string[];
   latestAgentReply: { body: string; listingKey: string; address: string; at: string; commentId: string } | null;
   lastActivityAt: string;
@@ -32,6 +35,7 @@ type Row = {
   homes: number;
   unrated: number;
   first_photo: string | null;
+  first_waiting: string | null;
   cities: string[] | null;
   reply_id: string | null;
   reply_body: string | null;
@@ -40,6 +44,17 @@ type Row = {
   reply_at: Date | null;
   last_at: Date;
 };
+
+// Whether the person on the link (p) has rated a home on it (sl): the heart
+// or the X, a specific liked or disliked, or a spot in a photo.
+const rated = () => sql`(
+  exists (
+    select 1 from reactions r
+    where r.participant_id = p.id and r.share_id = sl.share_id and r.listing_key = sl.listing_key
+      and (r.reaction is not null or cardinality(r.liked) > 0 or cardinality(r.disliked) > 0))
+  or exists (select 1 from photo_likes pl where pl.participant_id = p.id and pl.listing_key = sl.listing_key)
+  or exists (select 1 from photo_dislikes pd where pd.participant_id = p.id and pd.listing_key = sl.listing_key)
+)`;
 
 // Newest activity first: something the agent said or added, something they
 // did themselves, or the link reaching them. A link the account is the agent
@@ -51,20 +66,10 @@ export const getMyLinks = cache(async (accountId: string): Promise<MyLink[]> => 
       av.id as agent_profile, case when av.id is not null then left(md5(a.photo_data_url), 10) end as photo_v,
       (select count(*)::int from share_listings sl where sl.share_id = s.id and sl.removed_at is null) as homes,
       (select count(*)::int from share_listings sl
-        where sl.share_id = s.id and sl.removed_at is null
-          and not exists (
-            select 1 from reactions r
-            where r.participant_id = p.id and r.share_id = s.id and r.listing_key = sl.listing_key
-              and (r.reaction is not null or cardinality(r.liked) > 0 or cardinality(r.disliked) > 0))
-          and not exists (
-            select 1 from photo_likes pl where pl.participant_id = p.id and pl.listing_key = sl.listing_key)
-          and not exists (
-            select 1 from photo_dislikes pd where pd.participant_id = p.id and pd.listing_key = sl.listing_key)
+        where sl.share_id = s.id and sl.removed_at is null and not ${rated()}
       ) as unrated,
-      (select l.data->'Media'->0->>'MediaURL'
-        from share_listings sl join listings l on l.listing_key = sl.listing_key
-        where sl.share_id = s.id and sl.removed_at is null
-        order by sl.position limit 1) as first_photo,
+      -- A home still waiting, where there is one: the card says it's new.
+      cover.photo as first_photo, case when not cover.rated then cover.listing_key end as first_waiting,
       (select array_agg(distinct l.data->>'City')
         from share_listings sl join listings l on l.listing_key = sl.listing_key
         where sl.share_id = s.id and sl.removed_at is null and l.data->>'City' is not null) as cities,
@@ -81,6 +86,12 @@ export const getMyLinks = cache(async (accountId: string): Promise<MyLink[]> => 
     join shares s on s.id = p.share_id
     join accounts a on a.id = s.agent_id
     left join visitors av on av.account_id = s.agent_id
+    left join lateral (
+      select sl.listing_key, l.data->'Media'->0->>'MediaURL' as photo, ${rated()} as rated
+      from share_listings sl join listings l on l.listing_key = sl.listing_key
+      where sl.share_id = s.id and sl.removed_at is null
+      order by 3, sl.position limit 1
+    ) cover on true
     -- The agent's newest word on a home still on the link, since this person
     -- was on it: what they'd want to read first.
     left join lateral (
@@ -107,6 +118,7 @@ export const getMyLinks = cache(async (accountId: string): Promise<MyLink[]> => 
     homes: row.homes,
     unrated: row.unrated,
     firstPhoto: row.first_photo,
+    firstWaiting: row.first_waiting,
     cities: (row.cities ?? []).sort(),
     latestAgentReply:
       row.reply_id && row.reply_body && row.reply_key && row.reply_at
@@ -120,4 +132,94 @@ export const getMyLinks = cache(async (accountId: string): Promise<MyLink[]> => 
         : null,
     lastActivityAt: row.last_at.toISOString(),
   }));
+});
+
+// The links that still have a home waiting for their take: the only ones Home
+// puts at the top. A link they've rated all of drops off it, and comes back
+// when the agent adds a home.
+export const waitingLinks = (links: MyLink[]) => links.filter((link) => link.unrated > 0);
+
+// Whether they've rated anything their agents sent: Rated homes has something to show.
+export const hasRated = (links: MyLink[]) => links.some((link) => link.homes > link.unrated);
+
+// A home an agent sent them that they've made up their mind on, as Rated
+// homes lists it. Only their own take (never the agent's notes or anyone
+// else's), and only the agent's name, never their email or phone.
+export type RatedHome = {
+  listingKey: string;
+  // Their link, to open the home on, where they can change their mind.
+  token: string;
+  verdict: "like" | "pass";
+  address: string;
+  city: string | null;
+  price: number | null;
+  photo: string | null;
+  agentName: string;
+  ratedAt: string;
+};
+
+type RatedRow = {
+  listing_key: string;
+  token: string;
+  verdict: "like" | "pass";
+  address: string | null;
+  city: string | null;
+  price: string | null;
+  photo: string | null;
+  full_name: string;
+  agent_first_name: string | null;
+  rated_at: Date;
+};
+
+// Newest first. Rated means what Home's count means (`rated`, above).
+// Liked wins over passed the way the agent's Clients page reads it. A home
+// sent on two links is listed once, by the newest take on it.
+export const getRatedHomes = cache(async (accountId: string): Promise<RatedHome[]> => {
+  const rows = await sql<RatedRow[]>`
+    select * from (
+      select distinct on (x.listing_key) x.*
+      from (
+        select sl.listing_key, coalesce(p.token, s.token) as token,
+          case
+            when r.reaction = 'like' then 'like'
+            when r.reaction = 'dislike' then 'pass'
+            when cardinality(r.liked) > 0 then 'like'
+            when cardinality(r.disliked) > 0 then 'pass'
+            when exists (select 1 from photo_likes pl where pl.participant_id = p.id and pl.listing_key = sl.listing_key) then 'like'
+            when exists (select 1 from photo_dislikes pd where pd.participant_id = p.id and pd.listing_key = sl.listing_key) then 'pass'
+          end as verdict,
+          l.data->>'UnparsedAddress' as address, l.data->>'City' as city, l.data->>'ListPrice' as price,
+          l.data->'Media'->0->>'MediaURL' as photo,
+          a.full_name, nullif(btrim(av.first_name), '') as agent_first_name,
+          greatest(r.updated_at,
+            (select max(pl.created_at) from photo_likes pl where pl.participant_id = p.id and pl.listing_key = sl.listing_key),
+            (select max(pd.created_at) from photo_dislikes pd where pd.participant_id = p.id and pd.listing_key = sl.listing_key)
+          ) as rated_at
+        from participants p
+        join shares s on s.id = p.share_id
+        join accounts a on a.id = s.agent_id
+        left join visitors av on av.account_id = s.agent_id
+        join share_listings sl on sl.share_id = s.id and sl.removed_at is null
+        join listings l on l.listing_key = sl.listing_key
+        left join reactions r on r.participant_id = p.id and r.share_id = s.id and r.listing_key = sl.listing_key
+        where p.account_id = ${accountId} and s.agent_id <> ${accountId}
+      ) x
+      where x.verdict is not null
+      order by x.listing_key, x.rated_at desc nulls last
+    ) y
+    order by y.rated_at desc nulls last`;
+  return rows.map((row) => {
+    const price = row.price === null ? NaN : Number(row.price);
+    return {
+      listingKey: row.listing_key,
+      token: row.token,
+      verdict: row.verdict,
+      address: row.address?.trim() || "A home",
+      city: row.city,
+      price: Number.isFinite(price) && price > 0 ? price : null,
+      photo: row.photo,
+      agentName: row.agent_first_name ?? agentFirstName(row.full_name),
+      ratedAt: row.rated_at.toISOString(),
+    };
+  });
 });

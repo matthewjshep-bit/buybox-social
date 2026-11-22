@@ -8,7 +8,6 @@ import {
   linkHomes,
   openComments,
   openScorecard,
-  settle,
   signInAgent,
   signUpBuyer,
 } from "./helpers";
@@ -129,7 +128,7 @@ test("on a link, a reply to someone's likes or their comment stays on the link",
   }
 });
 
-test("the year built, the description and who listed it are each something to like or talk about", async ({ browser }) => {
+test("the year built, the description and who listed it are words to read; what someone thinks of them goes in a comment", async ({ browser }) => {
   test.setTimeout(90_000);
   const page = await (await browser.newContext(DESKTOP)).newPage();
   const pageErrors: string[] = [];
@@ -138,76 +137,45 @@ test("the year built, the description and who listed it are each something to li
   const home = homeIn(page, HALVARD);
   await expect(home).toBeInViewport({ ratio: 0.9 });
 
-  // Beside the photo, each detail is a tap away from its card.
-  await home.getByRole("button", { name: /^Year built, 2016/ }).click();
-  const year = home.getByRole("group", { name: "Year built" });
-  await expect(year).toBeVisible();
-  await settle(year);
-  await year.getByRole("button", { name: "Like the year built", exact: true }).click();
-  await joinAs(page, "Lee");
-  await expect(year.getByRole("button", { name: "Like the year built, 1 like", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await year.getByLabel("Comment on the year built").fill("Barely ten years old, nice");
-  await year.getByLabel("Comment on the year built").press("Enter");
-  await expect(home.getByRole("button", { name: /^Year built, 2016, 1 like, 1 comment$/ })).toBeVisible();
-  await page.keyboard.press("Escape");
-
-  // The description as a whole, and the agent who listed it.
-  await home.locator('[data-fact="Description"]').click();
-  const description = home.getByRole("group", { name: "Description" });
-  await expect(description).toBeVisible();
-  await settle(description);
-  await description.getByRole("button", { name: "Like the description", exact: true }).click();
-  await expect(description.getByRole("button", { name: "Like the description, 1 like", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await description.getByRole("button", { name: "Close" }).click();
-  await home.getByRole("button", { name: /^Listed by Luis Romero/ }).click();
-  const agent = home.getByRole("group", { name: "Listing agent" });
-  await expect(agent).toBeVisible();
-  await settle(agent);
-  await agent.getByRole("button", { name: "Dislike the listing agent", exact: true }).click();
-  await expect(agent.getByRole("button", { name: "Dislike the listing agent, 1 dislike", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await agent.getByRole("button", { name: "Close" }).click();
-
-  // In the comments, what was said comes with what it's about.
-  await home.getByRole("button", { name: /^Comments, \d+$/ }).click();
-  const sheet = page.getByRole("dialog", { name: "Comments" });
-  const said = sheet.getByRole("listitem").filter({ hasText: "Barely ten years old, nice" });
-  await expect(said).toBeVisible();
-  await expect(said.getByRole("button", { name: /^About the year built/ })).toBeVisible();
+  // Beside the photo, the details, the description and who listed it are
+  // plain words: nothing on them to like or dislike, and no card.
+  const details = home.getByRole("list", { name: "The details" });
+  await expect(details).toContainText("Year built");
+  await expect(details).toContainText("2016");
+  await expect(details.getByRole("button")).toHaveCount(0);
+  await expect(home.getByRole("button", { name: /^Year built/ })).toHaveCount(0);
+  await expect(home.locator('[data-fact="Description"]')).toHaveCount(0);
+  await expect(home.getByText(/^Listed by Luis Romero/)).toBeVisible();
+  await expect(home.getByRole("button", { name: /^Listed by/ })).toHaveCount(0);
+  await expect(home.getByRole("button", { name: /^Like the (year built|description|listing agent)/ })).toHaveCount(0);
+  await home.getByText(/^Listed by Luis Romero/).click();
+  await expect(home.locator("[data-spot-card]")).toHaveCount(0);
   expect(pageErrors).toEqual([]);
 
-  // On a phone: the description over the photo takes a tap.
+  // On a phone: a line of the description, and "more" opens More, with all
+  // of it, every detail and who listed it.
   const phone = await (await browser.newContext()).newPage();
   phone.on("pageerror", (error) => pageErrors.push(error.message));
   await phone.goto("/homes/SAMPLE-1005");
   const onPhone = homeIn(phone, HALVARD);
-  await onPhone.locator('[data-fact="Description"]').click();
-  const card = onPhone.getByRole("group", { name: "Description" });
-  await expect(card).toBeVisible();
-  await settle(card);
-  // (The line at the photo's foot steps aside for it.)
-  await expect(onPhone.locator("[data-photo-caption]")).toBeHidden();
-  await card.getByRole("button", { name: "Close" }).click();
+  await expect(onPhone).toBeInViewport({ ratio: 0.9 });
+  await onPhone.getByRole("button", { name: "more", exact: true }).click();
+  const more = phone.getByRole("dialog", { name: "More" });
+  await expect(more).toBeVisible();
+  await expect(more.getByText(/^Listed by Luis Romero/)).toBeVisible();
+  await expect(more.getByText("Year built", { exact: true })).toBeVisible();
+  await expect(onPhone.locator("[data-spot-card]")).toHaveCount(0);
   // (No Porchcard there for a visitor.)
   await expect(phone.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
 
   // An agent, going through a link's homes on a phone, has the Porchcard, and
-  // its facts open their cards too.
+  // a fact there opens what's been said about it.
   const fay = await signInAgent(browser, "fay-facts@example.com", "Fay Facts");
   fay.on("pageerror", (error) => pageErrors.push(error.message));
   const { dashboardUrl } = await createShare(fay, ["Halvard"]);
   const theirs = await linkHomes(fay, dashboardUrl, "SAMPLE-1005", HALVARD);
   const scorecard = await openScorecard(fay, theirs);
   await scorecard.getByRole("button", { name: /^On the market since, / }).click();
-  const market = theirs.getByRole("group", { name: "Days on market" });
-  await expect(market).toBeVisible();
-  await settle(market);
-  await market.getByRole("button", { name: /^Comment on the time on the market/ }).click();
   const phoneSheet = fay.getByRole("dialog", { name: "Comments" });
   await expect(phoneSheet.getByRole("heading", { name: "On the time on the market" })).toBeVisible();
   expect(pageErrors).toEqual([]);

@@ -37,8 +37,8 @@ test("an agent's link nudges a first-timer: swipe for photos, then on to the nex
   await expect(first.getByText("Swipe for more photos")).toBeVisible();
   await expect(first.getByText(", or use the arrows")).toBeHidden();
 
-  // A thumb swipe low on the screen, over the caption's words, turns the photo.
-  const caption = await first.getByText(/^Listed by/).boundingBox();
+  // A thumb swipe low on the screen, over the words under the photo, turns the photo.
+  const caption = await first.locator('[data-fact="Address"]').boundingBox();
   await swipeLeft(page, caption!.y + caption!.height / 2);
   await expect(first.getByText("Photo 2 of 4")).toBeAttached();
   await expect(first.getByText("Swipe for more photos")).toBeHidden();

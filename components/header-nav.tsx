@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Building2,
   House,
+  ListChecks,
   LogOut,
   Shield,
   UserRound,
@@ -102,6 +103,7 @@ export function AccountMenu({
   overlay,
   photo,
   links = [],
+  rated = false,
 }: {
   // Your own page: straight to it once you have one (so it's marked when you're there).
   profile: string;
@@ -121,6 +123,8 @@ export function AccountMenu({
   overlay: boolean;
   // Someone on an agent's link: the way back to it ("Homes from Dana").
   links?: { href: string; label: string }[];
+  // They've liked or passed on homes an agent sent: Rated homes, where those are.
+  rated?: boolean;
 }) {
   const menu = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -296,6 +300,11 @@ export function AccountMenu({
               {link.label}
             </MenuLink>
           ))}
+          {rated && (
+            <MenuLink href="/people/me/rated" icon={<ListChecks aria-hidden size={18} />} onGo={close}>
+              Rated homes
+            </MenuLink>
+          )}
           {/* (Notifications and an agent's Clients aren't repeated here:
               the bar has them by name at every width. Only on someone's
               link, which has no bar, is Clients here.) A buyer who is
