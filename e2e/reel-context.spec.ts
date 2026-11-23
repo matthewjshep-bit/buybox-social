@@ -177,7 +177,7 @@ test("a card on someone's page opens their highlights on a stage that takes the 
   await expect(card).toBeFocused();
 });
 
-test("on someone's page, the line at a home's foot says only what they did: by name to anyone, \"You\" to them", async ({
+test("on someone's page, Why it's here says only what they did: by name to anyone, \"You\" to them; the comments under the photo name nobody's like", async ({
   browser,
 }) => {
   test.setTimeout(90_000);
@@ -189,36 +189,40 @@ test("on someone's page, the line at a home's foot says only what they did: by n
   await expect(heart).toHaveAttribute("aria-pressed", "true");
 
   const address = `/reel?from=${inesPage.split("/").pop()}&home=SAMPLE-1003`;
-  // Everything the line says over half a minute.
+  // The home has two places that name anyone now: Why it's here (whose take
+  // this is) and the latest comments under the photo (the home's thread, as
+  // everyone reads it: a name, the words, when). Nothing rotates, so one look
+  // at each is everything they say.
   const said = async (page: Page) => {
-    await page.clock.install();
     await page.goto(address);
-    const activity = homeIn(page, CORBEL).getByRole("group", { name: "Recent activity" });
-    await expect(activity).toBeVisible();
-    const lines: string[] = [];
-    for (let i = 0; i < 6; i++) {
-      lines.push((await activity.textContent()) ?? "");
-      await page.clock.runFor(5000);
-      await page.waitForTimeout(150);
-    }
-    return lines;
+    const home = homeIn(page, CORBEL);
+    await expect(home).toBeInViewport({ ratio: 0.9 });
+    const why = home.getByRole("region", { name: "Why it's here" });
+    const comments = home.getByRole("group", { name: "Latest comments" });
+    await expect(why).toBeVisible();
+    await expect(comments).toBeVisible();
+    // Her words are in the thread, under her name; the home's likes are a
+    // count, never who ("Liked by …" is for an agent's link, with names to give).
+    await expect(comments).toContainText(SAID);
+    await expect(comments).toContainText(/^\d+ likes?/);
+    return { why: (await why.textContent()) ?? "", comments: (await comments.textContent()) ?? "" };
   };
 
   // A visitor on Ines's homes: Ines, and never Pia, a buyer, or who else liked it.
   const visitor = await said(await newPage(browser, DESKTOP));
-  expect(visitor[0]).toContain("Ines");
-  for (const line of visitor) {
-    expect(line).toContain("Ines");
-    expect(line).not.toMatch(/Pia|A buyer|others liked|You/);
-  }
+  expect(visitor.why).toContain("Ines liked the bar stools");
+  expect(visitor.why).not.toMatch(/Pia|A buyer|others liked|Liked by|You/);
+  expect(visitor.comments).toContain("Ines");
+  expect(visitor.comments).not.toMatch(/Pia|A buyer|others liked|Liked by/);
 
-  // Ines herself: "You", and still nobody else.
+  // Ines herself: "You" liked them, and still nobody else. (The thread under
+  // the photo reads as it does to everyone: her comment, under her name.)
   const own = await ines.context().newPage();
+  await own.setViewportSize(DESKTOP.viewport);
   const hers = await said(own);
-  for (const line of hers) {
-    expect(line).toContain("You");
-    expect(line).not.toMatch(/Pia|A buyer|others liked|Ines/);
-  }
+  expect(hers.why).toContain("You liked the bar stools");
+  expect(hers.why).not.toMatch(/Pia|A buyer|others liked|Liked by|Ines/);
+  expect(hers.comments).not.toMatch(/Pia|A buyer|others liked|Liked by/);
   await own.close();
 
   await Promise.all([saved(pia), heart.click()]);
@@ -288,7 +292,7 @@ test("a card from further down the page (Show earlier) opens on itself, with the
   await expect(homeIn(popout, LAKEVIEW)).toBeInViewport({ ratio: 0.9 });
 });
 
-test("on a phone the pop-out is the whole screen, with whose take it is above the photo, opened with a tap", async ({
+test("on a phone the pop-out is the whole screen, with whose take it is over the photo's top, under the home's head, opened with a tap", async ({
   browser,
 }) => {
   test.setTimeout(60_000);
@@ -304,9 +308,17 @@ test("on a phone the pop-out is the whole screen, with whose take it is above th
   const why = corbel.getByRole("region", { name: "Why it's here" });
   await expect(why).toBeVisible();
   await expect(why).toContainText("Ines's highlights · 2 of 3");
+  // The home's head (price, address) is above the photo; the take is a bar
+  // over the photo's top corner, just under the head, one row tall.
+  const head = (await corbel.locator("[data-home-head]").boundingBox())!;
   const photo = (await corbel.getByRole("img", { name: KITCHEN }).boundingBox())!;
   const take = (await why.boundingBox())!;
-  expect(take.y + take.height).toBeLessThanOrEqual(photo.y + 1);
+  expect(head.y + head.height).toBeLessThanOrEqual(photo.y + 1);
+  expect(take.y).toBeGreaterThanOrEqual(photo.y);
+  expect(take.y).toBeLessThanOrEqual(photo.y + 12);
+  expect(take.x).toBeGreaterThanOrEqual(photo.x);
+  expect(take.x + take.width).toBeLessThanOrEqual(photo.x + photo.width);
+  expect(take.height).toBeGreaterThanOrEqual(44);
 
   // One line until it's tapped; then all of it, in place.
   const toggle = why.getByRole("button", { expanded: false });

@@ -19,6 +19,10 @@ export async function generateImageMetadata({ params }: { params: { token: strin
   return [{ id: "card", alt, size: PREVIEW_SIZE, contentType: PREVIEW_TYPE }];
 }
 
+// The site's own colour (globals.css `--brand`): every link's picture wears it,
+// never the agent's, as the link's pages don't.
+const SITE_COLOR = "#2473bc";
+
 // The picture shown in the text message when an agent sends a link: the home
 // and who it's from, never who it's for or anything said on it.
 export default async function Image({ params }: { params: Promise<{ token: string }> }) {
@@ -30,7 +34,7 @@ export default async function Image({ params }: { params: Promise<{ token: strin
   const agent = found?.agent;
 
   return previewImage(
-    <PreviewFrame photo={photo} color={agent?.brand_color}>
+    <PreviewFrame photo={photo} color={SITE_COLOR}>
       {listing ? (
         listings.length > 1 ? (
           <div style={{ display: "flex", fontSize: 60, fontWeight: 700 }}>{`${listings.length} homes picked for you`}</div>

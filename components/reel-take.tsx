@@ -13,11 +13,11 @@ import type { ContextTake, ContextWho, HomeContext } from "@/lib/reel-context";
 // on it ("Maya liked the porch and the kitchen"), the spots they picked out
 // (a tap opens that photo, on the spot), what they said (a tap opens the
 // comments on it), or why it was picked for you. Side by side, a small card
-// at the top of the white panel, above the price ("panel"). On a phone, a bar
-// above the photo, beside the way back (or a pop-out's close button), one row
-// tall until it's tapped open ("band"): whose homes these are and how far
-// through them you are, over the take in a line. Nothing is drawn on the
-// photo until it's opened, or a spot is tapped.
+// at the top of the panel, above the price ("panel"). On a phone, a bar over
+// the photo's top left corner, just under the home's head (and after Send,
+// when that's in the corner), one row tall until it's tapped open ("band"):
+// whose homes these are and how far through them you are, over the take in a
+// line. Nothing else is drawn on the photo until it's opened, or a spot is tapped.
 
 // How many people's takes it shows on one home (a link with a few people on it).
 const TAKES_SHOWN = 3;
@@ -28,7 +28,7 @@ export function TakeCard({
   home,
   eyebrow,
   look,
-  low = false,
+  beside = null,
   hidden = false,
   onSpot,
   onComment,
@@ -38,8 +38,10 @@ export function TakeCard({
   // Whose homes these are, and which of them this is: "Maya's highlights · 2 of 7".
   eyebrow?: TakeEyebrow | null;
   look: "panel" | "band";
-  // On a phone, under the site's header: the full page has one.
-  low?: boolean;
+  // On a phone, Send sits in the photo's top left corner: the band starts
+  // after it, at this left edge (a CSS length; the photo may not reach the
+  // frame's edge, so the pill isn't always at it).
+  beside?: string | null;
   // The photo's held, shown alone, or a sheet is over the home.
   hidden?: boolean;
   onSpot: (spot: SpotRef) => void;
@@ -74,10 +76,11 @@ export function TakeCard({
       data-keep-clear
       data-take
       className={cn(
-        "pointer-events-auto absolute left-[3.75rem] right-3 z-30 max-w-md rounded-2xl bg-black/55 text-white ring-1 ring-white/10 backdrop-blur-md transition-[opacity,visibility] duration-300 [text-shadow:none] motion-reduce:transition-none",
-        low ? "top-[calc(env(safe-area-inset-top)+3.5rem)]" : "top-[calc(env(safe-area-inset-top)+0.5rem)]",
+        "pointer-events-auto absolute right-3 top-[calc(var(--photo-top)+0.5rem)] z-30 max-w-md rounded-2xl bg-black/55 text-white ring-1 ring-white/10 backdrop-blur-md transition-[opacity,visibility] duration-300 [text-shadow:none] motion-reduce:transition-none",
+        !beside && "left-3",
         hidden && "invisible opacity-0",
       )}
+      style={beside ? { left: beside } : undefined}
     >
       {something ? (
         <button

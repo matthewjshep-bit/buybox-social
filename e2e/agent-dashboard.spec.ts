@@ -791,7 +791,8 @@ test("an agent hearts what a client said: their thread says Liked by, in stone, 
   await agent.reload();
   await expect(like).toHaveAttribute("aria-pressed", "true");
 
-  // On her link: "Liked by Hal" under her words, in stone, not the agent's colour.
+  // On her link: "Liked by Hal" under her words, in stone, not the brand colour
+  // (the site's own, on every link).
   await ivy.reload();
   sheet = await openComments(ivy, homeIn(ivy, SALTMARSH));
   const chip = commentIn(sheet, "Ivy", IVY_SAYS).getByText("Liked by Hal", { exact: true });

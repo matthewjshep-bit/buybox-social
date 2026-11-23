@@ -21,7 +21,7 @@ const SECRET = "We could go 50k over asking.";
 const SHARED = "That fenced yard is perfect for our dog.";
 const BRACKENFIELD = "2205 Brackenfield Ct NW";
 
-test("public pages show activity, never private words, and private threads share only what buyers allow", async ({
+test("public pages show the latest comments, never private words, and private threads share only what buyers allow", async ({
   browser,
   page,
 }) => {
@@ -67,24 +67,36 @@ test("public pages show activity, never private words, and private threads share
   await quinnWhy.getByRole("button", { name: "Yard" }).click();
   await expect(quinnWhy.getByRole("button", { name: "Yard" })).toHaveAttribute("aria-pressed", "true");
 
-  // The home's public page shows the activity: first the comment the client
-  // chose to share, without her name; in its turn, the private one, without
-  // its words.
+  // The home's public page reads like a post: under the photo, how many like
+  // it and the latest comments. The comment the client chose to share is
+  // there, as "A buyer", without her name. The private one isn't there at
+  // all: not its words, not even a row for it.
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto("/homes/SAMPLE-1006");
   const post = homeIn(page, BRACKENFIELD);
-  const activity = post.getByRole("group", { name: "Recent activity" });
-  await expect(activity).toContainText(`A buyer commented\u201c${SHARED}\u201d`);
-  await expect(post).toContainText("A buyer commented privately", { timeout: 30_000 });
-  await expect(activity).not.toContainText(SECRET);
+  const latest = post.getByRole("group", { name: "Latest comments" });
+  await expect(latest).toContainText(/1 like|Liked by/);
+  await expect(latest).toContainText(`A buyer ${SHARED}`);
+  // (Other tests may have said things here too: hers is the one row of a
+  // buyer's, and the private one has no row at all.)
+  await expect(latest.getByRole("listitem").filter({ hasText: "A buyer" })).toHaveCount(1);
+  await expect(latest).not.toContainText(SECRET);
+  await expect(latest).not.toContainText(/privately/);
+  await expect(post).not.toContainText(SECRET);
+  // The description is in the home's words, shown when the head is tapped:
+  // all of it, and who listed it.
   await expect(post).toContainText(/Traditional brick-front home/);
-  // Who listed it is in More, with all of the description.
-  await post.getByRole("button", { name: "More options" }).click();
-  const more = page.getByRole("dialog", { name: "More" });
-  await expect(more).toContainText("Listed by Priya Natarajan");
+  const head = post.getByRole("button", { name: "About this home" });
+  const about = post.getByRole("region", { name: "About this home" });
+  await expect(about).toBeHidden();
+  await head.click();
+  await expect(about).toBeVisible();
+  await expect(about).toContainText(/Traditional brick-front home/);
+  await expect(about).toContainText("Listed by Priya Natarajan");
+  await expect(about).not.toContainText(SECRET);
   await page.keyboard.press("Escape");
-  await expect(more).toBeHidden();
+  await expect(about).toBeHidden();
   await expect(post.getByRole("button", { name: `Like ${BRACKENFIELD}, 1 like` })).toBeVisible();
   let sheet = await openComments(page, post);
   // The private pass shows nowhere: not in the comments...
@@ -139,6 +151,17 @@ test("public pages show activity, never private words, and private threads share
   await expect(commentIn(thread, "Morgan", "Love the quiet cul-de-sac.")).toBeVisible();
   await expect(thread).toContainText("You liked the natural light");
   await page.keyboard.press("Escape");
+  // Under the photo now too, by name, newest first; still nobody from the
+  // link, and a row is a fingertip to tap.
+  await expect(latest).toContainText("2 likes");
+  const morganRow = latest.getByRole("button", { name: /^Morgan .*Love the quiet cul-de-sac\./ });
+  await expect(morganRow).toBeVisible();
+  expect((await morganRow.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  // (Morgan's, just said, leads; the shared one is still there; other tests'
+  // words may be among them.)
+  await expect(latest.getByRole("listitem").first()).toContainText("Morgan");
+  await expect(latest.getByRole("listitem").filter({ hasText: "A buyer" })).toHaveCount(1);
+  await expect(latest.getByText(/Riley|Quinn/)).toHaveCount(0);
   card = await porchcard();
   await expect(card.getByText("Natural light 1")).toBeVisible();
   await expect(post.getByRole("button", { name: `Like ${BRACKENFIELD}, 2 likes` })).toBeVisible();
@@ -191,11 +214,15 @@ test("public pages show activity, never private words, and private threads share
     expect(html).not.toContain("Quinn");
   }
 
-  // The client can take a shared comment back.
+  // The client can take a shared comment back: it leaves the public page
+  // whole, the comments under the photo included.
   chat = await openComments(client, clientHome);
   await chat.getByRole("button", { name: "Make private" }).click();
   await expect(chat.getByText("Shared anonymously on the public page")).toHaveCount(0);
   await other.reload();
+  const otherLatest = otherPost.getByRole("group", { name: "Latest comments" });
+  await expect(otherLatest).toContainText("Morgan");
+  await expect(otherLatest).not.toContainText("A buyer");
   otherSheet = await openComments(other, otherPost);
   await expect(otherSheet.getByText("Love the quiet cul-de-sac.")).toBeVisible();
   await expect(other.getByText(SHARED)).toHaveCount(0);
@@ -209,15 +236,17 @@ test("public pages show activity, never private words, and private threads share
   expect(pageErrors).toEqual([]);
 });
 
-test("a home sent on a link says so only to whoever sent it: an agent's went to a client, anyone else's just went", async ({
+test("a home sent on a link never says so on its page: not to anyone else, and, with the rotating line gone, not to whoever sent it either", async ({
   browser,
 }) => {
   test.setTimeout(120_000);
   const HALVARD = "10421 Halvard Way NE";
   const HERON = "88 Heron Bluff Rd";
-  const sentLine = (page: Page, address: string) => homeIn(page, address).getByRole("group", { name: "Recent activity" });
+  // Under a home's photo: how many like it and the latest comments. A home
+  // going out on a link is neither, so it never shows up there.
+  const latestOf = (page: Page, address: string) => homeIn(page, address).getByRole("group", { name: "Latest comments" });
 
-  // An agent sends a home to a client: the newest thing about it.
+  // An agent sends a home to a client.
   const agent = await signInAgent(browser, "sena-sent@example.com", "Sena Sent");
   await createShare(agent, ["10421 Halvard"], ["Pat"]);
   // And someone who isn't an agent sends another to a friend.
@@ -233,15 +262,19 @@ test("a home sent on a link says so only to whoever sent it: an agent's went to 
   await mo.getByRole("link", { name: "Skip this step" }).click();
   await mo.waitForURL(/\/send\/[\w-]+$/);
 
-  // Each is told about their own, in their own words.
+  // The home's page says nothing of it, even to the one who sent it: the
+  // line that used to say "You sent this" went with the rotating activity.
   await agent.goto("/homes/SAMPLE-1005");
-  await expect(sentLine(agent, HALVARD)).toContainText("You sent this to a client");
+  await expect(latestOf(agent, HALVARD)).toBeVisible();
+  await expect(latestOf(agent, HALVARD)).not.toContainText(/sent/i);
+  await expect(agent.getByText(/sent this/)).toHaveCount(0);
   await mo.goto("/homes/SAMPLE-1010");
-  await expect(sentLine(mo, HERON)).toContainText("You sent this");
-  await expect(sentLine(mo, HERON)).not.toContainText("client");
+  await expect(latestOf(mo, HERON)).toBeVisible();
+  await expect(latestOf(mo, HERON)).not.toContainText(/sent/i);
+  await expect(mo.getByText(/sent this/)).toHaveCount(0);
 
-  // Nobody else is: not each other, not a visitor. That a home went out on
-  // someone's link is theirs to know.
+  // And never to anyone else: not each other, not a visitor. That a home
+  // went out on someone's link is theirs alone to know.
   await agent.goto("/homes/SAMPLE-1010");
   await expect(homeIn(agent, HERON)).toBeVisible();
   await expect(agent.getByText(/sent this/)).toHaveCount(0);
@@ -255,6 +288,10 @@ test("a home sent on a link says so only to whoever sent it: an agent's went to 
   ]) {
     await guest.goto(`/homes/${key}`);
     await expect(homeIn(guest, address)).toBeVisible();
+    await expect(latestOf(guest, address)).not.toContainText(/sent/i);
     await expect(guest.getByText(/sent this/)).toHaveCount(0);
+    // Nor is it in the page as it's sent.
+    const html = await (await guest.request.get(`/homes/${key}`)).text();
+    expect(html).not.toMatch(/sent this/);
   }
 });

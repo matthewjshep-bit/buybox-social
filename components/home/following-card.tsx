@@ -1,4 +1,4 @@
-import { ArrowRight, Flame, MapPin, Sparkles } from "lucide-react";
+import { ArrowRight, Flame, Heart, MapPin, Sparkles, X } from "lucide-react";
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { CommentBubble } from "@/components/comment-bubble";
@@ -102,7 +102,25 @@ export function FollowingCard({
 }) {
   const { home, why, reason } = entry;
   const label = reason ? `${home.address}: ${reason.text}` : `${home.address}: ${namesText(why.who)} ${why.sentence}`;
-  const ReasonIcon = reason ? { popular: Flame, near: MapPin, picked: Sparkles }[reason.kind] : null;
+  // (Rated: the viewer's own heart or X, on a link their agent sent. The only
+  // pass a card ever says is theirs.)
+  const rated = reason?.kind === "rated" ? reason : null;
+  const ReasonIcon = !reason
+    ? null
+    : reason.kind === "rated"
+      ? reason.verdict === "like"
+        ? Heart
+        : X
+      : { popular: Flame, near: MapPin, picked: Sparkles }[reason.kind];
+  const reasonTone = !reason
+    ? ""
+    : reason.kind === "popular" || rated?.verdict === "like"
+      ? "bg-rose-50 text-rose-600"
+      : reason.kind === "near"
+        ? "bg-sky-50 text-sky-700"
+        : rated
+          ? "bg-stone-100 text-stone-700"
+          : "bg-amber-50 text-amber-700";
   // One person, who only commented: the newest of what they said leads.
   const lead =
     !reason && why.who.length === 1 && /^commented\b/.test(why.sentence) ? entry.said[0] : undefined;
@@ -117,18 +135,24 @@ export function FollowingCard({
         className="absolute inset-0 z-10 rounded-2xl focus-visible:outline-offset-[-3px]!"
       />
       {reason && ReasonIcon ? (
-        // Here for a reason of its own: popular, near them, or picked for them.
+        // Here for a reason of its own: popular, near them, picked for them,
+        // or what they just did themselves (with when).
         <div className="flex items-center gap-3 p-3.5">
-          <span
-            aria-hidden
-            className={cn(
-              "grid size-9 shrink-0 place-items-center rounded-full",
-              reason.kind === "popular" ? "bg-rose-50 text-rose-600" : reason.kind === "near" ? "bg-sky-50 text-sky-700" : "bg-amber-50 text-amber-700",
-            )}
-          >
-            <ReasonIcon size={18} />
+          <span aria-hidden className={cn("grid size-9 shrink-0 place-items-center rounded-full", reasonTone)}>
+            <ReasonIcon size={18} className={cn(rated?.verdict === "like" && "fill-current")} />
           </span>
-          <p className="min-w-0 flex-1 text-body font-semibold leading-snug">{reason.text}</p>
+          <p className="min-w-0 flex-1 text-body font-semibold leading-snug">
+            {reason.text}
+            {rated && (
+              <>
+                {" "}
+                <span className="whitespace-nowrap font-normal text-meta text-muted">
+                  {"· "}
+                  <time dateTime={entry.at}>{time}</time>
+                </span>
+              </>
+            )}
+          </p>
         </div>
       ) : (
         <div className="flex items-center gap-3 p-3.5">

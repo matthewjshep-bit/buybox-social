@@ -44,6 +44,17 @@ You need free accounts at Supabase, Vercel and Resend.
    <p>Or <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email">sign in with this link</a>.</p>
    ```
    The link works when opened in an email app's built-in browser. Free projects can only edit templates after adding their own email sender (SMTP). Under URL Configuration, set the Site URL to your deployed address and add `<that address>/auth/callback**` to Redirect URLs (the `**` lets it carry the page to come back to). The code can be 6 to 10 digits (Supabase's Email OTP Length).
+
+   **Production checklist** (in order; a miss here is what makes people "sign up again" when they come back to a link):
+
+   1. **Both templates.** Authentication > Email Templates: **Confirm signup** _and_ **Magic Link** carry `{{ .Token }}` and the link `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email`, as above. Someone signing in for the first time gets Confirm signup (the app asks Supabase to create the user); everyone after that gets Magic Link. A template without the code, or with Supabase's default `{{ .ConfirmationURL }}`, leaves that person with a link that opens elsewhere and no code to type.
+   2. **Redirect URLs.** Authentication > URL Configuration: `https://www.porchcard.com/auth/callback**`. Add `https://porchcard.com/auth/callback**` too unless the apex is redirected to www (step 4).
+   3. **Site URL:** `https://www.porchcard.com`.
+   4. **One address.** Sign-in cookies belong to one host: signed in at `www.porchcard.com`, you're signed out at `porchcard.com`. The apex → www redirect is a Vercel domain setting (Project > Domains, redirect `porchcard.com` to `www.porchcard.com`); nothing in the code does it.
+   5. **`APP_URL`** on Vercel is exactly `https://www.porchcard.com` (no trailing slash): it's where the emailed link comes back to.
+   6. **`TEST_SIGN_IN_PASSWORD`** is not set in production.
+   7. **Sessions last.** Authentication > Sessions: no time-box ("Time-box user sessions") and no inactivity timeout, so a client who signed up on a link is still signed in when they come back to it weeks later. Signing out on one device signs out that device alone.
+   8. **The code.** Authentication > Providers > Email: Email OTP Length 6 (up to 10 is read), and an expiry long enough to find the email, say 3600 seconds (an hour). One code email a minute is Supabase's limit; the page waits that long before offering a new one.
 4. **Resend:** verify your sending domain and create an API key.
 5. **Vercel:** import the project and set these variables. Do **not** set `ALLOW_DEV_LOGIN`.
 

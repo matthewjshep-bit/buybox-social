@@ -4,8 +4,9 @@ import { formatPrice } from "./format";
 import type { Listing } from "./listings/types";
 import { aspectLabel, topAspects, type Aspect, type AspectCounts, type ReactionState } from "./reactions";
 
-// What someone tends to like, learned from their own public reactions: the
-// specifics they pick, and the cities, prices and sizes of homes they like.
+// What someone tends to like, learned from their own reactions, in public and
+// on the links agents sent them: the specifics they pick, and the cities,
+// prices and sizes of homes they like.
 export type Taste = {
   likes: number;
   passes: number;
@@ -19,19 +20,47 @@ export type Taste = {
 // Below this, there isn't enough to go on and ranking falls back to recency.
 export const TASTE_MIN_REACTIONS = 3;
 
-// Worked out once for a page, however many parts of it ask.
+// Worked out once for a page, however many parts of it ask. Only ever for the
+// viewer's own id: what they did on a link an agent sent them is private, and
+// comes in here only because it's their own taste being read. (An agent's own
+// links aren't their taste: those are their clients'.)
 export const getTaste = cache(async (visitorId: string | null | undefined): Promise<Taste | null> => {
   if (!visitorId) return null;
   const [rows, photoAspects] = await Promise.all([
+    // One take per home: the public one, else the newest from a link.
     sql<(ReactionState & { listing_key: string; city: string; price: number; beds: number })[]>`
-      select r.listing_key, r.reaction, r.liked, r.disliked, l.data->>'City' as city,
+      select x.listing_key, x.reaction, x.liked, x.disliked, l.data->>'City' as city,
         (l.data->>'ListPrice')::float8 as price, (l.data->>'BedroomsTotal')::float8 as beds
-      from public_reactions r join listings l on l.listing_key = r.listing_key
-      where r.visitor_id = ${visitorId}`,
+      from (
+        select distinct on (listing_key) listing_key, reaction, liked, disliked
+        from (
+          select r.listing_key, r.reaction, r.liked, r.disliked, 0 as rank, r.updated_at
+          from public_reactions r
+          where r.visitor_id = ${visitorId}
+          union all
+          select r.listing_key, r.reaction, r.liked, r.disliked, 1 as rank, r.updated_at
+          from reactions r
+            join participants p on p.id = r.participant_id
+            join shares s on s.id = p.share_id
+            join visitors v on v.account_id = p.account_id
+          where v.id = ${visitorId} and s.agent_id <> v.account_id
+        ) a
+        order by listing_key, rank, updated_at desc
+      ) x
+      join listings l on l.listing_key = x.listing_key`,
     // What they liked in photos counts too, once per home.
     sql<{ listing_key: string; aspect: Aspect }[]>`
-      select distinct listing_key, aspect from public_photo_likes
-      where visitor_id = ${visitorId} and aspect is not null`,
+      select distinct listing_key, aspect from (
+        select listing_key, aspect from public_photo_likes
+        where visitor_id = ${visitorId} and aspect is not null
+        union all
+        select pl.listing_key, pl.aspect
+        from photo_likes pl
+          join participants p on p.id = pl.participant_id
+          join shares s on s.id = p.share_id
+          join visitors v on v.account_id = p.account_id
+        where v.id = ${visitorId} and s.agent_id <> v.account_id and pl.aspect is not null
+      ) a`,
   ]);
   if (rows.length === 0 && photoAspects.length === 0) return null;
 

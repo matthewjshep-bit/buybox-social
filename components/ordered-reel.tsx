@@ -65,7 +65,7 @@ export function OrderedReel({
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
       if ((event.target as Element | null)?.closest?.("input, textarea, select, [contenteditable]")) return;
-      if (document.querySelector("dialog[open], [popover]:popover-open, [data-spot-card]")) return;
+      if (document.querySelector('dialog[open], [popover]:popover-open, [data-spot-card], [aria-label="About this home"][role="region"]:not([hidden])')) return;
       router.push(back.href);
     };
     window.addEventListener("keydown", onKey);

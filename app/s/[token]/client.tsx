@@ -1,13 +1,12 @@
 "use client";
 
-import { ArrowDown, Check, ChevronDown, Heart, Home, Mail, MessageSquare, Phone, Send, UserPlus, X } from "lucide-react";
+import { ArrowDown, ChevronDown, Heart, Phone, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   createContext,
   useContext,
   useEffect,
-  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -19,16 +18,17 @@ import {
 import { Toast } from "@/app/people/[id]/client";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { LinkAgentProvider, type LinkAgent } from "@/components/agent-notes";
-import { LeaveLink, looksLikeEmail, ShareHeader, type ContactExtras, type LinkAccount } from "@/components/agent-card";
+import { looksLikeEmail, ShareHeader, type ContactExtras, type LinkAccount } from "@/components/agent-card";
 import { Backdrop } from "@/components/join";
 import type { MapHome } from "@/components/listing-map";
+import { useThread } from "@/components/listing-thread";
 import { ReelFeed, useEndHomes } from "@/components/reel";
 import { HomeThumb } from "@/components/ui";
 import { phoneDigits } from "@/lib/contact";
 import { agentFirstName, cn, formatPrice } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
 import type { ShareAgent } from "@/lib/shares";
-import { button, card, focusOnDark } from "@/lib/ui";
+import { button, focusOnDark } from "@/lib/ui";
 import { recordHomeTime, recordOpen, reuseTake, type AskResult } from "./actions";
 
 type ReelProps = ComponentProps<typeof ReelFeed>;
@@ -90,39 +90,31 @@ function focusHome(listingKey: string) {
   home.focus({ preventScroll: true });
 }
 
-// A home on the link they liked, for the end screen's way back to it.
+// A home on the link they liked, for asking the agent for more like it.
 type LikedHome = { listingKey: string; address: string };
 
-// Contact, and the rest of what the end screen offers, from anywhere on the
-// link: the homes they liked (and the way back to each), asking the agent for
-// more like them, and leaving a link that isn't theirs.
+// Contact, and the way back to a home, from anywhere on the link (the welcome
+// screen's map, the end screen's homes).
 type LinkTools = {
   open: () => void;
   first: string;
-  liked: LikedHome[];
   goToHome: (listingKey: string) => void;
-  // "Ask Dana for more like these": a text or an email, ready to send, where
-  // the agent shows a way; otherwise Contact.
-  askHref: string | null;
+  // Signed in to Porchcard (as the page last loaded).
   signedIn: boolean;
   // The agent looking at their own link: nothing here is for them.
   preview: boolean;
-  leave: ContactExtras["leave"];
 };
 const ContactAgent = createContext<LinkTools>({
   open: () => {},
   first: "your agent",
-  liked: [],
   goToHome: () => {},
-  askHref: null,
   signedIn: false,
   preview: false,
-  leave: null,
 });
 
 // "Hi Dana, could you send me more homes like 4127 Larkmoor Ave NE and 96
-// Fernhollow Ln?", as a text where the agent shows a phone, or else an email.
-// Built from the digits and a checked address only.
+// Fernhollow Ln?", as a text where the agent shows a phone, or else an email;
+// a row in Contact. Built from the digits and a checked address only.
 function askForMoreHref(agent: ShareAgent, first: string, liked: LikedHome[]) {
   const like = liked.length > 0 ? liked.slice(0, 2).map((home) => home.address).join(" and ") : "the ones on my link";
   const body = `Hi ${first}, could you send me more homes like ${like}?`;
@@ -190,16 +182,13 @@ export function ShareReel({
   const tools: LinkTools = {
     open: () => setContact(true),
     first,
-    liked,
     goToHome: (listingKey) => {
       setFocus((now) => ({ key: listingKey, n: (now?.n ?? 0) + 1 }));
       // Once the feed has started on its way there.
       requestAnimationFrame(() => focusHome(listingKey));
     },
-    askHref: askForMoreHref(agent, first, liked),
     signedIn: Boolean(account),
     preview: Boolean(notes),
-    leave: extras?.leave ?? null,
   };
 
   // The photos this browser has looked at, of the homes on the link now (a
@@ -399,6 +388,7 @@ export function ShareReel({
             notes={notes ?? null}
             account={account}
             extras={extras}
+            askMore={askForMoreHref(agent, first, liked)}
           />
         }
       />
@@ -600,48 +590,73 @@ export function ThoughtsIntro({
   );
 }
 
-// After the last home: who sees what was said, what to do next (back to the
-// homes they liked, a word with the agent, more like them), and (on a link
-// anyone can join) a way to bring someone else in.
+// After the last home, one thing to do. While a home is still unrated: the
+// homes, small, each with its heart and X. Once every home is rated: who sees
+// what was said, and one way on. Signed out, that's signing up (to keep what
+// they liked and get more like it); signed in, more homes like these. (The
+// agent, looking at their own link, sees the homes as their client will.)
+// Reaching the agent, asking for more and leaving the link are all in Contact,
+// in the header; bringing someone in is under More.
 export function ShareEnd({
   agentName,
   count,
-  personal,
-  token,
   onProfile = false,
 }: {
   agentName: string;
   count: number;
   // What they do here shows on their own profile too, so the screen says so.
   onProfile?: boolean;
-  // Someone's own link, which isn't one to pass on.
-  personal: boolean;
-  token: string;
 }) {
   const tools = useContext(ContactAgent);
   const end = useEndHomes();
+  // `canReact` turns true the moment they've joined, before the page knows
+  // they're signed in: the way on changes with it, with no reload.
+  const { canReact, ensureName } = useThread();
+  const [joining, setJoining] = useState(false);
   if (count === 0) return <EmptyLink />;
   const homes = end?.homes ?? [];
   // Still something they haven't said yes or no to: the screen asks.
   const asking = !tools.preview && homes.some((home) => !home.reaction);
+  const signedOut = !canReact && !tools.signedIn;
+  // On a phone, three homes sit in one row so the whole screen fits without
+  // a scroll; the heart and the X draw in a little to keep clear of each other.
+  const three = homes.length === 3;
+  const signUp = async () => {
+    if (joining) return;
+    setJoining(true);
+    try {
+      await ensureName();
+    } finally {
+      setJoining(false);
+    }
+  };
   return (
     <div className="flex w-full flex-col items-center">
       <h2 className="text-balance font-display text-3xl">{asking ? "What did you think?" : "That's all"}</h2>
-      <p className="mt-2 text-white/85">
+      <p className="mt-2 max-w-sm text-balance text-white/85">
         {tools.preview
           ? "Here they can like or pass on each home."
-          : `${agentName} sees your likes and comments.${onProfile ? " They show on your profile too." : ""}`}
+          : asking
+            ? "Tap the heart or the X on each home."
+            : `${agentName} sees your likes and comments.${onProfile ? " They show on your profile too." : ""}`}
       </p>
       {/* Every home on the link, small: a heart and an X on each, saying what
-          they made of it already, a tap from saying it now. The photo goes
-          back to that home. (The agent, looking at their own link, sees it
-          as their client will; the buttons there are the client's to tap.) */}
+          they made of it already, a tap from saying it now (or changing their
+          mind). The photo goes back to that home. (The agent, looking at their
+          own link, sees it as their client will; the buttons there are the
+          client's to tap.) */}
       {end && homes.length > 0 && (
         <ul
           aria-label="The homes"
           className={cn(
             "mt-6 grid w-full gap-3 text-left",
-            homes.length === 1 ? "max-w-xs grid-cols-1" : homes.length === 2 ? "max-w-xl grid-cols-2" : "max-w-3xl grid-cols-2 sm:grid-cols-3",
+            homes.length === 1
+              ? "max-w-xs grid-cols-1"
+              : homes.length === 2
+                ? "max-w-xl grid-cols-2"
+                : three
+                  ? "max-w-3xl grid-cols-3"
+                  : "max-w-3xl grid-cols-2 sm:grid-cols-3",
           )}
         >
           {homes.map((home) => (
@@ -653,108 +668,72 @@ export function ShareEnd({
                   aria-label={`See ${home.address}`}
                   className={cn("block w-full rounded-2xl", focusOnDark)}
                 >
-                  <HomeThumb src={home.photo} sizes="(min-width: 640px) 256px, 50vw" className="aspect-[4/3] w-full rounded-2xl" />
+                  <HomeThumb
+                    src={home.photo}
+                    sizes={three ? "(min-width: 640px) 256px, 33vw" : "(min-width: 640px) 256px, 50vw"}
+                    className="aspect-[4/3] w-full rounded-2xl"
+                  />
                 </button>
                 <button
-                      type="button"
-                      aria-label={`${home.address}: pass`}
-                      aria-pressed={home.reaction === "dislike"}
-                      onClick={() => end.choose(home.key, "dislike")}
-                      className={cn(
-                        "absolute bottom-2 left-2 flex size-11 items-center justify-center rounded-full ring-1 ring-white/25 backdrop-blur-md transition-colors",
-                        home.reaction === "dislike" ? "bg-amber-600 text-white" : "bg-black/50 text-white hover:bg-black/70",
-                        focusOnDark,
-                      )}
-                    >
-                      <X aria-hidden size={22} strokeWidth={2.5} />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`${home.address}: like`}
-                      aria-pressed={home.reaction === "like"}
-                      onClick={() => end.choose(home.key, "like")}
-                      className={cn(
-                        "absolute bottom-2 right-2 flex size-11 items-center justify-center rounded-full ring-1 ring-white/25 backdrop-blur-md transition-colors",
-                        home.reaction === "like" ? "bg-rose-600 text-white" : "bg-black/50 text-white hover:bg-black/70",
-                        focusOnDark,
-                      )}
-                    >
-                      <Heart aria-hidden size={22} strokeWidth={2.5} className={home.reaction === "like" ? "fill-white" : undefined} />
-                    </button>
+                  type="button"
+                  aria-label={`${home.address}: pass`}
+                  aria-pressed={home.reaction === "dislike"}
+                  onClick={() => end.choose(home.key, "dislike")}
+                  className={cn(
+                    "absolute bottom-2 left-2 flex size-11 items-center justify-center rounded-full ring-1 ring-white/25 backdrop-blur-md transition-colors",
+                    three && "max-sm:bottom-1 max-sm:left-1",
+                    home.reaction === "dislike" ? "bg-amber-600 text-white" : "bg-black/50 text-white hover:bg-black/70",
+                    focusOnDark,
+                  )}
+                >
+                  <X aria-hidden size={22} strokeWidth={2.5} />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`${home.address}: like`}
+                  aria-pressed={home.reaction === "like"}
+                  onClick={() => end.choose(home.key, "like")}
+                  className={cn(
+                    "absolute bottom-2 right-2 flex size-11 items-center justify-center rounded-full ring-1 ring-white/25 backdrop-blur-md transition-colors",
+                    three && "max-sm:bottom-1 max-sm:right-1",
+                    home.reaction === "like" ? "bg-rose-600 text-white" : "bg-black/50 text-white hover:bg-black/70",
+                    focusOnDark,
+                  )}
+                >
+                  <Heart aria-hidden size={22} strokeWidth={2.5} className={home.reaction === "like" ? "fill-white" : undefined} />
+                </button>
               </div>
-              <p className="mt-1.5 font-display text-lg leading-tight">{formatPrice(home.price)}</p>
+              <p className="mt-1.5 truncate font-display text-lg leading-tight">{formatPrice(home.price)}</p>
               <p className="truncate text-sm text-white/80">{home.address}</p>
             </li>
           ))}
         </ul>
       )}
-      <div className="w-full max-w-md">
-      {!tools.preview && <WhatsNext />}
-      {!personal ? (
-        <div data-light className={cn(card, "mt-8 p-5 text-ink")}>
-          <h3 className="font-semibold">Deciding with someone?</h3>
-          <InviteButton token={token} />
+      {/* Everything rated: the one way on. White, the strongest thing on the
+          brand-tinted photo (a brand button would sink into it). */}
+      {!tools.preview && !asking && (
+        <div className="mt-6 flex w-full max-w-sm flex-col items-center">
+          {signedOut ? (
+            <>
+              <p className="text-balance text-white/90">Save what you liked and get more homes like them. Free, no password.</p>
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                onClick={signUp}
+                aria-disabled={joining}
+                className={cn(button({ kind: "light", size: "lg", block: true }), "mt-3 shadow-lg", joining && "opacity-60")}
+              >
+                Sign up to save your picks
+              </button>
+            </>
+          ) : (
+            <Link href="/" className={cn(button({ kind: "light", size: "lg", block: true }), "shadow-lg")}>
+              See more homes like these
+            </Link>
+          )}
         </div>
-      ) : (
-        count > 1 && (
-          <div data-light className={cn(card, "mt-8 p-5 text-ink")}>
-            <h3 className="font-semibold">Deciding with someone?</h3>
-            <p className="mt-1 text-sm text-muted">
-              Ask {agentName} to add them.
-            </p>
-          </div>
-        )
       )}
-      {tools.leave && !tools.preview && <LeaveLink first={tools.first} leave={tools.leave} onDark className="mt-6" />}
-      </div>
     </div>
-  );
-}
-
-// The end of the link is never a dead end: the homes they liked, one tap back
-// to each; a word with the agent; asking them for more like these; and, signed
-// in, back to their own Porchcard home.
-function WhatsNext() {
-  const { open, first, askHref, signedIn } = useContext(ContactAgent);
-  const id = useId();
-  const ask = (
-    <>
-      {askHref?.startsWith("mailto:") ? <Mail aria-hidden size={18} /> : <Send aria-hidden size={18} />}
-      Ask for more like these
-    </>
-  );
-  return (
-    <section aria-labelledby={id} data-light className={cn(card, "mt-6 p-5 text-left text-ink")}>
-      <h3 id={id} className="font-semibold">
-        What&apos;s next
-      </h3>
-      <div className="mt-4 flex flex-col gap-2">
-        <button type="button" aria-haspopup="dialog" onClick={open} className={button({ kind: "primary", block: true })}>
-          <MessageSquare aria-hidden size={18} />
-          Message {first}
-        </button>
-        {askHref ? (
-          <a href={askHref} className={button({ kind: "secondary", block: true })}>
-            {ask}
-          </a>
-        ) : (
-          <button
-            type="button"
-            aria-haspopup="dialog"
-            onClick={open}
-            className={button({ kind: "secondary", block: true })}
-          >
-            {ask}
-          </button>
-        )}
-        {signedIn && (
-          <Link href="/" className={cn(button({ kind: "ghost", block: true }), "text-ink")}>
-            <Home aria-hidden size={18} />
-            Home
-          </Link>
-        )}
-      </div>
-    </section>
   );
 }
 
@@ -789,36 +768,5 @@ function EmptyLink() {
         Contact {contact.first}
       </button>
     </div>
-  );
-}
-
-function InviteButton({ token }: { token: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const invite = async () => {
-    const url = `${window.location.origin}/s/${token}`;
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: "Take a look at this home with me", url });
-      } catch {
-        // Closing the share sheet isn't an error.
-      }
-      return;
-    }
-    await navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const Icon = copied ? Check : UserPlus;
-  return (
-    <button
-      type="button"
-      onClick={invite}
-      className={cn(button({ kind: "primary" }), "mt-3")}
-    >
-      <Icon aria-hidden size={16} />
-      {copied ? "Link copied" : "Invite someone"}
-    </button>
   );
 }

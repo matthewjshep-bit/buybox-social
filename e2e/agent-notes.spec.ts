@@ -65,16 +65,23 @@ test("an agent's take before they send: a note, a like on the front door, a disl
     .filter({ hasText: "Priced under the last two sales on this street." });
   await expect(note.locator('img[src^="/people/"]')).toBeVisible();
 
-  // Wren opens it: the agent's words lead the line on the photo, and their
-  // like and dislike are on the door's and the fence's cards, as theirs.
+  // Wren opens it: under the photo, the latest comments lead with the agent's
+  // note, under their name with the Agent badge (nothing rotates on the photo
+  // any more), and their like and dislike are on the door's and the fence's
+  // cards, as theirs.
   const wren = await (await browser.newContext()).newPage();
   const errors: string[] = [];
   wren.on("pageerror", (error) => errors.push(error.message));
   await wren.goto(url);
   await toFirstHome(wren);
   const hers = homeIn(wren, "1204 Quillan St SE");
-  await expect(hers.locator("[data-photo-caption]")).toContainText("Nell (your agent)");
-  await expect(hers.locator("[data-photo-caption]")).toContainText("Priced under the last two sales");
+  const latest = hers.getByRole("group", { name: "Latest comments" });
+  await expect(latest).toBeVisible();
+  const lead = latest.getByRole("button").first();
+  await expect(lead).toContainText("Nell Ortiz");
+  await expect(lead).toContainText("Agent");
+  await expect(lead).toContainText("Priced under the last two sales");
+  await expect(hers.getByRole("group", { name: "Recent activity" })).toHaveCount(0);
   // (A card on the photo is for someone signed up: that comes first.)
   await hers.getByRole("button", { name: "Select the red front door" }).press("Enter");
   await joinAs(wren, "Wren");
@@ -118,24 +125,29 @@ test("an agent's take before they send: a note, a like on the front door, a disl
   await expect(panel.getByText(ANSWER)).toBeVisible();
 
   // The agent's page, to anyone: the home is there for what they marked and
-  // noted on their link, and the line at its foot says so under their name.
-  // Never what they didn't like, what their client said, or their answer.
+  // noted on their link, and the "Why it's here" band over the photo's top
+  // corner says so under their name, with their note when it's opened. The
+  // home has two places that name anyone now, that band and the latest
+  // comments under the photo; nothing rotates, so one look at each is all
+  // they say. Never what they didn't like, what their client said, or their
+  // answer.
   await agent.goto("/people/me");
   await agent.waitForURL(/\/people\/[0-9a-f-]{36}$/);
   const address = `/reel?from=${new URL(agent.url()).pathname.split("/").pop()}&home=SAMPLE-1009`;
   const guest = await (await browser.newContext()).newPage();
-  await guest.clock.install();
   await guest.goto(address);
-  const activity = homeIn(guest, "1204 Quillan St SE").getByRole("group", { name: "Recent activity" });
-  const said: string[] = [];
-  for (let i = 0; i < 6; i++) {
-    await expect(activity).toContainText("Nell");
-    said.push((await activity.textContent()) ?? "");
-    await guest.clock.runFor(5000);
-    await guest.waitForTimeout(150);
+  const theirs = homeIn(guest, "1204 Quillan St SE");
+  await expect(theirs).toBeInViewport({ ratio: 0.9 });
+  const why = theirs.getByRole("region", { name: "Why it's here" });
+  const comments = theirs.getByRole("group", { name: "Latest comments" });
+  await expect(why).toContainText("Nell liked the red front door");
+  await expect(comments).toBeVisible();
+  await why.getByRole("button", { expanded: false }).click();
+  await expect(why).toContainText("Priced under the last two sales");
+  await expect(why.getByRole("button", { name: "Liked the red front door: show it" })).toBeVisible();
+  for (const said of [(await why.textContent()) ?? "", (await comments.textContent()) ?? ""]) {
+    expect(said).not.toMatch(/picket fence|A buyer|Wren|roof|Replaced|privately/);
   }
-  expect(said).toContainEqual(expect.stringContaining("Nell liked the red front door"));
-  for (const line of said) expect(line).not.toMatch(/picket fence|A buyer|Wren|roof|Replaced|privately/);
   const html = await (await guest.request.get(address)).text();
   for (const never of [ASKED, ANSWER]) expect(html).not.toContain(never);
   expect(errors).toEqual([]);

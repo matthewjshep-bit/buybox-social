@@ -154,6 +154,7 @@ async function listingsScope(asked: string, viewer: Account | null, visitorId: s
       me: isMe,
       following: await follows(visitorId, person.id),
       canFollow: Boolean(viewer),
+      host: person.id,
     },
     query: new URLSearchParams({ from: `listings:${asked}` }).toString(),
     filters: ALL,
@@ -211,14 +212,37 @@ async function savedScope(visitorId: string): Promise<ReelScope> {
   };
 }
 
-// Your feed: what people you follow liked and said, home by home, in its order.
+// Your feed: what people you follow liked and said, home by home, in its
+// order; first, when it's fresh, the home you just rated on your agent's
+// link, with your own take on it ("You passed on this home").
 async function feedScope(viewer: Account, visitorId: string | null): Promise<ReelScope> {
   const entries = await getHomeFeed(viewer, visitorId);
+  // (You, for the home you rated, as your own page has you.)
+  const me = entries.some((entry) => entry.reason?.kind === "rated") && visitorId ? await getProfilePerson(visitorId) : null;
   const homes: Record<string, HomeContext> = {};
   for (const entry of entries) {
     const key = entry.home.key;
     if (homes[key]) continue;
-    const { why } = entry;
+    const { why, reason } = entry;
+    if (reason?.kind === "rated") {
+      homes[key] = {
+        photo: why.photo,
+        takes: [
+          {
+            who: { name: "You", profileId: visitorId, photo: me?.photo ?? null, agent: viewer.role === "agent" },
+            sentence: reason.verdict === "like" ? "liked this home" : "passed on this home",
+            at: entry.at,
+            verdict: reason.verdict,
+            spots: [],
+            facts: [],
+            comments: [],
+            // (On your agent's link: theirs and yours to see, nobody else's.)
+            private: true,
+          },
+        ],
+      };
+      continue;
+    }
     const lead = why.who[0];
     // What was said, newest first in the feed: the last few, oldest first here.
     const quotes = why.quotes.slice(0, TAKE_COMMENTS).reverse();

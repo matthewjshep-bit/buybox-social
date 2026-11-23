@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { toFirstHome, createShare, homeIn, signInAgent } from "./helpers";
 
 // The phone settings carry over to new contexts, touch included; a desktop has none.
@@ -16,6 +16,17 @@ async function swipeLeft(page: Page, y: number) {
 }
 
 const nudge = (page: Page) => page.locator("[data-nudge]");
+
+// Where the photo on screen is (each photo has a frame of its own; the one
+// shown is the one within the screen's sides).
+async function photoBox(page: Page, home: Locator) {
+  const { width } = page.viewportSize()!;
+  for (const frame of await home.locator("[data-photo-frame]").all()) {
+    const box = await frame.boundingBox();
+    if (box && box.width > 0 && box.x >= -1 && box.x + box.width <= width + 1) return box;
+  }
+  throw new Error("no photo on screen");
+}
 
 test("an agent's link nudges a first-timer: swipe for photos, then on to the next home, once", async ({ browser }) => {
   test.setTimeout(60_000);
@@ -37,9 +48,19 @@ test("an agent's link nudges a first-timer: swipe for photos, then on to the nex
   await expect(first.getByText("Swipe for more photos")).toBeVisible();
   await expect(first.getByText(", or use the arrows")).toBeHidden();
 
-  // A thumb swipe low on the screen, over the words under the photo, turns the photo.
-  const caption = await first.locator('[data-fact="Address"]').boundingBox();
-  await swipeLeft(page, caption!.y + caption!.height / 2);
+  // The price and address head the home, above the photo; a swipe across the
+  // head doesn't turn the photos (it's a button, one tap from the rest of what
+  // the home is).
+  const head = await first.locator("[data-home-head]").boundingBox();
+  const photo = await photoBox(page, first);
+  expect(head!.y + head!.height).toBeLessThanOrEqual(photo!.y + 1);
+  await swipeLeft(page, head!.y + head!.height / 2);
+  await page.waitForTimeout(400);
+  await expect(first.getByText("Photo 1 of 4")).toBeAttached();
+  await expect(first.getByText("Swipe for more photos")).toBeVisible();
+
+  // A thumb swipe across the photo turns it, through the nudge sitting on it.
+  await swipeLeft(page, photo!.y + photo!.height / 2);
   await expect(first.getByText("Photo 2 of 4")).toBeAttached();
   await expect(first.getByText("Swipe for more photos")).toBeHidden();
 

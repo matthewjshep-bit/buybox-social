@@ -23,7 +23,7 @@ export const placeLabel = (place: { city: string; state: string } | null | undef
   place?.city && place.state ? `${place.city}, ${place.state}` : "";
 
 // A city's name as people write it: each word with a capital.
-const titled = (city: string) =>
+export const titled = (city: string) =>
   city
     .toLowerCase()
     .replace(/(^|[\s-])([a-z])/g, (_, gap: string, letter: string) => gap + letter.toUpperCase());

@@ -41,7 +41,7 @@ import {
 } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { loadReel, recordView, reloadReelHome } from "@/app/homes/actions";
-import { ActivityTicker, useTicker } from "@/components/activity-ticker";
+import { CommentPreview } from "@/components/comment-preview";
 import { AspectChips, useReactions } from "@/components/like-pass";
 import { useNotesMode } from "@/components/agent-notes";
 import {
@@ -55,12 +55,7 @@ import {
   type ThreadActions,
 } from "@/components/listing-thread";
 import { usePhotoLikes } from "@/components/photo-likes";
-import {
-  SpotLayer,
-  spotThread,
-  type PickedSpot,
-  type SpotLight,
-} from "@/components/photo-spots";
+import { SpotLayer, spotThread, type PickedSpot } from "@/components/photo-spots";
 import { photoFoot, photoHead, photoPlace, ReelPhotos, STAGE_BAND, stageBlock, stageFoot } from "@/components/reel-photos";
 import { TakeCard, type TakeEyebrow } from "@/components/reel-take";
 import { ScorecardBody } from "@/components/scorecard";
@@ -71,31 +66,21 @@ import { Tour, tourSteps, useTour, type TourKind } from "@/components/tour";
 import type { FeedPost } from "@/lib/feed";
 import { cn, formatPrice } from "@/lib/format";
 import { isSampleListing, type Listing, type ListingMedia } from "@/lib/listings/types";
-import {
-  FACTS,
-  likeId,
-  mediaKeyOf,
-  photoTags,
-  spotAt,
-  spotName,
-  tagPhrase,
-  tagPosition,
-  type SpotReaction,
-} from "@/lib/photos";
+import { FACTS, mediaKeyOf, photoTags, spotAt, spotName, tagPhrase, tagPosition, type SpotReaction } from "@/lib/photos";
 import { placeIn, type HomeContext, type ReelContext } from "@/lib/reel-context";
-import { eventsFromHeadline, eventsFromTimeline, onPhoto, type TickerEvent, type TickerTap } from "@/lib/ticker";
-import { NO_REACTION, publicSideOf, type Aspect, type ReactionState, type Sentiment } from "@/lib/reactions";
+import { NO_REACTION, type Aspect, type ReactionState, type Sentiment } from "@/lib/reactions";
 import { homeDetails, type ScorecardViewer } from "@/lib/scorecard";
 import { button, glass } from "@/lib/ui";
 
 // The feed: one home per screen, scrolled up like a reel, for as long as you
-// keep going. On a phone the whole photo sits right on top of a block of words
-// on the dark ground (who's talking, the price, the facts, the description,
-// the comment bar), always the same height, so the photo never jumps from home
-// to home and nothing is written over it; the buttons run down the right.
-// Wide, side by side: the photo on a stage of its own, the buttons in a column
-// beside it, and the same words in a white panel on the right, where the
-// comments open too, so the photo is never covered.
+// keep going. On a phone each home reads like a post: a head above the photo
+// (the price, the size, the address; a tap opens the description and the
+// details over the photo), the photo in a fixed four-by-three box under it,
+// and under the photo the latest comments themselves, then the comment bar.
+// The photo never jumps from home to home and nothing is written over it.
+// Wide, side by side: the photo on a stage of its own, and the same words in
+// a panel on the right, where the comments open too, so the photo is never
+// covered.
 
 // The side-by-side layout on wide screens. Off (false): the words over the
 // photo, in a column in the middle, and comments rising from the bottom, as
@@ -967,17 +952,19 @@ function Feed({
         // runs past its edges (the comments sliding in) is cut off, and it
         // never scrolls sideways to show it.
         "overflow-clip bg-night text-white @container-size/reel",
-        // The photo starts just under the header, never beneath it: on a
-        // phone, under the one row that may sit below the header (the way
-        // back, whose homes these are), or under a pop-out's close button.
-        // Side by side, the stage and the panel start a little further down
-        // (in a pop-out, below its close button in the corner).
+        // Where the chrome over the top ends (`--chrome-foot`): each home's
+        // head starts there, never beneath it. On a phone, under the header,
+        // or under the one row that may sit below it (the way back, whose
+        // homes these are), or under a pop-out's close button. Side by side,
+        // the stage and the panel start a little further down (in a pop-out,
+        // below its close button in the corner).
         header
-          ? "[--chrome-top:4rem] [--photo-top:calc(60px+env(safe-area-inset-top))] has-[[data-reel-bar]]:[--photo-top:calc(104px+env(safe-area-inset-top))] [--stage-top:72px]"
+          ? "[--chrome-top:4rem] [--chrome-foot:calc(60px+env(safe-area-inset-top))] has-[[data-reel-bar]]:[--chrome-foot:calc(104px+env(safe-area-inset-top))] [--stage-top:72px]"
           : cn(
               "[--chrome-top:0.75rem] [--stage-top:64px]",
-              // (Beside the map there's no bar over it.)
-              embedded ? "[--photo-top:0.5rem]" : "[--photo-top:calc(3.75rem+env(safe-area-inset-top))]",
+              // Beside the map (`lean`) there's nothing over it; a pop-out
+              // (the whole feed, or one home) has its close button.
+              embedded && lean ? "[--chrome-foot:0.5rem]" : "[--chrome-foot:calc(3.75rem+env(safe-area-inset-top))]",
             ),
         embedded || contained ? "relative h-full w-full" : "fixed inset-0 z-30",
       )}
@@ -1069,15 +1056,12 @@ function Feed({
               post={post}
               mode={mode}
               agentName={agentName}
-              myName={myName}
               // (On the home it opens on, the first or the one it goes to, the
               // photo asked for; on every home, the photo its take is about.)
               start={((focus ? key === focus.key : i === 0) ? initialPhoto : undefined) ?? context?.homes[key]?.photo ?? undefined}
               take={context?.homes[key]}
+              host={context?.host}
               eyebrow={context ? { title: context.title, place: placeIn(context, key) } : null}
-              scoped={context?.kind === "person" || context?.kind === "client" || context?.kind === "feed"}
-              // (Full screen, the page's Back sits where the band's take would.)
-              low={!contained && Boolean(header)}
               // (The facts aren't things to tap any more: what was said
               // about one opens in the comments about it.)
               onGoToSpot={(spot) =>
@@ -1087,7 +1071,6 @@ function Feed({
               counter={mode === "share" && posts.length > 1 ? `Home ${i + 1} of ${posts.length}` : undefined}
               active={active === offset + i}
               wide={wide}
-              narrow={narrow}
               near={Math.abs(active - (offset + i)) <= 1}
               // (In the pop-out, the gutter beside it has these.)
               onPrevious={!embedded && !contained && offset + i > 0 ? () => goTo(offset + i - 1) : undefined}
@@ -1114,13 +1097,11 @@ function Feed({
               onComments={() => openComments(key)}
               onCompose={() => openComments(key, true)}
               onCommentSpot={(spot) => openComments(key, true, spot)}
-              onCommentsAbout={(spot) => openComments(key, false, spot)}
               onCommentAt={(id) => openComments(key, false, undefined, id)}
               onScorecard={porchcard ? (section) => openScorecard(key, section) : undefined}
               saved={saves.now[key] ?? Boolean(post.saved)}
               onSave={save ? () => saves.toggle(key, !(saves.now[key] ?? Boolean(post.saved))) : undefined}
               onYours={tellYours}
-              reactedAt={reactions.changedAt[key]}
               // Over the words on a phone; in the white panel's place, wide.
               covered={!wide && about(key)}
               docked={wide && about(key)}
@@ -1271,11 +1252,6 @@ function Feed({
               }
             : undefined
         }
-        // On a phone, the rest of what the home is (its description whole,
-        // every detail, who listed it) is here: under the photo there's
-        // only the price, the size, the address and a line of the
-        // description. (Side by side, the panel beside the photo says it.)
-        about={!wide}
         // On an agent's link, a phone's row under the photo has no room for
         // Invite: it's here.
         onInvite={
@@ -1394,13 +1370,11 @@ function Panel({
   post,
   mode,
   agentName,
-  myName,
   start,
   onPhotoSeen,
   counter,
   active,
   wide,
-  narrow,
   near,
   onPrevious,
   onNext,
@@ -1415,13 +1389,11 @@ function Panel({
   onComments,
   onCompose,
   onCommentSpot,
-  onCommentsAbout,
   onCommentAt,
   onScorecard,
   saved,
   onSave,
   onYours,
-  reactedAt,
   covered,
   docked,
   spotSheet,
@@ -1436,16 +1408,13 @@ function Panel({
   shareAs,
   onShare,
   take,
+  host,
   eyebrow,
-  scoped = false,
-  low = false,
   onGoToSpot,
 }: {
   index: number;
   post: FeedPost;
   mode: "public" | "share";
-  // Yours, for your own face on the line at the photo's foot.
-  myName: string | null;
   agentName?: string;
   // The photo to open on.
   start?: number;
@@ -1455,8 +1424,6 @@ function Panel({
   active: boolean;
   // The feed is wide enough to lay a home out side by side.
   wide: boolean;
-  // A phone's layout (narrower than 64rem), side by side or not.
-  narrow: boolean;
   // Close enough to load its photos.
   // Side by side, the homes before and after: small arrows above and below.
   onPrevious?: () => void;
@@ -1477,9 +1444,7 @@ function Panel({
   onCompose: () => void;
   // Comment on a spot in a photo, in the sheet below (touchscreens).
   onCommentSpot: (spot: SpotRef) => void;
-  // The comments about one spot, from the line above the price.
-  onCommentsAbout: (spot: SpotRef) => void;
-  // The comments, on one of them.
+  // The comments, on one of them (from the latest under the photo, or the take).
   onCommentAt: (commentId: string) => void;
   // Its Porchcard (at "About this home", from the description's "more").
   // (None but for an agent: everyone else saves the home in its place.)
@@ -1489,8 +1454,6 @@ function Panel({
   onSave?: () => void;
   // What you've liked and not in its photos and facts just now (likeIds).
   onYours?: (listingKey: string, liked: string[], disliked: string[]) => void;
-  // When you last changed your reaction to it here.
-  reactedAt?: string;
   // Its comments (or Porchcard) are open, over the photo: the words and
   // buttons under them step aside.
   covered: boolean;
@@ -1518,13 +1481,10 @@ function Panel({
   onShare?: () => void;
   // Why it's here: whose take on it, what they picked out and said.
   take?: HomeContext;
+  // An agent's own listings: their page id, so their words lead the comments.
+  host?: string;
   // Whose homes these are, and which of them this is ("Maya's highlights · 2 of 7").
   eyebrow?: TakeEyebrow | null;
-  // Someone's homes, a client's, or your feed: the line at the photo's foot
-  // is already only theirs, and never rests on who else liked the home.
-  scoped?: boolean;
-  // On a phone, the take sits lower in the band (full screen, under Back).
-  low?: boolean;
   // To a spot they picked out, from the take: its photo, with its card open.
   onGoToSpot?: (spot: SpotRef) => void;
 }) {
@@ -1591,28 +1551,61 @@ function Panel({
   }, [active, settled, listing.ListingKey]);
   // The whole description, rather than its first lines (side by side).
   const [more, setMore] = useState(false);
-  // How tall the words at the bottom are, so the photo's space ends where
-  // they (and the activity line above them) start. On a phone they're always
-  // the same height, a few short lines (so the photo never jumps from home
-  // to home, and has most of the screen); measured anyway, with the
-  // description closed: opening it shouldn't move the photo.
-  const words = useRef<HTMLDivElement>(null);
-  const [wordsHeight, setWordsHeight] = useState<number | null>(null);
+  // On a phone, what the home is, opened from the head over the photo: the
+  // description whole, who listed it, every detail. Until another home, a tap
+  // on the head again, Escape, or a tap anywhere else.
+  const [about, setAbout] = useState(false);
+  const aboutId = useId();
+  const aboutBox = useRef<HTMLDivElement>(null);
+  const headBox = useRef<HTMLDivElement>(null);
+  const headButton = useRef<HTMLButtonElement>(null);
+  // (Gone when the home is, when the photo's alone, under a sheet, or when
+  // the layout goes side by side, where the words are in the panel instead.)
+  if (about && (!active || bare || sheetOver || (SPLIT_WIDE && !onOpen && wide))) setAbout(false);
+  useEffect(() => {
+    if (!about) return;
+    // Escape closes just this: heard first, before the page (an ordered reel
+    // going back, a pop-out closing) can take the key. A key pressed inside a
+    // dialog open over it is that dialog's.
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if ((event.target as Element | null)?.closest?.("dialog[open]")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setAbout(false);
+      headButton.current?.focus({ preventScroll: true });
+    };
+    const onDown = (event: PointerEvent) => {
+      const at = event.target as Node;
+      if (aboutBox.current?.contains(at) || headBox.current?.contains(at)) return;
+      setAbout(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    document.addEventListener("pointerdown", onDown);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("pointerdown", onDown);
+    };
+  }, [about]);
+  // A phone on its side (the frame under 520px tall, as the `short:` styles
+  // have it): the head goes, and the facts and a line of the description sit
+  // over the photo's foot instead, with the buttons down the right.
+  const home = useRef<HTMLElement>(null);
+  const [short, setShort] = useState(false);
   useLayoutEffect(() => {
-    const el = words.current;
-    if (!el || more) return;
-    const measure = () => setWordsHeight(el.offsetHeight);
+    const el = home.current;
+    if (!el) return;
+    const measure = () => setShort(el.clientHeight > 0 && el.clientHeight < 520);
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [more]);
+  }, []);
   // On a phone on its side the buttons reach up over the photo: where they
   // start, so the photo's arrows stay above them. (Upright they're in a row
   // under the words, and side by side in the panel: the rail isn't drawn
   // then, and a rail that isn't drawn measures as nothing at the very top,
   // which would put the arrows off the photo, so then there's no limit.)
-  const home = useRef<HTMLElement>(null);
   const [railTop, setRailTop] = useState<number | null>(null);
   const sideBySide = SPLIT_WIDE && !onOpen && wide;
   useLayoutEffect(() => {
@@ -1700,156 +1693,26 @@ function Panel({
   const notes = useNotesMode();
   // Side by side on a wide screen (never beside the map, just a look there).
   const split = SPLIT_WIDE && !onOpen;
-  // The whole description opens where it is (side by side, in the panel;
-  // before that, wide, over the photo); on a phone, in More, with every
-  // detail and who listed it.
-  const inPlace = (split && wide) || (!SPLIT_WIDE && !narrow);
   // Likes on things in a photo, for the strip of photos.
   const likesIn = (shown: ListingMedia) =>
     photos.likedTags(shown).reduce((sum, tag) => sum + photos.count(shown, tag), 0);
 
-  // What people did lately, for the line above the price: the page's, or on
-  // an agent's link, from the home's own thread (already only the link's).
-  // (On someone's page it's only what they did; in your feed, only who you
-  // follow and you.)
-  const told = useMemo(
-    () => post.events ?? (mode === "share" ? eventsFromTimeline(post.timeline) : eventsFromHeadline(post.headline)),
-    [post.events, post.timeline, post.headline, mode],
-  );
-  // On public pages, what you just did shows there at once, as it will once
-  // the page hears it back (keyed the same, so nothing jumps when it does).
-  const { unheard } = photos;
-  const likedSpot = useMemo<TickerEvent | null>(
-    () =>
-      mode === "public" && unheard?.reaction === "like"
-        ? {
-            id: `you:like:${likeId(unheard.mediaKey, unheard.tag)}`,
-            kind: unheard.mediaKey === FACTS ? "fact-like" : "spot-like",
-            who: { tone: "you", name: null, ...(post.myFace && { photo: post.myFace }) },
-            at: unheard.at,
-            mediaKey: unheard.mediaKey,
-            spot: unheard.tag,
-          }
-        : null,
-    [mode, unheard, post.myFace],
-  );
-  const likedHome = useMemo<TickerEvent | null>(() => {
-    const shown = mode === "public" && reactedAt && JSON.stringify(state) !== JSON.stringify(base) ? publicSideOf(state) : null;
-    const who: TickerEvent["who"] = { tone: "you", name: null, ...(post.myFace && { photo: post.myFace }) };
-    return shown && reactedAt ? { id: "you:reaction", kind: "reaction", who, at: reactedAt, state: shown } : null;
-  }, [mode, reactedAt, state, base, post.myFace]);
-  const events = useMemo(() => {
-    const yours = [likedSpot, likedHome]
-      .filter((event): event is TickerEvent => Boolean(event))
-      .sort((a, b) => b.at.localeCompare(a.at))[0];
-    if (!yours) return told;
-    return [yours, ...told.filter((event) => event.id !== yours.id)].sort((a, b) => b.at.localeCompare(a.at));
-  }, [told, likedSpot, likedHome]);
-  // Paused while a finger's on the photo, and for two seconds after.
-  const [touching, setTouching] = useState(false);
-  const letGo = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => () => clearTimeout(letGo.current), []);
-  const pressPhoto = (event: { target: EventTarget | null }) => {
-    const target = event.target as Element;
-    if (!target.closest('[aria-roledescription="carousel"]') || target.closest("button, a")) return;
-    clearTimeout(letGo.current);
-    setTouching(true);
-    const up = () => {
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-      letGo.current = setTimeout(() => setTouching(false), 2000);
-    };
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
-  };
-  // Whether the line's spot can be pointed at on the photo.
-  const [lightPlace, setLightPlace] = useState<{ tag: string; clear: boolean } | null>(null);
-  const settledKey = listing.Media[settled] ? mediaKeyOf(listing.Media[settled]) : undefined;
-  // The line's box, and the item in it.
-  const tickerBox = useRef<HTMLDivElement>(null);
-  const tickerLine = useRef<HTMLButtonElement>(null);
-  const ticker = useTicker({
-    box: tickerBox,
-    events,
-    listing,
-    photoKey: settledKey,
-    mode,
-    // Beside the map it's just a look: the first, still.
-    active: active && !onOpen,
-    // (The nudge to swipe through the photos sits over the photo, so the
-    // line waits for it; the one for the next home, at the photo's foot,
-    // shows beside it.)
-    held: Boolean(picked) || sheetOver || docked || nudge === "photos" || hidden || settled !== photo || touching,
-    likes,
-    restOnLikes: !scoped,
-  });
-  const shownEvent = ticker.item;
-  // A hotspot on the photo, where they did it: only on the photo at rest,
-  // with nothing over it.
-  const light: SpotLight | null =
-    shownEvent &&
-    onPhoto(shownEvent) &&
-    shownEvent.mediaKey === settledKey &&
-    active &&
-    !onOpen &&
-    !hidden &&
-    !picked &&
-    !sheetOver &&
-    !docked &&
-    nudge !== "photos"
-      ? {
-          event: shownEvent,
-          ripples: ticker.shown.first ? 2 : 1,
-          showing: ticker.shown.n,
-          emphasis: ticker.looking,
-          still: ticker.reduced,
-        }
-      : null;
-  const unseen = Boolean(light && lightPlace && lightPlace.tag === light.event.spot && !lightPlace.clear);
-
-  // A tap on the line: to where it happened. After it, the line stays put on
-  // this home until you move on. From the keyboard, a spot's card takes it,
-  // and gives it back to the line when it closes. (What was said about a
-  // fact, the price: the comments about it. Someone who can't react yet is
-  // shown the spot, then asked to sign up before its card opens.)
-  const tapActivity = (event: TickerEvent, tap: TickerTap, index: number, keyboard: boolean) => {
-    const spot = event.mediaKey && event.spot ? { mediaKey: event.mediaKey, tag: event.spot } : null;
-    if (tap === "comment" && event.commentId) return onCommentAt(event.commentId);
-    // About the home as a whole: what everyone thinks of it.
-    if (tap === "home") return onScorecard ? onScorecard() : onComments();
-    if (!spot || tap === "comment") return onComments();
-    if (spot.mediaKey === FACTS) return onCommentsAbout(spot);
-    const target = listing.Media[index];
-    const at = target && tagPosition(target, spot.tag);
-    if (!at) return onComments();
-    if (index !== photo) {
-      setShow((now) => ({ index, n: (now?.n ?? 0) + 1 }));
-      setPhoto(index);
-      setSettled(index);
-    }
-    if (!canReact) return tap === "spot-comments" ? onCommentsAbout(spot) : pick({ ...spot, ...at, keyboard, fromLine: true });
-    setPicked({ ...spot, ...at, keyboard, fromLine: true });
-    if (tap === "spot-comments") onCommentsAbout(spot);
-  };
-  // A card opened from the line, closed: the keyboard goes back to the line
-  // (unless it's gone somewhere else meanwhile). One opened from the
-  // Porchcard goes back there: its row, or (the sheet gone) its button on
-  // the rail, as soon as that's back in view.
+  // A card opened from the Porchcard, closed: the keyboard goes back there:
+  // its row, or (the sheet gone) its button on the rail, as soon as that's
+  // back in view.
   const lastPicked = useRef(picked);
   useLayoutEffect(() => {
     const was = lastPicked.current;
     lastPicked.current = picked;
-    if (!(was?.fromLine || was?.back) || picked || !active) return;
+    if (!was?.back || picked || !active) return;
     let frame = 0;
     let tries = 0;
     const giveBack = () => {
       const now = document.activeElement;
       if (now && now !== document.body) return;
-      if (was.back) {
-        if (!was.back.isConnected) return;
-        was.back.focus({ preventScroll: true });
-        if (document.activeElement !== was.back && ++tries < 30) frame = requestAnimationFrame(giveBack);
-      } else tickerLine.current?.focus({ preventScroll: true });
+      if (!was.back?.isConnected) return;
+      was.back.focus({ preventScroll: true });
+      if (document.activeElement !== was.back && ++tries < 30) frame = requestAnimationFrame(giveBack);
     };
     giveBack();
     return () => cancelAnimationFrame(frame);
@@ -1990,50 +1853,69 @@ function Panel({
     </button>
   );
 
+  // On a phone, why it's here, in a band over the photo's top left corner
+  // (under the head), one line until it's tapped open. (Side by side, it's
+  // in the panel.)
+  const band = !onOpen && Boolean(take || eyebrow);
+  // The head above the photo: on a phone, upright, with the photo showing.
+  // (Side by side the panel has the same words; on a phone on its side
+  // they're over the photo's foot.) What it opens, over the photo: not
+  // beside the map, where a tap on anything opens the home itself.
+  const headShown = !bare && !sideBySide && !short;
+  const aboutShown = !bare && !sideBySide && !onOpen;
+  const listedBy = listedByOf(listing);
+  // From the latest comments under the photo: the comments, on that one.
+  // (Beside the map, just a look: a tap opens the home.)
+  const openComment = onOpen ? () => onOpen() : (id?: string) => (id ? onCommentAt(id) : onComments());
+
   return (
     <article
       ref={home}
       data-panel={index}
       data-home={listing.ListingKey}
       aria-label={listing.UnparsedAddress}
-      onPointerDownCapture={onOpen ? undefined : pressPhoto}
-      // Where the photo goes. On a phone: at the top, right under the
-      // header, as wide as the screen, in a space four wide by three tall
-      // with nothing on it; a blurred copy of it fills what a wider photo
-      // leaves of that space. Under it a strip for the activity line, then
-      // the words. A phone on its side: the full-screen photo with the
-      // words over it. The photo alone, on a phone: whole and centred in the
-      // whole screen, its blurred copy all round it, rather than over an
-      // empty band where the words were. Side by side, wide: whole, at the
-      // top of a stage on the left (level with the white panel), the strip
-      // of photos under it (when there are several), clear of the buttons
-      // and the panel down the right; held, it stays put; alone, it grows
-      // to the whole window, centred. (With SPLIT_WIDE off, wide is the
-      // full-screen photo with the words over it, centred.)
+      // Where the photo goes. On a phone: under the head (4rem under the
+      // chrome's foot), as wide as the screen, in a space four wide by three
+      // tall with nothing on it, never taller than leaves room for the
+      // comment bar under it; a blurred copy of it fills what a wider photo
+      // leaves of that space. Under it the latest comments, then the bar. A
+      // phone on its side: the full-screen photo with the words over it. The
+      // photo alone, on a phone: whole and centred in the whole screen, its
+      // blurred copy all round it. Side by side, wide: whole, at the top of
+      // a stage on the left (level with the panel), the strip of photos
+      // under it (when there are several), clear of the panel down the
+      // right; held, it stays put; alone, it grows to the whole window,
+      // centred. (With SPLIT_WIDE off, wide is the full-screen photo with
+      // the words over it, centred.)
       data-split={split || undefined}
       className={cn(
         "relative h-full snap-start snap-always overflow-hidden bg-night",
-        "[--photo-fit:1] [--backdrop-shade:0.4]",
-        // (The photo's label steps down, clear of Send in its corner.)
-        sendCorner && "[--photo-label-drop:3.5rem]",
+        "[--photo-fit:1] [--backdrop-shade:0.4] [--words-pad:calc(12px+env(safe-area-inset-bottom))]",
+        // (The photo's label steps down, clear of Send in its corner, or of
+        // the band saying why the home is here.)
+        sendCorner ? "[--photo-label-drop:3.5rem]" : band && "[--photo-label-drop:3.5rem] split:[--photo-label-drop:0px]",
+        // Beside the map on a phone, its Map button floats at the bottom.
+        onOpen && "max-lg:[--words-pad:6rem]",
         bare
           ? "[--backdrop-bottom:0px] [--backdrop-top:0px] [--photo-align:0.5] [--photo-bottom:env(safe-area-inset-bottom)] [--photo-top:env(safe-area-inset-top)]"
           : cn(
-              // On a phone, the photo has all the room the few lines under
-              // it leave, in the middle of it, whole (never cropped: a
-              // flyer's words run to its edges), on its blurred copy above
-              // and below.
-              "[--backdrop-bottom:var(--photo-bottom)] [--backdrop-top:var(--photo-top)] [--photo-align:0.5] short:[--photo-align:0] [--photo-bottom:calc(var(--words-height,calc(178px+env(safe-area-inset-bottom)))+var(--words-gap,0px))]",
-              // Between the photo and the words: room for the line of who
-              // did what. (Beside the map, `lean`, that line is on the
-              // photo, so the photo has the room instead.)
-              lean ? "[--words-gap:8px]" : "[--words-gap:56px] squat:[--words-gap:52px]",
+              // The head right under the chrome, the photo's space right
+              // under the head, and the words at least tall enough for the
+              // comment bar (and, beside the map, the Map button) under it.
+              "[--head-top:var(--chrome-foot)] [--photo-top:calc(var(--head-top)+4rem)] [--photo-align:0]",
+              "[--words-min:max(5.5rem,calc(3.5rem+var(--words-pad)))]",
+              "[--stage-height:min(75cqw,calc(100cqh-var(--photo-top)-var(--words-min)-env(safe-area-inset-bottom)))]",
+              "[--photo-bottom:calc(100cqh-var(--photo-top)-var(--stage-height))]",
+              "[--backdrop-top:var(--photo-top)] [--backdrop-bottom:var(--photo-bottom)]",
+              // On its side there's no head: the photo starts at the chrome's
+              // foot and runs on under the words.
+              "short:[--photo-top:var(--chrome-foot)] short:[--photo-bottom:0px]",
             ),
-        "short:[--backdrop-bottom:0px] short:[--backdrop-shade:0] short:[--backdrop-top:0px] short:[--photo-fit:0] short:[--words-gap:8px]",
+        "short:[--backdrop-bottom:0px] short:[--backdrop-shade:0] short:[--backdrop-top:0px] short:[--photo-fit:0]",
         legacy(
-          "@5xl:[--backdrop-bottom:0px] @5xl:[--backdrop-shade:0] @5xl:[--backdrop-top:0px] @5xl:[--photo-align:0.5] @5xl:[--photo-fit:0] @5xl:[--photo-top:calc(var(--chrome-top,4rem)+0.5rem)] @5xl:[--words-gap:8px]",
+          "@5xl:[--backdrop-bottom:0px] @5xl:[--backdrop-shade:0] @5xl:[--backdrop-top:0px] @5xl:[--photo-align:0.5] @5xl:[--photo-fit:0] @5xl:[--photo-top:calc(var(--chrome-top,4rem)+0.5rem)]",
         ),
-        "split:[--photo-fit:1] split:[--photo-left:24px] split:[--words-gap:0px]",
+        "split:[--photo-fit:1] split:[--photo-left:24px]",
         bare
           ? "split:[--photo-align:0.5] split:[--photo-bottom:24px] split:[--photo-right:24px] split:[--photo-top:24px]"
           : cn(
@@ -2044,7 +1926,6 @@ function Panel({
       )}
       style={
         {
-          ...(wordsHeight && { "--words-height": `${wordsHeight}px` }),
           ...(railTop !== null && { "--rail-top": `${railTop}px` }),
           "--block-top": block.top,
           "--block-bottom": block.bottom,
@@ -2081,55 +1962,6 @@ function Panel({
           overlay={
             <>
               {nudge && <NudgeHint nudge={nudge} />}
-              {!hidden && !nudge && !(sheetOver && !wide) && (
-                // Who did what on this photo, one at a time. On a phone, in
-                // a strip of its own between the photo and the price, never
-                // on the photo. Side by side, a caption floating a little
-                // above the photo's foot, centred. On a phone on its side,
-                // just above the words over the photo, clear of the buttons.
-                <div
-                  data-photo-caption
-                  style={
-                    {
-                      "--cap-left": `calc(${photoPlace(current).left} + 0.75rem)`,
-                      "--cap-width": `calc(${photoPlace(current).width} - 1.5rem)`,
-                      "--cap-foot": `calc(${photoFoot(current)})`,
-                    } as CSSProperties
-                  }
-                  className={cn(
-                    "pointer-events-none absolute z-10 flex",
-                    lean
-                      ? // Beside the map: on the photo, in the middle of its
-                        // foot, between the X and the heart (as side by side).
-                        "left-(--cap-left) right-auto top-[calc(var(--cap-foot)-0.75rem)] w-(--cap-width) -translate-y-full justify-center px-16"
-                      : "inset-x-3 top-[calc(100cqh-var(--photo-bottom)+(var(--words-gap)-48px)/2)] justify-start",
-                    // (It steps aside for a card that's open, as the line waits for it.)
-                    picked && "invisible",
-                    "short:left-(--cap-left) short:right-auto short:top-[calc(100cqh-var(--words-height,0px)-0.5rem)] short:-translate-y-full",
-                    onOpen ? "short:w-(--cap-width)" : "short:w-[min(var(--cap-width),100cqw-var(--cap-left)-5.25rem)]",
-                    // (Clear of the X and the heart in the photo's corners.)
-                    "split:left-(--cap-left) split:right-auto split:top-[calc(var(--cap-foot)-1.5rem)] split:w-(--cap-width) split:-translate-y-full split:justify-center split:px-16",
-                  )}
-                >
-                  <ActivityTicker
-                    ticker={ticker}
-                    box={tickerBox}
-                    line={tickerLine}
-                    listing={listing}
-                    photoKey={settledKey}
-                    liked={{ count: likes, names: post.likers, you: liked || photos.hasAny }}
-                    unseen={unseen}
-                    myName={myName}
-                    // (On an agent's link, nobody's profile, yours included.)
-                    yours={mode === "public" ? "/people/me?tab=activity" : null}
-                    // Beside the map, just to read; a tap there opens the home.
-                    onTap={onOpen ? undefined : tapActivity}
-                    about={onScorecard ? "porchcard" : "comments"}
-                    // (Not signed up yet: a tap anywhere asks them to, so it says that.)
-                    hint={onOpen ? null : canReact ? "Tap the photo to like or comment" : "Sign up to like or comment"}
-                  />
-                </div>
-              )}
               {yesNo}
               {sendCorner}
               {bare && (
@@ -2160,8 +1992,8 @@ function Panel({
           the photo, centred, with shades to keep the header and the words
           readable; the bottom one deepened to hold the whole description.
           Now a phone's words sit on the dark ground, side by side they're on
-          a white panel, and on a phone on its side they carry their own
-          shade (below), under the header's own. */}
+          a panel, and on a phone on its side they carry their own shade
+          (below), under the header's own. */}
       {!SPLIT_WIDE && (
         <div
           aria-hidden
@@ -2182,17 +2014,73 @@ function Panel({
         />
       )}
 
-      {/* The words and buttons. Only their links and buttons take a touch: a
-          swipe that starts on the words, where a thumb usually is, turns the
-          photos, and a tap there clears them off the photo. */}
+      {/* The head, the words and the buttons. Only their links and buttons
+          take a touch: a swipe that starts on the words, where a thumb
+          usually is, turns the photos, and a tap there clears them off the
+          photo. All of it steps aside while the photo is held. */}
       <div
         className={cn(
           "pointer-events-none absolute inset-0 transition-[opacity,visibility] duration-300 [&_a]:pointer-events-auto [&_button]:pointer-events-auto",
           hidden && "invisible opacity-0",
         )}
       >
-        {/* The buttons and the words at the bottom are under the comments
-            while they're open, so they step aside. */}
+        {/* Above the photo, on the dark ground, the way a post is headed:
+            the price, the size and the address, always the same height
+            (4rem), and one tap from the rest of what the home is. The
+            button is the whole row; it says what it opens. */}
+        {headShown && (
+          <div
+            ref={headBox}
+            data-home-head
+            data-keep-clear
+            className="absolute inset-x-0 top-(--head-top) z-20 h-16 short:hidden split:hidden"
+          >
+            <div className="flex h-16 items-center pl-[max(1rem,env(safe-area-inset-left))] pr-[max(3.5rem,calc(2.75rem+env(safe-area-inset-right)))]">
+              <Facts listing={listing} trending={post.buzz.trending} />
+            </div>
+            <button
+              ref={headButton}
+              type="button"
+              aria-expanded={onOpen ? undefined : about}
+              aria-controls={onOpen ? undefined : aboutId}
+              aria-label="About this home"
+              // (A card open on the photo goes away, as it does for a tap anywhere else.)
+              onClick={onOpen ? () => onOpen() : () => { setPicked(null); setAbout(!about); }}
+              className="absolute inset-0 flex items-center justify-end pr-[max(1rem,env(safe-area-inset-right))] transition-colors hover:bg-white/[0.04]"
+            >
+              <ChevronDown
+                aria-hidden
+                size={22}
+                className={cn("text-white/70 transition-transform motion-reduce:transition-none", about && "rotate-180")}
+              />
+            </button>
+          </div>
+        )}
+        {/* What the home is, opened from the head, over the photo (which
+            stays put under it): the description whole, who listed it, the
+            details. Always in the page, so the home reads whole to a search
+            or a screen reader going through it; shown only when opened. */}
+        {aboutShown && (
+          <div
+            ref={aboutBox}
+            id={aboutId}
+            role="region"
+            aria-label="About this home"
+            data-keep-clear
+            hidden={!about}
+            className={cn(
+              "pointer-events-auto absolute inset-x-0 z-[35] max-h-[60cqh] overflow-y-auto overscroll-contain rounded-b-2xl bg-night/95 px-4 pb-4 pt-2 text-white shadow-[0_16px_40px_rgb(0_0_0/0.45)] backdrop-blur-md",
+              "animate-[nudge-in_200ms_ease-out_both] motion-reduce:animate-none",
+              // Under the head; on a phone on its side (no head), under the chrome.
+              "top-[calc(var(--head-top)+4rem)] short:top-(--head-top)",
+            )}
+          >
+            <About listing={listing} greeting={post.greeting} note={post.note} agentName={agentName} mode={mode} listedBy={listedBy} />
+          </div>
+        )}
+
+        {/* The buttons down the right (a phone on its side) are under the
+            comments while they're open, so they step aside. */}
         <div
           className={cn(
             "relative mx-auto h-full max-w-5xl transition-[opacity,visibility] duration-300 split:max-w-none",
@@ -2224,18 +2112,16 @@ function Panel({
           )}
         </div>
 
-        {/* All the words, in one block at the bottom, read top to bottom like
-            a listing: the price, beds, baths and size, the address, a line of
-            the description, then the comment bar. On a phone, on the dark
-            ground, a few short lines of plain words, each one line, so the
-            photo has the screen and nothing changes height from home to
-            home: the rest (all the description, every detail, who listed
-            it) is in More, never here. Side by side, the same words in a
-            panel beside the photo, scrolling if they need to, with the
-            details and who listed it, and the comment bar at its foot.
-            Beside the map, the phone's, with "Open full screen" for the bar. */}
+        {/* Under the photo, on the dark ground: the latest comments
+            themselves, then the comment bar at the foot, the same on every
+            home. On a phone on its side: the facts and a line of the
+            description over the photo's foot, then the bar. Side by side,
+            the panel beside the photo: why it's here, the facts, the
+            description (two lines, or all of it with who listed it and the
+            details), the latest comments, and at its foot the row of things
+            to do and the comment bar; the comments open in its place. Beside
+            the map, a phone's, with "Open full screen" for the bar. */}
         <div
-          ref={words}
           data-words
           inert={docked || undefined}
           // Side by side, it ends level with the photos beside it, the strip
@@ -2247,41 +2133,61 @@ function Panel({
             } as CSSProperties
           }
           className={cn(
-            "absolute inset-x-0 bottom-0 flex flex-col bg-night pb-(--words-pad) transition-[opacity,visibility] duration-300 [--words-pad:calc(12px+env(safe-area-inset-bottom))]",
-            // (Four lines, 108px, and the comment bar's row, 58px.)
-            more ? "h-auto" : "h-[calc(166px+var(--words-pad))]",
+            "absolute inset-x-0 bottom-0 top-[calc(var(--photo-top)+var(--stage-height))] flex flex-col bg-night transition-[opacity,visibility] duration-300",
             // On its side: over the photo, on a shade of their own that
             // starts a little above the first line, so every line of it reads
             // on the brightest photo.
-            "short:h-auto short:bg-transparent short:bg-linear-to-t short:from-black/80 short:to-black/65",
+            "short:top-auto short:h-auto short:bg-transparent short:bg-linear-to-t short:from-black/80 short:to-black/65",
             "short:before:pointer-events-none short:before:absolute short:before:inset-x-0 short:before:bottom-full short:before:h-12 short:before:bg-linear-to-t short:before:from-black/65 short:before:to-transparent",
-            legacy(
-              "@5xl:h-auto @5xl:items-center @5xl:bg-transparent @5xl:px-6 @5xl:[--words-pad:max(1.5rem,calc(env(safe-area-inset-bottom)+0.75rem))]",
-            ),
+            legacy("@5xl:h-auto @5xl:items-center @5xl:bg-transparent @5xl:px-6"),
             // Side by side: on the same dark as the photo's stage (a shade
             // lighter, to hold together), so the photo and what it is read as one.
-            "split:pointer-events-auto split:bottom-auto split:left-auto split:right-6 split:top-(--photo-top) split:h-(--panel-height) split:w-[360px] split:overflow-hidden split:rounded-2xl split:bg-white/[0.04] split:bg-none split:pb-0 split:ring-1 split:ring-inset split:ring-white/[0.08] split:before:hidden split-xl:w-[400px]",
-            // Beside the map on a phone, its Map button floats at the bottom.
-            onOpen && "max-lg:[--words-pad:6rem]",
+            "split:pointer-events-auto split:bottom-auto split:left-auto split:right-6 split:top-(--photo-top) split:h-(--panel-height) split:w-[360px] split:overflow-hidden split:rounded-2xl split:bg-white/[0.04] split:bg-none split:ring-1 split:ring-inset split:ring-white/[0.08] split:before:hidden split-xl:w-[400px]",
             covered && "invisible opacity-0",
           )}
         >
-          <div
-            data-keep-clear
-            className={cn(
-              // Clear of a notch or rounded corner, on a phone on its side.
-              "relative w-full pl-[max(1rem,env(safe-area-inset-left))] [text-shadow:0_1px_3px_rgb(0_0_0/0.45)]",
-              legacy("@5xl:max-w-xl @5xl:px-0"),
-              // On its side, clear of the buttons down the right (two columns of them).
-              "pr-[max(1rem,env(safe-area-inset-right))]",
-              !onOpen && "short:pr-[calc(140px+env(safe-area-inset-right))]",
-              "split:min-h-0 split:flex-1 split:overflow-y-auto split:overscroll-contain split:pb-5 split:pl-5 split:pr-5 split:pt-3 split:[text-shadow:none]",
-              // What runs on below fades out, so it reads as more to scroll to.
-              "split:[mask-image:linear-gradient(to_bottom,black_calc(100%-24px),transparent)]",
-            )}
-          >
-            {/* Side by side, why it's here, above the price. */}
-            {split && wide && !onOpen && (
+          {short && !sideBySide && (
+            <div
+              data-keep-clear
+              className={cn(
+                // Clear of a notch or rounded corner, on a phone on its side.
+                "relative w-full pl-[max(1rem,env(safe-area-inset-left))] [text-shadow:0_1px_3px_rgb(0_0_0/0.45)]",
+                // Clear of the buttons down the right (two columns of them).
+                "pr-[max(1rem,env(safe-area-inset-right))]",
+                !onOpen && "short:pr-[calc(140px+env(safe-area-inset-right))]",
+              )}
+            >
+              <Facts listing={listing} trending={post.buzz.trending} look="lines" />
+              <Caption
+                listing={listing}
+                greeting={post.greeting}
+                note={post.note}
+                open={false}
+                // "more" opens what the home is, over the photo.
+                expanded={about}
+                controls={aboutId}
+                onToggle={onOpen ? undefined : () => { setPicked(null); setAbout(!about); }}
+              />
+              {error && (
+                <p
+                  role="alert"
+                  className="absolute bottom-full left-[max(1rem,env(safe-area-inset-left))] z-30 mb-2 rounded-full bg-rose-700 px-3 py-1.5 text-sm font-semibold text-white [text-shadow:none]"
+                >
+                  {error}
+                </p>
+              )}
+            </div>
+          )}
+          {sideBySide && (
+            <div
+              data-keep-clear
+              className={cn(
+                "relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-5 pt-3",
+                // What runs on below fades out, so it reads as more to scroll to.
+                "[mask-image:linear-gradient(to_bottom,black_calc(100%-24px),transparent)]",
+              )}
+            >
+              {/* Why it's here, above the price. */}
               <TakeCard
                 look="panel"
                 home={take}
@@ -2289,48 +2195,60 @@ function Panel({
                 onComment={onCommentAt}
                 onAll={onComments}
               />
-            )}
-            <Facts listing={listing} trending={post.buzz.trending} />
-            <Caption
-              listing={listing}
-              greeting={post.greeting}
-              note={post.note}
-              open={more}
-              // On a phone, "more" opens More: all of it, every detail, and
-              // who listed it. Side by side, it opens right here, in the panel.
-              inPlace={inPlace}
-              onToggle={onOpen ? undefined : inPlace ? () => setMore(!more) : onMore}
-            />
-            {/* Side by side, the panel is the home's own page: who listed it,
-                and the details (on a phone, these are in More). */}
-            {split && wide && (
-              <>
-                {(listing.ListAgentFullName || listing.ListOfficeName) && (
-                  <p className="text-meta leading-5 text-white/70">
-                    {listing.ListAgentFullName ? `Listed by ${listing.ListAgentFullName}` : listing.ListOfficeName}
-                    {listing.ListAgentFullName && listing.ListOfficeName && ` · ${listing.ListOfficeName}`}
-                  </p>
-                )}
-                <HomeDetails listing={listing} />
-              </>
-            )}
-            {error && (
-              <p
-                role="alert"
-                // Over the photo's foot (side by side, in the panel, under the words).
-                className="absolute bottom-full left-[max(1rem,env(safe-area-inset-left))] z-30 mb-2 rounded-full bg-rose-700 px-3 py-1.5 text-sm font-semibold text-white [text-shadow:none] split:static split:mb-0 split:mt-3 split:w-fit"
-              >
-                {error}
-              </p>
-            )}
-          </div>
+              <Facts listing={listing} trending={post.buzz.trending} />
+              <Caption
+                listing={listing}
+                greeting={post.greeting}
+                note={post.note}
+                open={more}
+                // (Even a short description has who listed it and the details to open.)
+                always={Boolean(listedBy) || homeDetails(listing).length > 0}
+                // "more" opens it right here, in the panel.
+                onToggle={() => setMore(!more)}
+              />
+              {/* Opened: the panel is the home's own page, with who listed it and the details. */}
+              {more && (
+                <>
+                  {listedBy && <p className="text-meta leading-5 text-white/70">{listedBy}</p>}
+                  <HomeDetails listing={listing} />
+                </>
+              )}
+              <CommentPreview post={post} mode={mode} host={host} likes={likes} mineLiked={liked || photos.hasAny} onOpen={openComment} className="mt-3" />
+              {error && (
+                <p role="alert" className="mt-3 w-fit rounded-full bg-rose-700 px-3 py-1.5 text-sm font-semibold text-white">
+                  {error}
+                </p>
+              )}
+            </div>
+          )}
+          {!short && !sideBySide && (
+            <div className="relative min-h-0 flex-1">
+              {error && (
+                <p
+                  role="alert"
+                  className="absolute left-[max(1rem,env(safe-area-inset-left))] top-2 z-30 rounded-full bg-rose-700 px-3 py-1.5 text-sm font-semibold text-white"
+                >
+                  {error}
+                </p>
+              )}
+              <CommentPreview
+                post={post}
+                mode={mode}
+                host={host}
+                mineLiked={liked || photos.hasAny}
+                likes={likes}
+                onOpen={openComment}
+                className="h-full overflow-hidden pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-1"
+              />
+            </div>
+          )}
           <div
             className={cn(
               "w-full pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]",
-              // At the foot, right under the words (far enough under them
-              // that the description's "more" is a fingertip to tap, clear
-              // of the row's buttons).
-              "mt-auto pt-2.5 short:mt-2 short:pt-0",
+              // At the foot, under the comments (far enough under them that
+              // the last is a fingertip to tap, clear of the row's buttons),
+              // and clear of a phone's home bar.
+              "mt-auto pb-(--words-pad) pt-2.5 short:mt-2 short:pt-0",
               legacy("@5xl:max-w-xl @5xl:px-0"),
               "split:mt-0 split:border-t split:border-white/[0.08] split:p-3",
             )}
@@ -2455,22 +2373,20 @@ function Panel({
           onComment={onCommentSpot}
           covered={sheetOver}
           onPosted={() => setPicked(null)}
-          highlight={light}
           nudge={nudge}
-          onHighlightClear={(tag, clear) =>
-            setLightPlace((now) => (now?.tag === tag && now.clear === clear ? now : { tag, clear }))
-          }
         />
       )}
-      {/* On a phone, why it's here, in the band over the photo: one line
-          until it's tapped open. (Side by side, it's in the panel.) */}
-      {!onOpen && (take || eyebrow) && (
+      {/* On a phone, why it's here, in a band over the photo's top left
+          corner, under the head: one line until it's tapped open. (Side by
+          side, it's in the panel.) */}
+      {band && (
         <div className="split:hidden">
           <TakeCard
             look="band"
             home={take}
             eyebrow={eyebrow}
-            low={low}
+            // (After the Send pill: its left edge, its width, and a gap.)
+            beside={sendCorner ? `calc(${photoPlace(current).left} + 0.75rem + 3rem + 0.5rem)` : null}
             hidden={hidden || sheetOver || !active}
             onSpot={(spot) => onGoToSpot?.(spot)}
             onComment={onCommentAt}
@@ -2702,11 +2618,15 @@ function Rail({
   );
 }
 
-// What the home costs, what it is, and where, in plain words, one line each,
-// the way listings read: the price, big; "3 bd · 2 ba · 1,500 sq ft" (what's
-// missing or none left out: a lot has no "0 bd"); the address. Just to read:
-// what someone thinks of any of it, they say in the comments.
-function Facts({ listing, trending }: { listing: Listing; trending: boolean }) {
+// What the home costs, what it is, and where, in plain words, the way
+// listings read: the price, big; "3 bd · 2 ba · 1,500 sq ft" (what's missing
+// or none left out: a lot has no "0 bd"); the address. Just to read: what
+// someone thinks of any of it, they say in the comments. As the head above
+// the photo (and the same block in the panel, side by side): two lines, the
+// price and the size on one, the address under them, always 3.5rem tall
+// ("head"). On a phone on its side, over the photo's foot: one line each
+// ("lines").
+function Facts({ listing, trending, look = "head" }: { listing: Listing; trending: boolean; look?: "head" | "lines" }) {
   const beds = listing.BedroomsTotal;
   const baths = listing.BathroomsTotalInteger;
   const size = listing.LivingArea;
@@ -2718,43 +2638,129 @@ function Facts({ listing, trending }: { listing: Listing; trending: boolean }) {
   ].filter((part): part is { short: string; long: string } => Boolean(part));
   const seen = parts.map((part) => part.short).join(" · ");
   const said = parts.map((part) => part.long).join(", ");
+  // Earned, not decoration: real activity from several people this week,
+  // among the busiest homes for sale.
+  const chip = trending && (
+    <span className="flex h-6 shrink-0 items-center gap-1 rounded-full bg-rose-500/15 px-2.5 text-meta font-semibold text-rose-100 [text-shadow:none] short:bg-black/45 short:backdrop-blur-md">
+      <Flame aria-hidden size={12} className="text-rose-300" />
+      Trending
+    </span>
+  );
+  // "Sample listing" stays when the address runs short: it's the only sign
+  // on the home that it isn't real.
+  const address = (
+    <>
+      <h2 data-fact="Address" className="min-w-0 truncate font-normal">
+        {listing.UnparsedAddress}, {listing.City}
+      </h2>
+      {isSampleListing(listing) && <span className="shrink-0 text-meta">&nbsp;· Sample listing</span>}
+    </>
+  );
+  if (look === "head") {
+    return (
+      <div data-tour="facts" className="min-w-0 flex-1">
+        <div className="flex h-8 min-w-0 items-center gap-2.5">
+          <p data-fact="Price" className="shrink-0 font-display text-[22px] font-semibold leading-none tabular-nums">
+            {formatPrice(listing.ListPrice)}
+          </p>
+          {chip}
+          <p data-fact="Size" className="min-w-0 truncate text-meta leading-5 text-white/90">
+            <span aria-hidden>{seen}</span>
+            <span className="sr-only">{said}</span>
+          </p>
+        </div>
+        <div className="flex h-6 min-w-0 items-center text-body leading-5 text-white/80">{address}</div>
+      </div>
+    );
+  }
   return (
     <div data-tour="facts">
-      {/* (On a phone, each row a fixed height: the words never change height.) */}
-      <div className="flex h-9 items-center gap-2.5 split:h-12">
-        <p
-          data-fact="Price"
-          className={cn("font-display text-[28px] font-semibold leading-none tabular-nums split:text-[32px]", legacy("@5xl:text-4xl"))}
-        >
+      {/* (Each row a fixed height: the words never change height.) */}
+      <div className="flex h-9 items-center gap-2.5">
+        <p data-fact="Price" className="font-display text-[28px] font-semibold leading-none tabular-nums">
           {formatPrice(listing.ListPrice)}
         </p>
-        {trending && (
-          // Earned, not decoration: real activity from several people this
-          // week, among the busiest homes for sale.
-          <span
-            className={cn(
-              "flex h-6 shrink-0 items-center gap-1 rounded-full bg-rose-500/15 px-2.5 text-meta font-semibold text-rose-100 [text-shadow:none] short:bg-black/45 short:backdrop-blur-md",
-              legacy("@5xl:bg-black/45 @5xl:backdrop-blur-md"),
-            )}
-          >
-            <Flame aria-hidden size={12} className="text-rose-300" />
-            Trending
-          </span>
-        )}
+        {chip}
       </div>
       <p data-fact="Size" className="h-6 truncate text-body leading-6 text-white/90">
         <span aria-hidden>{seen}</span>
         <span className="sr-only">{said}</span>
       </p>
-      {/* "Sample listing" stays when the address runs short: it's the only
-          sign on the home that it isn't real. */}
-      <div className="flex h-6 min-w-0 items-center text-body leading-6 text-white/70">
-        <h2 data-fact="Address" className="min-w-0 truncate font-normal">
-          {listing.UnparsedAddress}, {listing.City}
-        </h2>
-        {isSampleListing(listing) && <span className="shrink-0 text-meta">&nbsp;· Sample listing</span>}
-      </div>
+      <div className="flex h-6 min-w-0 items-center text-body leading-6 text-white/70">{address}</div>
     </div>
+  );
+}
+
+// Who listed the home, in a line, when it's known: "Listed by Lena Marsh · Sample Realty".
+const listedByOf = (listing: Listing) =>
+  listing.ListAgentFullName
+    ? `Listed by ${listing.ListAgentFullName}${listing.ListOfficeName ? ` · ${listing.ListOfficeName}` : ""}`
+    : listing.ListOfficeName
+      ? `Listed by ${listing.ListOfficeName}`
+      : null;
+
+// Every fact there is about the home, as label and value: the price, beds,
+// baths and size first, then the rest (homeDetails).
+const factRows = (listing: Listing) => [
+  { label: "Price", value: formatPrice(listing.ListPrice) },
+  ...(listing.BedroomsTotal > 0 ? [{ label: "Bedrooms", value: String(listing.BedroomsTotal) }] : []),
+  ...(listing.BathroomsTotalInteger > 0 ? [{ label: "Bathrooms", value: String(listing.BathroomsTotalInteger) }] : []),
+  ...(listing.LivingArea > 0 ? [{ label: "Square feet", value: listing.LivingArea.toLocaleString("en-US") }] : []),
+  ...homeDetails(listing),
+];
+
+// What the home is, on a phone, opened from the head over the photo: the
+// description whole (on an agent's link, their greeting and note first), who
+// listed it, every fact, and (on a link) who sent it. Just to read.
+function About({
+  listing,
+  greeting,
+  note,
+  agentName,
+  mode,
+  listedBy,
+}: {
+  listing: Listing;
+  greeting?: string;
+  note?: string;
+  agentName?: string;
+  mode: "public" | "share";
+  listedBy: string | null;
+}) {
+  // The note never hides the description: it follows, from a new line.
+  const text = [note, listing.PublicRemarks].filter(Boolean).join("\n");
+  // Who sent it, on an agent's link, when that's someone other than who listed it.
+  const sentBy =
+    mode === "share" && agentName && agentName !== "Your agent" && agentName !== listing.ListAgentFullName
+      ? `Sent by ${agentName}`
+      : null;
+  return (
+    <>
+      {(greeting || text) && (
+        <p className="whitespace-pre-line text-body leading-6 text-white/85">
+          {/* The greeting ends with a stop, seen, so it doesn't run into the note. */}
+          {greeting && <strong className="font-semibold text-white">{greeting}</strong>}
+          {greeting && <span aria-hidden>.</span>}
+          {greeting && text && " "}
+          {text}
+        </p>
+      )}
+      {listedBy && <p className="mt-3 text-meta leading-5 text-white/70">{listedBy}</p>}
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5">
+        {factRows(listing).map((row) => (
+          <div key={row.label} className="min-w-0">
+            <dt className="text-meta leading-4 text-white/55">{row.label}</dt>
+            <dd className="break-words text-body font-medium leading-5 text-white">{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {(sentBy || isSampleListing(listing)) && (
+        <div className="mt-3 text-meta leading-5 text-white/60">
+          {sentBy && <p>{sentBy}</p>}
+          {isSampleListing(listing) && <p>Sample listing</p>}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -2882,26 +2888,35 @@ function HomeDetails({ listing }: { listing: Listing }) {
   );
 }
 
-// One line of the description on a phone (or, on an agent's link, their
-// greeting and note, then the description), then "… more" right after the
-// last word that fits, a fingertip to tap. On a phone it opens More, where
-// all of it is; side by side, up to ten lines, and it reads it all in place,
-// and "less" puts it away (one button, which stays where the keyboard is).
-// Just to read: the words themselves aren't something to tap.
+// The description cut short (or, on an agent's link, their greeting and
+// note, then the description), then "… more" right after the last word that
+// fits, a fingertip to tap. Side by side, two lines in the panel, and "more"
+// reads it all in place, with who listed it and the details; "less" puts it
+// away (one button, which stays where the keyboard is). On a phone on its
+// side, one line over the photo, and "more" opens what the home is over the
+// photo (`controls`). Just to read: the words themselves aren't something to tap.
 function Caption({
   listing,
   greeting,
   note,
   open,
-  inPlace = true,
+  expanded = open,
+  controls,
+  always = false,
   onToggle,
 }: {
   listing: Listing;
   greeting?: string;
   note?: string;
+  // All of it, right here.
   open: boolean;
-  // "more" opens it right here (false: it opens the rest elsewhere, a sheet).
-  inPlace?: boolean;
+  // What "more" has opened, when that's elsewhere (what the home is, over
+  // the photo), and its id.
+  expanded?: boolean;
+  controls?: string;
+  // "more" even when the description fits: there's more to open than it
+  // (who listed it, the details).
+  always?: boolean;
   // Unset beside the map, where it's just a look.
   onToggle?: () => void;
 }) {
@@ -2940,19 +2955,18 @@ function Caption({
     <div
       ref={row}
       className={cn(
-        // Side by side: up to ten lines in the panel (a listing's usual
-        // description whole), and all of it right there when opened (the
-        // panel scrolls).
+        // Side by side: two lines in the panel, and all of it right there
+        // when opened (the panel scrolls).
         "text-body leading-6 text-white/80 split:mb-2 split:mt-1",
         open
           ? "pointer-events-auto max-h-[45dvh] overflow-y-auto overscroll-contain split:max-h-none split:overflow-visible"
-          : "h-6 split:h-auto split:max-h-60",
+          : "h-6 split:h-auto split:max-h-12",
       )}
     >
       <div
         ref={box}
         // (With a note, its own lines and the description's are kept.)
-        className={cn(note && "whitespace-pre-line", !open && n === null && "line-clamp-1 split:line-clamp-10")}
+        className={cn(note && "whitespace-pre-line", !open && n === null && "line-clamp-1 split:line-clamp-2")}
       >
         {/* The greeting ends with a stop, seen, so it doesn't run into the note. */}
         {greeting && <h1 className="inline font-semibold text-white">{greeting}</h1>}
@@ -2960,11 +2974,11 @@ function Caption({
         {greeting && text && " "}
         {text && <span>{cut ? clipped(text, n ?? 0) : text}</span>}
         {cut && <span aria-hidden>…</span>}{" "}
-        {onToggle && (open || cut) && (
+        {onToggle && (open || cut || always) && (
           <button
             type="button"
-            aria-expanded={inPlace ? open : undefined}
-            aria-haspopup={inPlace ? undefined : "dialog"}
+            aria-expanded={expanded}
+            aria-controls={controls}
             onClick={onToggle}
             className="font-semibold text-white hit-44"
           >
@@ -3314,21 +3328,17 @@ function MoreSheet({
   onClose,
   anchor,
   returnTo,
-  about = false,
   onShareLink,
   onInvite,
 }: {
   post: FeedPost | null;
   state: ReactionState;
+  // Set on an agent's link (where there's no map to see the home on).
   agentName?: string;
   // On a public page it offers "Share link": the home's public page, to pass on.
   onShareLink?: () => void;
   // On an agent's link, on a phone: invite someone onto it.
   onInvite?: () => void;
-  // Say what the home is, first: its description whole, every detail, and
-  // who's on it (who listed it; on a link, the agent who sent it). Under a
-  // phone's photo there's only a line of each.
-  about?: boolean;
   anchor: RefObject<HTMLElement | null>;
   returnTo?: () => HTMLElement | null;
   onToggle: (aspect: Aspect) => void;
@@ -3336,57 +3346,15 @@ function MoreSheet({
   onClose: () => void;
 }) {
   const listing = post?.listing;
-  const facts = listing
-    ? [
-        { label: "Price", value: formatPrice(listing.ListPrice) },
-        ...(listing.BedroomsTotal > 0 ? [{ label: "Bedrooms", value: String(listing.BedroomsTotal) }] : []),
-        ...(listing.BathroomsTotalInteger > 0 ? [{ label: "Bathrooms", value: String(listing.BathroomsTotalInteger) }] : []),
-        ...(listing.LivingArea > 0 ? [{ label: "Square feet", value: listing.LivingArea.toLocaleString("en-US") }] : []),
-        ...homeDetails(listing),
-      ]
-    : [];
-  // Who's on it: who listed it, and (on an agent's link) who sent it, when that's someone else.
-  const listedBy = listing?.ListAgentFullName
-    ? `Listed by ${listing.ListAgentFullName}${listing.ListOfficeName ? ` · ${listing.ListOfficeName}` : ""}`
-    : listing?.ListOfficeName
-      ? `Listed by ${listing.ListOfficeName}`
-      : null;
-  const sentBy = agentName && agentName !== "Your agent" && agentName !== listing?.ListAgentFullName ? `Sent by ${agentName}` : null;
+  // (What the home is, its description whole and every detail, opens from
+  // the head above the photo; side by side, it's in the panel.)
   return (
     <Sheet open={Boolean(post)} onClose={onClose} label="More" title="More" anchor={anchor} returnTo={returnTo}>
       {post && listing && (
         <div className="flex flex-col gap-5">
-          {about && (
-            <section aria-labelledby="about-home-title">
-              <h3 id="about-home-title" className="text-meta font-semibold text-muted">
-                About this home
-              </h3>
-              <p className="mt-1 text-body font-semibold text-ink">
-                {listing.UnparsedAddress}, {listing.City}
-              </p>
-              {listing.PublicRemarks && (
-                <p className="mt-2 whitespace-pre-line text-body leading-snug text-ink">{listing.PublicRemarks}</p>
-              )}
-              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
-                {facts.map((row) => (
-                  <div key={row.label}>
-                    <dt className="text-meta text-muted">{row.label}</dt>
-                    <dd className="text-body font-semibold text-ink">{row.value}</dd>
-                  </div>
-                ))}
-              </dl>
-              {(listedBy || sentBy || isSampleListing(listing)) && (
-                <div className="mt-3 text-sm leading-snug text-stone-700">
-                  {listedBy && <p>{listedBy}</p>}
-                  {sentBy && <p>{sentBy}</p>}
-                  {isSampleListing(listing) && <p className="text-muted">Sample listing</p>}
-                </div>
-              )}
-            </section>
-          )}
           {/* Liked, or passed on with the X on the photo: what about it, if they'd like to say. */}
           {state.reaction && <AspectChips state={state} onToggle={onToggle} />}
-          <div className={cn("flex flex-col gap-1", about && "border-t border-stone-200 pt-3")}>
+          <div className="flex flex-col gap-1">
             {onInvite && (
               <button type="button" onClick={onInvite} className={cn(button({ kind: "ghost", flush: true }), "self-start text-ink")}>
                 <UserPlus aria-hidden size={17} />

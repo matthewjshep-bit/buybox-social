@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { signedIn, enterCode,
   commentIn,
   createShare,
@@ -15,6 +15,10 @@ import { signedIn, enterCode,
   signUpBuyer,
   passOn,
 } from "./helpers";
+
+// The latest comments under a home's photo (side by side: in the panel),
+// headed by how many liked it.
+const latestOf = (home: Locator) => home.getByRole("group", { name: "Latest comments" });
 
 async function expectLogoGoesHome(page: Page) {
   const logo = page.getByRole("link", { name: "Porchcard", exact: true });
@@ -44,22 +48,48 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await likeInPhoto(clientHome, "the evergreens");
   await evergreensSaved;
 
-  // That agent's feed names their own client, and says what they liked. (Each
-  // home here is opened by its own link, which opens the feed on it: where it
-  // falls on the home page depends on what every earlier spec liked.)
+  // The agent's Home names their own client, and says what they liked: the
+  // Client activity beside their feed, which only they see. (Each home below
+  // is opened by its own link, which opens the feed on it: where it falls on
+  // the home page depends on what every earlier spec liked.)
+  await agent.goto("/");
+  const activity = agent.getByRole("region", { name: /^Client activity/ });
+  await expect(activity).toContainText("Only you see this");
+  await expect(activity.getByRole("link", { name: /Toby liked 96 Fernhollow Ln/ })).toBeVisible();
+  // The home itself counts the like under its photo, where the comments go.
+  // Nothing goes round over the photo any more.
   await agent.goto("/homes/SAMPLE-1004");
-  await expect(homeIn(agent, "96 Fernhollow Ln")).toContainText("Toby, your client, liked the evergreens");
+  const agentsHome = homeIn(agent, "96 Fernhollow Ln");
+  await expect(latestOf(agentsHome)).toContainText("1 like");
+  await expect(agentsHome.getByRole("group", { name: "Recent activity" })).toHaveCount(0);
 
-  // A buyer signs up and sees the same activity anonymously.
+  // A buyer signs up and sees the same like, with no one named: a count under
+  // the photo, and in the comments "A buyer" from a private chat.
   const buyer = await signUpBuyer(browser, "bea@example.com", "Bea Buyer");
   const pageErrors: string[] = [];
   buyer.on("pageerror", (error) => pageErrors.push(error.message));
   await buyer.goto("/homes/SAMPLE-1004");
   const post = homeIn(buyer, "96 Fernhollow Ln");
-  await expect(post).toContainText("A buyer liked the evergreens");
-  await expect(post).toContainText("$839,000");
-  await expect(post).toContainText("3 bd · 2 ba · 2,120 sq ft");
-  await expect(post).toContainText("2,120 sq ft");
+  await expect(latestOf(post)).toContainText("1 like");
+  await expect(post.getByRole("group", { name: "Recent activity" })).toHaveCount(0);
+  await expect(post.locator("[data-photo-caption]")).toHaveCount(0);
+  // The price, size and address are in the head, above the photo.
+  const head = post.locator("[data-home-head]");
+  await expect(head).toContainText("$839,000");
+  await expect(head).toContainText("3 bd · 2 ba · 2,120 sq ft");
+  await expect(head).toContainText("96 Fernhollow Ln, Gig Harbor");
+  await expect(head.getByRole("button", { name: "About this home" })).toHaveAttribute("aria-expanded", "false");
+  const photoFrame = post.locator("[data-photo-frame]").first();
+  expect((await head.boundingBox())!.y + (await head.boundingBox())!.height).toBeLessThanOrEqual((await photoFrame.boundingBox())!.y + 1);
+  // The head opens what the home is: the description, who listed it, the details.
+  await head.getByRole("button", { name: "About this home" }).click();
+  const about = post.getByRole("region", { name: "About this home" });
+  await expect(about).toBeVisible();
+  await expect(about).toContainText("Tucked among tall evergreens");
+  await expect(about).toContainText("Listed by Elise Navarro · Cascade Key Real Estate");
+  await expect(about).toContainText("Price per sq ft");
+  await buyer.keyboard.press("Escape");
+  await expect(about).toBeHidden();
   await expect(post.getByRole("button", { name: "Like 96 Fernhollow Ln, 1 like" })).toHaveAttribute("aria-pressed", "false");
   // The like is on the evergreens themselves, in the photo.
   await post.scrollIntoViewIfNeeded();
@@ -69,6 +99,14 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   // Yes or no to the home itself is one tap, in the photo's corners.
   await expect(post.getByRole("button", { name: "Pass on this home" })).toBeVisible();
   await expect(heartOf(post)).toBeVisible();
+  // The heart and the X sit in the photo's corners, at its foot.
+  const corners = (await photoFrame.boundingBox())!;
+  const heartBox = (await heartOf(post).boundingBox())!;
+  const passBox = (await post.getByRole("button", { name: "Pass on this home" }).boundingBox())!;
+  expect(heartBox.y + heartBox.height).toBeLessThanOrEqual(corners.y + corners.height + 1);
+  expect(heartBox.x).toBeGreaterThan(passBox.x);
+  expect(heartBox.width).toBeGreaterThanOrEqual(44);
+  expect(heartBox.height).toBeGreaterThanOrEqual(44);
   await expect(buyer.getByText("Toby")).toHaveCount(0);
 
   // The heart likes it; the account supplies the name.
@@ -101,9 +139,16 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await expect(thread).toContainText("You liked the exterior");
   await buyer.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
-  // The line above the price says it was you, as it does for your likes.
-  await expect(post).toContainText("You commented");
+  // Under the photo, the way a post reads: how many liked it (both of you),
+  // then the comment, by name. Tapping it opens the comments again.
+  await expect(latestOf(post)).toContainText("2 likes");
+  const row = latestOf(post).getByRole("listitem").filter({ hasText: "Those trees are gorgeous." });
+  await expect(row).toContainText("Bea");
   await expect(post.getByRole("button", { name: "Comments, 1" })).toBeVisible();
+  await row.getByRole("button").click();
+  await expect(sheet).toBeVisible();
+  await buyer.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
 
   // More: what else you like, which photos can't show.
   let more = await openMore(buyer, post);

@@ -4,20 +4,9 @@ import { refresh } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import {
-  accountFor,
-  DEV_COOKIE,
-  devLoginEnabled,
-  INVITED_PREFIX,
-  nameFromSignUp,
-  requireUser,
-  sitePath,
-  VIEW_AS_COOKIE,
-} from "@/lib/auth";
+import { DEV_COOKIE, devLoginEnabled, INVITED_PREFIX, requireUser, sitePath, VIEW_AS_COOKIE } from "@/lib/auth";
 import { sql } from "@/lib/db";
-import { readDevice } from "@/lib/engagement";
-import { ensureAccountVisitor } from "@/lib/public";
-import { ensureLinkProfile, linkOnce } from "@/lib/shares";
+import { afterSignIn } from "@/lib/sign-in";
 import { siteOrigin } from "@/lib/site";
 import { createSupabase, supabaseConfigured } from "@/lib/supabase/server";
 import { clearTestUser, setTestUser, testPasswordMatches, testSignInEnabled } from "@/lib/test-sign-in";
@@ -173,31 +162,13 @@ async function signingUpAsAgent(email: string) {
 }
 
 // Proved to be them, on the form they signed in on: their account (made the
-// first time), and what this browser did before becomes its. `asAgent`: that
-// form was "For agents", so the account is an agent's, new or not (they chose
-// it themselves, with the code or the password in hand).
+// first time), and what this browser did before becomes its (lib/sign-in.ts,
+// the same as the emailed link does). `asAgent`: that form was "For agents",
+// so the account is an agent's, new or not (they chose it themselves, with
+// the code or the password in hand).
 async function signedIn(user: { id: string; email: string }, { asAgent }: { asAgent: boolean }): Promise<CodeState> {
-  let account = await accountFor(user, asAgent ? "agent" : "buyer");
-  if (asAgent && account.role !== "agent") {
-    // (Shopping until now: which kind of pro is asked next, at /welcome.)
-    await sql`update accounts set role = 'agent', kind = null where id = ${account.id}`;
-    account = { ...account, role: "agent", kind: null };
-  }
-  // Settled here, so what was noted for the email's link is done with.
-  await sql`delete from account_intents where email = ${user.email}`;
-  // A name from the form, for an account that has none yet.
-  const fullName = await nameFromSignUp(account);
-  // A place on an agent's link this browser had becomes theirs: they and the
-  // agent follow each other, the first time they're linked. Any link they're
-  // on: a profile, if they had none, so the agent's pages can link their name to it.
-  for (const participantId of await claimDevice(account.id)) await linkOnce(account.id, participantId);
-  await ensureLinkProfile(account.id);
-  // Anyone with a name has a public page from here on, so they can be found
-  // and followed (Search, People) before they've liked anything. (After the
-  // browser's own page has become theirs, above; the name as it is now.)
-  if (account.role && fullName.trim()) await ensureAccountVisitor({ ...account, full_name: fullName });
-  const agent = account.role === "agent";
-  return { done: { agent, needsName: !agent && !fullName.trim(), welcome: !account.kind } };
+  const { agent, needsName, welcome } = await afterSignIn(user, { asAgent, chosen: true });
+  return { done: { agent, needsName, welcome } };
 }
 
 // A buyer who sends homes to clients after all: an agent's account, then
@@ -211,31 +182,15 @@ export async function becomeAgent() {
   redirect("/dashboard");
 }
 
+// Signs this browser out, and only this one: their phone, signed in from the
+// agent's link, stays signed in. (Supabase's default signs out every device.)
 export async function signOut() {
   if (supabaseConfigured) {
     const supabase = await createSupabase();
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
   }
   (await cookies()).delete(DEV_COOKIE);
   (await cookies()).delete(VIEW_AS_COOKIE);
   await clearTestUser();
   redirect("/login");
-}
-
-// On signing in: what this browser did before becomes the account's. Its
-// public self (when the account has none yet), and its place on any agent's
-// link where the account has none yet. Returns those places.
-async function claimDevice(accountId: string): Promise<string[]> {
-  const device = await readDevice();
-  if (!device) return [];
-  await sql`
-    update visitors set account_id = ${accountId}
-    where device_token = ${device} and account_id is null
-      and not exists (select 1 from visitors where account_id = ${accountId})`;
-  const claimed = await sql<{ id: string }[]>`
-    update participants p set account_id = ${accountId}
-    where p.device_token = ${device} and p.account_id is null
-      and not exists (select 1 from participants q where q.share_id = p.share_id and q.account_id = ${accountId})
-    returning p.id`;
-  return claimed.map((row) => row.id);
 }

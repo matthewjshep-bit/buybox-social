@@ -122,8 +122,12 @@ test("on an agent's link the wheel leaves the welcome for the homes, and a clien
   await expect(yes).toHaveAttribute("aria-pressed", "false");
   await yes.click();
   await expect(yes).toHaveAttribute("aria-pressed", "true");
-  // Nothing left to ask: it says that's all.
+  // Nothing left to ask: it says that's all, and (signed in) the one way on is more homes like these.
   await expect(quin.getByRole("heading", { name: "That's all" })).toBeVisible();
+  const quinEnd = quin.getByRole("region", { name: "The end" });
+  await expect(quinEnd.getByRole("link", { name: "See more homes like these" })).toHaveAttribute("href", "/");
+  await expect(quinEnd.getByRole("button", { name: "Sign up to save your picks" })).toHaveCount(0);
+  await expect(quin.getByRole("region", { name: "What's next" })).toHaveCount(0);
   // A home's photo there goes back to that home.
   await grid.getByRole("button", { name: "See 719 Saltmarsh Ln" }).click();
   await expect(quin.getByRole("article").nth(1)).toBeInViewport({ ratio: 0.9 });
@@ -160,4 +164,10 @@ test("on an agent's link the wheel leaves the welcome for the homes, and a clien
   await theirs.getByRole("button", { name: "719 Saltmarsh Ln: pass" }).click();
   await expect(agent.getByRole("status").filter({ hasText: "That's for your client to tap." })).toBeVisible();
   await expect(theirs.getByRole("button", { name: "719 Saltmarsh Ln: pass" })).toHaveAttribute("aria-pressed", "false");
+  // Nothing on the last screen asks the agent to sign up or sends them anywhere.
+  const agentEnd = agent.getByRole("region", { name: "The end" });
+  await expect(agentEnd.getByRole("heading", { name: "That's all" })).toBeVisible();
+  await expect(agentEnd.getByText("Here they can like or pass on each home.")).toBeVisible();
+  await expect(agentEnd.getByRole("button", { name: "Sign up to save your picks" })).toHaveCount(0);
+  await expect(agentEnd.getByRole("link", { name: "See more homes like these" })).toHaveCount(0);
 });

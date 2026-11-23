@@ -44,6 +44,15 @@ const settled = async (home: Locator) => {
 
 const page$ = async (browser: Browser, options = {}) => (await browser.newContext(options)).newPage();
 
+// Under the photo, where a post has its latest comments: the bold "N likes"
+// line, then the comments themselves.
+const latestIn = (home: Locator) => home.getByRole("group", { name: "Latest comments" });
+// How many likes that line counts (none: no line at all).
+const likesUnder = async (home: Locator) => {
+  const line = latestIn(home).getByText(/^\d+ likes?$/);
+  return (await line.count()) ? Number((await line.innerText()).match(/\d+/)![0]) : 0;
+};
+
 test("a quiet home, for an agent going through a link's homes: the rail's Porchcard says nobody has weighed in, then your take, the facts and the home", async ({
   browser,
 }) => {
@@ -79,10 +88,15 @@ test("a quiet home, for an agent going through a link's homes: the rail's Porchc
   await expect(card.getByText("Sample listing, fictional and not for sale")).toBeAttached();
   // No passes, no activity line to speak of.
   await expect(card.getByText("People pass on")).toHaveCount(0);
-
-  // The heart on the photo, and the card then counts it.
   await agent.keyboard.press("Escape");
   await expect(card).toBeHidden();
+
+  // Under the photo, where a post has its latest comments: nothing said yet,
+  // said quietly. (No line rolling through who did what: that's gone.)
+  await expect(latestIn(home).getByText("No comments yet.")).toBeVisible();
+  await expect(home.getByRole("group", { name: "Recent activity" })).toHaveCount(0);
+
+  // The heart on the photo, and the card then counts it.
   await heartOf(home).click();
   await expect(heartOf(home)).toHaveAttribute("aria-pressed", "true");
   const again = await openScorecard(agent, home);
@@ -90,16 +104,15 @@ test("a quiet home, for an agent going through a link's homes: the rail's Porchc
   await agent.keyboard.press("Escape");
   await expect(again).toBeHidden();
 
-  // The line above the price, about the home as a whole, opens the Porchcard.
-  const line = home.getByRole("group", { name: "Recent activity" }).getByRole("button").last();
-  await expect(line).toHaveAccessibleName(/^You liked this\. .+\. See the feedback\.$/);
-  await line.click();
-  await expect(agent.getByRole("dialog", { name: "Feedback" })).toBeVisible();
-  await agent.keyboard.press("Escape");
+  // So does the line under the photo, in bold, with nothing to tap: the
+  // Porchcard stays on the rail.
+  await expect(latestIn(home).getByText("1 like", { exact: true })).toBeVisible();
+  await expect(latestIn(home).getByRole("button")).toHaveCount(0);
+  await expect(home.getByRole("button", { name: "Feedback", exact: true })).toBeVisible();
   expect(pageErrors).toEqual([]);
 });
 
-test("for everyone else there's no Porchcard: Save is in its place, and the line about the home opens its comments", async ({
+test("for everyone else there's no Porchcard: Save is in its place, and a comment under the photo opens its comments", async ({
   browser,
 }) => {
   const page = await page$(browser);
@@ -118,15 +131,28 @@ test("for everyone else there's no Porchcard: Save is in its place, and the line
   await expect(home.getByRole("button", { name: `Share ${HERON}`, exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
 
-  // A like, and the line above the price says so: about the home as a whole,
-  // it opens the comments, which have no way on to a Porchcard.
+  // A like, and the line under the photo counts it. (No line rolling through
+  // who did what.)
+  const before = await likesUnder(home);
   await heartOf(home).click();
   await joinAs(page, "Hal");
   await expect(heartOf(home)).toHaveAttribute("aria-pressed", "true");
-  const line = home.getByRole("group", { name: "Recent activity" }).getByRole("button").last();
-  await expect(line).toHaveAccessibleName(/^You liked this\. .+\. See the comments\.$/);
-  await line.click();
-  const comments = page.getByRole("dialog", { name: "Comments" });
+  await expect.poll(() => likesUnder(home)).toBe(before + 1);
+  await expect(home.getByRole("group", { name: "Recent activity" })).toHaveCount(0);
+
+  // A word, and it's under the photo too, with his name: it opens the
+  // comments, which have no way on to a Porchcard.
+  const HAL_SAYS = "The porch looks straight out over the meadow.";
+  let comments = await openComments(page, home);
+  await comments.getByLabel("Add a comment").fill(HAL_SAYS);
+  await comments.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(comments.getByText(HAL_SAYS)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(comments).toBeHidden();
+  const row = latestIn(home).getByRole("button").filter({ hasText: HAL_SAYS });
+  await expect(row).toContainText("Hal");
+  await row.click();
+  comments = page.getByRole("dialog", { name: "Comments" });
   await expect(comments).toBeVisible();
   await expect(comments.getByText("What people think")).toHaveCount(0);
   await expect(comments.getByRole("button", { name: /Feedback/ })).toHaveCount(0);
@@ -203,20 +229,26 @@ test("public and private: a link's people, passes and words stay on the link, an
   await wes.keyboard.press("Escape");
   await heartOf(wesHome).click();
   await expect(heartOf(wesHome)).toHaveAttribute("aria-pressed", "true");
-  // No Porchcard for him: Save where it was, and the description's "more"
-  // opens the rest in More.
+  // No Porchcard for him: Save where it was, and what the home is opens from
+  // the head above the photo, with nothing about anyone in it.
   const wesRail = wesHome.locator("[data-bar-row]");
   const inPublic = ["Add a comment…", /^Comments/, `Save ${ALDER}`, "More options"];
   await expect(wesRail.getByRole("button")).toHaveCount(inPublic.length);
   for (const [i, name] of inPublic.entries()) await expect(wesRail.getByRole("button").nth(i)).toHaveAccessibleName(name);
   // (Signed in now, having said something: Send on the photo, where a visitor has Share.)
   await expect(wesHome.getByRole("button", { name: `Send ${ALDER}`, exact: true })).toBeVisible();
-  const wesMore = wesHome.getByRole("button", { name: "more", exact: true });
-  await expect(wesMore).toHaveAttribute("aria-haspopup", "dialog");
-  await wesMore.click();
-  await expect(wes.getByRole("dialog", { name: "More" })).toBeVisible();
+  const wesHead = wesHome.getByRole("button", { name: "About this home", exact: true });
+  await expect(wesHead).toHaveAttribute("aria-expanded", "false");
+  await wesHead.click();
+  const wesAbout = wesHome.getByRole("region", { name: "About this home" });
+  await expect(wesAbout).toBeVisible();
+  await expect(wesAbout.getByText(/^Listed by /)).toBeVisible();
   await expect(wes.getByRole("dialog", { name: "Feedback" })).toHaveCount(0);
+  // [P] Nothing of the link's there, nor anywhere under the photo.
+  await expect(wesAbout).not.toContainText(/\bUma\b|\bVic\b|Saturday/);
+  await expect(wesHome.locator("[data-words]")).not.toContainText(/\bUma\b|\bVic\b|Saturday|pass/i);
   await wes.keyboard.press("Escape");
+  await expect(wesAbout).toBeHidden();
   for (const path of ["/", "/homes/SAMPLE-1011"]) {
     const html = await (await wes.request.get(path)).text();
     expect(html).not.toContain(UMA_SAYS);
@@ -266,13 +298,25 @@ test("public and private: a link's people, passes and words stay on the link, an
   await settle(spot);
   await spot.getByRole("button", { name: "Close" }).click();
 
-  // The description's "more" opens More: all of it, every detail, who listed it.
-  await tessHome.getByRole("button", { name: "more", exact: true }).click();
-  const tessMore = tess.getByRole("dialog", { name: "More" });
-  await expect(tessMore).toBeVisible();
-  await expect(tessMore.getByRole("heading", { name: "About this home" })).toBeInViewport();
-  await expect(tessMore.getByText(/^Listed by /)).toBeVisible();
+  // The head above the photo opens what the home is: all of it, every detail,
+  // who listed it; a tap on the head again puts it away. (More has nothing
+  // about the home any more.)
+  const tessHead = tessHome.getByRole("button", { name: "About this home", exact: true });
+  await tessHead.click();
+  const tessAbout = tessHome.getByRole("region", { name: "About this home" });
+  await expect(tessAbout).toBeVisible();
+  await expect(tessHead).toHaveAttribute("aria-expanded", "true");
+  await expect(tessAbout.getByText(/^Listed by /)).toBeVisible();
+  await expect(tessAbout.getByText("Price per sq ft")).toBeVisible();
+  // [P] And nothing of Sage's link in it.
+  await expect(tessAbout).not.toContainText(/\bUma\b|\bVic\b|Saturday/);
+  await tessHead.click();
+  await expect(tessAbout).toBeHidden();
+  await expect(tessHead).toHaveAttribute("aria-expanded", "false");
+  const tessMore = await openMore(tess, tessHome);
+  await expect(tessMore.getByRole("heading", { name: "About this home" })).toHaveCount(0);
   await tess.keyboard.press("Escape");
+  await expect(tessMore).toBeHidden();
 
   // On the link: Like, Comments and More down the side (no Share on a link
   // of one's own, nothing to save, and no Porchcard).
@@ -333,11 +377,24 @@ test("on a desktop, the panel says what the home is and what people said, and fo
   await page.keyboard.press("Escape");
   await expect(chat).toBeHidden();
 
-  // The panel says what the home is; the words themselves are in the
-  // comments, a tap away on its row of things to do.
+  // The panel says what the home is: the price and the address, two lines of
+  // the description, and "more" opens the rest in place (who listed it, every
+  // detail); "less" puts it away. Under them, the latest comments themselves,
+  // the way a post reads. (No line rolling through who did what.)
   const panel = home.locator("[data-words]");
-  await expect(panel.getByText("Price per sq ft")).toBeVisible();
-  await expect(panel.getByRole("list", { name: "Comments and likes" })).toHaveCount(0);
+  await expect(panel.locator("[data-fact='Address']")).toContainText(ALDER);
+  const more = panel.getByRole("button", { name: "more", exact: true });
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await expect(panel.getByText("Price per sq ft")).toHaveCount(0);
+  await more.click();
+  await expect(panel.getByRole("list", { name: "The details" }).getByText("Price per sq ft")).toBeVisible();
+  await expect(panel.getByText(/^Listed by /)).toBeVisible();
+  await panel.getByRole("button", { name: "less", exact: true }).click();
+  await expect(panel.getByText("Price per sq ft")).toHaveCount(0);
+  const latest = latestIn(panel);
+  await expect(latest.getByText(/^\d+ likes?$/)).toBeVisible();
+  await expect(latest.getByRole("button").filter({ hasText: "The walk up to the door is lovely." })).toContainText("Kofi");
+  await expect(home.getByRole("group", { name: "Recent activity" })).toHaveCount(0);
   // That row, for anyone but an agent in a link's homes: Save, no Porchcard;
   // and, signed in, Send, with its word beside the paper plane.
   const actions = panel.locator("[data-actions]");
@@ -640,7 +697,7 @@ test("the numbers agree: a pass with a heart in the photos is among the likes, a
   expect(buildScorecard({ ...linkPost(fans.slice(1)), likes: 4 }, "public").feel.split).toBeNull();
 });
 
-test("a spot on nothing named reads as where it is, as the line above the price says it: outside, in the kitchen, or in photo 3", () => {
+test("a spot on nothing named reads as where it is, as the Porchcard says it: outside, in the kitchen, or in photo 3", () => {
   // A corner of the front photo and of the kitchen photo, on nothing named.
   const corners = ["SAMPLE-1001-1", KITCHEN_PHOTO].map(
     (mediaKey): PhotoThing => ({ tag: "@97,3", mediaUrl: null, mediaKey, spot: "@97,3", at: AT }),

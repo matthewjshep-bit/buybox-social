@@ -7,6 +7,7 @@ import {
   joinAs,
   linkHomes,
   openComments,
+  openMore,
   openScorecard,
   signInAgent,
   signUpBuyer,
@@ -72,9 +73,14 @@ test("a reply can answer someone's likes, and a reply to a reply names who it an
   await expect(thread.getByRole("listitem")).toHaveCount(2);
   await expect(thread.getByRole("listitem").nth(1)).toContainText("@Rory it's huge");
 
-  // A reply isn't news about the home: never on the line over the photo.
+  // A reply isn't news about the home: the latest comments under the photo
+  // never say who replied, and never carry a reply itself.
   await nadia.keyboard.press("Escape");
-  await expect(nadia.locator("[data-photo-caption]")).not.toContainText("replied");
+  const latest = nadiaHome.getByRole("group", { name: "Latest comments" });
+  await expect(latest).toBeVisible();
+  await expect(latest).not.toContainText("replied");
+  await expect(latest).not.toContainText("That yard is the whole reason.");
+  await expect(latest).not.toContainText("@Rory it's huge");
   expect(pageErrors).toEqual([]);
 });
 
@@ -137,9 +143,13 @@ test("the year built, the description and who listed it are words to read; what 
   const home = homeIn(page, HALVARD);
   await expect(home).toBeInViewport({ ratio: 0.9 });
 
-  // Beside the photo, the details, the description and who listed it are
-  // plain words: nothing on them to like or dislike, and no card.
+  // Beside the photo, the description is two lines and "more" reads it all
+  // in place, with who listed it and the details. They're plain words:
+  // nothing on them to like or dislike, and no card.
   const details = home.getByRole("list", { name: "The details" });
+  await expect(details).toHaveCount(0);
+  await home.getByRole("button", { name: "more", exact: true }).click();
+  await expect(home.getByRole("button", { name: "less", exact: true })).toHaveAttribute("aria-expanded", "true");
   await expect(details).toContainText("Year built");
   await expect(details).toContainText("2016");
   await expect(details.getByRole("button")).toHaveCount(0);
@@ -152,19 +162,32 @@ test("the year built, the description and who listed it are words to read; what 
   await expect(home.locator("[data-spot-card]")).toHaveCount(0);
   expect(pageErrors).toEqual([]);
 
-  // On a phone: a line of the description, and "more" opens More, with all
-  // of it, every detail and who listed it.
+  // On a phone: the price, size and address head the photo, and tapping the
+  // head opens what the home is over the photo, with all of the description,
+  // every detail and who listed it. Nothing of that is in More any more.
   const phone = await (await browser.newContext()).newPage();
   phone.on("pageerror", (error) => pageErrors.push(error.message));
   await phone.goto("/homes/SAMPLE-1005");
   const onPhone = homeIn(phone, HALVARD);
   await expect(onPhone).toBeInViewport({ ratio: 0.9 });
-  await onPhone.getByRole("button", { name: "more", exact: true }).click();
-  const more = phone.getByRole("dialog", { name: "More" });
-  await expect(more).toBeVisible();
-  await expect(more.getByText(/^Listed by Luis Romero/)).toBeVisible();
-  await expect(more.getByText("Year built", { exact: true })).toBeVisible();
+  await expect(onPhone.getByRole("button", { name: "more", exact: true })).toHaveCount(0);
+  const head = onPhone.getByRole("button", { name: "About this home" });
+  await head.click();
+  await expect(head).toHaveAttribute("aria-expanded", "true");
+  const about = onPhone.getByRole("region", { name: "About this home" });
+  await expect(about).toBeVisible();
+  await expect(about.getByText(/^Listed by Luis Romero/)).toBeVisible();
+  await expect(about.getByText("Year built", { exact: true })).toBeVisible();
+  await expect(about).toContainText("2016");
+  await expect(about.getByRole("button")).toHaveCount(0);
   await expect(onPhone.locator("[data-spot-card]")).toHaveCount(0);
+  await phone.keyboard.press("Escape");
+  await expect(about).toBeHidden();
+  const more = await openMore(phone, onPhone);
+  await expect(more.getByText("Year built", { exact: true })).toHaveCount(0);
+  await expect(more.getByText(/^Listed by/)).toHaveCount(0);
+  await phone.keyboard.press("Escape");
+  await expect(more).toBeHidden();
   // (No Porchcard there for a visitor.)
   await expect(phone.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
 

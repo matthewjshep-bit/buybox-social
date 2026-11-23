@@ -4,8 +4,9 @@ import { sql } from "./db";
 import { getReel, type FeedPost } from "./feed";
 import { getFollowedIds } from "./follows";
 import { buildCards, cardPhotos, getProfilePerson, getProfileRows, withoutPasses, type CardPhoto, type ProfileCard } from "./profile";
+import { getRatedHomes } from "./my-links";
 import type { ReactionState } from "./reactions";
-import { getTaste } from "./taste";
+import { getTaste, hasTaste } from "./taste";
 import { isProKind, listingWords } from "./kinds";
 import type { Listing } from "./listings/types";
 import { photoUrl } from "./person-photo";
@@ -20,8 +21,10 @@ import { US_STATES } from "./places";
 // keep public, because a feed puts it in front of people who didn't go
 // looking. What an agent's clients did on their links and what's happened
 // around your own comments live elsewhere (the agent's "Your clients" card
-// and each client's page; the bell). Any home in it opens the homes full
-// screen, in the feed's order (`feedKeys`).
+// and each client's page; the bell). The one pass ever in it is the viewer's
+// own: the home they just rated on a link an agent sent them leads the feed
+// (`ratedEntries`). Any home in it opens the homes full screen, in the
+// feed's order (`feedKeys`).
 
 // `photo`: their own, where they've added one, in place of their initial.
 // (`client`: to an agent looking at their own feed, one of their own clients.)
@@ -58,8 +61,11 @@ type FeedHome = {
 type FeedWhy = { key: string; who: FeedWho[]; sentence: string; quotes: string[]; photo: number | null };
 
 // Why a home is in your feed when nobody you follow is the reason: it's
-// popular, it's near you, or it's picked from what you like.
-export type FeedReason = { kind: "popular" | "near" | "picked"; text: string };
+// popular, it's near you, it's picked from what you like, or (`rated`, first
+// in the feed) you just liked or passed on it on a link an agent sent you.
+export type FeedReason =
+  | { kind: "popular" | "near" | "picked"; text: string }
+  | { kind: "rated"; text: string; verdict: "like" | "pass" };
 
 export type HomeFeedEntry = {
   // The home and the day: one entry each.
@@ -315,17 +321,40 @@ async function newEntries(accountId: string): Promise<HomeFeedEntry[]> {
   );
 }
 
-// Homes picked for them from what they've liked (or, with nothing liked yet,
-// homes to start with), none already in the feed.
+// Homes picked for them from what they've liked (or, with too little liked
+// yet to go on, homes to start with), none already in the feed.
 async function pickedEntries(account: Account, visitorId: string | null, exclude: string[]): Promise<HomeFeedEntry[]> {
   const taste = await getTaste(visitorId);
   const posts = await getReel(account, undefined, taste, { limit: 12, exclude });
   const now = new Date().toISOString();
   return posts.map((post) =>
     entryOf("picked", post.listing, now, {
-      reason: { kind: "picked", text: taste ? "Picked for you, from what you like" : "Homes to start with" },
+      reason: { kind: "picked", text: hasTaste(taste) ? "Picked for you, from what you like" : "Homes to start with" },
     }),
   );
+}
+
+// How long the home they just rated on an agent's link leads their feed.
+const RATED_LEADS_FOR = 24 * 60 * 60 * 1000;
+
+// The home they most recently liked or passed on, on a link an agent sent
+// them, while it's fresh: first in their feed, as their own entry ("You
+// passed on this home"), so Home leads with what they just did and what
+// the sign-up promised follows it. Nobody else's pass is ever an entry.
+async function ratedEntries(rated: Awaited<ReturnType<typeof getRatedHomes>>): Promise<HomeFeedEntry[]> {
+  const [latest] = rated;
+  if (!latest || Date.now() - +new Date(latest.ratedAt) > RATED_LEADS_FOR) return [];
+  const [listing] = await listingsOf([latest.listingKey]);
+  if (!listing) return [];
+  return [
+    entryOf("rated", listing, latest.ratedAt, {
+      reason: {
+        kind: "rated",
+        text: latest.verdict === "like" ? "You liked this home" : "You passed on this home",
+        verdict: latest.verdict,
+      },
+    }),
+  ];
 }
 
 // The order the feed takes from each source, over and over: what the people
@@ -334,33 +363,42 @@ async function pickedEntries(account: Account, visitorId: string | null, exclude
 // over, so someone who follows nobody still has a full feed.
 const PATTERN = ["following", "popular", "following", "new", "near", "following", "picked", "popular", "near", "following", "new", "picked"] as const;
 
-// Someone's home feed: what the people they follow did, woven together with
+// Someone's home feed: the home they just rated on an agent's link, when
+// they have; then what the people they follow did, woven together with
 // what's popular, new deals and listings, homes near them and homes picked
 // for them. Each home once (the people you follow first), never one they
-// passed on. (`account` is who's asking: the reel's `from=feed` reads the
-// same feed, in the same order.)
+// passed on, in public or on a link. (`account` is who's asking: the reel's
+// `from=feed` reads the same feed, in the same order.)
 export const getHomeFeed = cache(async (account: Account, visitorId: string | null): Promise<HomeFeedEntry[]> => {
   if (!account) return [];
-  const [[place], passed, following, popular, fresh] = await Promise.all([
+  const [[place], passed, rated, following, popular, fresh] = await Promise.all([
     sql<{ city: string; state: string }[]>`
       select location_city as city, location_state as state from accounts where id = ${account.id}`,
     visitorId
       ? sql<{ listing_key: string }[]>`
           select listing_key from public_reactions where visitor_id = ${visitorId} and reaction = 'dislike'`
       : Promise.resolve([]),
+    // What they decided on the links agents sent them: one verdict per
+    // home, the newest, newest first (never from a link of their own).
+    getRatedHomes(account.id),
     followingEntries(visitorId),
     popularEntries(),
     newEntries(account.id),
   ]);
-  const near = await nearEntries(place ?? null);
-  const skip = new Set(passed.map((row) => row.listing_key));
-  const taken = [...following, ...popular, ...fresh, ...near].map((entry) => entry.home.key);
+  const [near, lead] = await Promise.all([nearEntries(place ?? null), ratedEntries(rated)]);
+  const skip = new Set([
+    ...passed.map((row) => row.listing_key),
+    ...rated.flatMap((home) => (home.verdict === "pass" ? [home.listingKey] : [])),
+  ]);
+  const taken = [...lead, ...following, ...popular, ...fresh, ...near].map((entry) => entry.home.key);
   const picked = await pickedEntries(account, visitorId, [...new Set([...taken, ...skip])]);
   const sources: Record<(typeof PATTERN)[number], HomeFeedEntry[]> = { following, popular, new: fresh, near, picked };
-  const feed: HomeFeedEntry[] = [];
+  // (The home they just rated leads, whatever they decided: their own take
+  // on it isn't skipped, and the home isn't in the feed again for another reason.)
+  const feed: HomeFeedEntry[] = [...lead];
   // (A home someone you follow is in the feed for is theirs: never again
   // for another reason, wherever that would have come first.)
-  const seen = new Set<string>(following.map((entry) => entry.home.key));
+  const seen = new Set<string>([...lead, ...following].map((entry) => entry.home.key));
   let turn = 0;
   while (feed.length < FEED_MOST && Object.values(sources).some((list) => list.length > 0)) {
     const list = sources[PATTERN[turn++ % PATTERN.length]];

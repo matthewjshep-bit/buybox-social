@@ -18,8 +18,9 @@ import { kindOf, listingWords } from "@/lib/kinds";
 // The home page. Signed out: what Porchcard is, for agents and for buyers,
 // and a way to start (MarketingHome). Signed in, it's one page for everyone
 // (Home): their card down the left; in the middle the box to send homes, the
-// homes their agent sent, and their feed (what the people they follow did,
-// woven with what's popular, new, near them and picked for them:
+// homes their agent sent that are still waiting, and their feed (the home
+// they just rated on their agent's link first, then what the people they
+// follow did, woven with what's popular, new, near them and picked for them:
 // lib/home-feed.ts); people to follow down the right. An agent's clients are
 // on Clients.
 export default async function HomePage() {
@@ -74,11 +75,15 @@ export default async function HomePage() {
         said: entry.said.map((quote) => ({ ...quote, who: marked(quote.who) })),
       }))
     : everyone;
-  const [mine, activity] = await Promise.all([
+  const [publicTakes, activity] = await Promise.all([
     myReactions(visitorId, feedKeys(feed)),
     // What their clients are doing on the links they sent, beside the feed.
     book ? getClientActivity(user.id, book) : [],
   ]);
+  // Their hearts start out as they are in public. (What they decided on their
+  // agent's link is said on the home leading the feed, not shown as a public
+  // heart: a tap here is public, and a link's verdict changes on the link.)
+  const mine = publicTakes;
   return (
     <Home
       firstName={firstName(user)}

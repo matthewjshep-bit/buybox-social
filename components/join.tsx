@@ -27,7 +27,8 @@ export function JoinGate({ photo, devMode }: { photo?: ListingMedia; devMode: bo
 }
 
 // A home's photo behind the words, dark enough to read them over. Tinted, it
-// takes on the brand colour (an agent's, on their links).
+// takes on the brand colour (the site's blue, on an agent's links), with a
+// little shade under it so white words still read over a bright photo.
 export function Backdrop({
   photo,
   priority,
@@ -62,7 +63,9 @@ export function Backdrop({
               : "bg-linear-to-b from-black/65 via-black/45 to-black/80 md:bg-linear-to-r md:from-black/75 md:via-black/45 md:to-black/30",
         )}
       />
-      {/* Words sit low on a tinted photo: a little more shade there keeps them readable. */}
+      {/* The site's blue is a mid tone: a little shade all over keeps white
+          words readable, and more where they sit low on the photo. */}
+      {tinted && <div className="absolute inset-0 bg-black/20" />}
       {tinted && <div className="absolute inset-x-0 bottom-0 h-2/3 bg-linear-to-t from-black/45 to-transparent" />}
     </div>
   );

@@ -191,7 +191,11 @@ export function NameGate({
       >
         {mode === "join" ? (
           <div data-join={id} className="mx-auto max-w-sm px-1 pb-1">
-            <p className="text-center text-sm text-muted">{prompt}</p>
+            {/* Why: what they like is kept, and brings more like it. */}
+            <p className="text-balance text-center text-body font-semibold text-ink">
+              Save what you like, and get more homes like it.
+            </p>
+            <p className="mt-1 text-center text-sm text-muted">{prompt}</p>
             {nameHint && (
               <p id={`${id}-hint`} className="mt-2 text-balance text-center text-meta text-muted">
                 {nameHint}
@@ -202,7 +206,7 @@ export function NameGate({
                 withName
                 suggestedName={suggestedName}
                 nameHint={nameHint ? `${id}-hint` : undefined}
-                note="Free. No password."
+                note="Free. No password. Signed up before? The same email works."
                 onDone={async ({ firstName }) => {
                   // Now on this page's conversation too, as themselves.
                   const result = await actions.join(firstName ?? "").catch(() => ({ ok: false as const, error: "" }));

@@ -462,7 +462,8 @@ test("a tool adds an agent's own listing (a deal) with photos, closes it, hides 
   expectError(await tool.post(`/listings/${key}/photos`, { data: "data:image/gif;base64,R0lGOD" }), 400, "invalid_request", "data");
 
   // With a photo it's on Dee's profile, for anyone, signed out, with its price; and its own page
-  // has the deal's numbers (beside the photo, on a desktop).
+  // has the deal's numbers. On a desktop the price is in the panel beside the photo, and the
+  // details open under the description when its "more" is pressed.
   const profile = await profilePath(agent);
   const visitor = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   await visitor.goto(profile);
@@ -471,8 +472,16 @@ test("a tool adds an agent's own listing (a deal) with photos, closes it, hides 
   await visitor.goto(`/homes/${key}`);
   const home = visitor.getByRole("article", { name: address });
   await expect(home).toContainText("$389,000");
-  await expect(home).toContainText("After repair value");
-  await expect(home).toContainText("$520,000");
+  const details = home.getByRole("list", { name: "The details" });
+  await expect(details).toBeHidden();
+  const more = home.getByRole("button", { name: "more", exact: true });
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await more.click();
+  // The same button now reads "less", and the details are out.
+  await expect(home.getByRole("button", { name: "less", exact: true })).toHaveAttribute("aria-expanded", "true");
+  await expect(details).toBeVisible();
+  await expect(details).toContainText("After repair value");
+  await expect(details).toContainText("$520,000");
 
   // Among the tool's listings, as its own.
   const all = await tool.get("/listings");

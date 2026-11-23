@@ -59,6 +59,8 @@ export type ReelContext = {
   homes: Record<string, HomeContext>;
   // Where the title goes: their page (with the same filter), the link, your feed.
   href: string;
+  // An agent's own listings: their page id, so their words lead each home's comments.
+  host?: string;
   // How the end card calls them: "Follow Maya", "Send Jenny more".
   name?: string;
   // A client's or a link's homes: the link they're on.

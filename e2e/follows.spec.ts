@@ -64,35 +64,39 @@ test("following: from someone's page, what they like comes first in your feed, a
   await expect(card).toBeVisible();
   const item = bo.getByRole("listitem").filter({ has: card });
   await expect(item.getByRole("link", { name: "Ana", exact: true })).toHaveAttribute("href", anaPage);
-  // Tapped, the feed's homes open in a pop-out over it, on that one, saying
-  // it's her; its X closes it, back to the feed. (Tapped by its top corner:
-  // the photos in the middle swipe, and open it themselves.)
+  // Tapped, the feed's homes open in a pop-out over it, on that one. The
+  // "Why it's here" band over the photo's top corner says it's her, and that
+  // he follows her; its X closes it, back to the feed. (Tapped by its top
+  // corner: the photos in the middle swipe, and open it themselves.)
   await card.click({ position: { x: 20, y: 20 } });
   await bo.waitForURL(/\/reel\?from=feed&home=/);
   const popout = bo.getByRole("dialog", { name: "Homes" });
   const opened = popout.getByRole("article", { name: address });
   await expect(opened).toBeInViewport({ ratio: 0.9 });
-  await expect(opened).toContainText(/Ana, who you follow, liked/);
+  await expect(opened.getByRole("region", { name: "Why it's here" })).toContainText("Ana, who you follow · liked this home");
   const key = new URL(bo.url()).searchParams.get("home")!;
   await popout.getByRole("button", { name: "Close", exact: true }).first().click();
   await expect(popout).toHaveCount(0);
   await bo.waitForURL((u) => u.pathname === "/");
-  // A stranger likes the same home: in his feed's homes the line is still
-  // only whom he follows, never the stranger, nor who else liked it.
+  // A stranger likes the same home: in his feed's homes the band still names
+  // only whom he follows, never the stranger, nor who else liked it; and the
+  // comments under the photo count the likes without naming anyone.
   const cyrus = await signUpBuyer(browser, "cyrus.follows@example.com", "Cyrus Follows");
   await cyrus.goto(`/homes/${key}`);
   const theirs = heartOf(cyrus.getByRole("article", { name: address }));
   await Promise.all([saved(cyrus), theirs.click()]);
   await expect(theirs).toHaveAttribute("aria-pressed", "true");
   const still = await bo.context().newPage();
-  await still.clock.install();
   await still.goto(`/reel?from=feed&home=${key}`);
-  const line = still.getByRole("article", { name: address }).getByRole("group", { name: "Recent activity" });
-  for (let i = 0; i < 5; i++) {
-    await expect(line).toContainText(/Ana, who you follow, liked/);
-    await expect(line).not.toContainText(/Cyrus|A buyer|others liked/);
-    await still.clock.runFor(5000);
-  }
+  const stillHome = still.getByRole("article", { name: address });
+  const band = stillHome.getByRole("region", { name: "Why it's here" });
+  await expect(band).toContainText("Ana, who you follow · liked this home");
+  await expect(band).not.toContainText(/Cyrus|A buyer|others liked/);
+  const latest = stillHome.getByRole("group", { name: "Latest comments" });
+  await expect(latest).toContainText(/\d+ likes/);
+  await expect(latest).not.toContainText(/\bAna\b|\bCyrus\b|Liked by/);
+  // (No rotating line of who did what on the photo any more.)
+  await expect(stillHome.getByRole("group", { name: "Recent activity" })).toHaveCount(0);
   await still.close();
   await Promise.all([saved(cyrus), theirs.click()]);
   await expect(theirs).toHaveAttribute("aria-pressed", "false");
@@ -185,7 +189,8 @@ test("the Following stream: one card per home however many people liked it, only
   await expect(item.getByRole("link", { name: "Bo", exact: true })).toHaveAttribute("href", boPage);
   await expect(item.getByRole("link", { name: "Cy", exact: true })).toHaveAttribute("href", cyPage);
   // (Nothing of Bo's pass: the home may be in the feed for another reason,
-  // never for him.)
+  // never for him. The only pass a feed ever says is the viewer's own, on a
+  // home their agent sent them, and Dee passed on nothing: e2e/rated-homes.spec.ts.)
   await expect(stream.getByRole("link", { name: new RegExp(`^${LAKEVIEW}: Bo`) })).toHaveCount(0);
   await expect(stream.getByText(/passed/i)).toHaveCount(0);
   // Where the feed ends, it says so.

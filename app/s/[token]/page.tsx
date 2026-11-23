@@ -240,8 +240,10 @@ export default async function SharePage({ params, searchParams }: Props) {
     };
   });
 
+  // (In the site's own colour, every link alike: the agent's colour is for
+  // their profile.)
   return (
-    <div style={{ "--brand": agent.brand_color } as React.CSSProperties}>
+    <>
       <LiveRefresh />
       <ShareReel
         token={token}
@@ -337,11 +339,11 @@ export default async function SharePage({ params, searchParams }: Props) {
         }
         // Keyed: the feed sets it among its own children, and a screen that
         // streams in later can't otherwise show React it was written in place.
-        end={<ShareEnd key="end" agentName={agentName} count={count} personal={!!person} token={token} onProfile={onProfile} />}
+        end={<ShareEnd key="end" agentName={agentName} count={count} onProfile={onProfile} />}
         // The last screen takes the colours of the first: the same wash of
-        // the first home's photo, in the agent's colour.
+        // the first home's photo, in the site's colour.
         endBackdrop={count > 0 ? <Backdrop key="end-backdrop" photo={listings[0].Media[0]} blurred tinted /> : undefined}
       />
-    </div>
+    </>
   );
 }

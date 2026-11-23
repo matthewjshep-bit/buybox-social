@@ -201,27 +201,49 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   const more = halvard.getByRole("button", { name: "More options" }).filter({ visible: true });
   await expect(save).toHaveCount(1);
   await expect(more).toHaveCount(1);
+  // (Measured once the glide to the home has ended: the row is read in
+  // three looks, and one taken mid-glide would put the buttons out of line.)
+  await expect
+    .poll(async () => {
+      const before = (await halvard.boundingBox())!.y;
+      await page.waitForTimeout(150);
+      return (await halvard.boundingBox())!.y - before;
+    })
+    .toBe(0);
   const [barBox, saveBox, moreBox] = [(await bar.boundingBox())!, (await save.boundingBox())!, (await more.boundingBox())!];
   expect(Math.abs(barBox.y - saveBox.y)).toBeLessThan(2);
   expect(Math.abs(barBox.y - moreBox.y)).toBeLessThan(2);
   expect(saveBox.x).toBeGreaterThan(barBox.x + barBox.width);
   expect(moreBox.x).toBeGreaterThan(saveBox.x + saveBox.width);
   expect(saveBox.width).toBeGreaterThanOrEqual(44);
-  // And the photo keeps its size: more than half the pane's height.
-  const photoBox = (await halvard.getByRole("group", { name: /^Photos of/ }).locator("img").first().boundingBox())!;
-  expect(photoBox.height).toBeGreaterThan((await page.locator('section[aria-label="Homes"]').boundingBox())!.height * 0.5);
-  // (The price is words to read, not a button.)
-  await expect(halvard.locator('[data-fact="Price"]')).toHaveText("$1,349,000");
-  // Full screen is a button in the pane's top right corner, a fingertip
-  // wide; no big button under the words.
-  await expect(halvard.getByRole("button", { name: /^Open full screen/ })).toHaveCount(0);
+  // The price and the address are the head of the home, above the photo, and
+  // the photo under them keeps its size: wide as the pane, a 4:3 box.
+  const head = (await halvard.locator("[data-home-head]").boundingBox())!;
+  // (The photo itself, the one with words for it; the blur behind it is not
+  // a picture.)
+  const photoBox = (await halvard.getByRole("group", { name: /^Photos of/ }).getByRole("img").first().boundingBox())!;
   const pane = page.locator('section[aria-label="Homes"]');
+  const paneBox = (await pane.boundingBox())!;
+  expect(head.y + head.height).toBeLessThanOrEqual(photoBox.y + 1);
+  expect(Math.abs(photoBox.width - paneBox.width)).toBeLessThan(2);
+  expect(Math.abs(photoBox.height - (photoBox.width * 3) / 4)).toBeLessThan(2);
+  // (The price is words to read, not a button, and the head is the way to
+  // what the home is.)
+  await expect(halvard.locator('[data-fact="Price"]')).toHaveText("$1,349,000");
+  await expect(halvard.locator("[data-home-head]").getByRole("button", { name: "About this home" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  // Full screen is a button in the photo's top right corner, just under the
+  // head, a fingertip wide; no big button under the words.
+  await expect(halvard.getByRole("button", { name: /^Open full screen/ })).toHaveCount(0);
   const corner = pane.getByRole("button", { name: "Open full screen", exact: true });
-  const [paneBox, cornerBox] = [(await pane.boundingBox())!, (await corner.boundingBox())!];
+  const cornerBox = (await corner.boundingBox())!;
   expect(cornerBox.width).toBeGreaterThanOrEqual(44);
   expect(cornerBox.height).toBeGreaterThanOrEqual(44);
   expect(paneBox.x + paneBox.width - (cornerBox.x + cornerBox.width)).toBeLessThan(20);
-  expect(cornerBox.y - paneBox.y).toBeLessThan(20);
+  expect(cornerBox.y).toBeGreaterThanOrEqual(head.y + head.height);
+  expect(cornerBox.y - photoBox.y).toBeLessThan(20);
 
   // It opens the home full screen, with this search's homes to scroll through.
   await corner.click();
@@ -270,8 +292,9 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await expect(page.getByRole("article")).toHaveCount(found);
 
   // Back to Search, on the last home shown.
+  // (Search finds homes people added themselves too, so the last may be one of those.)
   const last = new URL(page.url()).searchParams.get("home");
-  expect(last).toMatch(/^SAMPLE-\d+$/);
+  expect(last).toMatch(/^(SAMPLE-\d+|OWN-[\w-]+)$/);
   await expect(page.getByRole("region", { name: "The end" }).getByRole("link", { name: "Back to search" })).toHaveAttribute(
     "href",
     `/search?beds=4&home=${last}`,

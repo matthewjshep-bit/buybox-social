@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, Bell, CalendarCheck, Check, Mail, MessageSquare, Phone, type LucideIcon } from "lucide-react";
+import { ArrowDown, Bell, CalendarCheck, Check, Mail, MessageSquare, Phone, Send, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId, useMemo, useRef, useState, useTransition, type ComponentProps } from "react";
 import { FollowButton } from "@/app/people/[id]/client";
@@ -75,6 +75,7 @@ export function ShareHeader({
   notes = null,
   account = null,
   extras,
+  askMore = null,
 }: {
   agent: ShareAgent;
   home: HomeInView | null;
@@ -94,6 +95,9 @@ export function ShareHeader({
   // Someone signed in (never the agent previewing): their menu and the bell.
   account?: LinkAccount | null;
   extras?: ContactExtras;
+  // "Ask Dana for more like these": a text or an email to the agent, ready to
+  // send, about the homes they liked here. (None where the agent shows no way.)
+  askMore?: string | null;
 }) {
   // What Contact rises from, worked out each time it's placed (as it opens,
   // and if the window changes size meanwhile).
@@ -213,6 +217,7 @@ export function ShareHeader({
             whoCanSee={whoCanSee}
             onAsk={onAsk}
             onSeeHomes={onSeeHomes}
+            askMore={askMore}
             {...extras}
           />
         )}
@@ -263,6 +268,7 @@ function AgentContact({
   whoCanSee,
   onAsk,
   onSeeHomes,
+  askMore = null,
   profile = null,
   follow = null,
   leave = null,
@@ -273,6 +279,8 @@ function AgentContact({
   whoCanSee: string;
   onAsk?: (listingKey: string) => Promise<AskResult>;
   onSeeHomes?: () => void;
+  // A text or an email asking for more homes like the ones they liked.
+  askMore?: string | null;
 } & ContactExtras) {
   const { ensureName } = useThread();
   const [said, setSaid] = useState<string | null>(null);
@@ -370,6 +378,14 @@ function AgentContact({
             <ArrowDown aria-hidden size={18} />
             {`See the ${homesCount} homes`}
           </button>
+        )}
+        {/* More homes like the ones they liked here: a text or an email,
+            written for them. (Only where there's a way to send it.) */}
+        {askMore && (
+          <a href={askMore} className={way(false)}>
+            {askMore.startsWith("mailto:") ? <Mail aria-hidden size={18} /> : <Send aria-hidden size={18} />}
+            {`Ask ${first} for more like these`}
+          </a>
         )}
         <p ref={status} role="status" className="min-h-5 text-center text-sm font-medium text-stone-700 empty:min-h-0">
           {said}

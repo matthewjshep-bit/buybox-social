@@ -176,6 +176,7 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
         reply_to_visitor: string | null;
         likes: number;
         liked_by_me: boolean;
+        is_agent: boolean;
         media_key: string | null;
         spot: string | null;
       }[]
@@ -184,8 +185,10 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
         c.reply_to_visitor, c.media_key, c.spot,
         (select count(*)::int from public_comment_likes cl where cl.comment_id = c.id) as likes,
         exists (select 1 from public_comment_likes cl
-          where cl.comment_id = c.id and cl.visitor_id = ${visitorId}::uuid) as liked_by_me
+          where cl.comment_id = c.id and cl.visitor_id = ${visitorId}::uuid) as liked_by_me,
+        coalesce(a.role = 'agent', false) as is_agent
       from public_comments c join visitors v on v.id = c.visitor_id
+        left join accounts a on a.id = v.account_id
       where c.listing_key in ${sql(keys)}`,
     sql<{ id: string; listing_key: string; body: string; created_at: Date }[]>`
       select id, listing_key, body, created_at from comments
@@ -238,7 +241,8 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
             kind: "comment",
             id: c.id,
             name: c.first_name,
-            isAgent: false,
+            // (An agent's words are marked as theirs here too, as on a link.)
+            isAgent: c.is_agent,
             body: c.body,
             at: c.created_at.toISOString(),
             mine: c.visitor_id === visitorId,

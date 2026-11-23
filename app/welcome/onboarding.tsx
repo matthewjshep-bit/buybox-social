@@ -130,7 +130,7 @@ export function Onboarding(props: {
     company: "It shows under your name. You can leave it empty.",
     mls: "Your MLS listings show on your profile. You can add it later.",
     photo: "People see it on your profile and the homes you send.",
-    color: "Your profile and the links you send wear it.",
+    color: "Your profile wears it.",
   };
 
   if (!step) return null;

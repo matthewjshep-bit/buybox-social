@@ -280,7 +280,8 @@ export function tourSteps(
     ...(agentTake
       ? [
           {
-            target: "[data-photo-caption] > *",
+            // (The latest comments, under the photo: the agent's lead them.)
+            target: "[data-comment-list]",
             title: `${Agent} left you notes`,
             body: "They show here.",
           },

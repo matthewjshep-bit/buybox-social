@@ -3,7 +3,9 @@
 // X it's gone, and they're under Rated homes (Liked, then Passed), a tap
 // from the menu, each opening on its link to change your mind. A home the
 // agent adds later brings the card back. A pro who is someone's client gets
-// the same.
+// the same. And the home they just rated leads their feed, as their own card
+// ("You passed on this home"), opening the feed's homes on it with the same
+// words at the top.
 import { expect, test, type Page } from "@playwright/test";
 import { createShare, heartOf, homeIn, joinAs, passOn, pickHome, signInAgent } from "./helpers";
 
@@ -16,6 +18,8 @@ const saved = (page: Page) =>
   page.waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
 // The card at the top of Home, by what it says: "1 new home for you".
 const fromAgentCard = (page: Page) => page.getByRole("region", { name: /^\d+ new homes? for you$/ });
+// The feed's cards, each one's link saying "address: why it's here".
+const feedCards = (page: Page) => page.getByRole("region", { name: "Your feed" }).getByRole("link", { name: /^.+: / });
 
 async function openRated(page: Page) {
   const banner = page.getByRole("banner");
@@ -48,22 +52,44 @@ test("after rating every home on her link the card is gone from Home and they're
   await joinAs(ivy, "Ivy", "ivy.rated@example.com");
   await expect(heartOf(homeIn(ivy, QUILLAN))).toHaveAttribute("aria-pressed", "true");
 
-  // One still waiting: the card's there.
+  // One still waiting: the card's there. Under it, her feed leads with the
+  // home she just liked, as her own.
   await ivy.goto("/");
   await expect(fromAgentCard(ivy)).toHaveAccessibleName("1 new home for you");
   await expect(fromAgentCard(ivy)).toContainText("1 of 2 rated");
+  await expect(feedCards(ivy).first()).toHaveAccessibleName(`${QUILLAN}: You liked this home`);
 
   // She passes on the other.
   await ivy.goto(url);
   await Promise.all([saved(ivy), passOn(ivy, homeIn(ivy, SALTMARSH))]);
   await ivy.keyboard.press("Escape");
 
-  // All rated: nothing from Rhea at the top of Home any more.
+  // All rated: nothing from Rhea at the top of Home any more. Her feed leads
+  // with the home she just passed on, once (never again as popular or near
+  // her), and says so in her own words; its heart is off.
   await ivy.goto("/");
   await expect(ivy.getByRole("region", { name: "Your feed" })).toBeVisible();
   await expect(fromAgentCard(ivy)).toHaveCount(0);
   await expect(ivy.getByRole("link", { name: /^See them/ })).toHaveCount(0);
   await expect(ivy.getByRole("main")).not.toContainText("2 of 2 rated");
+  const stream = ivy.getByRole("region", { name: "Your feed" });
+  const lead = feedCards(ivy).first();
+  await expect(lead).toHaveAccessibleName(`${SALTMARSH}: You passed on this home`);
+  await expect(stream.getByRole("link", { name: new RegExp(`^${SALTMARSH}: `) })).toHaveCount(1);
+  await expect(stream.getByRole("button", { name: `Like ${SALTMARSH}` })).toHaveAttribute("aria-pressed", "false");
+  // Nobody else's pass is ever in a feed: the only "passed" here is hers.
+  await expect(stream.getByText(/passed/i)).toHaveCount(1);
+  await expect(stream.getByText(/passed/i)).toContainText("You passed on this home");
+  // Its card opens the feed's homes on it, and the words at the top are the same.
+  // (By its top corner: the photos in the middle swipe, and open it themselves.)
+  const key = new URL((await lead.getAttribute("href"))!, "http://x").searchParams.get("home")!;
+  expect(key).toMatch(/^SAMPLE-\d+$/);
+  await lead.click({ position: { x: 20, y: 20 } });
+  await ivy.waitForURL(new RegExp(`/reel\\?from=feed&home=${key}`));
+  const opened = homeIn(ivy, SALTMARSH);
+  await expect(opened).toBeInViewport({ ratio: 0.5 });
+  await expect(opened.getByRole("region", { name: "Why it's here" })).toContainText("You passed on this home");
+  await ivy.goto("/");
 
   // They're under Rated homes, from the menu: the one she liked, and the one she passed on.
   await openRated(ivy);
@@ -147,10 +173,12 @@ test("a pro who is someone's client: the card goes once they've rated, and Rated
   }).toPass({ timeout: 15_000 });
   await tab.close();
 
-  // Her one home rated: her Home has no card for it, and it's under Rated.
+  // Her one home rated: her Home has no card for it, her feed leads with
+  // it as hers, and it's under Rated.
   await pax.goto("/");
   await expect(pax.getByRole("region", { name: "Your feed" })).toBeVisible();
   await expect(fromAgentCard(pax)).toHaveCount(0);
+  await expect(feedCards(pax).first()).toHaveAccessibleName(`${QUILLAN}: You liked this home`);
   await openRated(pax);
   await expect(pax.getByRole("region", { name: "Liked · 1" })).toContainText(QUILLAN);
   await expect(pax.getByRole("region", { name: /^Passed/ })).toHaveCount(0);

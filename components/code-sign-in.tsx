@@ -11,6 +11,11 @@ import { button, field } from "@/lib/ui";
 // New or returning, it's the same. No password, and nothing opens in another
 // tab: the email's code is typed right here (its link works too, from any
 // browser, and comes back to `next`).
+
+// How long before a new code can be asked for: a minute, which is how often
+// the email's sender allows one (asked sooner, it would only fail).
+const RESEND_WAIT = 60;
+
 export function CodeSignIn({
   withName = false,
   withPhone = false,
@@ -66,8 +71,7 @@ export function CodeSignIn({
   const codeBox = useRef<HTMLInputElement>(null);
   const emailBox = useRef<HTMLInputElement>(null);
 
-  // A new code can be asked for once a short wait is over (the email's sender
-  // allows one a minute).
+  // A new code can be asked for once a short wait is over (RESEND_WAIT).
   useEffect(() => {
     if (wait <= 0) return;
     const timer = setTimeout(() => setWait((w) => w - 1), 1000);
@@ -85,7 +89,7 @@ export function CodeSignIn({
       if (result.sent) {
         setSentTo(result.sent);
         setCode("");
-        setWait(30);
+        setWait(RESEND_WAIT);
         requestAnimationFrame(() => codeBox.current?.focus());
       }
     });

@@ -19,9 +19,11 @@ import { button, card } from "@/lib/ui";
 
 // Home, one page for everyone. Down the left, them: their card and the places
 // the bar at the top doesn't have. In the middle: the box to send homes; the
-// homes their agent sent, when there are any; then what the people they
-// follow did, until "You're all caught up". (No homes picked for them, for
-// now: nothing here is a recommendation.) People to follow: down the right
+// homes their agent sent that are still waiting, when there are any; then
+// their feed (lib/home-feed.ts): the home they just rated on their agent's
+// link first, as their own ("You liked this home"), then what the people they
+// follow did, woven with what's popular, new, near them and picked for them,
+// until "You're all caught up". People to follow: down the right
 // on a wide screen; on a narrower one, in the middle, in the feed.
 // An agent's is the same page with their clients besides. Straight under the
 // box to send homes: "Your clients", whoever is waiting first (ClientsRail).

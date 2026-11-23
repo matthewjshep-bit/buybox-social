@@ -214,6 +214,8 @@ test("Send on a home goes on to the three steps with that home picked: in Browse
   await noor.goto(profile);
   await noor.getByRole("list", { name: "Listings" }).getByRole("link", { name: new RegExp(OWN) }).first().click();
   await noor.waitForURL(/\/reel\?from=listings/);
+  // (Send is the pill in the photo's top left corner; "Olga's listings · 1 of 1"
+  // is the band after it, which must leave the whole pill tappable.)
   await send(OWN).click();
   await noor.waitForURL((url) => url.pathname === "/send" && url.searchParams.get("home") === key);
   await expect(noor.getByRole("heading", { level: 1 })).toHaveText("Send this home");

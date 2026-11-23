@@ -33,9 +33,10 @@ test("an agent's client page: what they want, remove and restore, add homes, pri
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByText("Not a fan of farmhouse sinks.")).toBeVisible();
   await joe.keyboard.press("Escape");
-  // The last screen says the agent sees it all.
+  // The last screen says the agent sees it all, and leads on to more homes like these.
   await expect(joe.getByText("2 of 2 rated")).toBeAttached();
   await expect(joe.getByText("Gwen Agent sees your likes and comments.")).toBeAttached();
+  await expect(joe.getByRole("region", { name: "The end" }).getByRole("link", { name: "See more homes like these" })).toHaveAttribute("href", "/");
 
   // Someone else reacts to the same home in public.
   const stranger = await (await browser.newContext()).newPage();

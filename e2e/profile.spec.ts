@@ -264,14 +264,24 @@ test("a card opens its home over the page, on the photo it's about with the spot
   const home = homeIn(popout, CORBEL);
   await expect(home.getByText("Kitchen · 3 of 3", { exact: true })).toBeVisible();
   await expect(home.getByRole("img", { name: "White kitchen with an island and pendant lights" })).toBeInViewport();
-  // What she did there leads the line at the photo's foot, with a hotspot on it.
-  await expect(home.getByRole("group", { name: "Recent activity" })).toContainText("subway backsplash");
-  await expect(home.locator("[data-spot-highlight]")).toHaveCount(1);
-  // Over the photo, whose homes these are and her take on this one (nothing
-  // more drawn on the photo for it).
+  // Under the photo, the latest comments, the way a post reads. A like of a
+  // spot isn't a comment: nothing there says what she did.
+  const comments = home.getByRole("group", { name: "Latest comments" });
+  await expect(comments).toBeVisible();
+  await expect(comments).not.toContainText("subway backsplash");
+  // Over the photo's top corner, whose homes these are and her take on this
+  // one, in a line; nothing is drawn on the photo for it until it's opened.
   const why = home.getByRole("region", { name: "Why it's here" });
   await expect(why).toContainText("Your highlights · 1 of 1");
   await expect(why).toContainText("You liked the subway backsplash");
+  await expect(home.locator("[data-spot-highlight]")).toHaveCount(0);
+  // Opened, the spot she liked is there to go to: a tap puts its card on the photo.
+  await why.getByRole("button", { expanded: false }).click();
+  await why.getByRole("button", { name: "Liked the subway backsplash: show it" }).click();
+  const spot = home.getByRole("group", { name: /^subway backsplash$/i });
+  await expect(spot).toBeVisible();
+  await spot.getByRole("button", { name: "Close" }).click();
+  await expect(spot).toBeHidden();
 
   // Closed, back on her page, with the keyboard on the card that opened it.
   await noor.keyboard.press("Escape");

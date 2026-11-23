@@ -225,13 +225,23 @@ test("her own words lead her listing, after anyone else's, and its tile counts l
   // One nobody's touched says nothing of the kind.
   await expect(grid(anon).locator('a[href*="home=SAMPLE-1001"]')).not.toContainText(/comment|like/);
 
-  // Into it: the line at the photo's foot starts with what she said, not the newest.
+  // Into it: under the photo, the latest comments count the like, show all
+  // three, and the first of them is what she said, not the newest.
   await tile.click();
   await anon.waitForURL(/\/reel\?/);
-  const line = homeIn(anon, TAMSEN).getByRole("group", { name: "Recent activity" });
-  await expect(line).toContainText("Jordan");
-  await expect(line).toContainText("New roof last spring");
-  await expect(line).not.toContainText("Love the trees");
+  const latest = homeIn(anon, TAMSEN).getByRole("group", { name: "Latest comments" });
+  await expect(latest).toContainText("1 like");
+  const rows = latest.getByRole("listitem");
+  await expect(rows).toHaveCount(3);
+  await expect(latest).toContainText("New roof last spring");
+  // Each comment is a row big enough to tap.
+  const row = (await rows.first().getByRole("button").boundingBox())!;
+  expect(row.height).toBeGreaterThanOrEqual(44);
+  // Hers leads, in her name; the newest, from someone else, comes after it.
+  await expect(rows.first()).toContainText("Jordan");
+  await expect(rows.first()).toContainText("New roof last spring");
+  await expect(rows.first()).not.toContainText("Love the trees");
+  await expect(rows.nth(1)).toContainText("Love the trees");
 });
 
 test("an MLS ID is theirs only under their name, one profile per ID, and nobody without listings gets the tabs", async ({ browser }) => {

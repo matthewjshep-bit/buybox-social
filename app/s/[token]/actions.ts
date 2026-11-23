@@ -30,6 +30,7 @@ import {
   type Share,
 } from "@/lib/shares";
 import type { SpotReaction } from "@/lib/photos";
+import { titled, US_STATES } from "@/lib/places";
 import { findSpot } from "@/lib/public";
 import { describeReaction, type ReactionState } from "@/lib/reactions";
 import { sharePersonKey } from "@/lib/timeline";
@@ -59,7 +60,14 @@ export async function joinThread(token: string, firstName: string): Promise<Acti
 
   if (found.person) {
     const me = await accountParticipant(found, account.id);
-    if (!me) return fail(`This link is just for ${found.person.first_name}. Ask for a link of your own.`);
+    // (Someone else's own link; or theirs, signed up before under another
+    // email, which is the one to sign in with.)
+    if (!me) {
+      return fail(
+        `This link is just for ${found.person.first_name}. Signed up before with another email? Sign in with that one.`,
+      );
+    }
+    await settledOnLink(account, found.share.id);
     refresh();
     return { ok: true };
   }
@@ -95,8 +103,49 @@ export async function joinThread(token: string, firstName: string): Promise<Acti
           and participant_id is null`;
     }
   }
+  await settledOnLink(account, found.share.id);
   refresh();
   return { ok: true };
+}
+
+// Someone on an agent's link, in by their account: they've as good as said
+// what brings them here, so they're never asked at /welcome later ("What
+// brings you to Porchcard?" reads as being asked to sign up again). Shopping,
+// unless they're a pro (an agent's account is left to say which kind). And,
+// until they say where they are, the place most of the link's homes are in,
+// so Home has homes near them.
+async function settledOnLink(account: { id: string; role: string | null }, shareId: string) {
+  if (account.role === "buyer") {
+    await sql`update accounts set kind = 'buyer' where id = ${account.id} and role = 'buyer' and kind is null`;
+  }
+  const [row] = await sql<{ unplaced: boolean }[]>`
+    select coalesce(location_city, '') = '' as unplaced from accounts where id = ${account.id}`;
+  if (!row?.unplaced) return;
+  const place = commonPlace(await getShareListings(shareId));
+  if (!place) return;
+  await sql`
+    update accounts set location_city = ${place.city}, location_state = ${place.state}
+    where id = ${account.id} and coalesce(location_city, '') = ''`;
+}
+
+// The city (and its state) most of these homes are in, as /welcome saves a
+// place (lib/places.ts: the city as written, the state's two letters). None
+// when no home names a US state.
+function commonPlace(homes: { City: string; StateOrProvince: string }[]) {
+  const counts = new Map<string, { city: string; state: string; n: number }>();
+  for (const home of homes) {
+    // (As people write it: an MLS feed may shout "SEATTLE".)
+    const city = titled(String(home.City ?? "").replace(/\s+/g, " ").trim());
+    const state = String(home.StateOrProvince ?? "").trim().toUpperCase();
+    if (!city || !US_STATES[state]) continue;
+    const key = `${city.toLowerCase()}|${state}`;
+    const seen = counts.get(key) ?? { city, state, n: 0 };
+    seen.n += 1;
+    counts.set(key, seen);
+  }
+  let best: { city: string; state: string; n: number } | null = null;
+  for (const place of counts.values()) if (!best || place.n > best.n) best = place;
+  return best;
 }
 
 // Tells the agent their link was opened, and when: called by the page once it's

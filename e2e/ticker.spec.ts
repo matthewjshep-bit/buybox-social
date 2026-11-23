@@ -1,24 +1,25 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
-import { readFileSync } from "node:fs";
-import type { Listing } from "../lib/listings/types";
-import { signedIn, toFirstHome, createShare, enterCode, heartOf, homeIn, joinAs, openComments, pastNameStep, pick, settle, signInAgent, signUpBuyer, tapPhoto, passOn, keepLinksPrivate } from "./helpers";
+import { signedIn, toFirstHome, createShare, enterCode, heartOf, homeIn, openComments, pastNameStep, pick, settle, signInAgent, signUpBuyer, tapPhoto, passOn, keepLinksPrivate } from "./helpers";
 
-// The line at the photo's foot: what people did on the photo on screen, one
-// at a time, each with a hotspot on the spot where they did it. Timers run on
-// the page's own clock here, moved on by hand, so nothing waits on the real one.
+// Under the photo, the way a post reads: how many liked the home, then the
+// latest few comments, each a row that opens the comments on it. Nothing goes
+// round on its own any more (the rotating line at the photo's foot is gone),
+// so nothing here needs Pause or Play, and nothing is drawn on the photo from
+// it. What's private on an agent's link still never reaches it. Timers run on
+// the page's own clock where it matters, moved on by hand.
 
 const WEXFORD = "3518 Wexford Ave N";
 const FERNHOLLOW = "96 Fernhollow Ln";
 const SALTMARSH = "719 Saltmarsh Ln";
 const COTTAGE = "Blue cottage behind a white picket fence";
+// What Al and Bo say about Wexford, and Cy about a spot in Fernhollow's third photo.
+const AL_SAID = "Those sconces are a nice touch.";
+const BO_SAID = "The front entry makes the whole street.";
+const CY_SAID = "So bright in the afternoon.";
 // A photo of someone, as small as one gets.
 const PNG_1PX =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAEBgIApD5fRAAAAABJRU5ErkJggg==";
 const DESKTOP = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, isMobile: false, hasTouch: false };
-// Wexford's photos, for where the things in them are.
-const LISTING = (JSON.parse(readFileSync("supabase/seed/listings.json", "utf8")) as Listing[]).find(
-  (listing) => listing.ListingKey === "SAMPLE-1007",
-)!;
 
 // Waits until a home has snapped all the way into place.
 const settled = async (home: Locator) => {
@@ -26,9 +27,26 @@ const settled = async (home: Locator) => {
   await expect.poll(async () => Math.abs((await home.boundingBox())?.y ?? 99)).toBeLessThan(1);
 };
 
-const activityOf = (home: Locator) => home.getByRole("group", { name: "Recent activity" });
-// The line itself: the last button in the slot (Pause, or Play, comes first).
-const lineOf = (home: Locator) => activityOf(home).getByRole("button").last();
+// The latest comments, under the photo (side by side: in the panel).
+const latestOf = (home: Locator) => home.getByRole("group", { name: "Latest comments" });
+// One comment's row in it, by its words.
+const rowOf = (home: Locator, words: string) => latestOf(home).getByRole("listitem").filter({ hasText: words });
+// The bold "N likes" line at its top, if anyone has liked the home.
+const likesLineOf = (home: Locator) => latestOf(home).locator("p").filter({ hasText: /^\d+ likes?$|^Liked by / });
+// The pin on a comment left on a spot, and the lock on one shared from a private chat.
+const pinIn = (row: Locator) => row.locator('p > svg:has(circle[r="3"])');
+const lockIn = (row: Locator) => row.locator("p > svg:has(rect)");
+// What used to go round at the photo's foot, and what came with it: none of it, anywhere.
+const nothingGoesRound = async (home: Locator) => {
+  await expect(home.getByRole("group", { name: "Recent activity" })).toHaveCount(0);
+  await expect(home.locator("[data-photo-caption]")).toHaveCount(0);
+  await expect(home.getByRole("button", { name: /^(Pause|Play) activity$|^Show the next activity$/ })).toHaveCount(0);
+  await expect(home.locator("[data-spot-highlight]")).toHaveCount(0);
+  await expect(latestOf(home).locator("[aria-live]")).toHaveCount(0);
+};
+const box = async (part: Locator) => (await part.boundingBox())!;
+// The photo's frame (the 4:3 box the photo fills, not the photo spilling past it).
+const photoOf = (home: Locator) => home.locator("[data-photo-frame]").first();
 
 // A page whose timers wait to be moved on.
 async function stillPage(browser: Browser, options = {}) {
@@ -58,349 +76,296 @@ async function tick(page: Page, ms: number) {
   await page.waitForTimeout(150);
 }
 
-// Someone who likes things in a home's photos, from its public page: on
-// each photo (counted from 0), the things named.
-async function likeThings(browser: Browser, key: string, address: string, name: string, photos: [number, string[]][]) {
-  const page = await (await browser.newContext()).newPage();
+// Someone, by name, saying something about a home from its public page: in
+// the comments, from the bar under the photo. On a spot in one of its photos
+// (counted from 0), from that spot's card. Said once: a run that starts over
+// after a failure finds it already there.
+async function say(browser: Browser, key: string, address: string, name: string, words: string, spot?: { photo: number; thing: string }) {
+  const page = await signedIn(browser, `${name.toLowerCase()}.${Date.now()}${Math.floor(Math.random() * 1e4)}@example.com`, name);
   await page.goto(`/homes/${key}`);
   const home = homeIn(page, address);
   await settled(home);
-  let at = 0;
-  let joined = false;
-  for (const [photo, things] of photos) {
-    for (; at < photo; at++) {
+  const already = await openComments(page, home);
+  const there = (await already.locator("[data-comment]").filter({ hasText: words }).count()) > 0;
+  await page.keyboard.press("Escape");
+  await expect(already).toBeHidden();
+  if (there) {
+    await page.context().close();
+    return;
+  }
+  if (spot) {
+    for (let at = 0; at < spot.photo; at++) {
       await home.getByRole("button", { name: "Next photo" }).click();
       await expect(home.getByText(new RegExp(`^Photo ${at + 2} of \\d+$`))).toBeAttached();
     }
-    for (const thing of things) {
-      // Signed out, picking it asks them to sign up first; then its card opens.
-      if (!joined) {
-        await home.getByRole("button", { name: `Select ${thing}` }).press("Enter");
-        await joinAs(page, name);
-        joined = true;
-      }
-      const card = await pick(home, thing);
-      const like = card.getByRole("button", { name: new RegExp(`^Like ${thing}(,|$)`) });
-      await like.click();
-      await expect(like).toHaveAttribute("aria-pressed", "true");
-      await card.getByRole("button", { name: "Close" }).click();
-    }
-  }
+    const card = await pick(home, spot.thing);
+    await card.getByRole("button", { name: /^Comment on/ }).click();
+  } else await home.getByRole("button", { name: "Add a comment…" }).click();
+  const sheet = page.getByRole("dialog", { name: "Comments" });
+  await sheet.getByRole("textbox").fill(words);
+  await sheet.getByRole("button", { name: "Post", exact: true }).click();
+  // (From a spot's card the sheet closes on Post; from the bar it stays over
+  // the list. Either way the words reach the latest comments under the photo.)
+  await expect(home.locator("[data-comment-list]")).toContainText(words);
   await page.context().close();
 }
 
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(120_000);
-  // Al likes the wall sconces, then the big windows on the second photo; Bo,
-  // last, the front entry.
-  await likeThings(browser, "SAMPLE-1007", WEXFORD, "Al", [
-    [0, ["the wall sconces"]],
-    [1, ["the big windows"]],
-  ]);
-  await likeThings(browser, "SAMPLE-1007", WEXFORD, "Bo", [[0, ["the front entry"]]]);
-  // Another home with a few things going round, to move on to.
-  await likeThings(browser, "SAMPLE-1006", "2205 Brackenfield Ct NW", "Di", [[0, ["the brick front", "the lawn"]]]);
+  // Al first, then Bo, so Bo's is the newest.
+  await say(browser, "SAMPLE-1007", WEXFORD, "Al", AL_SAID);
+  await say(browser, "SAMPLE-1007", WEXFORD, "Bo", BO_SAID);
 });
 
-test("it holds on the newest, then goes round what's on the photo, a hotspot right on the spot, anchored at the photo's foot", async ({
+test("under the photo, the latest comments, the newest first, each a row that opens the comments on it; nothing goes round, and nothing is drawn on the photo", async ({
   browser,
 }) => {
   const page = await stillPage(browser);
   await page.goto("/homes/SAMPLE-1007");
   const home = homeIn(page, WEXFORD);
   await settled(home);
-  // The newest first, and it stays put for a few seconds.
-  await expect(lineOf(home)).toHaveAccessibleName(/^Bo liked the front entry\. .+\. Show it on the photo\.$/);
-  await expect(activityOf(home).getByRole("button", { name: "Pause activity" })).toBeVisible();
-  const slot = (await activityOf(home).boundingBox())!;
-  await tick(page, 2500);
-  await expect(lineOf(home)).toHaveAccessibleName(/^Bo liked the front entry/);
-  // Then what else was done on the photo on screen (not what was done on
-  // another photo: Al's big windows wait for theirs).
-  await tick(page, 1500);
-  await expect(lineOf(home)).toHaveAccessibleName(/^Al liked the wall sconces/);
-
-  // A hotspot on the photo, right where the sconces are, and nothing else
-  // drawn on it (only to look at: a tap goes to the photo under it).
+  const latest = latestOf(home);
+  await expect(latest).toBeVisible();
+  // The newest first: Bo's, then Al's, each starting with who said it.
+  const rows = latest.getByRole("listitem");
+  await expect(rows.nth(0)).toContainText(`Bo ${BO_SAID}`);
+  await expect(rows.nth(1)).toContainText(`Al ${AL_SAID}`);
+  // Under the photo, not over it, and above the comment bar; and the home's
+  // facts above the photo, where a post is headed.
+  const [list, photo, bar, price] = [
+    await box(latest),
+    await box(photoOf(home)),
+    await box(home.locator("[data-bar-row]")),
+    await box(home.locator('[data-fact="Price"]')),
+  ];
+  expect(list.y).toBeGreaterThanOrEqual(photo.y + photo.height - 1);
+  expect(list.y + list.height).toBeLessThanOrEqual(bar.y + 1);
+  expect(price.y).toBeLessThan(photo.y);
+  // Nothing goes round, and nothing is drawn on the photo: no hotspot, no pins.
+  await nothingGoesRound(home);
   await expect(home.locator("[data-pin], [data-pins-toggle]")).toHaveCount(0);
-  const spot = home.locator("[data-spot-highlight]");
-  await expect(spot).toHaveCount(1);
-  await expect(spot).toHaveAttribute("aria-hidden", "true");
-  const frame = (await home.locator("[data-photo-frame]").filter({ has: page.locator("[data-spot-highlight]") }).boundingBox())!;
-  const sconces = LISTING.Media[0].Spots!.find((it) => it.tag === "Wall sconces")!;
-  const at = (await spot.boundingBox())!;
-  expect(Math.abs(at.x - (frame.x + frame.width * sconces.x))).toBeLessThanOrEqual(3);
-  expect(Math.abs(at.y - (frame.y + frame.height * sconces.y))).toBeLessThanOrEqual(3);
+  // Time passes; it reads the same (but for a minute ticking over in "· 10m"),
+  // and nothing has moved.
+  const ages = (text: string | null) => (text ?? "").replace(/· \d+m\b/g, "· Nm");
+  const was = ages(await latest.textContent());
+  for (let i = 0; i < 5; i++) await tick(page, 4000);
+  expect(ages(await latest.textContent())).toBe(was);
+  expect(await box(latest)).toEqual(list);
+  expect((await box(home.locator('[data-fact="Price"]'))).y).toBe(price.y);
+  // A row is a fingertip tall, and opens the comments on that comment.
+  const row = rowOf(home, AL_SAID).getByRole("button");
+  expect((await box(row)).height).toBeGreaterThanOrEqual(44);
+  await row.click();
+  const sheet = page.getByRole("dialog", { name: "Comments" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.locator("[data-comment][data-flash]")).toContainText(AL_SAID);
+});
 
-  // Round it goes, one at a time, the caption's foot never moving, nor the price.
-  const price = (await home.locator('[data-fact="Price"]').boundingBox())!;
-  const lines = new Set<string>();
-  for (let i = 0; i < 4; i++) {
-    const was = (await lineOf(home).getAttribute("aria-label"))!;
-    lines.add(was);
-    await tick(page, 4000);
-    await expect(lineOf(home)).not.toHaveAttribute("aria-label", was);
-    const now = (await activityOf(home).boundingBox())!;
-    expect(Math.abs(now.y + now.height - (slot.y + slot.height))).toBeLessThanOrEqual(1);
-    expect((await home.locator('[data-fact="Price"]').boundingBox())!.y).toBe(price.y);
+test("nothing moves on its own any more: no Pause, Play or next step, with or without reduced motion, and it reads the same on every home after a long while", async ({
+  browser,
+}) => {
+  for (const options of [{}, { reducedMotion: "reduce" as const }]) {
+    const page = await stillPage(browser, options);
+    await page.goto("/homes/SAMPLE-1007");
+    const home = homeIn(page, WEXFORD);
+    await settled(home);
+    const first = await latestOf(home).textContent();
+    expect(first).toContain(BO_SAID);
+    for (let i = 0; i < 5; i++) await tick(page, 2000);
+    expect(await latestOf(home).textContent()).toBe(first);
+    await nothingGoesRound(home);
+
+    // The same on the next home, and after a reload.
+    await page.goto("/homes/SAMPLE-1006");
+    const other = homeIn(page, "2205 Brackenfield Ct NW");
+    await settled(other);
+    await expect(latestOf(other)).toBeVisible();
+    const theirs = await latestOf(other).textContent();
+    for (let i = 0; i < 5; i++) await tick(page, 2000);
+    expect(await latestOf(other).textContent()).toBe(theirs);
+    await nothingGoesRound(other);
+    await page.reload();
+    await settled(other);
+    await expect(latestOf(other)).toHaveText(theirs!);
+    await nothingGoesRound(other);
+    await page.context().close();
   }
-  expect(lines.size).toBeGreaterThanOrEqual(2);
-  // Only the one showing is on the page.
-  await expect(activityOf(home).getByRole("button", { name: /liked|commented|sent/ })).toHaveCount(1);
 });
 
-test("Pause, from the keyboard, stops it for the rest of the visit, on every home, until the tab closes", async ({ browser }) => {
-  const page = await stillPage(browser);
-  await page.goto("/homes/SAMPLE-1007");
-  const home = homeIn(page, WEXFORD);
-  await settled(home);
-  const before = await lineOf(home).getAttribute("aria-label");
-  // Pause and Play are only for the keyboard: nothing to see until it's on
-  // them. Coming in stops the line on this home (so Play shows); Play, then
-  // Pause, pauses it for the visit.
-  const control = activityOf(home).getByRole("button", { name: /^(Pause|Play) activity$/ });
-  expect((await control.boundingBox())!.width).toBeLessThanOrEqual(1);
-  await control.focus();
-  await expect(control).toHaveAccessibleName("Play activity");
-  expect((await control.boundingBox())!.width).toBeGreaterThan(30);
-  await page.keyboard.press("Enter");
-  await expect(control).toHaveAccessibleName("Pause activity");
-  await page.keyboard.press("Enter");
-  await expect(control).toHaveAccessibleName("Play activity");
-  await expect(activityOf(home).getByRole("button", { name: "Play activity" })).toBeVisible();
-  for (let i = 0; i < 5; i++) await tick(page, 2000);
-  await expect(lineOf(home)).toHaveAttribute("aria-label", before!);
-
-  // Still paused on the next page in this tab, and after a reload.
-  await page.goto("/homes/SAMPLE-1006");
-  const other = homeIn(page, "2205 Brackenfield Ct NW");
-  await settled(other);
-  await expect(activityOf(other).getByRole("button", { name: "Play activity" })).toBeVisible();
-  await page.reload();
-  await settled(other);
-  await expect(activityOf(other).getByRole("button", { name: "Play activity" })).toBeVisible();
-
-  // A new tab starts afresh.
-  const tab = await page.context().newPage();
-  await tab.goto("/homes/SAMPLE-1007");
-  await settled(homeIn(tab, WEXFORD));
-  await expect(activityOf(homeIn(tab, WEXFORD)).getByRole("button", { name: "Pause activity" })).toBeVisible();
-
-  // Play goes on again.
-  await activityOf(other).getByRole("button", { name: "Play activity" }).focus();
-  await page.keyboard.press("Enter");
-  await expect(activityOf(other).getByRole("button", { name: "Pause activity" })).toBeVisible();
-});
-
-test("with reduced motion, nothing moves on its own: it steps by hand", async ({ browser }) => {
-  const page = await stillPage(browser, { reducedMotion: "reduce" });
-  await page.goto("/homes/SAMPLE-1007");
-  const home = homeIn(page, WEXFORD);
-  await settled(home);
-  const first = await lineOf(home).getAttribute("aria-label");
-  for (let i = 0; i < 5; i++) await tick(page, 2000);
-  await expect(lineOf(home)).toHaveAttribute("aria-label", first!);
-  await expect(activityOf(home).getByRole("button", { name: /^(Pause|Play) activity$/ })).toHaveCount(0);
-  await activityOf(home).getByRole("button", { name: "Show the next activity" }).click();
-  await expect(lineOf(home)).not.toHaveAttribute("aria-label", first!);
-  // Still, it's said when it changes.
-  await expect(activityOf(home).locator("[aria-live]")).toHaveAttribute("aria-live", "polite");
-});
-
-test("it keeps to the photo on screen: on another photo, what was done there, and a tap opens its spot", async ({ browser, page }) => {
-  await likeThings(browser, "SAMPLE-1004", FERNHOLLOW, "Cy", [
-    [0, ["the evergreens"]],
-    [2, ["the natural light"]],
-  ]);
+test("a comment left on a spot shows whichever photo is on screen, with a pin; it opens in the comments, where the spot can be shown", async ({
+  browser,
+  page,
+}) => {
+  await say(browser, "SAMPLE-1004", FERNHOLLOW, "Cy", CY_SAID, { photo: 2, thing: "the natural light" });
   await page.goto("/homes/SAMPLE-1004");
   const home = homeIn(page, FERNHOLLOW);
   await settled(home);
   await expect(home.getByText("Photo 1 of 3")).toBeAttached();
-  // On the first photo, nothing about the third.
-  await expect(activityOf(home)).not.toContainText("natural light");
+  // On the first photo already: the comments are the home's, not the photo's.
+  // A pin says it's about a spot; which spot waits for the comments.
+  const row = rowOf(home, CY_SAID);
+  await expect(row).toContainText(`Cy ${CY_SAID}`);
+  await expect(pinIn(row)).toHaveCount(1);
+  await expect(row).not.toContainText(/natural light/i);
+  await expect(home.locator("[data-spot-highlight]")).toHaveCount(0);
+  const words = await latestOf(home).textContent();
   await home.getByRole("button", { name: "Next photo" }).click();
   await home.getByRole("button", { name: "Next photo" }).click();
   await expect(home.getByText("Photo 3 of 3")).toBeAttached();
-  await expect(lineOf(home)).toHaveAccessibleName(/^Cy liked the natural light\. .+\. Show it on the photo\.$/);
-  // (Signed out: shown the spot, then asked to sign up before its card opens.)
-  await lineOf(home).click();
-  await joinAs(page, "Dot");
-  const card = home.getByRole("group", { name: "Natural light" });
-  await expect(card).toBeVisible();
-  // The line steps aside for the card, and is back on it once it's closed.
-  await expect(home.locator("[data-photo-caption]")).toBeHidden();
-  await card.getByRole("button", { name: "Close" }).click();
-  await expect(lineOf(home)).toHaveAccessibleName(/^Cy liked the natural light\./);
+  await expect(latestOf(home)).toHaveText(words!);
+  await expect(home.locator("[data-spot-highlight]")).toHaveCount(0);
+  // The row opens the comments on it, where its spot is named and can be shown.
+  await row.getByRole("button").click();
+  const sheet = page.getByRole("dialog", { name: "Comments" });
+  await expect(sheet).toBeVisible();
+  const said = sheet.locator("[data-comment]").filter({ hasText: CY_SAID });
+  await expect(said).toBeVisible();
+  await expect(said.getByRole("button", { name: /natural light\s*: show it$/i })).toBeVisible();
 });
 
-test("after three rounds it rests on who liked the home; a photo with more on it runs one more round", async ({ browser }) => {
-  test.setTimeout(120_000);
-  const page = await stillPage(browser);
+test("who liked the home: a bold line of how many, above the comments, that the photos turning doesn't change", async ({ browser }) => {
+  const page = await signedIn(browser, `eve.${Date.now()}@example.com`, "Eve");
   await page.goto("/homes/SAMPLE-1007");
   const home = homeIn(page, WEXFORD);
   await settled(home);
-  await expect
-    .poll(
-      async () => {
-        await tick(page, 8000);
-        return activityOf(home).textContent();
-      },
-      { timeout: 60_000, intervals: [0] },
-    )
-    .toMatch(/liked this$/);
-  await expect(lineOf(home)).toHaveAccessibleName(/liked this\. See the comments\.$/);
-  await expect(activityOf(home).getByRole("button", { name: "Play activity" })).toBeVisible();
-  await expect(home.locator("[data-spot-highlight]")).toHaveCount(0);
-
-  // On to the second photo, where Al liked the big windows: to that, and
-  // nothing from the first photo while this one's on screen.
+  // (No line at all when nobody has: that reads as none.)
+  const before = (await likesLineOf(home).count()) ? Number((await likesLineOf(home).textContent())!.match(/\d+/)![0]) : 0;
+  await heartOf(home).click();
+  await expect(heartOf(home)).toHaveAttribute("aria-pressed", "true");
+  const line = likesLineOf(home);
+  await expect(line).toHaveText(`${before + 1} ${before + 1 === 1 ? "like" : "likes"}`);
+  expect(Number(await line.evaluate((el) => getComputedStyle(el).fontWeight))).toBeGreaterThanOrEqual(600);
+  // Above the comments, never one of them.
+  expect((await box(line)).y + (await box(line)).height).toBeLessThanOrEqual((await box(rowOf(home, BO_SAID))).y + 1);
+  await expect(latestOf(home).getByRole("listitem").filter({ hasText: /^\d+ likes?$/ })).toHaveCount(0);
+  // Never anyone's name in public, and not who: just how many.
+  await expect(line).not.toContainText(/Liked by|Eve/);
   await home.getByRole("button", { name: "Next photo" }).click();
-  await expect
-    .poll(
-      async () => {
-        await tick(page, 500);
-        return lineOf(home).getAttribute("aria-label");
-      },
-      { timeout: 30_000, intervals: [0] },
-    )
-    .toMatch(/^Al liked the big windows/);
-  for (let i = 0; i < 6; i++) {
-    await tick(page, 4000);
-    expect(await lineOf(home).getAttribute("aria-label")).not.toMatch(/front entry|wall sconces/);
-  }
+  await expect(home.getByText(/^Photo 2 of \d+$/)).toBeAttached();
+  await expect(line).toHaveText(`${before + 1} ${before + 1 === 1 ? "like" : "likes"}`);
+  await page.reload();
+  await settled(home);
+  await expect(likesLineOf(home)).toHaveText(`${before + 1} ${before + 1 === 1 ? "like" : "likes"}`);
+  await page.context().close();
 });
 
-test("side by side too, after its rounds it rests on who liked the home", async ({ browser }) => {
-  test.setTimeout(120_000);
-  const page = await stillPage(browser, DESKTOP);
-  await page.goto("/homes/SAMPLE-1007");
-  const home = homeIn(page, WEXFORD);
-  await expect(lineOf(home)).toHaveAccessibleName(/^Bo liked the front entry/);
-  await expect
-    .poll(
-      async () => {
-        await tick(page, 8000);
-        return activityOf(home).getByRole("button", { name: "Play activity" }).count();
-      },
-      { timeout: 60_000, intervals: [0] },
-    )
-    .toBe(1);
-  await expect(activityOf(home)).toContainText("liked this");
-  await expect(lineOf(home)).toHaveAccessibleName(/liked this\. See the comments\.$/);
-});
-
-test("a pointer on the line holds it; a card open on the photo holds it, and once it's gone, it goes on", async ({ browser }) => {
+test("side by side, the comments are in the panel beside the photo, not over its foot; a row opens them docked there", async ({ browser }) => {
   const page = await signedInStillPage(browser, DESKTOP);
   await page.goto("/homes/SAMPLE-1007");
   const home = homeIn(page, WEXFORD);
   await settled(home);
-  await expect(lineOf(home)).toHaveAccessibleName(/^Bo liked the front entry/);
-  await lineOf(home).hover();
-  await tick(page, 9000);
-  await expect(lineOf(home)).toHaveAccessibleName(/^Bo liked the front entry/);
-  await page.mouse.move(700, 20);
-  // A card about a spot, opened on the photo: it waits while it's open.
-  // (Out of the card's way meanwhile, and just where it was once it's closed.)
+  const latest = latestOf(home);
+  await expect(latest).toContainText(`Bo ${BO_SAID}`);
+  // In the panel, to the right of the photo, inside the words. Nothing over
+  // the photo's foot but the X and the heart.
+  const [list, photo, panel] = [await box(latest), await box(photoOf(home)), await box(home.locator("[data-words]"))];
+  expect(list.x).toBeGreaterThanOrEqual(photo.x + photo.width);
+  expect(list.x).toBeGreaterThanOrEqual(panel.x);
+  expect(list.x + list.width).toBeLessThanOrEqual(panel.x + panel.width + 1);
+  await nothingGoesRound(home);
+  for (let i = 0; i < 3; i++) await tick(page, 8000);
+  await expect(latest).toContainText(`Bo ${BO_SAID}`);
+  await expect(latest).toContainText(`Al ${AL_SAID}`);
+  // A card about a spot, opened on the photo, leaves the comments where they are.
   const card = await pick(home, "the front entry");
-  await tick(page, 9000);
-  await expect(home.locator("[data-photo-caption]")).toBeHidden();
+  await expect(latest).toBeVisible();
   await card.getByRole("button", { name: "Close" }).click();
   await expect(card).toBeHidden();
-  await expect(lineOf(home)).toHaveAccessibleName(/^Bo liked the front entry/);
-  await page.mouse.move(700, 20);
-  await tick(page, 4000);
-  await expect(lineOf(home)).not.toHaveAccessibleName(/^Bo liked the front entry/);
-
-  // A tap on the line opens its spot; after that, it stays put on this home.
-  const shown = (await lineOf(home).getAttribute("aria-label"))!;
-  await lineOf(home).click();
-  const opened = home.locator("[data-spot-card]");
-  await expect(opened).toBeVisible();
-  await settle(opened);
-  await opened.getByRole("button", { name: "Close" }).click();
-  await expect(opened).toBeHidden();
-  await page.mouse.move(700, 20);
-  await expect(activityOf(home).getByRole("button", { name: "Play activity" })).toBeVisible();
-  await tick(page, 9000);
-  await expect(lineOf(home)).toHaveAttribute("aria-label", shown);
+  // A row opens the comments, on that comment, beside the photo.
+  await rowOf(home, BO_SAID).getByRole("button").click();
+  const sheet = page.getByRole("dialog", { name: "Comments" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.locator("[data-comment][data-flash]")).toContainText(BO_SAID);
+  expect((await box(sheet)).x).toBeGreaterThanOrEqual(photo.x + photo.width - 1);
 });
 
-test("opened from someone's profile, the line says only what they did", async ({ browser }) => {
-  // Bo's page: the front entry Bo liked shares its photo with Al's sconces,
-  // and those are Al's, not Bo's.
+test("opened from someone's profile, what they did is in Why it's here; under the photo, the home's own comments", async ({ browser }) => {
+  // Bo's page, from Bo's name in the comments.
   const look = await (await browser.newContext()).newPage();
   await look.goto("/homes/SAMPLE-1007");
   const comments = await openComments(look, homeIn(look, WEXFORD));
   const profile = await comments.getByRole("link", { name: "Bo", exact: true }).first().getAttribute("href");
   expect(profile).toMatch(/^\/people\/[0-9a-f-]{36}$/);
   await look.context().close();
-  const page = await (await browser.newContext()).newPage();
-  await page.clock.install();
+  const page = await stillPage(browser);
   await page.goto(profile!);
-  // (A card opens their page's homes in the pop-out, on the photo it's about: `?photo=`.)
-  // (By its top corner: the photos in the middle swipe, and open it themselves.)
+  // (A card opens their page's homes in the pop-out. By its top corner: the
+  // photos in the middle swipe, and open it themselves.)
   await page.locator('a[href*="home=SAMPLE-1007"]').first().click({ position: { x: 20, y: 20 } });
   await page.waitForURL(/\/reel\?from=/);
   const home = homeIn(page.getByRole("dialog", { name: "Homes" }), WEXFORD);
   await expect(home).toBeVisible();
-  // Their homes: the one thing Bo did, still (nothing to go round), and
-  // never anyone else's, or who else liked the home.
-  await expect(lineOf(home)).toHaveAccessibleName(/^Bo liked the front entry/);
-  await expect(activityOf(home).getByRole("button", { name: /activity$/ })).toHaveCount(0);
-  for (let i = 0; i < 4; i++) {
-    await page.clock.runFor(5000);
-    await expect(activityOf(home)).not.toContainText(/Al|A buyer|others liked|liked this$/);
-    await expect(lineOf(home)).toHaveAccessibleName(/^Bo liked the front entry/);
-  }
+  // What Bo did, over the photo's top, as the reason it's here: Bo's, never Al's.
+  const why = home.getByRole("region", { name: "Why it's here" });
+  await expect(why).toContainText(/^Bo\b/);
+  await expect(why).not.toContainText(/Al\b|A buyer/);
+  // Under the photo, the home's comments as anywhere: Bo's and Al's, by name,
+  // and nothing from anyone's private link.
+  await expect(rowOf(home, BO_SAID)).toContainText(`Bo ${BO_SAID}`);
+  await expect(rowOf(home, AL_SAID)).toContainText(`Al ${AL_SAID}`);
+  await expect(latestOf(home)).not.toContainText(/A buyer|privately/);
+  await nothingGoesRound(home);
+  for (let i = 0; i < 4; i++) await tick(page, 5000);
+  await expect(rowOf(home, BO_SAID)).toBeVisible();
 });
 
-test("beside the map: on a phone it's only to read, the newest, still; on a wide screen it's the line itself, on the photo's foot between the X and the heart", async ({
+test("beside the map: on a phone, the comments under the photo and Open full screen under them; on a wide screen the same, with Open full screen in the photo's corner", async ({
   browser,
 }) => {
-  // A phone: the home under the filters is just a look.
+  // A phone: the home under the filters is just a look, with one way in.
   const phone = await (await browser.newContext({ viewport: { width: 390, height: 780 } })).newPage();
   await phone.clock.install();
   await phone.goto("/search?home=SAMPLE-1007");
   const small = homeIn(phone, WEXFORD);
   await expect(small).toBeVisible();
-  await expect(activityOf(small)).toContainText("Bo liked the front entry");
-  await expect(activityOf(small).getByRole("button")).toHaveCount(0);
+  await expect(latestOf(small)).toContainText(`Bo ${BO_SAID}`);
+  await nothingGoesRound(small);
+  const open = small.getByRole("button", { name: /^Open full screen/ });
+  await expect(open).toBeVisible();
+  const [list, photo, button] = [await box(latestOf(small)), await box(photoOf(small)), await box(open)];
+  expect(list.y).toBeGreaterThanOrEqual(photo.y + photo.height - 1);
+  expect(button.y).toBeGreaterThanOrEqual(list.y + list.height - 1);
+  expect(button.height).toBeGreaterThanOrEqual(44);
   await phone.clock.runFor(20_000);
   await phone.waitForTimeout(300);
-  await expect(activityOf(small)).toContainText("Bo liked the front entry");
+  await expect(latestOf(small)).toContainText(`Bo ${BO_SAID}`);
   await phone.context().close();
 
-  // Wide: the home itself, so the line is a button, as anywhere. It's on the
-  // photo (which has the room it used to take), in the middle of its foot,
-  // level with the X and the heart and between them.
+  // Wide: the pane is a phone's width, so the comments are under the photo
+  // here too, between its foot and the bar; the X and the heart keep the
+  // photo's bottom corners, and the pane's own Open full screen sits over
+  // the photo's top corner, under the head.
   const page = await (await browser.newContext(DESKTOP)).newPage();
   await page.goto("/search?home=SAMPLE-1007");
   const home = homeIn(page, WEXFORD);
   await expect(home).toBeVisible();
-  const activity = activityOf(home);
-  await expect(activity).toContainText(/liked|commented|on the/);
-  await expect(activity.getByRole("button").first()).toBeVisible();
-  const box = async (part: Locator) => (await part.boundingBox())!;
-  const [line, photo, pass, heart] = [
-    await box(lineOf(home)),
-    await box(home.getByRole("group", { name: /^Photos of/ }).locator("img").first()),
+  await expect(latestOf(home)).toContainText(`Bo ${BO_SAID}`);
+  await nothingGoesRound(home);
+  const [wideList, widePhoto, pass, heart, wideOpen] = [
+    await box(latestOf(home)),
+    await box(photoOf(home)),
     await box(home.getByRole("button", { name: "Pass on this home" })),
     await box(heartOf(home)),
+    await box(page.getByRole("button", { name: "Open full screen" })),
   ];
-  expect(line.y).toBeGreaterThan(photo.y + photo.height / 2);
-  expect(line.y + line.height).toBeLessThanOrEqual(photo.y + photo.height);
-  expect(line.x).toBeGreaterThan(pass.x + pass.width);
-  expect(line.x + line.width).toBeLessThan(heart.x);
-  expect(Math.abs(line.x + line.width / 2 - (photo.x + photo.width / 2))).toBeLessThan(24);
+  expect(wideList.y).toBeGreaterThanOrEqual(widePhoto.y + widePhoto.height - 1);
+  expect(pass.y + pass.height).toBeLessThanOrEqual(widePhoto.y + widePhoto.height + 1);
+  expect(heart.y + heart.height).toBeLessThanOrEqual(widePhoto.y + widePhoto.height + 1);
+  expect(pass.x + pass.width).toBeLessThan(heart.x);
+  expect(wideOpen.y).toBeGreaterThanOrEqual(widePhoto.y - 1);
+  expect(wideOpen.y + wideOpen.height).toBeLessThan(widePhoto.y + widePhoto.height / 2);
+  expect(wideOpen.height).toBeGreaterThanOrEqual(44);
+  await page.context().close();
 });
 
-test("on a link, what you said is \"You\", and the agent's own words are theirs", async ({ browser }) => {
+test("on a link, what you said is under your name, and the agent's words under theirs with their badge; no way to a profile from here", async ({
+  browser,
+}) => {
   test.setTimeout(120_000);
   const agent = await signInAgent(browser, "vera@example.com", "Vera Agent");
   const { url, dashboardUrl } = await createShare(agent, ["719 Saltmarsh"], ["Kit"]);
-  const kit = await signedIn(browser);
-  // (She knows her way round a link: no first-timer nudge over the photo,
-  // which puts the line away while it shows.)
+  const kit = await signedIn(browser, undefined, "Kit");
+  // (She knows her way round a link: no first-timer nudge over the photo.)
   await kit.addInitScript(() => localStorage.setItem("buybox:nudges", JSON.stringify({ photos: true, next: true })));
   await kit.goto(url);
   await toFirstHome(kit);
@@ -411,13 +376,15 @@ test("on a link, what you said is \"You\", and the agent's own words are theirs"
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByText("Is the roof new?")).toBeVisible();
   await kit.keyboard.press("Escape");
-  // Hers, as her likes are: "You". (Her face starts it, but on a link it's
-  // nobody's way to a profile, hers included.)
-  await expect(lineOf(home)).toHaveAccessibleName(/^You commented: Is the roof new\? /);
-  await expect(activityOf(home).getByRole("link")).toHaveCount(0);
+  // Hers, under her name, as the link knows her. On a link, nobody's name is
+  // a way to a profile, hers included.
+  await expect(rowOf(home, "Is the roof new?")).toContainText("Kit Is the roof new?");
+  await expect(rowOf(home, "Is the roof new?")).not.toContainText("Agent");
+  await expect(latestOf(home).getByRole("link")).toHaveCount(0);
+  await nothingGoesRound(home);
 
-  // The agent answers from their dashboard, and on their own link it's
-  // theirs: "You".
+  // The agent answers from their dashboard. On their own link it's under
+  // their name, with their badge, and first: the agent's words lead.
   await agent.goto(dashboardUrl);
   const panel = agent.getByRole("region", { name: SALTMARSH });
   await panel.getByLabel("Reply to your client").fill("New in 2021.");
@@ -427,38 +394,49 @@ test("on a link, what you said is \"You\", and the agent's own words are theirs"
   const own = homeIn(agent, SALTMARSH);
   await own.scrollIntoViewIfNeeded();
   await settled(own);
-  await expect(lineOf(own)).toHaveAccessibleName(/^You commented: New in 2021\. /);
+  // (The row's text starts with the initial on their face: "V", then the name.)
+  await expect(rowOf(own, "New in 2021.")).toContainText(/Vera Agent\s*Agent\s*New in 2021\./);
+  await expect(latestOf(own).getByRole("listitem").first()).toContainText("New in 2021.");
+  await expect(latestOf(own).getByRole("link")).toHaveCount(0);
 
-  // To Kit, the same words are her agent's.
+  // To Kit, the same words are her agent's, badged the same, and still first.
   await kit.reload();
   await toFirstHome(kit);
   await settled(home);
-  await expect(lineOf(home)).toHaveAccessibleName(/^Vera \(your agent\) commented: New in 2021\. /);
-  await expect(activityOf(home).getByRole("link")).toHaveCount(0);
+  await expect(rowOf(home, "New in 2021.")).toContainText(/Vera Agent\s*Agent\s*New in 2021\./);
+  await expect(latestOf(home).getByRole("listitem").first()).toContainText("New in 2021.");
+  await expect(latestOf(home).getByRole("listitem").nth(1)).toContainText("Kit Is the roof new?");
+  await expect(latestOf(home).getByRole("link")).toHaveCount(0);
 });
 
-test("the line starts with the face of whoever did it, and that face opens their profile", async ({ browser }) => {
-  const page = await stillPage(browser);
+test("each comment starts with the face of whoever said it; from here there's no way to their profile, but in the comments their name is one", async ({
+  browser,
+}) => {
+  const page = await (await browser.newContext()).newPage();
   await page.goto("/homes/SAMPLE-1007");
   const home = homeIn(page, WEXFORD);
   await settled(home);
-  await expect(lineOf(home)).toHaveAccessibleName(/^Bo liked the front entry/);
-  // Like a profile picture: Bo's, just before the words, on the caption.
-  const face = activityOf(home).getByRole("link", { name: "Bo's profile" });
+  const row = rowOf(home, BO_SAID);
+  // Like a profile picture: Bo's initial, just before the words.
+  const face = row.locator("button > span[aria-hidden]").first();
   await expect(face).toHaveText("B");
-  const [faceBox, lineBox] = await Promise.all([face.boundingBox(), lineOf(home).boundingBox()]);
-  expect(faceBox!.x + faceBox!.width).toBeLessThanOrEqual(lineBox!.x);
-  expect(faceBox!.width).toBeGreaterThanOrEqual(32);
-  // No Pause or Play to see (they're for the keyboard).
-  expect((await activityOf(home).getByRole("button", { name: /activity$/ }).boundingBox())!.width).toBeLessThanOrEqual(1);
-  await face.click();
+  const [faceBox, words] = [await box(face), await box(row.locator("button > p"))];
+  expect(faceBox.x + faceBox.width).toBeLessThanOrEqual(words.x);
+  expect(faceBox.width).toBeGreaterThanOrEqual(24);
+  // Nothing to tap but the row itself, which opens the comments; there, Bo's
+  // name is the way to Bo's page.
+  await expect(latestOf(home).getByRole("link")).toHaveCount(0);
+  await row.getByRole("button").click();
+  const sheet = page.getByRole("dialog", { name: "Comments" });
+  await expect(sheet).toBeVisible();
+  // (Once it has finished sliding up: a tap mid-slide lands on the sheet itself.)
+  await settle(sheet);
+  await sheet.locator("[data-comment]").filter({ hasText: BO_SAID }).getByRole("link", { name: "Bo", exact: true }).click();
   await page.waitForURL(/\/people\/[0-9a-f-]{36}$/);
   await expect(page.locator("h1").first()).toContainText("Bo");
 });
 
-test("isolation: what's private on an agent's link never reaches the public line, by words, name, pass or spot", async ({
-  browser,
-}) => {
+test("isolation: what's private on an agent's link never reaches the public page, by words, name, pass or spot", async ({ browser }) => {
   test.setTimeout(120_000);
   const SECRET = "Offer 30k under, they sound desperate.";
   const SPOT_SECRET = "That corner needs a total redo.";
@@ -503,25 +481,29 @@ test("isolation: what's private on an agent's link never reaches the public line
     more.getByRole("group", { name: "What made you pass?" }).getByRole("button", { name: "Price" }),
   ).toHaveAttribute("aria-pressed", "true");
 
-  // The public page: a buyer commented privately, and nothing more, all the way round.
+  // The public page: none of it, under the photo or anywhere on the home,
+  // now or after a while. Nothing of hers was shared, so not even "A buyer".
   const page = await stillPage(browser);
   await page.goto("/homes/SAMPLE-1008");
   const home = homeIn(page, SALTMARSH);
   await settled(home);
-  await expect(activityOf(home)).toContainText("A buyer commented privately");
-  const photo = (await home.getByRole("img", { name: COTTAGE }).boundingBox())!;
+  await expect(latestOf(home)).toBeVisible();
+  const photo = await box(home.getByRole("img", { name: COTTAGE }));
   const spotAt = { x: photo.x + photo.width * SPOT.x, y: photo.y + photo.height * SPOT.y };
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 3; i++) {
     const text = (await home.textContent())!;
-    for (const never of ["didn't like", "passed", SECRET, SPOT_SECRET, "Yara"]) expect(text).not.toContain(never);
-    // Nor what the line says aloud: never a comment "on" anything here.
-    const said = (await lineOf(home).getAttribute("aria-label")) ?? "";
-    for (const never of ["didn't like", "passed", "commented on", SECRET, SPOT_SECRET, "Yara"]) expect(said).not.toContain(never);
-    expect(await activityOf(home).textContent()).not.toMatch(/, on /);
-    for (const hotspot of await home.locator("[data-spot-highlight]").all()) {
-      const drawn = (await hotspot.boundingBox())!;
-      const [x, y] = [drawn.x + drawn.width / 2, drawn.y + drawn.height / 2];
-      expect(Math.hypot(x - spotAt.x, y - spotAt.y)).toBeGreaterThan(10);
+    for (const never of ["didn't like", "passed", "privately", SECRET, SPOT_SECRET, "Yara"]) expect(text).not.toContain(never);
+    // Nor a word of it in the comments under the photo: no row of hers at
+    // all. (Other tests' words may be there, even one another buyer chose
+    // to share; nothing of Yara's, and nothing on a spot.)
+    const rows = latestOf(home).getByRole("listitem");
+    await expect(rows.filter({ hasText: new RegExp(`Yara|${SECRET}|${SPOT_SECRET}`) })).toHaveCount(0);
+    await expect(latestOf(home)).not.toContainText(/, on /);
+    // Nor its spot, drawn or named: nothing on the photo where she left it.
+    await expect(home.locator(`[data-spot-tag="${spotTag}"]`)).toHaveCount(0);
+    for (const drawn of await home.locator("[data-spot-highlight], [data-pin]").all()) {
+      const at = await box(drawn);
+      expect(Math.hypot(at.x + at.width / 2 - spotAt.x, at.y + at.height / 2 - spotAt.y)).toBeGreaterThan(10);
     }
     await tick(page, 8000);
   }
@@ -531,7 +513,7 @@ test("isolation: what's private on an agent's link never reaches the public line
   }
 });
 
-test("isolation: a comment on a spot shared from a link shows its words in public, never where it was left", async ({
+test("isolation: a comment on a spot shared from a link shows its words in public, as a buyer's, never where it was left", async ({
   browser,
 }) => {
   test.setTimeout(120_000);
@@ -564,24 +546,32 @@ test("isolation: a comment on a spot shared from a link shows its words in publi
   const spotTag = (await spot.getAttribute("data-spot-tag"))!;
   await zoe.keyboard.press("Escape");
 
-  // In public: what she said, by "A buyer", on no spot at all.
+  // In public: what she said, under the photo, by "A buyer" with a lock, on
+  // no spot at all: no pin on the row, no spot in the comments.
   const page = await (await browser.newContext()).newPage();
   await page.goto("/homes/SAMPLE-1008");
   const home = homeIn(page, SALTMARSH);
   await settled(home);
-  await expect(activityOf(home)).toContainText(`A buyer commented\u201c${WORDS}\u201d`);
-  expect(await lineOf(home).getAttribute("aria-label")).toMatch(/^A buyer commented: Love how the light falls on this side\. .+\. See it in the comments\.$/);
+  const row = rowOf(home, WORDS);
+  await expect(row).toContainText(`A buyer ${WORDS}`);
+  await expect(row).not.toContainText("Zoe");
+  await expect(lockIn(row)).toHaveCount(1);
+  await expect(pinIn(row)).toHaveCount(0);
   await expect(home.locator(`[data-spot-tag="${spotTag}"]`)).toHaveCount(0);
-  const sheet = await openComments(page, home);
+  await expect(home.locator("[data-spot-highlight]")).toHaveCount(0);
+  await row.getByRole("button").click();
+  const sheet = page.getByRole("dialog", { name: "Comments" });
+  await expect(sheet).toBeVisible();
   await expect(sheet.getByText(WORDS)).toBeVisible();
   await expect(sheet.getByRole("button", { name: /: show it$/ })).toHaveCount(0);
   await expect(sheet.getByRole("listitem").filter({ hasText: WORDS }).locator("[data-spot-tag]")).toHaveCount(0);
   const html = await (await page.request.get("/homes/SAMPLE-1008")).text();
   expect(html).toContain(WORDS);
   expect(html).not.toContain(spotTag);
+  expect(html).not.toContain("Zoe");
 });
 
-test("isolation: kept private, what you said on an agent's link reads \"You commented\" to you alone, on your own page, and nobody else gets it there", async ({
+test("isolation: kept private, what you said on an agent's link stays off your own page, for you and for everyone; your public like counts there", async ({
   browser,
 }) => {
   test.setTimeout(150_000);
@@ -615,44 +605,45 @@ test("isolation: kept private, what you said on an agent's link reads \"You comm
   await wren.getByLabel("Add a photo").setInputFiles({ name: "me.png", mimeType: "image/png", buffer: Buffer.from(PNG_1PX, "base64") });
   await expect(wren.getByLabel("Change photo")).toBeAttached();
 
-  // Each thing the line says as it goes round, by its name.
-  const round = async (page: Page, turns: number) => {
+  // The home as her page shows it, to whoever's looking: what's under the
+  // photo and what the home says, now and after a while.
+  const look = async (page: Page) => {
     const home = homeIn(page, SALTMARSH);
     await settled(home);
+    await expect(latestOf(home)).toBeVisible();
     const said: string[] = [];
-    for (let i = 0; i < turns; i++) {
-      said.push((await lineOf(home).getAttribute("aria-label")) ?? "");
-      said.push((await activityOf(home).textContent()) ?? "");
+    for (let i = 0; i < 3; i++) {
+      said.push((await latestOf(home).textContent()) ?? "", (await home.textContent()) ?? "");
       await tick(page, 8000);
     }
-    return said;
+    return { home, said };
   };
 
-  // To her, on her own page: "You", with her words. Never "A buyer", and
-  // nothing of the other buyers who commented privately on this home.
+  // To her, on her own page: her like counted, with her face on why it's
+  // here (her photo, as her page shows it); never her words from the link,
+  // not even nameless. (What another buyer chose to share shows here as it
+  // does anywhere, as "A buyer": that's the home's thread, not hers.)
   const own = await wren.context().newPage();
   await own.clock.install();
   await own.clock.pauseAt(new Date(Date.now() + 1000));
   await own.goto(address);
-  // (Her own face starts what she did: her photo, as her page shows it, not her initial.)
-  await settled(homeIn(own, SALTMARSH));
-  await expect(lineOf(homeIn(own, SALTMARSH))).toHaveAccessibleName(/^You /);
-  await expect(activityOf(homeIn(own, SALTMARSH)).getByRole("link", { name: "Your profile" }).locator("img")).toHaveAttribute(
+  const hers = await look(own);
+  await expect(likesLineOf(hers.home)).toHaveText(/^\d+ likes?$/);
+  await expect(hers.home.getByRole("region", { name: "Why it's here" })).toContainText("You liked this");
+  await expect(hers.home.getByRole("region", { name: "Why it's here" }).locator("img")).toHaveAttribute(
     "src",
     new RegExp(`^/people/${wrenId}/photo`),
   );
-  const hers = await round(own, 6);
-  expect(hers).toContainEqual(expect.stringMatching(/^You commented: Too close to the road/));
-  expect(hers).toContainEqual(expect.stringMatching(/^You liked this/));
-  for (const line of hers) expect(line).not.toMatch(/A buyer|privately|others liked/);
+  for (const text of hers.said) expect(text).not.toMatch(/Too close|privately|others liked/);
   await own.close();
 
-  // Anyone else on her page: only her public like, under her name.
+  // Anyone else on her page: her public like, under her name, and nothing she said.
   const visitor = await stillPage(browser);
   await visitor.goto(address);
-  const theirs = await round(visitor, 4);
-  expect(theirs[0]).toMatch(/^Wren liked this/);
-  for (const line of theirs) expect(line).not.toMatch(/commented|A buyer|Too close|others liked/);
+  const theirs = await look(visitor);
+  await expect(theirs.home.getByRole("region", { name: "Why it's here" })).toContainText("Wren liked this");
+  await expect(likesLineOf(theirs.home)).toHaveText(/^\d+ likes?$/);
+  for (const text of theirs.said) expect(text).not.toMatch(/Too close|privately|others liked/);
   expect(await (await visitor.request.get(address)).text()).not.toContain(SECRET);
 
   // Her agent, there: the same. What she said on the link stays on the link.
@@ -661,7 +652,7 @@ test("isolation: kept private, what you said on an agent's link reads \"You comm
   await agents.clock.install();
   await agents.clock.pauseAt(new Date(Date.now() + 1000));
   await agents.goto(address);
-  for (const line of await round(agents, 4)) expect(line).not.toMatch(/commented|Too close/);
+  for (const text of (await look(agents)).said) expect(text).not.toMatch(/Too close/);
   await agents.close();
 
   // Her like, taken back, so no later spec counts it.

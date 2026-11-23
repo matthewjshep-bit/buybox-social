@@ -107,12 +107,26 @@ test("one home: the link opens on a word from the agent, then the home, in the a
   html = await (await request.get(url)).text();
   expect(html).not.toContain("jordan-link@example.com");
 
-  // The end of the one home.
+  // The end of the one home: nothing rated yet, so it asks, and asks nothing else.
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("heading", { name: /^(That's all|What did you think\?)$/ })).toBeAttached();
-  await expect(page.getByText("Jordan Rivera sees your likes and comments.")).toBeAttached();
-  // A personal link isn't one to pass on.
+  const end = page.getByRole("region", { name: "The end" });
+  await expect(end.getByRole("heading", { name: "What did you think?" })).toBeAttached();
+  await expect(end.getByText("Tap the heart or the X on each home.")).toBeAttached();
+  await expect(end.getByRole("list", { name: "The homes" }).getByRole("button", { name: "4127 Larkmoor Ave NE: like" })).toBeAttached();
+  await expect(page.getByRole("region", { name: "What's next" })).toHaveCount(0);
+  await expect(end.getByRole("button", { name: /^(Message|Sign up)/ })).toHaveCount(0);
+  await expect(end.getByRole("link", { name: "See more homes like these" })).toHaveCount(0);
+  // Nothing on it to pass the link on with, or to leave it by: those live elsewhere.
   await expect(page.getByRole("button", { name: "Invite someone" })).toHaveCount(0);
+  await expect(end.getByRole("button", { name: /Leave this link/ })).toHaveCount(0);
+  // Asking for more like these is one of Contact's ways: a text, written for them.
+  await page.getByRole("button", { name: "Contact" }).click();
+  await expect(contact.getByRole("link", { name: "Ask Jordan for more like these" })).toHaveAttribute(
+    "href",
+    `sms:2065550142?&body=${encodeURIComponent("Hi Jordan, could you send me more homes like the ones on my link?")}`,
+  );
+  await page.keyboard.press("Escape");
+  await expect(contact).toBeHidden();
 
   // On a laptop the header runs edge to edge like the home under it, and
   // Contact rises from the white panel beside the photo, as More does.

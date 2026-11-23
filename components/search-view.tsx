@@ -403,11 +403,13 @@ export function SearchView({
           pending && "opacity-60",
         )}
       >
-        {/* Wide screens: over the top of the photo, clear of the words at the
-            bottom. Sending it on the left; on the right, the way to the home
-            full screen (with the rest of this search to go through). */}
+        {/* Wide screens: over the photo's top corners, under the home's head
+            (the price and the address, 4rem from 0.5rem down) and clear of
+            the words at the bottom. Sending it on the left; on the right,
+            the way to the home full screen (with the rest of this search to
+            go through). */}
         {sending && (
-          <SendPill home={sending} quick={quick} className="absolute left-3 top-3 z-30 hidden lg:flex" />
+          <SendPill home={sending} quick={quick} className="absolute left-3 top-[4.75rem] z-30 hidden lg:flex" />
         )}
         {posts.length > 0 && activeKey && (
           <button
@@ -415,7 +417,7 @@ export function SearchView({
             aria-label="Open full screen"
             title="Open full screen"
             onClick={() => openFull(activeKey)}
-            className="absolute right-3 top-3 z-30 hidden size-12 items-center justify-center rounded-full bg-white text-ink shadow-lg ring-1 ring-stone-200 hover:bg-stone-50 lg:flex"
+            className="absolute right-3 top-[4.75rem] z-30 hidden size-12 items-center justify-center rounded-full bg-white text-ink shadow-lg ring-1 ring-stone-200 hover:bg-stone-50 lg:flex"
           >
             <Maximize2 aria-hidden size={18} />
           </button>
@@ -538,7 +540,7 @@ export function SearchReel({
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
       if ((event.target as Element | null)?.closest?.("input, textarea, select, [contenteditable]")) return;
-      if (document.querySelector("dialog[open], [popover]:popover-open, [data-spot-card]")) return;
+      if (document.querySelector('dialog[open], [popover]:popover-open, [data-spot-card], [aria-label="About this home"][role="region"]:not([hidden])')) return;
       router.push(map);
     };
     window.addEventListener("keydown", onKey);

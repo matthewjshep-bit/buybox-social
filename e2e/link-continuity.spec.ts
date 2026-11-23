@@ -82,22 +82,34 @@ test("signed in on their own link, a client has their menu and the bell, the age
   await page.keyboard.press("Escape");
   await expect(contact).toBeHidden();
 
-  // The end of the link: what's next, never a dead end.
-  await toEnd(page);
-  const next = page.getByRole("region", { name: "What's next" });
-  await expect(next).toBeVisible();
+  // The end of the link: one thing to do. With a home still unrated, it asks.
+  await toEnd(page, "What did you think?");
+  const end = page.getByRole("region", { name: "The end" });
+  await expect(end.getByText("Tap the heart or the X on each home.")).toBeVisible();
   // Every home on the link is there, small, with what they made of it: the one they liked says so.
   const homes = page.getByRole("list", { name: "The homes" });
   await expect(homes.getByRole("button", { name: "4127 Larkmoor Ave NE: like" })).toHaveAttribute("aria-pressed", "true");
-  // Ask for more: a text to the agent, about the home they liked.
-  await expect(next.getByRole("link", { name: "Ask for more like these" })).toHaveAttribute(
+  // Nothing else until every home is rated: no next step, no card of options.
+  await expect(end.getByRole("link", { name: "See more homes like these" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "What's next" })).toHaveCount(0);
+  await expect(end.getByRole("button", { name: /^Message/ })).toHaveCount(0);
+  // Passing on the other one from here: that's all, and the one way on for
+  // someone signed in is more homes like these, at Home.
+  await homes.getByRole("button", { name: "96 Fernhollow Ln: pass" }).click();
+  await expect(homes.getByRole("button", { name: "96 Fernhollow Ln: pass" })).toHaveAttribute("aria-pressed", "true");
+  await expect(end.getByRole("heading", { name: "That's all" })).toBeVisible();
+  await expect(end.getByText("Lena Marsh sees your likes and comments.")).toBeVisible();
+  const more = end.getByRole("link", { name: "See more homes like these" });
+  await expect(more).toHaveAttribute("href", "/");
+  expect((await more.boundingBox())!.height).toBeGreaterThanOrEqual(48);
+  await expect(end.getByRole("button", { name: "Sign up to save your picks" })).toHaveCount(0);
+  // Ask for more is in Contact: a text to the agent, about the home they liked.
+  await header.getByRole("button", { name: "Contact" }).click();
+  await expect(contact).toBeVisible();
+  await expect(contact.getByRole("link", { name: "Ask Lena for more like these" })).toHaveAttribute(
     "href",
     `sms:2065550177?&body=${encodeURIComponent("Hi Lena, could you send me more homes like 4127 Larkmoor Ave NE?")}`,
   );
-  await expect(next.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
-  // A word with the agent: Contact.
-  await next.getByRole("button", { name: "Message Lena" }).click();
-  await expect(contact).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(contact).toBeHidden();
   // Back to the home they liked, in one tap.
@@ -113,19 +125,88 @@ test("signed in on their own link, a client has their menu and the bell, the age
   await page.goto(`${urls.Jamie}?home=SAMPLE-1008`);
   await expect(welcome).toBeInViewport();
 
-  // Signed out, the end still has its next steps; the way home is for the signed in.
+  // Signed out on Jamie's link (which shows Jamie's ratings, all in), the one
+  // way on is signing up, and it says why; Home is for the signed in.
   const stranger = await (await browser.newContext()).newPage();
   await saveContact(agent, { phone: "", email: "lena@marsh.example" });
   await stranger.goto(urls.Jamie);
-  await toEnd(stranger);
-  const theirs = stranger.getByRole("region", { name: "What's next" });
-  // No phone now: an email, the same words.
-  await expect(theirs.getByRole("link", { name: "Ask for more like these" })).toHaveAttribute(
+  await toEnd(stranger, "That's all");
+  const theirEnd = stranger.getByRole("region", { name: "The end" });
+  await expect(theirEnd.getByText("Save what you liked and get more homes like them. Free, no password.")).toBeVisible();
+  const signUp = theirEnd.getByRole("button", { name: "Sign up to save your picks" });
+  await expect(signUp).toBeVisible();
+  expect((await signUp.boundingBox())!.height).toBeGreaterThanOrEqual(48);
+  await expect(theirEnd.getByRole("link", { name: "See more homes like these" })).toHaveCount(0);
+  await expect(theirEnd.getByRole("link", { name: "Home" })).toHaveCount(0);
+  await expect(stranger.getByRole("region", { name: "What's next" })).toHaveCount(0);
+  await expect(stranger.getByRole("button", { name: /Leave this link/ })).toHaveCount(0);
+  await expect(stranger.getByRole("button", { name: "Invite someone" })).toHaveCount(0);
+  // The button opens the sign-up, right here.
+  await signUp.click();
+  const join = stranger.getByRole("dialog", { name: /Sign up/ });
+  await expect(join).toBeVisible();
+  await stranger.keyboard.press("Escape");
+  await expect(join).toBeHidden();
+  // Ask for more, in Contact: no phone now, so an email, the same words.
+  await stranger.getByRole("banner").getByRole("button", { name: "Contact" }).click();
+  await expect(stranger.getByRole("dialog", { name: "Contact Lena Marsh" }).getByRole("link", { name: "Ask Lena for more like these" })).toHaveAttribute(
     "href",
     /^mailto:lena@marsh\.example\?subject=/,
   );
-  await expect(theirs.getByRole("link", { name: "Home" })).toHaveCount(0);
-  await expect(stranger.getByRole("button", { name: /Leave this link/ })).toHaveCount(0);
+});
+
+// Signed up on their own link, they stay signed in: back on the link later,
+// in a browser that only has what the first one saved (its cookies, the way
+// a phone keeps them), they're still themselves, their like is still theirs,
+// and a tap on the heart does what it does, with no sign-up asked again. Nor
+// does the sign-in page ask "What brings you to Porchcard?": a link sign-up
+// has said. (This pins the local sign-in only, the dev cookie: with Supabase
+// the cookies are its session, and their lasting is a Supabase setting, in
+// the README's checklist.)
+test("back on the link in a fresh browser, they're still signed in", async ({ browser }) => {
+  test.setTimeout(90_000);
+  const stamp = Date.now();
+  const agent = await signInAgent(browser, `lena-fresh.${stamp}@example.com`, "Lena Marsh");
+  const { urls } = await createShare(agent, ["4127 Larkmoor", "96 Fernhollow"], ["Jamie"]);
+
+  // Jamie signs up on her link, liking the first home.
+  const first = await browser.newContext();
+  const page = await first.newPage();
+  await page.goto(urls.Jamie);
+  await toFirstHome(page);
+  await heartOf(homeIn(page, "4127 Larkmoor Ave NE")).click();
+  await joinAs(page, "Jamie", `jamie-fresh.${stamp}@example.com`);
+  await expect(heartOf(homeIn(page, "4127 Larkmoor Ave NE"))).toHaveAttribute("aria-pressed", "true");
+
+  // The same link, with only what that browser saved: signed in still.
+  const storageState = await first.storageState();
+  const later = await (await browser.newContext({ storageState })).newPage();
+  await later.goto(urls.Jamie);
+  const header = later.getByRole("banner");
+  await expect(header.getByRole("button", { name: "Account menu" })).toBeVisible();
+  await toFirstHome(later);
+  const larkmoor = homeIn(later, "4127 Larkmoor Ave NE");
+  await expect(heartOf(larkmoor)).toHaveAttribute("aria-pressed", "true");
+  // The heart is hers to change: no sign-up in the way.
+  await heartOf(larkmoor).click();
+  await expect(later.getByRole("dialog", { name: "Sign up to like and comment" })).toHaveCount(0);
+  await expect(heartOf(larkmoor)).toHaveAttribute("aria-pressed", "false");
+
+  // Signing in from the link said what brings her here: the sign-in page
+  // sends her on (Home), not to /welcome to be asked.
+  await later.goto("/login");
+  await later.waitForURL((url) => url.pathname === "/");
+  await expect(later.getByRole("group", { name: "What brings you to Porchcard?" })).toHaveCount(0);
+
+  // (The control: a browser with nothing saved is signed out on the same link.)
+  const stranger = await (await browser.newContext()).newPage();
+  await stranger.goto(urls.Jamie);
+  await expect(stranger.getByRole("banner")).toBeVisible();
+  await expect(stranger.getByRole("banner").getByRole("button", { name: "Account menu" })).toHaveCount(0);
+  await stranger.context().close();
+  await later.context().close();
+  await first.close();
+  await agent.context().close();
 });
 
 test("someone added to a link they didn't expect can leave it, and the agent no longer sees them on it", async ({
