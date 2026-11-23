@@ -69,7 +69,7 @@ export const GET = apiRoute(async ({ agent, url }) => {
     return apiJson({ homes: homes.slice(0, limit).map(homeJson) });
   }
 
-  const filters: SearchFilters = { q, minPrice, maxPrice, beds, baths, type, liked: false, sort: sort ?? "reactions" };
+  const filters: SearchFilters = { q, minPrice, maxPrice, beds, baths, type, by: null, minSqft: null, liked: false, sold: false, sort: sort ?? "reactions" };
   const keys = await searchHomeKeys(filters);
   const homes = await listingsInOrder(keys.slice(0, limit));
   return apiJson({ homes: homes.map(homeJson) });

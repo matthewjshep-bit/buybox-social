@@ -13,6 +13,7 @@ const pressedPins = (page: Page) => pins(page).and(page.locator('[aria-pressed="
 const tapPin = (page: Page, name: string) => page.getByRole("button", { name }).dispatchEvent("click");
 
 test("the map beside one home at a time: filters, pins and the home pane follow each other", async ({ browser }) => {
+  test.setTimeout(60_000);
   const page = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -89,26 +90,59 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await expect(page).toHaveURL(/\/search\?home=SAMPLE-1005$/);
 
   // Each filter narrows the homes and the map, and lands in the URL.
-  await page.getByLabel("Bedrooms").selectOption("5");
+  // (Each filter is a button that opens its choices, and says what's chosen.)
+  const menu = (id: string) => page.locator(`[data-filter="${id}"]`);
+  await menu("rooms").click();
+  await expect(page.getByRole("dialog", { name: "Beds & baths" })).toBeVisible();
+  await page.getByRole("button", { name: "5+ bedrooms" }).click();
   await expect(page).toHaveURL(/beds=5/);
+  await expect(menu("rooms")).toHaveText(/5\+ bd/);
   // (Counted by their pins: homes other tests added have none.)
   await expect(homeIn(page, "2205 Brackenfield Ct NW")).toBeAttached();
   await expect(homeIn(page, "24611 SE Foxglove Pl")).toBeAttached();
   await atLeastPins(page, 2);
   await expect.poll(() => pins(page).count()).toBeLessThan(13);
 
-  await page.getByLabel("Bedrooms").selectOption("");
+  await page.getByRole("button", { name: "Any bedrooms" }).click();
+  await expect(menu("rooms")).toHaveText(/Beds & baths/);
+  // Done puts the choices away, back to the button.
+  await page.getByRole("button", { name: "Done" }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await expect(menu("rooms")).toBeFocused();
+  await menu("price").click();
   await page.getByLabel("Maximum price").selectOption("800000");
+  await expect(menu("price")).toHaveText(/Up to \$800K/);
   await atLeastPins(page, 5);
   await expect.poll(() => pins(page).count()).toBeLessThan(13);
 
   await page.getByLabel("Maximum price").selectOption("");
-  await page.getByLabel("Home type").selectOption("townhouse");
+  // Escape puts them away too.
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await menu("type").click();
+  await page.getByRole("radio", { name: "Townhouses" }).check();
   await atLeastPins(page, 1);
   await expect.poll(() => pins(page).count()).toBeLessThan(13);
   await expect(homeIn(page, "3518 Wexford Ave N")).toBeAttached();
+  await page.getByRole("radio", { name: "All home types" }).check();
 
-  await page.getByLabel("Home type").selectOption("");
+  // The rest are under Filters, which counts those on: who listed it, say.
+  await menu("more").click();
+  await expect(page.getByRole("dialog", { name: "Home type" })).toBeHidden();
+  await page.getByRole("radio", { name: "The MLS" }).check();
+  await expect(page).toHaveURL(/by=mls/);
+  await expect(menu("more")).toHaveText(/Filters\s*1/);
+  await atLeastPins(page, 13);
+  await page.getByRole("radio", { name: "An investor" }).check();
+  await expect(page).toHaveURL(/by=investor/);
+  await expect.poll(() => pins(page).count()).toBeLessThan(13);
+  await page.getByRole("button", { name: "Reset" }).click();
+  await expect(page).not.toHaveURL(/by=/);
+  await expect(menu("more")).toHaveText(/^Filters$/);
+  // A tap away puts them away.
+  await page.getByLabel("City, ZIP, address or MLS number").click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+
   await page.getByLabel("City, ZIP, address or MLS number").fill("Seattle");
   await page.getByLabel("City, ZIP, address or MLS number").press("Enter");
   await expect(page).toHaveURL(/q=Seattle/);

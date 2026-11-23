@@ -30,20 +30,21 @@ export const startsWithPlace = (text: string) =>
 
 // The homes a search finds, in its order: their keys, for the reel to show.
 export async function searchHomeKeys(filters: SearchFilters): Promise<string[]> {
-  // For sale: from the MLS, or added by someone themselves (a deal, their own
-  // listing) when it's one anyone may see on their profile: not hidden, with
-  // a photo. (Closed ones stay on their profiles. A copy an agent made of
-  // their MLS listing, to change it, isn't the home twice: while the MLS one
-  // is for sale, that's the one found.)
+  // For sale (or, asked for, sold: a deal marked Closed is a sold home): from
+  // the MLS, or added by someone themselves (a deal, their own listing) when
+  // it's one anyone may see on their profile: not hidden, with a photo. (A
+  // copy an agent made of their MLS listing, to change it, isn't the home
+  // twice: while the MLS one is there too, that's the one found.)
+  const status = filters.sold ? "Closed" : "Active";
   const conditions = [
-    sql`l.standard_status = 'Active' and (l.owner_account_id is null or (
+    sql`l.standard_status = ${status} and (l.owner_account_id is null or (
       coalesce((l.data->>'Hidden')::boolean, false) = false
       and exists (
         select 1 from jsonb_array_elements(coalesce(l.data->'Media', '[]'::jsonb)) m
         where coalesce(m->>'MediaCategory', 'Photo') <> 'Video' and m->>'VideoEmbed' is null)
       and not exists (
         select 1 from listings o
-        where o.listing_key = l.data->>'CopiedFrom' and o.standard_status = 'Active' and o.owner_account_id is null)))`,
+        where o.listing_key = l.data->>'CopiedFrom' and o.standard_status = ${status} and o.owner_account_id is null)))`,
   ];
   // (Only commas in the box is nothing to look for: no homes, not every home.)
   if (filters.q) conditions.push(placeWords(filters.q).length ? matchesPlace(filters.q) : sql`false`);
@@ -52,6 +53,10 @@ export async function searchHomeKeys(filters: SearchFilters): Promise<string[]> 
   if (filters.beds) conditions.push(sql`(l.data->>'BedroomsTotal')::int >= ${filters.beds}`);
   if (filters.baths) conditions.push(sql`(l.data->>'BathroomsTotalInteger')::int >= ${filters.baths}`);
   if (filters.type) conditions.push(sql`l.data->>'PropertySubType' = ${HOME_TYPES[filters.type].value}`);
+  if (filters.minSqft) conditions.push(sql`(l.data->>'LivingArea')::numeric >= ${filters.minSqft}`);
+  if (filters.by === "mls") conditions.push(sql`l.owner_account_id is null`);
+  else if (filters.by)
+    conditions.push(sql`exists (select 1 from accounts a where a.id = l.owner_account_id and a.kind = ${filters.by})`);
   if (filters.liked) conditions.push(sql`t.pub_like + t.priv_like > 0`);
   const where = conditions.reduce((all, condition) => sql`${all} and ${condition}`);
 

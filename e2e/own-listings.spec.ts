@@ -110,6 +110,11 @@ test("an agent adds a listing with photos; it leads their profile, opens full sc
   // Found in Search, by its street, beside the MLS homes. (Not in Browse.)
   const searchFor = async () => (await visitor.request.get(`/search?q=${encodeURIComponent("Dealmaker")}`)).text();
   expect(await searchFor()).toContain(ADDRESS);
+  // Listed by an agent: found among an agent's homes, not an investor's or the MLS's.
+  const listedBy = async (by: string) => (await visitor.request.get(`/search?q=Dealmaker&by=${by}`)).text();
+  expect(await listedBy("agent")).toContain(ADDRESS);
+  expect(await listedBy("investor")).not.toContain(ADDRESS);
+  expect(await listedBy("mls")).not.toContain(ADDRESS);
   expect(await (await visitor.request.get("/reel")).text()).not.toContain(ADDRESS);
   // Its own page works for anyone with the address.
   await visitor.goto(`/homes/${key}`);
@@ -128,6 +133,26 @@ test("an agent adds a listing with photos; it leads their profile, opens full sc
   await expect(details.getByRole("status")).toHaveText("Saved");
   await visitor.goto(profile);
   await expect(grid.getByRole("link", { name: new RegExp(ADDRESS) })).toContainText("$399,000");
+
+  // Marked closed, it's sold: out of the homes for sale, found under Sold,
+  // or by "sold" or "closed" typed with the rest (the same thing here).
+  await details.getByText("Closed", { exact: true }).click();
+  await details.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(agent.getByRole("main")).toContainText("Closed · On your profile");
+  expect(await searchFor()).not.toContain(ADDRESS);
+  const searchSold = async (query: string) => (await visitor.request.get(`/search?${query}`)).text();
+  expect(await searchSold("q=Dealmaker&sold=1")).toContain(ADDRESS);
+  expect(await searchSold(`q=${encodeURIComponent("sold Dealmaker")}`)).toContain(ADDRESS);
+  expect(await searchSold(`q=${encodeURIComponent("Dealmaker, closed")}`)).toContain(ADDRESS);
+  await visitor.goto("/search?q=Dealmaker");
+  await expect(visitor.getByRole("article", { name: ADDRESS })).toHaveCount(0);
+  await visitor.locator('[data-filter="status"]').click();
+  await visitor.getByRole("radio", { name: "Sold" }).check();
+  await expect(visitor).toHaveURL(/sold=1/);
+  await expect(visitor.getByRole("article", { name: ADDRESS })).toBeVisible();
+  await expect(visitor.locator('[data-filter="status"]')).toHaveText("Sold");
+
+  // Hidden (closed or not): off the profile and out of Search, still theirs.
   await details.getByLabel("Show on my profile").uncheck();
   await details.getByRole("button", { name: "Save", exact: true }).click();
   await expect(agent.getByRole("main")).toContainText("Hidden");
@@ -135,6 +160,7 @@ test("an agent adds a listing with photos; it leads their profile, opens full sc
   await expect(visitor.getByRole("main")).not.toContainText(ADDRESS);
   // Hidden, it's out of Search too.
   expect(await searchFor()).not.toContain(ADDRESS);
+  expect(await searchSold("q=Dealmaker&sold=1")).not.toContain(ADDRESS);
   await agent.goto("/dashboard/listings");
   await expect(agent.getByRole("list", { name: "Your listings" })).toContainText(ADDRESS);
 

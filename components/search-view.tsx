@@ -19,11 +19,12 @@ import type { ThreadActions } from "@/components/listing-thread";
 import type { MapHome } from "@/components/listing-map";
 import { QuickSendReel, SendPill, sendHomeFrom, useQuickSend } from "@/components/quick-send";
 import { ReelFeed } from "@/components/reel";
+import { SearchFilterBar } from "@/components/search-filters";
 import { SearchSwitch } from "@/components/search-switch";
 import { HomeThumb } from "@/components/ui";
 import type { FeedPost } from "@/lib/feed";
 import { cn, formatPrice } from "@/lib/format";
-import { filtersQuery, HOME_TYPES, SORTS, type SearchFilters } from "@/lib/search-options";
+import { filtersQuery, SORTS, type SearchFilters } from "@/lib/search-options";
 import { button, field } from "@/lib/ui";
 
 // The map draws with WebGL in the browser, so it never renders on the server.
@@ -47,12 +48,6 @@ const ListingMap = dynamic(() => import("@/components/listing-map"), {
   ssr: false,
   loading: () => <div className="size-full animate-pulse bg-stone-200" />,
 });
-
-const MIN_PRICES = [400_000, 600_000, 800_000, 1_000_000, 1_500_000, 2_000_000];
-const MAX_PRICES = [600_000, 800_000, 1_000_000, 1_500_000, 2_000_000, 3_000_000];
-
-// The filters: choices in a row of round-ended boxes, beside the search.
-const pill = cn(field({ pill: true, small: true }), "shrink-0 font-medium");
 
 // "3 bd · 2 ba · 2,120 sq ft"
 const factsOf = (listing: FeedPost["listing"]) =>
@@ -242,7 +237,7 @@ export function SearchView({
   // it, which an address or a ZIP would have), people are one tap away.
   const { q } = filters;
   const onlyWords =
-    Boolean(q) && !filters.minPrice && !filters.maxPrice && !filters.beds && !filters.baths && !filters.type && !filters.liked;
+    Boolean(q) && !filters.minPrice && !filters.maxPrice && !filters.beds && !filters.baths && !filters.type && !filters.liked && !filters.sold && !filters.by && !filters.minSqft;
   // (Each way out a fingertip tall; `side`: lined up left beside the map, or centred in the pane.)
   const none = (side: "items-start" | "items-center") => (
     <div className={cn("flex flex-col", side)}>
@@ -308,71 +303,7 @@ export function SearchView({
         </div>
         {/* One swipeable row on phones; wraps on wider screens. */}
         <FilterRow>
-          <select
-            aria-label="Minimum price"
-            value={shown.minPrice ?? ""}
-            onChange={(event) => update({ minPrice: event.target.value || null })}
-            className={pill}
-          >
-            <option value="">No min</option>
-            {MIN_PRICES.map((p) => (
-              <option key={p} value={p}>
-                {formatPrice(p)}+
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Maximum price"
-            value={shown.maxPrice ?? ""}
-            onChange={(event) => update({ maxPrice: event.target.value || null })}
-            className={pill}
-          >
-            <option value="">No max</option>
-            {MAX_PRICES.map((p) => (
-              <option key={p} value={p}>
-                Up to {formatPrice(p)}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Bedrooms"
-            value={shown.beds ?? ""}
-            onChange={(event) => update({ beds: event.target.value || null })}
-            className={pill}
-          >
-            <option value="">Any beds</option>
-            {[1, 2, 3, 4, 5].map((n) => (
-              <option key={n} value={n}>
-                {n}+ beds
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Bathrooms"
-            value={shown.baths ?? ""}
-            onChange={(event) => update({ baths: event.target.value || null })}
-            className={pill}
-          >
-            <option value="">Any baths</option>
-            {[1, 2, 3, 4].map((n) => (
-              <option key={n} value={n}>
-                {n}+ baths
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Home type"
-            value={shown.type ?? ""}
-            onChange={(event) => update({ type: event.target.value || null })}
-            className={pill}
-          >
-            <option value="">All home types</option>
-            {Object.entries(HOME_TYPES).map(([value, { label }]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
+          <SearchFilterBar shown={shown} update={update} />
         </FilterRow>
       </form>
 
@@ -382,7 +313,9 @@ export function SearchView({
       <div className="flex flex-col border-b border-stone-200 bg-white lg:col-start-2 lg:row-start-2 xl:col-start-1 xl:min-h-0 xl:border-b-0 xl:border-r">
         <div className="flex items-center justify-between gap-x-3 px-4 lg:justify-start xl:flex-wrap xl:justify-between xl:pt-2">
           <h1 className="text-sm font-semibold max-lg:sr-only lg:min-w-0 lg:truncate xl:w-full xl:pt-1">
-            {filters.q ? `Homes matching “${filters.q}”` : "Washington homes for sale"}
+            {filters.q
+              ? `${filters.sold ? "Sold homes" : "Homes"} matching “${filters.q}”`
+              : `Washington homes ${filters.sold ? "sold" : "for sale"}`}
           </h1>
           <p className="shrink-0 text-sm font-semibold text-ink lg:font-normal lg:text-muted" aria-live="polite">
             {count}
