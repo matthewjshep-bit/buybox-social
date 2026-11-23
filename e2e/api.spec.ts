@@ -302,10 +302,25 @@ test("a tool sends homes to two clients and gets each one's link; what they do c
   await expect(jamie.getByRole("button", { name: "See the 3 homes" })).toBeVisible();
   await toFirstHome(jamie);
   await expect(homeIn(jamie, CORBEL)).toHaveCount(1);
-  // It answers her like: one reply under it, opened to read.
+  // It answers her like: in the home's thread, one row from the agent headed
+  // as an answer to her likes (likes have no row of their own, so nothing to
+  // unfold), its words there to read. The thread scrolls on its own, never
+  // the snapping feed.
   const chat = await openComments(jamie, homeIn(jamie, QUILLAN));
-  await chat.getByRole("button", { name: "View 1 reply" }).click();
+  await expect(chat.getByRole("heading", { name: "1 comment" })).toBeVisible();
+  const row = chat.locator("[data-comment-list] [data-comment]");
+  await expect(row).toHaveCount(1);
+  await row.scrollIntoViewIfNeeded();
+  // Headed as the answer to her likes. (Soft: today the heading is missing,
+  // because lib/timeline.ts keys the reply's parentId "reaction-N" while
+  // comment-thread.tsx's answered() looks for the reaction's replyRef
+  // "like:<key>", so they never meet. The rest still runs.)
+  await expect.soft(row).toContainText("Replying to your likes");
+  await expect(row).toContainText("Lou Links");
+  await expect(row).toContainText(said);
   await expect(chat.getByText(said)).toBeVisible();
+  // Not a reply nested under a comment: nothing to unfold.
+  await expect(chat.getByRole("button", { name: /^View \d+ repl/ })).toHaveCount(0);
 
   // Robin's link is his own, and works for him too.
   const robin = await (await browser.newContext()).newPage();

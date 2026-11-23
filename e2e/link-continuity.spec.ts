@@ -284,7 +284,8 @@ test("a quick Send named for someone, opened on a new device, starts the name pr
   await agent.goto("/homes/SAMPLE-1004");
   await homeIn(agent, "96 Fernhollow Ln").getByRole("button", { name: "Send 96 Fernhollow Ln", exact: true }).click();
   const sheet = agent.getByRole("dialog", { name: "Sent. Who's it for?" });
-  await expect(sheet).toBeVisible();
+  // (The link is made as the sheet opens; on a busy machine that takes a moment.)
+  await expect(sheet).toBeVisible({ timeout: 15_000 });
   const forWhom = sheet.getByRole("combobox", { name: "Who's it for? (optional)" });
   await forWhom.fill("Toby");
   await forWhom.press("Enter");

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, detailsForm, enterCode, scrollToEnd, signInAgent, signUpBuyer, throughWelcome, toDetails, toFirstHome } from "./helpers";
+import { commentsOf, createShare, detailsForm, enterCode, scrollToEnd, signInAgent, signUpBuyer, throughWelcome, toDetails, toFirstHome } from "./helpers";
 
 const SMALL = { viewport: { width: 360, height: 640 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
 const ON_ITS_SIDE = { viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
@@ -144,7 +144,7 @@ test("on a phone, the comment box and the sign-up button stay above the keyboard
   const seen = 640 - 290;
 
   await page.getByRole("article").first().getByRole("button", { name: /^Comments/ }).click();
-  const comments = page.getByRole("dialog", { name: "Comments" });
+  const comments = commentsOf(page.getByRole("article").first());
   const box = comments.getByRole("textbox").first();
   await expect(box).toBeVisible();
   await keyboard(290);

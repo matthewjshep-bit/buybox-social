@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { signedIn, createShare, homeIn, joinAs, pick, settle, signInAgent, tapPhoto, heartOf } from "./helpers";
+import { signedIn, commentsOf, createShare, homeIn, joinAs, pick, settle, signInAgent, tapPhoto, heartOf } from "./helpers";
 
 // The phone settings carry over to new contexts, touch included; a desktop has none.
 const DESKTOP = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, isMobile: false, hasTouch: false };
@@ -37,9 +37,9 @@ test("tap anywhere on a photo to like that spot or comment on it, and it shows w
   await door.getByRole("button", { name: "Like the front door", exact: true }).click();
   await expect(door.getByRole("button", { name: "Like the front door, 1 like", exact: true })).toHaveAttribute("aria-pressed", "true");
 
-  // On a phone, comments on it are typed in a sheet, the spot still in view above.
+  // On a phone, comments on it are typed in the thread, which opens about just this spot.
   await door.getByRole("button", { name: /^Comment on the front door/ }).click();
-  const sheet = page.getByRole("dialog", { name: "Comments" });
+  const sheet = commentsOf(home);
   await expect(sheet.getByRole("heading", { name: "On the front door" })).toBeVisible();
   await expect(sheet.getByText("No comments on the front door yet.")).toBeVisible();
   const field = sheet.getByLabel("Comment on the front door");
@@ -135,7 +135,7 @@ test("on a desktop, the comment box opens right where you click, and what's said
   // The panel says how many; the words are in the comments, on a card with
   // the spot it's about.
   await home.locator("[data-words]").getByRole("button", { name: /^Comments, \d+$/ }).click();
-  const comments = page.getByRole("dialog", { name: "Comments" });
+  const comments = commentsOf(home);
   const card = comments.getByRole("listitem").filter({ hasText: "These trees make the whole street" });
   await expect(card).toBeVisible();
   await expect(card.getByRole("button", { name: /^About the mature trees/ })).toBeVisible();
@@ -148,9 +148,9 @@ test("on a desktop, the comment box opens right where you click, and what's said
   await page.keyboard.press("Escape");
   await expect(porch).toBeHidden();
 
-  // From the comments, the card's photo goes back to the spot, its card open.
+  // From the comments, the spot's name goes back to the spot, its card open.
   await home.locator("[data-words]").getByRole("button", { name: /^Comments, \d+$/ }).click();
-  await card.getByRole("button", { name: /on the photo$/ }).click();
+  await card.getByRole("button", { name: /^About the mature trees/ }).click();
   await expect(comments).toBeHidden();
   await expect(trees).toBeVisible();
 });
@@ -298,7 +298,7 @@ test("dislike a spot as easily as liking it; the price is words to read, said ab
   await expect(home.getByRole("group", { name: "Price" })).toHaveCount(0);
   await expect(home.getByRole("button", { name: /^Like the price/ })).toHaveCount(0);
   await home.getByRole("button", { name: "Add a comment…" }).click();
-  const sheet = page.getByRole("dialog", { name: "Comments" });
+  const sheet = commentsOf(home);
   await sheet.getByLabel("Add a comment").fill("A little high for the street");
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(sheet.getByText("A little high for the street")).toBeVisible();
@@ -322,7 +322,7 @@ test("a spot comment on an agent's link stays on the link", async ({ browser }) 
   const home = homeIn(client, "96 Fernhollow Ln");
   const card = await pick(home, "the evergreens");
   await card.getByRole("button", { name: "Comment" }).click();
-  const sheet = client.getByRole("dialog", { name: "Comments" });
+  const sheet = commentsOf(home);
   await sheet.getByLabel("Comment on the evergreens").fill("The evergreens are my favorite part");
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(sheet).toBeHidden();
@@ -354,7 +354,7 @@ test("a spot comment on an agent's link stays on the link", async ({ browser }) 
   }
   const publicHome = homeIn(anon, "96 Fernhollow Ln");
   await publicHome.getByRole("button", { name: /^Comments/ }).click();
-  const publicComments = anon.getByRole("dialog", { name: "Comments" });
+  const publicComments = commentsOf(publicHome);
   await expect(publicComments).toBeVisible();
   await expect(publicComments).not.toContainText("The evergreens are my favorite part");
   await expect(publicComments).not.toContainText(/didn't like .*evergreens/);

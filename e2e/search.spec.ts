@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { heartOf, homeIn, joinAs, settle, signUpBuyer } from "./helpers";
+import { commentsOf, heartOf, homeIn, joinAs, settle, signUpBuyer } from "./helpers";
 
 // (A pin is named by its short price, its address and its price: "$689K, 719
 // Saltmarsh Ln, $689,000". The home beside the map has a price to tap too.)
@@ -518,8 +518,9 @@ test("signed in, Search is homes or people: the switch sits above the field on a
   await expect(heartOf(first)).toHaveAttribute("aria-pressed", "true");
   // (The comment bar is the way to them.)
   await first.getByRole("button", { name: /^Add a comment…/ }).click();
-  const comments = page.getByRole("dialog", { name: "Comments" });
+  const comments = commentsOf(first);
   await expect(comments).toBeVisible();
+  await expect(comments.getByRole("textbox", { name: "Add a comment" })).toBeFocused();
   const [paneBox, sheetBox] = [
     (await page.locator('section[aria-label="Homes"]').boundingBox())!,
     (await comments.boundingBox())!,

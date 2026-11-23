@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   signedIn,
   commentIn,
+  commentsOf,
   createShare,
   heartOf,
   homeIn,
@@ -102,8 +103,9 @@ test("public pages show the latest comments, never private words, and private th
   // The private pass shows nowhere: not in the comments...
   await expect(sheet.getByText("People pass on")).toHaveCount(0);
   await expect(sheet).not.toContainText(/pass/i);
-  const thread = sheet.getByRole("list", { name: "Comments and likes" });
-  await expect(thread).toContainText("A buyer liked the brick front");
+  // (Who liked it is a count, never a row: the one like so far is the private one.)
+  await expect(sheet.getByText(/^1 like$/)).toBeVisible();
+  const thread = sheet.getByRole("list", { name: "Comments" });
   await expect(thread).toContainText(SHARED);
   await expect(thread).toContainText("Shared from a private chat");
   await expect(page.getByText(SECRET)).toHaveCount(0);
@@ -129,7 +131,7 @@ test("public pages show the latest comments, never private words, and private th
   await expect(card.getByText(/Riley|Quinn/)).toHaveCount(0);
   // Nor in the comments beside it, nor anywhere in her page as it's sent.
   await card.getByRole("button", { name: /^See the \d+ comments?$/ }).click();
-  const rivalSheet = rival.getByRole("dialog", { name: "Comments" });
+  const rivalSheet = commentsOf(homeIn(rival, BRACKENFIELD));
   await expect(rivalSheet).toContainText(SHARED);
   await expect(rivalSheet).not.toContainText(/pass/i);
   await expect(rival.getByText(SECRET)).toHaveCount(0);
@@ -149,7 +151,8 @@ test("public pages show the latest comments, never private words, and private th
   await sheet.getByLabel("Add a comment").fill("Love the quiet cul-de-sac.");
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(commentIn(thread, "Morgan", "Love the quiet cul-de-sac.")).toBeVisible();
-  await expect(thread).toContainText("You liked the natural light");
+  // (Morgan's like counts with the buyer's: two, and still no one named.)
+  await expect(sheet.getByText(/^2 likes$/)).toBeVisible();
   await page.keyboard.press("Escape");
   // Under the photo now too, by name, newest first; still nobody from the
   // link, and a row is a fingertip to tap.
@@ -172,7 +175,7 @@ test("public pages show the latest comments, never private words, and private th
   const otherPost = homeIn(other, BRACKENFIELD);
   let otherSheet = await openComments(other, otherPost);
   await expect(otherSheet.getByText("Love the quiet cul-de-sac.")).toBeVisible();
-  await expect(otherSheet.getByText("Morgan liked the natural light")).toBeVisible();
+  await expect(otherSheet.getByText(/^2 likes$/)).toBeVisible();
   await expect(otherSheet.getByText(SHARED)).toBeVisible();
   await other.keyboard.press("Escape");
 
@@ -195,11 +198,13 @@ test("public pages show the latest comments, never private words, and private th
     otherMore.getByRole("group", { name: "What made you pass?" }).getByRole("button", { name: "Price" }),
   ).toHaveAttribute("aria-pressed", "true");
   await priceSaved;
+  // (The comments say nothing of passes, public or not: what people think of
+  // the home is the Porchcard's.)
   await other.reload();
   otherSheet = await openComments(other, otherPost);
-  await expect(otherSheet.getByText("You passed, didn't like the price")).toBeVisible();
+  await expect(otherSheet).not.toContainText(/pass/i);
   await other.keyboard.press("Escape");
-  // In the Porchcard too: the public pass and why, and still nobody from the link.
+  // In the Porchcard: the public pass and why, and still nobody from the link.
   card = await porchcard();
   await expect(card.getByText("Didn't like", { exact: true })).toBeVisible();
   await expect(card.getByRole("button", { name: /^Price 1 person/ })).toBeVisible();

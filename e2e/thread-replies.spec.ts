@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   signedIn,
+  commentsOf,
   createShare,
   heartOf,
   homeIn,
@@ -19,7 +20,7 @@ import {
 const HALVARD = "10421 Halvard Way NE";
 const DESKTOP = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, isMobile: false, hasTouch: false };
 
-test("a reply can answer someone's likes, and a reply to a reply names who it answers", async ({ browser }) => {
+test("a reply answers a comment, and a reply to a reply names who it answers; likes are a count, not a row", async ({ browser }) => {
   test.setTimeout(90_000);
   const nadia = await signUpBuyer(browser, "nadia.replies@example.com", "Nadia Brooks");
   const pageErrors: string[] = [];
@@ -28,48 +29,57 @@ test("a reply can answer someone's likes, and a reply to a reply names who it an
   const nadiaHome = homeIn(nadia, HALVARD);
   await heartOf(nadiaHome).click();
   await expect(heartOf(nadiaHome)).toHaveAttribute("aria-pressed", "true");
+  let hers = await openComments(nadia, nadiaHome);
+  await hers.getByLabel("Add a comment").fill("That yard is the whole reason.");
+  await hers.getByRole("button", { name: "Post", exact: true }).click();
+  await expect(hers.getByText("That yard is the whole reason.")).toBeVisible();
+  // Her like is counted above the comments, never a row of its own to answer.
+  await expect(hers.getByText(/^\d+ likes?$/)).toBeVisible();
+  await expect(hers.getByRole("button", { name: /likes$/ })).toHaveCount(0);
+  await nadia.keyboard.press("Escape");
 
-  // Someone else answers her like, right where it is in the comments.
+  // Someone else answers her, right under what she said.
   const rory = await (await browser.newContext()).newPage();
   rory.on("pageerror", (error) => pageErrors.push(error.message));
   await rory.goto("/homes/SAMPLE-1005");
   let sheet = await openComments(rory, homeIn(rory, HALVARD));
-  await sheet.getByRole("button", { name: "Reply to Nadia's likes", exact: true }).click();
+  await sheet.getByRole("button", { name: "Reply to Nadia", exact: true }).click();
   const field = sheet.getByLabel("Reply to Nadia");
   await expect(field).toBeFocused();
-  await field.fill("That yard is the whole reason.");
+  await field.fill("Same, that yard.");
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
   await joinAs(rory, "Rory");
-  await expect(sheet.getByRole("list", { name: "Replies to Nadia's likes" }).getByText("That yard is the whole reason.")).toBeVisible();
+  await expect(sheet.getByRole("list", { name: "Replies to Nadia" }).getByText("Same, that yard.")).toBeVisible();
 
-  // Kept: there on coming back, folded under her like.
+  // Kept: there on coming back, folded under her comment, which has a heart.
   await rory.reload();
   sheet = await openComments(rory, homeIn(rory, HALVARD));
-  const herLikes = sheet.getByRole("listitem").filter({ has: rory.getByRole("button", { name: "Reply to Nadia's likes", exact: true }) });
-  await herLikes.getByRole("button", { name: "View 1 reply" }).click();
-  await expect(sheet.getByRole("list", { name: "Replies to Nadia's likes" }).getByText("That yard is the whole reason.")).toBeVisible();
+  const herComment = sheet.getByRole("listitem").filter({ hasText: "That yard is the whole reason." });
+  await expect(herComment.getByRole("button", { name: /^Like Nadia's comment/ })).toBeVisible();
+  await herComment.getByRole("button", { name: "View 1 reply" }).click();
+  await expect(sheet.getByRole("list", { name: "Replies to Nadia" }).getByText("Same, that yard.")).toBeVisible();
 
-  // She's told, and answers him back under her own like: the box starts with his name.
+  // She's told, and answers him back under her own comment: the box starts with his name.
   await expect(async () => {
     await nadia.goto("/activity");
-    await expect(nadia.getByRole("listitem").filter({ hasText: `Rory replied to your likes on ${HALVARD}` })).toBeVisible({
+    await expect(nadia.getByRole("listitem").filter({ hasText: `Rory replied to your comment on ${HALVARD}` })).toBeVisible({
       timeout: 1000,
     });
   }).toPass({ timeout: 20_000 });
-  await expect(nadia.getByRole("listitem").filter({ hasText: `Rory replied to your likes on ${HALVARD}` })).toContainText(
-    "That yard is the whole reason.",
+  await expect(nadia.getByRole("listitem").filter({ hasText: `Rory replied to your comment on ${HALVARD}` })).toContainText(
+    "Same, that yard.",
   );
   await nadia.goto("/homes/SAMPLE-1005");
-  sheet = await openComments(nadia, homeIn(nadia, HALVARD));
-  await sheet.getByRole("button", { name: "View 1 reply" }).click();
-  const thread = sheet.getByRole("list", { name: "Replies to your likes" });
+  hers = await openComments(nadia, nadiaHome);
+  await hers.getByRole("button", { name: "View 1 reply" }).click();
+  const thread = hers.getByRole("list", { name: "Replies to Nadia" });
   await thread.getByRole("button", { name: "Reply to Rory", exact: true }).click();
-  const back = sheet.getByLabel("Reply to Rory");
+  const back = hers.getByLabel("Reply to Rory");
   await expect(back).toBeFocused();
   await expect(back).toHaveValue("@Rory ");
   await back.pressSequentially("it's huge");
-  await sheet.getByRole("button", { name: "Post", exact: true }).click();
-  // One level: it goes under her like, after his.
+  await hers.getByRole("button", { name: "Post", exact: true }).click();
+  // One level: it goes under her comment, after his.
   await expect(thread.getByRole("listitem")).toHaveCount(2);
   await expect(thread.getByRole("listitem").nth(1)).toContainText("@Rory it's huge");
 
@@ -78,13 +88,14 @@ test("a reply can answer someone's likes, and a reply to a reply names who it an
   await nadia.keyboard.press("Escape");
   const latest = nadiaHome.getByRole("group", { name: "Latest comments" });
   await expect(latest).toBeVisible();
+  await expect(latest).toContainText("That yard is the whole reason.");
   await expect(latest).not.toContainText("replied");
-  await expect(latest).not.toContainText("That yard is the whole reason.");
+  await expect(latest).not.toContainText("Same, that yard.");
   await expect(latest).not.toContainText("@Rory it's huge");
   expect(pageErrors).toEqual([]);
 });
 
-test("on a link, a reply to someone's likes or their comment stays on the link", async ({ browser }) => {
+test("on a link, a reply to someone's comment stays on the link", async ({ browser }) => {
   test.setTimeout(90_000);
   const agent = await signInAgent(browser, "replies-agent@example.com", "Jordan Rivera");
   const { urls, dashboardUrl } = await createShare(agent, ["10421 Halvard"], ["Owen", "Pat"]);
@@ -99,37 +110,35 @@ test("on a link, a reply to someone's likes or their comment stays on the link",
   await owenSheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(owenSheet.getByText("Could we see it Saturday?")).toBeVisible();
 
-  // Pat answers both: his likes, and what he said.
+  // Pat sees who liked it (by name, on a link), and answers what he said.
   const pat = await (await browser.newContext()).newPage();
   await pat.goto(urls.Pat);
   const sheet = await openComments(pat, homeIn(pat, HALVARD));
-  await sheet.getByRole("button", { name: "Reply to Owen's likes", exact: true }).click();
-  await sheet.getByLabel("Reply to Owen").fill("Me too, that porch!");
-  await sheet.getByRole("button", { name: "Post", exact: true }).click();
-  // His first word asks him to sign up, and then it posts.
-  await joinAs(pat, "Pat");
-  await expect(sheet.getByRole("list", { name: "Replies to Owen's likes" }).getByText("Me too, that porch!")).toBeVisible();
+  await expect(sheet.getByText(/^Liked by Owen/)).toBeVisible();
+  await expect(sheet.getByRole("button", { name: /likes$/ })).toHaveCount(0);
   await sheet.getByRole("button", { name: "Reply to Owen", exact: true }).click();
   await sheet.getByLabel("Reply to Owen").fill("Saturday works for me too");
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
+  // His first word asks him to sign up, and then it posts.
+  await joinAs(pat, "Pat");
   await expect(sheet.getByRole("list", { name: "Replies to Owen" }).getByText("Saturday works for me too")).toBeVisible();
 
-  // The agent sees what each one answers.
+  // The agent sees what it answers.
   await agent.goto(dashboardUrl);
-  await expect(agent.getByText(/replying to Owen's likes/)).toBeVisible();
   await expect(agent.getByText(/replying to Owen$/)).toBeVisible();
 
   // Nothing of it on the public page: not on screen, not in its code, and
-  // the link's likes (there only as "a buyer") can't be answered there.
+  // nobody from the link can be answered there.
   const anon = await (await browser.newContext()).newPage();
   await anon.goto("/homes/SAMPLE-1005");
   const publicComments = await openComments(anon, homeIn(anon, HALVARD));
-  await expect(publicComments.getByText("Me too, that porch!")).toHaveCount(0);
+  await expect(publicComments.getByText("Could we see it Saturday?")).toHaveCount(0);
   await expect(publicComments.getByText("Saturday works for me too")).toHaveCount(0);
   await expect(publicComments.getByRole("button", { name: /^Reply to Owen/ })).toHaveCount(0);
+  await expect(publicComments).not.toContainText(/Owen|Pat/);
   for (const path of ["/homes/SAMPLE-1005", "/"]) {
     const html = await (await anon.request.get(path)).text();
-    expect(html).not.toContain("Me too, that porch!");
+    expect(html).not.toContain("Could we see it Saturday?");
     expect(html).not.toContain("Saturday works for me too");
   }
 });
@@ -199,7 +208,7 @@ test("the year built, the description and who listed it are words to read; what 
   const theirs = await linkHomes(fay, dashboardUrl, "SAMPLE-1005", HALVARD);
   const scorecard = await openScorecard(fay, theirs);
   await scorecard.getByRole("button", { name: /^On the market since, / }).click();
-  const phoneSheet = fay.getByRole("dialog", { name: "Comments" });
+  const phoneSheet = commentsOf(theirs);
   await expect(phoneSheet.getByRole("heading", { name: "On the time on the market" })).toBeVisible();
   expect(pageErrors).toEqual([]);
 });

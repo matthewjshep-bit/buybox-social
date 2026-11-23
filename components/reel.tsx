@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import {
   ArrowUp,
   ChevronDown,
-  ChevronRight,
   ClipboardList,
   ChevronUp,
   Bookmark,
@@ -41,13 +40,12 @@ import {
 } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { loadReel, recordView, reloadReelHome } from "@/app/homes/actions";
-import { CommentPreview } from "@/components/comment-preview";
+import { CommentThread } from "@/components/comment-thread";
 import { AspectChips, useReactions } from "@/components/like-pass";
 import { useNotesMode } from "@/components/agent-notes";
 import {
   CommentComposer,
   NameGate,
-  Timeline,
   useThread,
   type ReplyTarget,
   type SeenBy,
@@ -55,7 +53,7 @@ import {
   type ThreadActions,
 } from "@/components/listing-thread";
 import { usePhotoLikes } from "@/components/photo-likes";
-import { SpotLayer, spotThread, type PickedSpot } from "@/components/photo-spots";
+import { SpotLayer, type PickedSpot } from "@/components/photo-spots";
 import { photoFoot, photoHead, photoPlace, ReelPhotos, STAGE_BAND, stageBlock, stageFoot } from "@/components/reel-photos";
 import { TakeCard, type TakeEyebrow } from "@/components/reel-take";
 import { ScorecardBody } from "@/components/scorecard";
@@ -124,7 +122,7 @@ const sendHomeOf = ({ listing }: FeedPost): SendHome => ({
 type ShareKind = "share" | "invite" | "send" | "sending" | "steps";
 
 // What can rise over a home.
-type SheetKind = "comments" | "more" | "scorecard";
+type SheetKind = "more" | "scorecard";
 
 // The agent, in a sentence: their name, or "your agent" when the page
 // doesn't know it (it says "Your agent" then).
@@ -475,29 +473,28 @@ function Feed({
   const frame = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
-  // A sheet over the home: its comments (all of them, or those about one spot
-  // in a photo), its Porchcard, or More. `photoFoot`: where the photo ended
-  // when it opened, so the sheet rises to just there.
+  // A sheet over the home: its Porchcard, or More. `photoFoot`: where the
+  // photo ended when it opened, so the sheet rises to just there.
   const [sheet, setSheet] = useState<{
     kind: SheetKind;
     key: string;
-    spot?: SpotRef;
     photoFoot?: number;
-    // Opened on one comment (from the line above the price).
-    commentId?: string;
     // The Porchcard, opened at a part of it (the description's "more").
     section?: "about";
   } | null>(null);
   // Each sheet closes only itself: one can open another without the first's
-  // closing shutting the second. (The comments and the Porchcard are one
-  // sheet, which changes in place from one to the other.)
+  // closing shutting the second.
   const closeSheet = (...kinds: SheetKind[]) => setSheet((now) => (now && kinds.includes(now.kind) ? null : now));
-  // The comments or the Porchcard, about this home.
-  const about = (key: string) => (sheet?.kind === "comments" || sheet?.kind === "scorecard") && sheet.key === key;
-  // Side by side (wide): comments open beside the photo, in the white panel's
-  // place, and other sheets rise from the panel's foot. `narrow`: a phone's
-  // layout (comments rise to the photo's foot), whether or not wide screens
-  // are side by side.
+  // The Porchcard, about this home.
+  const about = (key: string) => sheet?.kind === "scorecard" && sheet.key === key;
+  // A home's comments, unfurled where the latest of them are (under the
+  // photo on a phone, growing up over it; in the panel beside it, wide): all
+  // of them, or those about one spot in a photo; opened on one of them.
+  const [thread, setThread] = useState<{ key: string; spot?: SpotRef; commentId?: string } | null>(null);
+  // Side by side (wide): the Porchcard opens beside the photo, in the white
+  // panel's place, and other sheets rise from the panel's foot. `narrow`: a
+  // phone's layout (sheets rise to the photo's foot), whether or not wide
+  // screens are side by side.
   const { wide, narrow } = useWidth(frame);
   const dock = useRef<HTMLElement | null>(null);
   // A home's white panel, side by side.
@@ -557,10 +554,21 @@ function Feed({
   const offset = intro ? 1 : 0;
   const panelCount = offset + posts.length + 1;
   const activePost = posts[active - offset];
-  // Comments (or the Porchcard) beside the photo belong to the home on
-  // screen: moving on to another closes them.
-  if (wide && (sheet?.kind === "comments" || sheet?.kind === "scorecard") && sheet.key !== (activePost?.listing.ListingKey ?? null)) {
+  // The Porchcard beside the photo belongs to the home on screen: moving on
+  // to another closes it.
+  if (wide && sheet?.kind === "scorecard" && sheet.key !== (activePost?.listing.ListingKey ?? null)) {
     setSheet(null);
+  }
+  // The comments stay with the home they're about: seeing the photo alone
+  // (held, or "Photo only") closes them, and so does moving on to another
+  // home (below, once the move is known: a tap on a home still gliding into
+  // view opens its comments, and they stay).
+  if (thread && (bare !== null || clear !== null)) setThread(null);
+  const activeKey = activePost?.listing.ListingKey ?? null;
+  const [wasActive, setWasActive] = useState(activeKey);
+  if (activeKey !== wasActive) {
+    setWasActive(activeKey);
+    if (thread && thread.key !== activeKey) setThread(null);
   }
   // What you've liked and not in each home's photos just now, as its photos
   // have it, for the Porchcard.
@@ -669,7 +677,6 @@ function Feed({
   }, []);
 
   // Tell the page which home is showing.
-  const activeKey = activePost?.listing.ListingKey ?? null;
   const report = useRef(onActiveChange);
   useLayoutEffect(() => {
     report.current = onActiveChange;
@@ -784,11 +791,11 @@ function Feed({
     if (nameAnchorRef) nameAnchorRef.current = wide && activeKey ? wordsOf(activeKey) : null;
   });
 
-  // Beside the photo, the comments take the white panel's place, so Tab
-  // finds them there too: from the buttons down the side into them, and out
-  // of them on to whatever follows the panel (the panel itself is out of
-  // reach under them).
-  const dockedKey = wide && (sheet?.kind === "comments" || sheet?.kind === "scorecard") ? sheet.key : null;
+  // Beside the photo, the Porchcard takes the white panel's place, so Tab
+  // finds it there too: from the buttons down the side into it, and out of
+  // it on to whatever follows the panel (the panel itself is out of reach
+  // under it).
+  const dockedKey = wide && sheet?.kind === "scorecard" ? sheet.key : null;
   useEffect(() => {
     if (!dockedKey) return;
     const onKey = (event: KeyboardEvent) => {
@@ -805,31 +812,34 @@ function Feed({
     return () => window.removeEventListener("keydown", onKey);
   }, [dockedKey]);
 
-  // Comments rise from the bottom, to the photo's foot, so it stays in view
-  // (wide, they open beside it, in the white panel's place). From the comment
-  // bar, the cursor goes straight into the comment box, in the same tap, so a
-  // phone opens its keyboard (it won't for focus that arrives later). The
-  // box is still sliding in then, partly past the edge, and the feed mustn't
-  // shift sideways to show it.
-  // From the line above the price, about one comment: the comments open on
-  // it, tinted for a moment so it's plain which.
-  const openComments = (key: string, compose = false, spot?: SpotRef, commentId?: string) => {
-    const home = frame.current?.querySelector(`[data-home="${CSS.escape(key)}"]`);
-    dock.current = wordsOf(key);
-    flushSync(() =>
-      setSheet({ kind: "comments", key, spot, commentId, photoFoot: home ? photoFootIn(home, frame.current!) : undefined }),
-    );
-    if (compose) {
-      frame.current?.ownerDocument
-        .querySelector<HTMLElement>("dialog[open] [data-composer]")
-        ?.focus({ preventScroll: true });
-    }
-    const said =
-      commentId && frame.current?.ownerDocument.querySelector<HTMLElement>(`dialog[open] [data-comment="${CSS.escape(commentId)}"]`);
+  // The comments unfurl where the latest of them are: under the photo on a
+  // phone (growing up over it, to just under the head), in the panel beside
+  // it on a wide screen. From the comment bar, the cursor goes straight into
+  // the comment box, in the same tap, so a phone opens its keyboard (it
+  // won't for focus that arrives later). From a row of the latest comments,
+  // about one comment: open on it, tinted for a moment so it's plain which.
+  // About one spot in a photo: just those, and a box to add one.
+  const openThread = (
+    key: string,
+    { compose = false, spot, commentId }: { compose?: boolean; spot?: SpotRef; commentId?: string } = {},
+  ) => {
+    flushSync(() => {
+      // (The Porchcard gives way: the comments are in the panel it covers.)
+      closeSheet("scorecard");
+      setThread({ key, spot, commentId });
+    });
+    const home = frame.current?.querySelector<HTMLElement>(`[data-home="${CSS.escape(key)}"]`);
+    if (!home) return;
+    if (compose) home.querySelector<HTMLElement>("[data-composer]")?.focus({ preventScroll: true });
+    const said = commentId ? home.querySelector<HTMLElement>(`[data-comment="${CSS.escape(commentId)}"]`) : null;
     if (said) {
-      said.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
+      showIn(said, "center");
       said.dataset.flash = "";
       setTimeout(() => delete said.dataset.flash, 2000);
+    } else if (!compose) {
+      // At the top of the thread (wide, the panel scrolls up to it).
+      const list = home.querySelector<HTMLElement>("[data-comment-list]");
+      if (list) showIn(list, "start");
     }
   };
 
@@ -844,11 +854,11 @@ function Feed({
     const post = posts.find((p) => p.listing.ListingKey === activeKey);
     if (!post?.timeline.some((item) => item.kind === "comment" && item.id === initialComment)) return;
     // (Once the frame it arrived in is drawn; a render meanwhile mustn't stop it.)
-    requestAnimationFrame(() => openComments(activeKey, false, undefined, initialComment));
+    requestAnimationFrame(() => openThread(activeKey, { commentId: initialComment }));
   });
 
-  // The Porchcard: up from the bottom like the comments (wide, beside the
-  // photo, in the white panel's place), or turned to from them in place.
+  // The Porchcard: up from the bottom, to the photo's foot (wide, beside the
+  // photo, in the white panel's place).
   const openScorecard = (key: string, section?: "about") => {
     const home = frame.current?.querySelector(`[data-home="${CSS.escape(key)}"]`);
     dock.current = wordsOf(key);
@@ -856,9 +866,6 @@ function Feed({
       setSheet({ kind: "scorecard", key, section, photoFoot: home ? photoFootIn(home, frame.current!) : undefined }),
     );
   };
-  // From the comments to the Porchcard, or back: the same sheet, in place.
-  const switchSheet = (key: string, kind: "comments" | "scorecard") =>
-    setSheet((now) => (now && now.key === key ? { kind, key, photoFoot: now.photoFoot } : now));
 
   const say = (message: string) => {
     setToast(message);
@@ -1064,9 +1071,7 @@ function Feed({
               eyebrow={context ? { title: context.title, place: placeIn(context, key) } : null}
               // (The facts aren't things to tap any more: what was said
               // about one opens in the comments about it.)
-              onGoToSpot={(spot) =>
-                spot.mediaKey === FACTS ? openComments(key, false, spot) : toSpot(key, spot)
-              }
+              onGoToSpot={(spot) => (spot.mediaKey === FACTS ? openThread(key, { spot }) : toSpot(key, spot))}
               onPhotoSeen={onPhotoSeen}
               counter={mode === "share" && posts.length > 1 ? `Home ${i + 1} of ${posts.length}` : undefined}
               active={active === offset + i}
@@ -1094,10 +1099,11 @@ function Feed({
                     }
               }
               onDoubleTapLike={() => reactions.like(key)}
-              onComments={() => openComments(key)}
-              onCompose={() => openComments(key, true)}
-              onCommentSpot={(spot) => openComments(key, true, spot)}
-              onCommentAt={(id) => openComments(key, false, undefined, id)}
+              // (Wide, the panel's Comments button folds them away again.)
+              onComments={() => (wide && thread?.key === key && !thread.spot ? setThread(null) : openThread(key))}
+              onCompose={() => openThread(key, { compose: true })}
+              onCommentSpot={(spot) => openThread(key, { compose: true, spot })}
+              onCommentAt={(id) => openThread(key, { commentId: id })}
               onScorecard={porchcard ? (section) => openScorecard(key, section) : undefined}
               saved={saves.now[key] ?? Boolean(post.saved)}
               onSave={save ? () => saves.toggle(key, !(saves.now[key] ?? Boolean(post.saved))) : undefined}
@@ -1105,7 +1111,16 @@ function Feed({
               // Over the words on a phone; in the white panel's place, wide.
               covered={!wide && about(key)}
               docked={wide && about(key)}
-              spotSheet={sheet?.kind === "comments" && sheet.key === key && Boolean(sheet.spot)}
+              thread={thread?.key === key ? thread : null}
+              onCloseThread={() => setThread(null)}
+              onAllComments={() => openThread(key)}
+              // From a comment about a spot: to that photo, with the spot
+              // open. (One about a fact, the price: the comments about it.)
+              onShowSpot={(spot) => {
+                if (spot.mediaKey === FACTS) return openThread(key, { spot });
+                setThread(null);
+                toSpot(key, spot);
+              }}
               clear={clear === offset + i}
               onHoldPhoto={(holding) => setClear(holding ? offset + i : null)}
               bare={bare === offset + i}
@@ -1196,42 +1211,29 @@ function Feed({
         </p>
       )}
 
-      <HomeSheet
-        post={sheet?.kind === "comments" || sheet?.kind === "scorecard" ? (sheetPost ?? null) : null}
-        kind={sheet?.kind === "scorecard" ? "scorecard" : "comments"}
-        porchcard={porchcard}
-        spot={sheet?.kind === "comments" ? sheet.spot : undefined}
-        opened={sheet?.kind === "comments" ? sheet.commentId : undefined}
+      <ScorecardSheet
+        post={sheet?.kind === "scorecard" ? (sheetPost ?? null) : null}
         section={sheet?.kind === "scorecard" ? sheet.section : undefined}
         mode={mode}
         agentName={agentName}
         viewer={sheetViewer}
         alone={alone}
         myName={myName}
-        canShare={sheetPost ? reactions.states[sheetPost.listing.ListingKey]?.reaction === "like" : false}
         anchor={wide ? dock : frame}
         docked={wide}
         // (Up to the photo's foot only in a phone's layout.)
         photoFoot={narrow ? sheet?.photoFoot : undefined}
-        onClose={() => closeSheet("comments", "scorecard")}
-        onSwitch={(key, kind) => switchSheet(key, kind)}
-        onCompose={(key) => openComments(key, true)}
-        // Posted about a spot: back to the photo.
-        onPostedSpot={() => setSheet(null)}
-        // From a comment about a spot: to that photo, with the spot open. (One
-        // about a fact, the price: the comments about it, in the same sheet.)
-        onShowSpot={(key, spot) => {
-          if (spot.mediaKey === FACTS) return setSheet((now) => (now ? { kind: "comments", key, spot, photoFoot: now.photoFoot } : now));
-          setSheet(null);
-          toSpot(key, spot);
-        }}
+        onClose={() => closeSheet("scorecard")}
+        // From the Porchcard to the comments (they take its place), or to the box to add one.
+        onAllComments={(key) => openThread(key)}
+        onCompose={(key) => openThread(key, { compose: true })}
         // From the Porchcard: to the spot on its photo, with its card open
         // (beside the photo, the Porchcard stays, and the keyboard comes back
         // to the row after). Gone first otherwise, so the card can take the
         // keyboard (nothing behind a sheet can). A fact (the price) is just
-        // words now: the comments about it, in the same sheet.
+        // words now: the comments about it.
         onScorecardSpot={(key, spot, keyboard) => {
-          if (spot.mediaKey === FACTS) return setSheet((now) => (now ? { kind: "comments", key, spot, photoFoot: now.photoFoot } : now));
+          if (spot.mediaKey === FACTS) return openThread(key, { spot });
           const back = wide ? (document.activeElement as HTMLElement | null) : railButton(key, "scorecard");
           if (!wide) flushSync(() => setSheet(null));
           setGoToSpot((current) => ({ key, spot, n: (current?.n ?? 0) + 1, keyboard, back }));
@@ -1356,6 +1358,17 @@ function nextStop(now: Element | null, dialog: HTMLElement, panel: HTMLElement, 
   return order[at + (first === -1 ? inside.length : first) - (back ? 1 : 0)];
 }
 
+// Brings something in the thread into view: the box the thread scrolls in
+// moves, never the feed of homes (which snaps from one to the next).
+function showIn(el: HTMLElement, block: "start" | "center") {
+  const box = el.closest<HTMLElement>("[data-thread-scroll]");
+  if (!box) return;
+  const room = box.getBoundingClientRect();
+  const at = el.getBoundingClientRect();
+  const to = block === "center" ? at.top - room.top - (room.height - at.height) / 2 : at.top - room.top - 8;
+  box.scrollTo({ top: box.scrollTop + to, behavior: reducedMotion() ? "auto" : "smooth" });
+}
+
 // Where the photo on screen ends, from the top of the feed.
 function photoFootIn(home: Element, feed: Element) {
   const box = feed.getBoundingClientRect();
@@ -1396,7 +1409,10 @@ function Panel({
   onYours,
   covered,
   docked,
-  spotSheet,
+  thread,
+  onCloseThread,
+  onAllComments,
+  onShowSpot,
   clear,
   onHoldPhoto,
   bare,
@@ -1454,15 +1470,20 @@ function Panel({
   onSave?: () => void;
   // What you've liked and not in its photos and facts just now (likeIds).
   onYours?: (listingKey: string, liked: string[], disliked: string[]) => void;
-  // Its comments (or Porchcard) are open, over the photo: the words and
-  // buttons under them step aside.
+  // Its Porchcard is open, over the photo: the words and buttons under it
+  // step aside.
   covered: boolean;
-  // Its comments (or Porchcard) are open in the white panel's place (wide):
-  // what's under them is out of reach.
+  // Its Porchcard is open in the white panel's place (wide): what's under it
+  // is out of reach.
   docked: boolean;
-  // The comments about one spot are open (over or beside the photo): its card
-  // shows just where.
-  spotSheet: boolean;
+  // Its comments are unfurled (all of them, or those about one spot, whose
+  // card then shows just where), opened on one of them.
+  thread: { spot?: SpotRef; commentId?: string } | null;
+  onCloseThread: () => void;
+  // About one spot: back to all of them.
+  onAllComments: () => void;
+  // A comment about a spot: that photo, with the spot open.
+  onShowSpot: (spot: SpotRef) => void;
   // Nothing over the photo, to see it whole.
   clear: boolean;
   onHoldPhoto: (holding: boolean) => void;
@@ -1512,16 +1533,26 @@ function Panel({
   // The spot whose card is open: on the photo on screen, or one of the facts.
   const [picked, setPicked] = useState<PickedSpot | null>(null);
   const current = listing.Media[photo];
+  const threadOpen = Boolean(thread);
   if (picked && (!active || (picked.mediaKey !== FACTS && picked.mediaKey !== (current && mediaKeyOf(current))))) {
     setPicked(null);
   }
-  // When the comments close (posted, or put away), so does the card: what was
-  // said now shows on the photo.
-  const sheetOver = covered || spotSheet;
-  const [wasCovered, setWasCovered] = useState(sheetOver);
-  if (sheetOver !== wasCovered) {
-    setWasCovered(sheetOver);
-    if (!sheetOver) setPicked(null);
+  // The comments unfurling puts any card away (about one spot, its card
+  // stays, to show where); the thread and the Porchcard cover what's under
+  // the photo and the band over it.
+  const sheetOver = covered || threadOpen;
+  const [wasOpen, setWasOpen] = useState(threadOpen);
+  if (threadOpen !== wasOpen) {
+    setWasOpen(threadOpen);
+    if (threadOpen && !thread?.spot) setPicked(null);
+  }
+  // When the comments about a spot close (posted, or put away), so does its
+  // card: what was said now shows on the photo.
+  const cardOver = covered || Boolean(thread?.spot);
+  const [wasCovered, setWasCovered] = useState(cardOver);
+  if (cardOver !== wasCovered) {
+    setWasCovered(cardOver);
+    if (!cardOver) setPicked(null);
   }
   // To a spot from a comment about it: its photo, with its card open (just
   // the photo while someone not signed up yet is asked to). (One about a
@@ -1587,10 +1618,43 @@ function Panel({
       document.removeEventListener("pointerdown", onDown);
     };
   }, [about]);
-  // A phone on its side (the frame under 520px tall, as the `short:` styles
-  // have it): the head goes, and the facts and a line of the description sit
-  // over the photo's foot instead, with the buttons down the right.
   const home = useRef<HTMLElement>(null);
+  // The block under the photo: the latest comments and the comment bar, or
+  // (unfurled) the whole thread and the comment box; the panel, wide.
+  const words = useRef<HTMLDivElement>(null);
+  // The comment the box answers, while the thread is open.
+  const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
+  // Folding the comments away: the keyboard goes back to the Comments button
+  // when it was in them (from out on the photo, it stays where it is).
+  const closeThread = (giveBack = true) => {
+    const now = document.activeElement;
+    const inside = now instanceof HTMLElement && Boolean(words.current?.contains(now)) && !now.closest("[data-actions]");
+    flushSync(() => {
+      setReplyTo(null);
+      onCloseThread();
+    });
+    if (!giveBack || !(inside || !now || now === document.body || !now.isConnected)) return;
+    visibleIn(home.current, 'button[aria-label^="Comments"]')?.focus({ preventScroll: true });
+  };
+  const closeThreadNow = useRef(closeThread);
+  useLayoutEffect(() => {
+    closeThreadNow.current = closeThread;
+  });
+  useEffect(() => {
+    if (!threadOpen) return;
+    // Escape folds the comments away: heard first, before the page (an
+    // ordered reel going back, a pop-out closing) can take the key. A spot's
+    // card over them, or a dialog, takes its own Escape.
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if ((event.target as Element | null)?.closest?.("dialog[open], [data-spot-card]")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeThreadNow.current();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [threadOpen]);
   const [short, setShort] = useState(false);
   useLayoutEffect(() => {
     const el = home.current;
@@ -1626,6 +1690,27 @@ function Panel({
     observer.observe(rail);
     return () => observer.disconnect();
   }, [sideBySide]);
+  // On a phone, with the comments open over the photo, the comment box at
+  // their foot stays above the keyboard: a phone doesn't shrink the window
+  // for it, so the block's foot is lifted by however much of the window the
+  // keyboard (and a toolbar over the page's foot) covers.
+  useEffect(() => {
+    const el = words.current;
+    const view = window.visualViewport;
+    if (!threadOpen || sideBySide || !el || !view) return;
+    const place = () => {
+      const lift = Math.max(0, Math.round(window.innerHeight - (view.offsetTop + view.height)));
+      el.style.bottom = lift > 0 ? `${lift}px` : "";
+    };
+    place();
+    view.addEventListener("resize", place);
+    view.addEventListener("scroll", place);
+    return () => {
+      view.removeEventListener("resize", place);
+      view.removeEventListener("scroll", place);
+      el.style.bottom = "";
+    };
+  }, [threadOpen, sideBySide]);
   // "Photo only" puts away any card, and a tap on the photo then is
   // just a look: nothing waits to pop up when everything comes back.
   if (bare && picked) setPicked(null);
@@ -1867,6 +1952,30 @@ function Panel({
   // From the latest comments under the photo: the comments, on that one.
   // (Beside the map, just a look: a tap opens the home.)
   const openComment = onOpen ? () => onOpen() : (id?: string) => (id ? onCommentAt(id) : onComments());
+  // About one spot: what it's called ("the front door").
+  const spotCalled = thread?.spot ? spotName(listing, thread.spot) : null;
+  // The comments themselves, folded or unfurled, the same on a phone and in the panel.
+  const threadProps = {
+    post,
+    mode,
+    host,
+    likes,
+    mineLiked: liked || photos.hasAny,
+    open: threadOpen,
+    spot: thread?.spot,
+    opened: thread?.commentId,
+    canShare: mode === "share" && liked,
+    onOpen: openComment,
+    onClose: () => closeThread(),
+    onAllComments,
+    onGoToSpot: onShowSpot,
+    // Reply points the box at that comment, the cursor in it in the same
+    // tap, so a phone shows its keyboard.
+    onReply: (target: ReplyTarget) => {
+      setReplyTo(target);
+      words.current?.querySelector<HTMLElement>("[data-composer]")?.focus({ preventScroll: true });
+    },
+  };
 
   return (
     <article
@@ -2084,7 +2193,7 @@ function Panel({
         <div
           className={cn(
             "relative mx-auto h-full max-w-5xl transition-[opacity,visibility] duration-300 split:max-w-none",
-            covered && "invisible opacity-0",
+            (covered || threadOpen) && "invisible opacity-0",
           )}
         >
           {!onOpen && (
@@ -2122,8 +2231,12 @@ function Panel({
             to do and the comment bar; the comments open in its place. Beside
             the map, a phone's, with "Open full screen" for the bar. */}
         <div
+          ref={words}
           data-words
           inert={docked || undefined}
+          // Unfurled, the block is the comments: a landmark of its own.
+          role={threadOpen ? "region" : undefined}
+          aria-label={threadOpen ? "Comments" : undefined}
           // Side by side, it ends level with the photos beside it, the strip
           // under them included: never so short there's no room to read,
           // never past the window's foot.
@@ -2133,12 +2246,20 @@ function Panel({
             } as CSSProperties
           }
           className={cn(
-            "absolute inset-x-0 bottom-0 top-[calc(var(--photo-top)+var(--stage-height))] flex flex-col bg-night transition-[opacity,visibility] duration-300",
-            // On its side: over the photo, on a shade of their own that
-            // starts a little above the first line, so every line of it reads
-            // on the brightest photo.
-            "short:top-auto short:h-auto short:bg-transparent short:bg-linear-to-t short:from-black/80 short:to-black/65",
-            "short:before:pointer-events-none short:before:absolute short:before:inset-x-0 short:before:bottom-full short:before:h-12 short:before:bg-linear-to-t short:before:from-black/65 short:before:to-transparent",
+            "absolute inset-x-0 bottom-0 flex flex-col bg-night transition-[opacity,visibility] duration-300",
+            threadOpen && !sideBySide
+              ? // Unfurled on a phone: up over the photo, to just under the
+                // head (on its side, to the chrome), everything in it to be
+                // tapped and scrolled.
+                "pointer-events-auto top-[calc(var(--head-top)+4rem)] z-30 short:top-(--head-top)"
+              : cn(
+                  "top-[calc(var(--photo-top)+var(--stage-height))]",
+                  // On its side: over the photo, on a shade of their own that
+                  // starts a little above the first line, so every line of it reads
+                  // on the brightest photo.
+                  "short:top-auto short:h-auto short:bg-transparent short:bg-linear-to-t short:from-black/80 short:to-black/65",
+                  "short:before:pointer-events-none short:before:absolute short:before:inset-x-0 short:before:bottom-full short:before:h-12 short:before:bg-linear-to-t short:before:from-black/65 short:before:to-transparent",
+                ),
             legacy("@5xl:h-auto @5xl:items-center @5xl:bg-transparent @5xl:px-6"),
             // Side by side: on the same dark as the photo's stage (a shade
             // lighter, to hold together), so the photo and what it is read as one.
@@ -2146,7 +2267,7 @@ function Panel({
             covered && "invisible opacity-0",
           )}
         >
-          {short && !sideBySide && (
+          {short && !sideBySide && !threadOpen && (
             <div
               data-keep-clear
               className={cn(
@@ -2181,6 +2302,7 @@ function Panel({
           {sideBySide && (
             <div
               data-keep-clear
+              data-thread-scroll
               className={cn(
                 "relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-5 pt-3",
                 // What runs on below fades out, so it reads as more to scroll to.
@@ -2213,7 +2335,8 @@ function Panel({
                   <HomeDetails listing={listing} />
                 </>
               )}
-              <CommentPreview post={post} mode={mode} host={host} likes={likes} mineLiked={liked || photos.hasAny} onOpen={openComment} className="mt-3" />
+              {/* The latest comments, or (unfurled) all of them, right here in the panel. */}
+              <CommentThread {...threadProps} look="panel" className="mt-3" />
               {error && (
                 <p role="alert" className="mt-3 w-fit rounded-full bg-rose-700 px-3 py-1.5 text-sm font-semibold text-white">
                   {error}
@@ -2221,7 +2344,12 @@ function Panel({
               )}
             </div>
           )}
-          {!short && !sideBySide && (
+          {!sideBySide && threadOpen && (
+            // Unfurled on a phone: a header with the way back, the thread
+            // scrolling under it, and the comment box at the foot (below).
+            <CommentThread {...threadProps} look="cover" />
+          )}
+          {!short && !sideBySide && !threadOpen && (
             <div className="relative min-h-0 flex-1">
               {error && (
                 <p
@@ -2231,13 +2359,9 @@ function Panel({
                   {error}
                 </p>
               )}
-              <CommentPreview
-                post={post}
-                mode={mode}
-                host={host}
-                mineLiked={liked || photos.hasAny}
-                likes={likes}
-                onOpen={openComment}
+              <CommentThread
+                {...threadProps}
+                look="cover"
                 className="h-full overflow-hidden pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-1"
               />
             </div>
@@ -2279,6 +2403,45 @@ function Panel({
                 Open full screen
                 <span className="sr-only">: {listing.UnparsedAddress}</span>
               </button>
+            ) : threadOpen || sideBySide ? (
+              // The comment box itself: with the thread open over the photo,
+              // and always in the panel, where there's room for it.
+              <div data-keep-clear className="pointer-events-auto">
+                {error && threadOpen && (
+                  <p role="alert" className="mb-2 w-fit rounded-full bg-rose-700 px-3 py-1.5 text-sm font-semibold text-white">
+                    {error}
+                  </p>
+                )}
+                <CommentComposer
+                  key={thread?.spot ? `${thread.spot.mediaKey}:${thread.spot.tag}` : "all"}
+                  dark
+                  listingKey={listing.ListingKey}
+                  canShare={mode === "share" && liked}
+                  replyTo={replyTo}
+                  onCancelReply={() => setReplyTo(null)}
+                  spot={thread?.spot}
+                  placeholder={
+                    spotCalled
+                      ? notes
+                        ? `Add a note on ${spotCalled}…`
+                        : `Comment on ${spotCalled}…`
+                      : notes
+                        ? `Add a note for ${notes.for}…`
+                        : mode === "share"
+                          ? `Tell ${agentFirst} what you think…`
+                          : undefined
+                  }
+                  label={spotCalled ? undefined : notes ? "Add a note" : "Add a comment"}
+                  // In the panel, the emoji wait for the box, so the words get
+                  // the room until you go to say something.
+                  quickOnFocus={sideBySide && !threadOpen}
+                  onPosted={() => {
+                    setReplyTo(null);
+                    // Said about a spot: back to the photo, where it now shows.
+                    if (thread?.spot) closeThread(false);
+                  }}
+                />
+              </div>
             ) : (
               // One row, as beside the map: the comment bar, which says how
               // many comments there are (a tap there reads them), then Save
@@ -2371,7 +2534,7 @@ function Panel({
           picked={picked}
           onPick={pick}
           onComment={onCommentSpot}
-          covered={sheetOver}
+          covered={cardOver}
           onPosted={() => setPicked(null)}
           nudge={nudge}
         />
@@ -3028,42 +3191,26 @@ function captionFit(row: HTMLElement, box: HTMLElement, text: string) {
   }
 }
 
-const NO_ITEMS: FeedPost["timeline"] = [];
-
-// The comments and the Porchcard: one sheet, which turns from one to the
-// other in place (on a phone, from a link in each; beside the photo, tabs).
-function HomeSheet({
+// The Porchcard (an agent's): what everyone thinks of a home, in a sheet up
+// from the bottom (beside the photo, wide, in the white panel's place).
+function ScorecardSheet({
   post,
-  kind,
-  porchcard,
-  spot,
-  opened,
   section,
   mode,
   agentName,
   viewer,
   myName,
   alone,
-  canShare,
   anchor,
   docked,
   photoFoot,
   onClose,
-  onSwitch,
+  onAllComments,
   onCompose,
-  onPostedSpot,
-  onShowSpot,
   onScorecardSpot,
 }: {
   post: FeedPost | null;
-  // Whether the Porchcard is theirs to open (an agent's): its tab, and the way to it from the comments.
-  porchcard: boolean;
-  kind: "comments" | "scorecard";
-  // Only the comments about this spot in a photo, and a box to add one.
-  spot?: SpotRef;
-  // Opened on this comment: if it's a reply, its replies show.
-  opened?: string;
-  // The Porchcard, opened at this part of it.
+  // Opened at this part of it.
   section?: "about";
   mode: "public" | "share";
   agentName?: string;
@@ -3071,7 +3218,6 @@ function HomeSheet({
   myName: string | null;
   // On an agent's link known to be this person's alone.
   alone: boolean;
-  canShare: boolean;
   // The feed (phones), or the white panel it takes the place of (wide).
   anchor: RefObject<HTMLElement | null>;
   // Beside the photo, wide.
@@ -3079,53 +3225,21 @@ function HomeSheet({
   // Where the photo ends, from the top of the feed, when it opened.
   photoFoot?: number;
   onClose: () => void;
-  onSwitch: (listingKey: string, kind: "comments" | "scorecard") => void;
+  // To the comments (which take its place), or straight to the box to add one.
+  onAllComments: (listingKey: string) => void;
   onCompose: (listingKey: string) => void;
-  onPostedSpot: (listingKey: string) => void;
-  onShowSpot: (listingKey: string, spot: SpotRef) => void;
   // To a spot in the photos, or one of the facts (`keyboard`: pressed with a key).
   onScorecardSpot: (listingKey: string, spot: SpotRef, keyboard?: boolean) => void;
 }) {
-  const notes = useNotesMode();
-  const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
-  const end = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
-  const all = post?.timeline ?? NO_ITEMS;
-  const items = post && spot ? spotThread(all, spot) : all;
-  const comments = items.filter((item) => item.kind === "comment").length;
-  const name = post && spot ? spotName(post.listing, spot) : null;
   const key = post?.listing.ListingKey ?? null;
-  const scorecard = kind === "scorecard";
-  // Tabs beside the photo (not about one spot, which has its own title).
-  const tabbed = porchcard && docked && !spot;
-  const tabsId = useId();
 
-  // A new comment of yours scrolls into view where it lands, after the others
-  // (and before who liked what). Only one just posted here: opened on a home
-  // whose last word is yours, it still opens at the top.
-  const thread = key && (spot ? `${key}\u0000${spot.mediaKey}\u0000${spot.tag}` : key);
-  const seen = useRef({ thread, n: items.length });
-  useEffect(() => {
-    const last = items.at(-1);
-    if (thread === seen.current.thread && items.length > seen.current.n && last?.kind === "comment" && last.mine) {
-      end.current
-        ?.closest("dialog")
-        ?.querySelector(`[data-comment="${CSS.escape(last.id)}"]`)
-        ?.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
-    }
-    seen.current = { thread, n: items.length };
-  }, [items, thread]);
-
-  // The Porchcard opens where you left it on this home (while the page is
-  // open), or at the part asked for; the comments, at the top.
+  // It opens where you left it on this home (while the page is open), or at
+  // the part asked for.
   const kept = useRef(new Map<string, number>());
   useLayoutEffect(() => {
     const el = body.current;
     if (!el || !key) return;
-    if (!scorecard) {
-      el.scrollTop = 0;
-      return;
-    }
     const part = section && el.querySelector<HTMLElement>(`[data-section="${section}"]`);
     el.scrollTop = part
       ? el.scrollTop + part.getBoundingClientRect().top - el.getBoundingClientRect().top - 8
@@ -3133,187 +3247,36 @@ function HomeSheet({
     const keep = () => kept.current.set(key, el.scrollTop);
     el.addEventListener("scroll", keep, { passive: true });
     return () => el.removeEventListener("scroll", keep);
-  }, [key, scorecard, section]);
-
-  const close = () => {
-    setReplyTo(null);
-    onClose();
-  };
-
-  // Beside the photo: "Comments 9 | Porchcard", arrows move between them.
-  const tab = (which: "comments" | "scorecard") => `${tabsId}-${which}`;
-  const tabs = tabbed && key && (
-    <div role="tablist" aria-label="Comments and Feedback" className="flex gap-1">
-      {(["comments", "scorecard"] as const).map((which) => {
-        const selected = kind === which;
-        return (
-          <button
-            key={which}
-            type="button"
-            role="tab"
-            id={tab(which)}
-            aria-selected={selected}
-            aria-controls={`${tabsId}-panel`}
-            tabIndex={selected ? 0 : -1}
-            onClick={() => onSwitch(key, which)}
-            onKeyDown={(event) => {
-              if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "Home" && event.key !== "End") return;
-              event.preventDefault();
-              const to = event.key === "Home" ? "comments" : event.key === "End" ? "scorecard" : which === "comments" ? "scorecard" : "comments";
-              flushSync(() => onSwitch(key, to));
-              document.getElementById(tab(to))?.focus();
-            }}
-            className={cn(
-              "flex min-h-11 items-center gap-1.5 rounded-full px-4 text-body font-semibold transition-colors",
-              // The one showing: filled in ink, plain at a glance.
-              selected ? "bg-ink text-white" : "text-muted hover:bg-stone-100 hover:text-ink",
-            )}
-          >
-            {which === "comments" ? "Comments" : "Feedback"}
-            {which === "comments" && comments > 0 && (
-              <span className={cn("tabular-nums", selected ? "text-white/80" : "text-muted")}>{comments.toLocaleString("en-US")}</span>
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
+  }, [key, section]);
 
   return (
     <Sheet
       open={Boolean(post)}
-      onClose={close}
-      label={scorecard ? "Feedback" : "Comments"}
-      title={
-        scorecard
-          ? "Feedback"
-          : name
-            ? `On ${name}`
-            : comments
-              ? `${comments} ${comments === 1 ? "comment" : "comments"}`
-              : "Comments"
-      }
-      tabs={tabs || undefined}
+      onClose={onClose}
+      label="Feedback"
+      title="Feedback"
       anchor={anchor}
       docked={docked}
       bodyRef={body}
-      // All of them, or the Porchcard: up to the photo's foot, and taller by
-      // dragging. About one spot: just tall enough, so the photo stays in
-      // view above it.
-      tall={scorecard || !spot}
-      detents={(scorecard || !spot) && photoFoot !== undefined ? { minTop: photoFoot } : undefined}
-      // (What's typed in the box stays, over at the Porchcard and back.)
-      footerHidden={scorecard}
-      footer={
-        post && (
-          <CommentComposer
-            key={spot ? `${spot.mediaKey}:${spot.tag}` : "all"}
-            listingKey={post.listing.ListingKey}
-            canShare={mode === "share" && canShare}
-            replyTo={replyTo}
-            onCancelReply={() => setReplyTo(null)}
-            spot={spot}
-            placeholder={
-              name
-                ? notes
-                  ? `Add a note on ${name}…`
-                  : `Comment on ${name}…`
-                : notes
-                  ? `Add a note for ${notes.for}…`
-                  : mode === "share"
-                    ? `Tell ${agentFirstName(agentName)} what you think…`
-                    : undefined
-            }
-            label={name ? undefined : notes ? "Add a note" : "Add a comment"}
-            // At a phone's two heights, the emoji wait for the box, so the
-            // comments get the room until you go to say something.
-            quickOnFocus={!spot && photoFoot !== undefined}
-            onPosted={() => {
-              setReplyTo(null);
-              if (spot) onPostedSpot(post.listing.ListingKey);
-            }}
-          />
-        )
-      }
+      // Up to the photo's foot, and taller by dragging.
+      tall
+      detents={photoFoot !== undefined ? { minTop: photoFoot } : undefined}
     >
       {post && (
-        <div
-          role={tabbed ? "tabpanel" : undefined}
-          id={tabbed ? `${tabsId}-panel` : undefined}
-          aria-labelledby={tabbed ? tab(kind) : undefined}
-        >
-          {scorecard ? (
-            <ScorecardBody
-              post={post}
-              mode={mode}
-              agentName={agentName}
-              viewer={viewer}
-              myName={myName}
-              alone={alone}
-              // Beside the photo, the panel under it says what the home is.
-              details={!docked}
-              onShowSpot={(at, keyboard) => onScorecardSpot(post.listing.ListingKey, at, keyboard)}
-              onOpenFact={(tag, keyboard) => onScorecardSpot(post.listing.ListingKey, { mediaKey: FACTS, tag }, keyboard)}
-              onAllComments={() => onSwitch(post.listing.ListingKey, "comments")}
-              onCompose={() => onCompose(post.listing.ListingKey)}
-            />
-          ) : (
-            <>
-              {porchcard && !spot && !tabbed && (
-                // What everyone thinks of the home: at the top, where it shows
-                // at either height, then what people said.
-                <div className="-mt-1 mb-3 border-b border-stone-100 pb-1">
-                  <button
-                    type="button"
-                    onClick={() => onSwitch(post.listing.ListingKey, "scorecard")}
-                    aria-label="See the feedback: what people think of this home"
-                    className="-mx-2 flex min-h-11 w-[calc(100%+1rem)] items-center gap-2.5 rounded-xl px-2 py-1 text-left hover:bg-stone-50"
-                  >
-                    <ClipboardList aria-hidden size={18} className="shrink-0 text-brand" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-body font-semibold leading-5 text-ink">What people think</span>
-                    </span>
-                    <ChevronRight aria-hidden size={18} className="shrink-0 text-stone-400" />
-                  </button>
-                </div>
-              )}
-              <Timeline
-                listingKey={post.listing.ListingKey}
-                items={items}
-                listing={post.listing}
-                opened={opened}
-                canShare={canShare}
-                onReply={(target) => {
-                  setReplyTo(target);
-                  // In the same tap, so a phone shows its keyboard.
-                  end.current?.ownerDocument
-                    .querySelector<HTMLElement>("dialog[open] [data-composer]")
-                    ?.focus({ preventScroll: true });
-                }}
-                spots={
-                  spot
-                    ? undefined
-                    : {
-                        name: (s) => spotName(post.listing, s),
-                        show: (s) => onShowSpot(post.listing.ListingKey, s),
-                      }
-                }
-                empty={
-                  name ? (
-                    <p className="px-2 py-3 text-center text-sm text-muted">No comments on {name} yet.</p>
-                  ) : undefined
-                }
-              />
-              {mode === "public" && !spot && (
-                <p className="mt-6 text-center text-xs text-stone-500">
-                  Comments here are public. Buyers&apos; private chats with their agents stay private unless they choose to
-                  share.
-                </p>
-              )}
-              <div ref={end} />
-            </>
-          )}
-        </div>
+        <ScorecardBody
+          post={post}
+          mode={mode}
+          agentName={agentName}
+          viewer={viewer}
+          myName={myName}
+          alone={alone}
+          // Beside the photo, the panel under it says what the home is.
+          details={!docked}
+          onShowSpot={(at, keyboard) => onScorecardSpot(post.listing.ListingKey, at, keyboard)}
+          onOpenFact={(tag, keyboard) => onScorecardSpot(post.listing.ListingKey, { mediaKey: FACTS, tag }, keyboard)}
+          onAllComments={() => onAllComments(post.listing.ListingKey)}
+          onCompose={() => onCompose(post.listing.ListingKey)}
+        />
       )}
     </Sheet>
   );

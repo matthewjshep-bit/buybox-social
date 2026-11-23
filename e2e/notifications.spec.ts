@@ -113,7 +113,7 @@ test("a link's people and its agent hear about each other, and each line opens t
   await expect(reply).toHaveAttribute("href", new RegExp(`^${joLink}\\?home=[\\w-]+&comment=[0-9a-f-]{36}$`));
   await reply.click();
   await expect(jo).toHaveURL(new RegExp(`${joLink}\\?home=[\\w-]+&comment=[0-9a-f-]{36}$`));
-  await expect(jo.getByRole("dialog", { name: "Comments" }).getByText(ANSWER)).toBeVisible();
+  await expect(jo.getByRole("region", { name: "Comments" }).getByText(ANSWER)).toBeVisible();
 
   // [P] Nobody else hears any of it: not someone off the link, and not Fern
   // about her own words.

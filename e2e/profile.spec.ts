@@ -97,7 +97,7 @@ test("a profile is one card per home per day, with the photo and the spots picke
   await expect(heartOf(corbel)).toHaveAttribute("aria-pressed", "true");
   const porch = await likeInPhoto(corbel, "the wraparound porch");
   await porch.getByRole("button", { name: "Comment" }).click();
-  const sheet = lena.getByRole("dialog", { name: "Comments" });
+  const sheet = corbel.getByRole("region", { name: "Comments" });
   await sheet.getByLabel("Comment on the wraparound porch").fill("That porch is the whole reason I'd move.");
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(sheet).toBeHidden();
@@ -377,7 +377,7 @@ test("a day someone only commented: what they said is the card's top line, and t
   await ray.goto("/homes/SAMPLE-1003");
   const shingles = await pick(corbel, "the cedar shingles");
   await shingles.getByRole("button", { name: "Comment" }).click();
-  const spotSheet = ray.getByRole("dialog", { name: "Comments" });
+  const spotSheet = corbel.getByRole("region", { name: "Comments" });
   await spotSheet.getByLabel("Comment on the cedar shingles").fill("Not sold on the shingles.");
   await spotSheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(spotSheet).toBeHidden();
@@ -504,7 +504,7 @@ test("with that switched off, what someone does on an agent's link never shows o
   await fence.getByRole("button", { name: "Close" }).click();
   const door = await pick(quillan, "the red front door");
   await door.getByRole("button", { name: "Comment" }).click();
-  const sheet = rowan.getByRole("dialog", { name: "Comments" });
+  const sheet = quillan.getByRole("region", { name: "Comments" });
   await sheet.getByLabel("Comment on the red front door").fill(SECRET);
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(sheet).toBeHidden();
@@ -534,16 +534,31 @@ test("with that switched off, what someone does on an agent's link never shows o
     ).toHaveAttribute("aria-pressed", "true", { timeout: 2000 });
     await rowan.keyboard.press("Escape");
     await expect(take).toBeHidden();
-    // The like and the dislike in the photos, and the words about the door,
-    // as the link's comments have them from the server.
+    // The like and the dislike in the photos, as their spots have them from
+    // the server (the thread never says who liked what in the photos).
+    const fenceAgain = await pick(saved, "the picket fence");
+    await expect(fenceAgain.getByRole("button", { name: "Like the picket fence, 1 like", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+      { timeout: 2000 },
+    );
+    await fenceAgain.getByRole("button", { name: "Close" }).click();
+    const doorAgain = await pick(saved, "the red front door");
+    await expect(doorAgain.getByRole("button", { name: "Dislike the red front door, 1 dislike", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+      { timeout: 2000 },
+    );
+    await doorAgain.getByRole("button", { name: "Close" }).click();
+    // The words about the door, as the link's thread has them from the server.
     await saved.scrollIntoViewIfNeeded();
     await expect(saved).toBeInViewport({ ratio: 0.9, timeout: 2000 });
     const chat = await openComments(rowan, saved);
-    const cards = chat.getByRole("listitem");
-    await expect(cards.filter({ hasText: /liked the picket fence/ })).toBeAttached({ timeout: 2000 });
-    await expect(cards.filter({ hasText: /didn't like .*red front door/ })).toBeAttached({ timeout: 2000 });
     await expect(
-      cards.filter({ hasText: "Between us, we'd offer 40 under." }).getByRole("button", { name: /^About the red front door/ }),
+      chat
+        .getByRole("listitem")
+        .filter({ hasText: "Between us, we'd offer 40 under." })
+        .getByRole("button", { name: /^About the red front door/ }),
     ).toBeAttached({ timeout: 2000 });
     await rowan.keyboard.press("Escape");
     await expect(chat).toBeHidden();

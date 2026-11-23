@@ -266,11 +266,16 @@ export function commentIn(thread: Locator, name: string, body: string) {
     .filter({ has: thread.page().getByText(name, { exact: true }) });
 }
 
+// A home's comments, unfurled where the latest of them are (under the photo
+// on a phone, over it; in the panel beside it on a desktop): the block under
+// the photo becomes the "Comments" region, thread and comment box both.
+export const commentsOf = (home: Locator) => home.getByRole("region", { name: "Comments" });
+
 export async function openComments(page: Page, home: Locator) {
   await home.getByRole("button", { name: /^Comments/ }).click();
-  const sheet = page.getByRole("dialog", { name: "Comments" });
-  await expect(sheet).toBeVisible();
-  return sheet;
+  const thread = commentsOf(home);
+  await expect(thread).toBeVisible();
+  return thread;
 }
 
 // An agent going through a link's homes, full screen, on one of them (as from

@@ -216,8 +216,11 @@ export function Sheet({
       el.style.height = `${Math.min(room, box.bottom - (detent.current === "large" ? large : medium))}px`;
       el.style.maxHeight = "";
     } else {
+      // (Rising from a panel beside the photo, rather than the window's foot,
+      // it may take nearly all the panel: what's in it must stay in reach.)
+      const share = tall ? 0.6 : view.fixedFoot - box.bottom > 1 ? 0.95 : 0.8;
       el.style.height = tall ? `${Math.min(room, Math.round(box.height * 0.6))}px` : "";
-      el.style.maxHeight = `${Math.min(room, Math.round(box.height * (tall ? 0.6 : 0.8)))}px`;
+      el.style.maxHeight = `${Math.min(room, Math.round(box.height * share))}px`;
     }
   };
 

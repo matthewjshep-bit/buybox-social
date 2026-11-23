@@ -675,7 +675,7 @@ test("an agent's listings sort newest or most active, and a closed deal still ta
   await heartOf(closed).click();
   await expect(heartOf(closed)).toHaveAttribute("aria-pressed", "true");
   await closed.getByRole("button", { name: "Add a comment…" }).click();
-  const sheet = fan.getByRole("dialog", { name: "Comments" });
+  const sheet = closed.getByRole("region", { name: "Comments" });
   await sheet.getByLabel("Add a comment").fill("What a project");
   await sheet.getByLabel("Add a comment").press("Enter");
   await expect(sheet).toContainText("What a project");

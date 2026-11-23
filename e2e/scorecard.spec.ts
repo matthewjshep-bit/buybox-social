@@ -9,6 +9,7 @@ import type { PhotoThing, TimelineComment, TimelineItem, TimelineReaction } from
 import {
   signedIn,
   commentIn,
+  commentsOf,
   createShare,
   heartOf,
   homeIn,
@@ -152,7 +153,7 @@ test("for everyone else there's no Porchcard: Save is in its place, and a commen
   const row = latestIn(home).getByRole("button").filter({ hasText: HAL_SAYS });
   await expect(row).toContainText("Hal");
   await row.click();
-  comments = page.getByRole("dialog", { name: "Comments" });
+  comments = commentsOf(home);
   await expect(comments).toBeVisible();
   await expect(comments.getByText("What people think")).toHaveCount(0);
   await expect(comments.getByRole("button", { name: /Feedback/ })).toHaveCount(0);
@@ -277,16 +278,20 @@ test("public and private: a link's people, passes and words stay on the link, an
   expect(tessHtml).not.toContain(UMA_SAYS);
   expect(tessHtml).not.toMatch(/\bUma\b|\bVic\b/);
 
-  // What people said is in the comments, a tap away, and they stay open.
+  // What people said is in the comments, a tap away (they take the
+  // Porchcard's place), and they stay open.
   await card.getByRole("button", { name: "See the 1 comment" }).click();
-  const comments = tess.getByRole("dialog", { name: "Comments" });
+  const comments = commentsOf(tessHome);
   await expect(comments).toBeVisible();
+  await expect(card).toBeHidden();
   await tess.waitForTimeout(600);
   await expect(comments).toBeVisible();
   await expect(comments.getByText(WES_SAYS)).toBeVisible();
   await expect(comments).not.toContainText(/\bUma\b|\bVic\b|Saturday/);
-  // ...and back: what everyone thinks.
-  await comments.getByRole("button", { name: /^See the feedback/ }).click();
+  // ...and back: folded away, the Feedback button is where it was.
+  await comments.getByRole("button", { name: "Hide comments" }).click();
+  await expect(comments).toBeHidden();
+  await tessHome.getByRole("button", { name: "Feedback", exact: true }).click();
   await expect(card).toBeVisible();
 
   // A spot in the photos goes to the photo, its card open.
@@ -356,7 +361,7 @@ test("public and private: a link's people, passes and words stay on the link, an
   await expect(theirs.getByRole("heading", { name: /^Compare/ })).toHaveCount(0);
 });
 
-test("on a desktop, the panel says what the home is and what people said, and for an agent in a link's homes the Porchcard is a tab beside the comments", async ({
+test("on a desktop, the panel says what the home is and what people said, and for an agent in a link's homes the Porchcard docks beside the photo", async ({
   browser,
 }) => {
   test.setTimeout(90_000);
@@ -407,12 +412,11 @@ test("on a desktop, the panel says what the home is and what people said, and fo
   }
   for (const [i, name] of inPublic.entries()) await expect(actions.getByRole("button").nth(i)).toHaveAccessibleName(name);
   await panel.getByRole("button", { name: /^Comments, \d+$/ }).click();
-  const said = page.getByRole("dialog", { name: "Comments" });
+  const said = commentsOf(home);
   await expect(commentIn(said, "Kofi", "The walk up to the door is lovely.")).toBeVisible();
-  // Beside the photo, the comments alone: no tabs, no Porchcard to turn to.
-  expect(await said.evaluate((el) => el.matches(":modal"))).toBe(false);
+  // In the panel, the comments alone: no tabs, no Porchcard to turn to.
+  await expect(page.getByRole("dialog", { name: "Comments" })).toHaveCount(0);
   await expect(said.getByRole("tablist")).toHaveCount(0);
-  await expect(said.getByRole("heading", { name: "Comments" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(said).toBeHidden();
   await expect(page.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
@@ -432,35 +436,25 @@ test("on a desktop, the panel says what the home is and what people said, and fo
   await expect(card).toBeVisible();
   await expect(card.getByLabel(/^\d+ (person|people) liked it$/)).toBeVisible();
   await expect(card.getByRole("heading", { name: "The facts" })).toHaveCount(0);
-  // Beside the photo, not over it, and the tab that's showing has the keyboard.
+  // Beside the photo, not over it, and no tabs: the comments are in the panel it covers.
   expect(await card.evaluate((el) => el.matches(":modal"))).toBe(false);
-  const tabs = card.getByRole("tablist");
-  await expect(tabs.getByRole("tab", { name: "Feedback" })).toHaveAttribute("aria-selected", "true");
-  await expect(tabs.getByRole("tab", { name: "Feedback" })).toBeFocused();
-
-  // The tabs switch in place: one panel, its name following the tab.
-  await tabs.getByRole("tab", { name: /^Comments/ }).click();
-  const comments = agent.getByRole("dialog", { name: "Comments" });
-  await expect(comments).toBeVisible();
-  await expect(agent.getByRole("dialog")).toHaveCount(1);
-  await expect(comments.getByRole("tab", { name: /^Comments/ })).toHaveAttribute("aria-selected", "true");
-  await comments.getByRole("tab", { name: /^Comments/ }).focus();
-  await agent.keyboard.press("ArrowRight");
-  await expect(card).toBeVisible();
-  await expect(card.getByRole("tab", { name: "Feedback" })).toBeFocused();
-  await agent.keyboard.press("ArrowLeft");
-  await expect(comments).toBeVisible();
+  await expect(card.getByRole("tablist")).toHaveCount(0);
+  await expect(card.getByRole("heading", { name: "Feedback" })).toBeFocused();
   await agent.keyboard.press("Escape");
-  await expect(comments).toBeHidden();
+  await expect(card).toBeHidden();
 
   // The panel's own Porchcard button opens it too.
   await theirs.locator("[data-words]").getByRole("button", { name: "Feedback", exact: true }).click();
   await expect(card).toBeVisible();
-  // The comments from the keyboard: there, with the keyboard on their tab.
+  // The comments from the keyboard: the Porchcard gives way to them, in the panel.
   await card.getByRole("button", { name: /^See the \d+ comments?$/ }).press("Enter");
+  const comments = commentsOf(theirs);
   await expect(comments).toBeVisible();
-  await expect(comments.getByRole("tab", { name: /^Comments/ })).toBeFocused();
-  await comments.getByRole("tab", { name: "Feedback" }).click();
+  await expect(card).toBeHidden();
+  await expect(agent.getByRole("dialog")).toHaveCount(0);
+  await agent.keyboard.press("Escape");
+  await expect(comments).toBeHidden();
+  await theirs.locator("[data-words]").getByRole("button", { name: "Feedback", exact: true }).click();
   await expect(card).toBeVisible();
   // A spot in the photos: the photo shows it, the Porchcard stays. From the
   // keyboard, the spot's card takes it, and gives it back to the row.

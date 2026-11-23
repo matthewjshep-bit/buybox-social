@@ -119,13 +119,19 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   await cleoChat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(cleoChat.getByText("Love the cul-de-sac.")).toBeVisible();
 
-  // Who liked what is there for everyone to see.
+  // How many liked it is there for everyone to see, in the thread's likes
+  // line; not who, nor what they liked in the photo (that is on their own
+  // page, below, and in the agent's Porchcard: e2e/public.spec.ts).
   const dev = await signUpBuyer(browser, "dev@example.com", "Dev Shah");
   await dev.goto("/homes/SAMPLE-1012");
   const devHome = homeIn(dev, FOXGLOVE);
   let devChat = await openComments(dev, devHome);
-  await expect(devChat.getByText("Cleo liked the three-car garage")).toBeVisible();
+  await expect(devChat.getByText("1 like", { exact: true })).toBeVisible();
+  await expect(devChat.getByText("Love the cul-de-sac.")).toBeVisible();
+  await expect(devChat).not.toContainText("liked the three-car garage");
+  await expect(devChat).not.toContainText("Cleo liked");
   await dev.keyboard.press("Escape");
+  await expect(devChat).toBeHidden();
   // (Counted up, it's in the Porchcard, which is an agent's: e2e/public.spec.ts.)
   await expect(dev.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
   devChat = await openComments(dev, devHome);

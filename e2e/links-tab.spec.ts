@@ -53,11 +53,17 @@ test("every link sent, newest first: who it's for, how it's gone, one button, an
   await chat.getByLabel("Add a comment").fill("Is the roof new?");
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByLabel("Add a comment")).toHaveValue("");
-  const kit = await signedIn(browser);
+  // (Signed in with a name, so the link takes the like without asking for one.)
+  const kit = await signedIn(browser, undefined, "Kit");
   await kit.goto(forKit.url);
   const halvard = homeIn(kit, "10421 Halvard Way NE");
+  // (The heart fills at once; the like is saved a moment later. Lina's
+  // dashboard must read it, so wait until Kit's own Rated homes has it.)
   await heartOf(halvard).click();
   await expect(heartOf(halvard)).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(async () => (await kit.request.get("/people/me/rated")).text(), { timeout: 15_000 })
+    .toContain("10421 Halvard Way NE");
 
   // Clients' second tab.
   await lina.goto("/dashboard");

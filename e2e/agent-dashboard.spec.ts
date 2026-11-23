@@ -322,7 +322,7 @@ test("the agent's page about a client reads like the product: a card per home, s
   const sofa = await pick(saltmarsh, "the white sofa");
   await expect(spot).toBeHidden();
   await sofa.getByRole("button", { name: "Comment" }).click();
-  const sheet = nina.getByRole("dialog", { name: "Comments" });
+  const sheet = saltmarsh.getByRole("region", { name: "Comments" });
   await sheet.getByLabel("Comment on the white sofa").fill("Where would the TV go?");
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(sheet).toBeHidden();
@@ -528,7 +528,7 @@ test("the agent's Porchcard on a home: what each person thinks, the exact spot t
   await expect(heartOf(beaHome)).toHaveAttribute("aria-pressed", "true");
   const shutters = await likeInPhoto(beaHome, "the blue shutters");
   await shutters.getByRole("button", { name: "Comment" }).click();
-  const sheet = bea.getByRole("dialog", { name: "Comments" });
+  const sheet = beaHome.getByRole("region", { name: "Comments" });
   await sheet.getByLabel("Comment on the blue shutters").fill(BEA_SAYS);
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(sheet).toBeHidden();
@@ -791,15 +791,18 @@ test("an agent hearts what a client said: their thread says Liked by, in stone, 
   await agent.reload();
   await expect(like).toHaveAttribute("aria-pressed", "true");
 
-  // On her link: "Liked by Hal" under her words, in stone, not the brand colour
-  // (the site's own, on every link).
+  // On her link: "Liked by Hal" under her words, a quiet note in the dark
+  // thread, not the brand colour (the site's own, on every link).
   await ivy.reload();
   sheet = await openComments(ivy, homeIn(ivy, SALTMARSH));
   const chip = commentIn(sheet, "Ivy", IVY_SAYS).getByText("Liked by Hal", { exact: true });
   await expect(chip).toBeVisible();
-  // A note in stone, outlined: not filled like the spot chip, which is a button.
-  await expect(chip).toHaveClass(/ring-stone-200/);
+  // A note, outlined in a faint white ring: not filled like the spot chip,
+  // which is a button, and not a button itself.
+  await expect(chip).toHaveClass(/ring-1/);
+  await expect(chip).toHaveClass(/ring-white\/25/);
   await expect(chip).not.toHaveClass(/bg-/);
+  expect(await chip.evaluate((el) => el.tagName)).toBe("SPAN");
   const colours = await chip.evaluate((el) => {
     const brand = document.createElement("span");
     brand.style.color = "var(--brand)";

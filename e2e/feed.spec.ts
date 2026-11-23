@@ -25,7 +25,7 @@ async function expectLogoGoesHome(page: Page) {
   await expect(logo).toHaveAttribute("href", "/");
 }
 
-test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll, and the logo on every page", async ({
+test("the feed: full-screen homes, a heart, comments in one thread under the photo, endless scroll, and the logo on every page", async ({
   browser,
 }) => {
   test.setTimeout(90_000);
@@ -129,16 +129,30 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await expect(list.getByRole("button", { name: /^Like the evergreens/ })).toHaveAttribute("aria-pressed", "false");
   await expect(heartOf(post)).toHaveAttribute("aria-pressed", "true");
 
-  // Comments open in a sheet: who said what, and who liked what.
-  const sheet = await openComments(buyer, post);
-  const thread = sheet.getByRole("list", { name: "Comments and likes" });
-  await expect(thread).toContainText(/A buyer liked the evergreens · .+ · private chat/);
-  await sheet.getByLabel("Add a comment").fill("Those trees are gorgeous.");
-  await sheet.getByRole("button", { name: "Post", exact: true }).click();
-  await expect(commentIn(thread, "Bea", "Those trees are gorgeous.")).toBeVisible();
-  await expect(thread).toContainText("You liked the exterior");
+  // Comments unfurl in place, dark, under the photo: one thread, no sheet.
+  // Who liked is only a count: the client's private like reaches the public
+  // page as one of the likes, never as her name, her words, or what she liked.
+  const thread = await openComments(buyer, post);
+  await expect(buyer.getByRole("dialog", { name: "Comments" })).toHaveCount(0);
+  await expect(buyer.getByRole("list", { name: "Comments and likes" })).toHaveCount(0);
+  await expect(thread.getByRole("heading", { level: 2 })).toHaveText("Comments");
+  await expect(thread).toContainText("2 likes");
+  await expect(thread).toContainText("No comments yet.");
+  await expect(thread).not.toContainText("Toby");
+  await expect(thread).not.toContainText(/liked/i);
+  await expect(thread).not.toContainText(/evergreens|exterior/);
+  await expect(thread).not.toContainText("A buyer");
+  await thread.getByLabel("Add a comment").fill("Those trees are gorgeous.");
+  await thread.getByRole("button", { name: "Post", exact: true }).click();
+  const comments = thread.locator('ul[data-comment-list][aria-label="Comments"]');
+  await expect(commentIn(comments, "Bea", "Those trees are gorgeous.")).toBeVisible();
+  await expect(thread.getByRole("heading", { level: 2 })).toHaveText("1 comment");
+  // Still only the one row: nobody's likes, yours included, get a row of their own.
+  await expect(comments.getByRole("listitem")).toHaveCount(1);
+  await expect(thread).not.toContainText(/liked/i);
+  await expect(thread).not.toContainText("Toby");
   await buyer.keyboard.press("Escape");
-  await expect(sheet).toBeHidden();
+  await expect(thread).toBeHidden();
   // Under the photo, the way a post reads: how many liked it (both of you),
   // then the comment, by name. Tapping it opens the comments again.
   await expect(latestOf(post)).toContainText("2 likes");
@@ -146,9 +160,9 @@ test("the feed: full-screen homes, a heart, comments in a sheet, endless scroll,
   await expect(row).toContainText("Bea");
   await expect(post.getByRole("button", { name: "Comments, 1" })).toBeVisible();
   await row.getByRole("button").click();
-  await expect(sheet).toBeVisible();
+  await expect(thread).toBeVisible();
   await buyer.keyboard.press("Escape");
-  await expect(sheet).toBeHidden();
+  await expect(thread).toBeHidden();
 
   // More: what else you like, which photos can't show.
   let more = await openMore(buyer, post);

@@ -72,7 +72,8 @@ test("one package, a link for each person: they react, the agent compares and re
   await expect(sam.getByRole("heading", { level: 1 })).toHaveText("Sam, I picked these 2 homes for you");
   const samHouse = homeIn(sam, "4127 Larkmoor Ave NE");
   const samChat = await openComments(sam, samHouse);
-  await expect(samChat.getByText("Jamie liked the kitchen and marble counters")).toBeVisible();
+  // (Who liked the home, by name, on a link; what she liked in it is the agent's to see.)
+  await expect(samChat.getByText(/^Liked by Jamie/)).toBeVisible();
   await expect(samChat.getByText("That porch is perfect.")).toBeVisible();
   await samChat.getByLabel("Add a comment").fill("The kitchen feels small.");
   await samChat.getByRole("button", { name: "Post", exact: true }).click();
@@ -102,8 +103,9 @@ test("one package, a link for each person: they react, the agent compares and re
   await jamie.reload();
   await expect(heartOf(house)).toHaveAttribute("aria-pressed", "true");
   let thread = await openComments(jamie, house);
-  await expect(thread.getByText("You liked the kitchen and marble counters")).toBeVisible();
-  await expect(thread.getByText("Sam passed, didn't like the yard")).toBeVisible();
+  // (The comments count her among the likes; Sam's pass is never in them.)
+  await expect(thread.getByText(/^1 like$|^Liked by /)).toBeVisible();
+  await expect(thread).not.toContainText(/pass/i);
   save = saving('"reaction":null');
   await notForMe.click();
   await save;

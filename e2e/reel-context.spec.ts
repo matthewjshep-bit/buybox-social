@@ -74,7 +74,7 @@ test.beforeAll(async ({ browser }) => {
   await corbel.getByRole("button", { name: "Next photo" }).click();
   const stools = await likeInPhoto(corbel, "the bar stools");
   await stools.getByRole("button", { name: "Comment" }).click();
-  const sheet = ines.getByRole("dialog", { name: "Comments" });
+  const sheet = corbel.getByRole("region", { name: "Comments" });
   await sheet.getByLabel("Comment on the bar stools").fill(SAID);
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(sheet).toBeHidden();
@@ -465,7 +465,7 @@ test("a link to a comment opens the home's comments right on it, and anything el
   expect(id).toMatch(/^[0-9a-f-]{36}$/);
 
   await page.goto(`/homes/SAMPLE-1003?comment=${id}`);
-  const sheet = page.getByRole("dialog", { name: "Comments" });
+  const sheet = page.getByRole("region", { name: "Comments" });
   await expect(sheet).toBeVisible();
   const said = sheet.locator(`[data-comment="${id}"]`);
   await expect(said).toHaveAttribute("data-flash", "");
@@ -476,7 +476,7 @@ test("a link to a comment opens the home's comments right on it, and anything el
     await page.goto(address);
     await expect(homeIn(page, TAMSEN)).toBeInViewport({ ratio: 0.9 });
     await page.waitForTimeout(800);
-    await expect(page.getByRole("dialog", { name: "Comments" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Comments" })).toHaveCount(0);
   }
 });
 

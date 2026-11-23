@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
-import { signedIn, toFirstHome, createShare, enterCode, heartOf, homeIn, openComments, pastNameStep, pick, settle, signInAgent, signUpBuyer, tapPhoto, passOn, keepLinksPrivate } from "./helpers";
+import { signedIn, toFirstHome, commentsOf, createShare, enterCode, heartOf, homeIn, openComments, pastNameStep, pick, settle, signInAgent, signUpBuyer, tapPhoto, passOn, keepLinksPrivate } from "./helpers";
 
 // Under the photo, the way a post reads: how many liked the home, then the
 // latest few comments, each a row that opens the comments on it. Nothing goes
@@ -101,11 +101,11 @@ async function say(browser: Browser, key: string, address: string, name: string,
     const card = await pick(home, spot.thing);
     await card.getByRole("button", { name: /^Comment on/ }).click();
   } else await home.getByRole("button", { name: "Add a comment…" }).click();
-  const sheet = page.getByRole("dialog", { name: "Comments" });
+  const sheet = commentsOf(home);
   await sheet.getByRole("textbox").fill(words);
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
-  // (From a spot's card the sheet closes on Post; from the bar it stays over
-  // the list. Either way the words reach the latest comments under the photo.)
+  // (From a spot's card the thread folds away on Post; from the bar it stays
+  // open. Either way the words are in the comments under the photo.)
   await expect(home.locator("[data-comment-list]")).toContainText(words);
   await page.context().close();
 }
@@ -156,7 +156,7 @@ test("under the photo, the latest comments, the newest first, each a row that op
   const row = rowOf(home, AL_SAID).getByRole("button");
   expect((await box(row)).height).toBeGreaterThanOrEqual(44);
   await row.click();
-  const sheet = page.getByRole("dialog", { name: "Comments" });
+  const sheet = commentsOf(home);
   await expect(sheet).toBeVisible();
   await expect(sheet.locator("[data-comment][data-flash]")).toContainText(AL_SAID);
 });
@@ -216,7 +216,7 @@ test("a comment left on a spot shows whichever photo is on screen, with a pin; i
   await expect(home.locator("[data-spot-highlight]")).toHaveCount(0);
   // The row opens the comments on it, where its spot is named and can be shown.
   await row.getByRole("button").click();
-  const sheet = page.getByRole("dialog", { name: "Comments" });
+  const sheet = commentsOf(home);
   await expect(sheet).toBeVisible();
   const said = sheet.locator("[data-comment]").filter({ hasText: CY_SAID });
   await expect(said).toBeVisible();
@@ -273,7 +273,7 @@ test("side by side, the comments are in the panel beside the photo, not over its
   await expect(card).toBeHidden();
   // A row opens the comments, on that comment, beside the photo.
   await rowOf(home, BO_SAID).getByRole("button").click();
-  const sheet = page.getByRole("dialog", { name: "Comments" });
+  const sheet = commentsOf(home);
   await expect(sheet).toBeVisible();
   await expect(sheet.locator("[data-comment][data-flash]")).toContainText(BO_SAID);
   expect((await box(sheet)).x).toBeGreaterThanOrEqual(photo.x + photo.width - 1);
@@ -427,7 +427,7 @@ test("each comment starts with the face of whoever said it; from here there's no
   // name is the way to Bo's page.
   await expect(latestOf(home).getByRole("link")).toHaveCount(0);
   await row.getByRole("button").click();
-  const sheet = page.getByRole("dialog", { name: "Comments" });
+  const sheet = commentsOf(home);
   await expect(sheet).toBeVisible();
   // (Once it has finished sliding up: a tap mid-slide lands on the sheet itself.)
   await settle(sheet);
@@ -460,7 +460,7 @@ test("isolation: what's private on an agent's link never reaches the public page
   await expect(card).toBeVisible();
   await settle(card);
   await card.getByRole("button", { name: /^Comment on/ }).click();
-  const about = yara.getByRole("dialog", { name: "Comments" });
+  const about = commentsOf(yaraHome);
   await expect(about.getByRole("heading", { name: "On a spot in photo 1" })).toBeVisible();
   await about.getByRole("textbox").fill(SPOT_SECRET);
   await about.getByRole("button", { name: "Post", exact: true }).click();
@@ -534,7 +534,7 @@ test("isolation: a comment on a spot shared from a link shows its words in publi
   await expect(card).toBeVisible();
   await settle(card);
   await card.getByRole("button", { name: /^Comment on/ }).click();
-  const about = zoe.getByRole("dialog", { name: "Comments" });
+  const about = commentsOf(zoeHome);
   await expect(about.getByRole("heading", { name: "On a spot in photo 1" })).toBeVisible();
   await about.getByLabel(/share publicly/).check();
   await about.getByRole("textbox").fill(WORDS);
@@ -560,7 +560,7 @@ test("isolation: a comment on a spot shared from a link shows its words in publi
   await expect(home.locator(`[data-spot-tag="${spotTag}"]`)).toHaveCount(0);
   await expect(home.locator("[data-spot-highlight]")).toHaveCount(0);
   await row.getByRole("button").click();
-  const sheet = page.getByRole("dialog", { name: "Comments" });
+  const sheet = commentsOf(home);
   await expect(sheet).toBeVisible();
   await expect(sheet.getByText(WORDS)).toBeVisible();
   await expect(sheet.getByRole("button", { name: /: show it$/ })).toHaveCount(0);
