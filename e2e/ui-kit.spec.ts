@@ -12,9 +12,9 @@ const DESKTOP = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, 
 // are round, and how wide each of its icons is. A card that's a link (taller
 // than any button), a word that acts (no shape of its own) and a chip that
 // carries a photo aren't buttons.
-async function buttonShapes(page: Page) {
-  return page.evaluate(() => {
-    const roots = [...document.querySelectorAll("header, main, dialog[open]")];
+async function buttonShapes(page: Page, within = "header, main, dialog[open]") {
+  return page.evaluate((selector) => {
+    const roots = [...document.querySelectorAll(selector)];
     const controls = new Set(roots.flatMap((root) => [...root.querySelectorAll<HTMLElement>("a, button")]));
     return [...controls].flatMap((el) => {
       const box = el.getBoundingClientRect();
@@ -33,11 +33,14 @@ async function buttonShapes(page: Page) {
         .map((icon) => Math.round(icon.getBoundingClientRect().width));
       return [{ name, height: Math.round(box.height), round, icons }];
     });
-  });
+  }, within);
 }
 
-async function expectKitButtons(page: Page, where: string) {
-  const shapes = await buttonShapes(page);
+// (Messages has no main of its own: its two panes are the page.)
+const MESSAGES = "header, [data-messages], dialog[open]";
+
+async function expectKitButtons(page: Page, where: string, within?: string) {
+  const shapes = await buttonShapes(page, within);
   expect(shapes.length, where).toBeGreaterThan(0);
   for (const shape of shapes) {
     expect(shape.round, `${where}: ${shape.name}`).toBe(true);
@@ -90,11 +93,15 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   browser,
 }) => {
   const agent = await signInAgent(browser, "una-kit@example.com", "Una Kit");
-  // (Signing in lands on Home: their Clients page is a tap away.)
-  await agent.goto("/dashboard");
+  // (Signing in lands on Home: their Messages are a tap away.)
+  await agent.goto("/messages");
   // (Once the page itself is there, not its loading outline.)
-  await expect(agent.getByRole("main").getByRole("link", { name: /Send homes|Choose homes/ }).first()).toBeVisible();
-  await expectKitButtons(agent, "dashboard");
+  const pencil = agent.getByRole("link", { name: "Send homes" }).first();
+  await expect(pencil).toBeVisible();
+  await expectKitButtons(agent, "messages", MESSAGES);
+  // (The pencil has no shape of its own, but is a fingertip tall and wide.)
+  expect((await pencil.boundingBox())!.height).toBe(44);
+  expect((await pencil.boundingBox())!.width).toBe(44);
 
   // Their own page: their face as it is in the header beside it, the photo
   // they added on signing up (without one, their initial in ink).
@@ -115,7 +122,16 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   await agent.goto("/dashboard/new");
   const price = agent.getByRole("button", { name: /812 N Corbel/ }).getByText("$724,900");
   expect(await price.evaluate((el) => getComputedStyle(el).fontFamily)).toBe(heading);
-  // Each part of the client page: sending it (where it starts), then the homes.
+  // The conversation the link started, and its foot: the box and the + to send more.
+  await agent.goto("/messages");
+  await agent.getByRole("list", { name: "Conversations" }).getByRole("link", { name: /^Kit\b/ }).click();
+  await agent.waitForURL(/\/messages\//);
+  await expect(agent.getByRole("textbox", { name: "Message", exact: true })).toBeVisible();
+  await expectKitButtons(agent, "conversation", MESSAGES);
+  const more = agent.getByRole("link", { name: "Send homes" }).last();
+  expect((await more.boundingBox())!.height).toBe(44);
+  expect(await more.evaluate((el) => parseFloat(getComputedStyle(el).borderTopLeftRadius) >= 22)).toBe(true);
+  // Each part of the link's page: sending it (where it starts), then the homes.
   await agent.goto(dashboardUrl);
   await expectKitButtons(agent, "client page");
   await agent.goto(`${dashboardUrl}?tab=homes`);
@@ -170,7 +186,8 @@ test("one title, one column and one way back: the same size and the same left ed
   };
   const notifications = await title("/activity");
   expect(notifications.size).toBe("36px");
-  for (const path of ["/people/me/edit", "/dashboard", "/dashboard/links", "/dashboard/listings", new URL(dashboardUrl).pathname]) {
+  // (Messages is laid out like a phone's, its "Messages" over the list: not one of these pages.)
+  for (const path of ["/people/me/edit", "/dashboard/listings", new URL(dashboardUrl).pathname]) {
     expect(await title(path), path).toEqual(notifications);
   }
 
@@ -184,13 +201,16 @@ test("one title, one column and one way back: the same size and the same left ed
   };
   const main = agent.getByRole("main");
   await agent.goto(dashboardUrl);
-  // (A link's page goes back to the client it's for, by name.)
-  const toClient = main.locator('a[href^="/dashboard/clients/"]').first();
+  // (A link's page goes back to the conversation it's in, by the client's name.)
+  const toClient = main.locator('a[href^="/messages/"]').first();
   await expect(toClient).toHaveText("Kit");
   const fromLink = await back(toClient, "a link's page");
   await toClient.click();
-  await agent.waitForURL((url) => url.pathname.startsWith("/dashboard/clients/"));
-  expect(await back(main.getByRole("link", { name: "All clients", exact: true }), "a client's page")).toEqual(fromLink);
+  await agent.waitForURL((url) => url.pathname.startsWith("/messages/"));
+  await expect(agent.getByRole("heading", { level: 1, name: "Kit" })).toBeVisible();
+  // (Beside the list, the conversation needs no way back; its ⓘ goes to the link's page.)
+  await expect(agent.getByRole("link", { name: "Back to messages" })).toBeHidden();
+  await expect(agent.getByRole("link", { name: "Link details" })).toHaveAttribute("href", new URL(dashboardUrl).pathname);
   await agent.goto("/people/me/edit");
   expect(await back(main.getByRole("link", { name: "Your profile", exact: true }), "Edit profile")).toEqual(fromLink);
 
@@ -198,9 +218,15 @@ test("one title, one column and one way back: the same size and the same left ed
   await agent.setViewportSize({ width: 390, height: 780 });
   const small = await title("/activity");
   expect(small.size).toBe("30px");
-  for (const path of ["/people/me/edit", "/dashboard", new URL(dashboardUrl).pathname]) {
+  for (const path of ["/people/me/edit", new URL(dashboardUrl).pathname]) {
     expect(await title(path), path).toEqual(small);
   }
+  // On a phone a conversation stands alone, with its way back to the list a fingertip tall.
+  await agent.goto(dashboardUrl);
+  await main.locator('a[href^="/messages/"]').first().click();
+  await agent.waitForURL((url) => url.pathname.startsWith("/messages/"));
+  const toList = await back(agent.getByRole("link", { name: "Back to messages" }), "a conversation on a phone");
+  expect(toList.height).toBe(44);
 });
 
 test("a buyer's pages, sign-in and the admin are the same kit, and a buyer's face is the brand's colour", async ({

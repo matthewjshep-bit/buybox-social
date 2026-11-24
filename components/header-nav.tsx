@@ -1,18 +1,6 @@
 "use client";
 
-import {
-  Bookmark,
-  BriefcaseBusiness,
-  ChevronDown,
-  Building2,
-  House,
-  ListChecks,
-  LogOut,
-  Shield,
-  UserRound,
-  UserRoundSearch,
-  Users,
-} from "lucide-react";
+import { Bookmark, BriefcaseBusiness, Building2, ChevronDown, House, ListChecks, LogOut, Send, Shield, UserRound, UserRoundSearch } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
@@ -309,9 +297,9 @@ export function AccountMenu({
               the bar has them by name at every width. Only on someone's
               link, which has no bar, is Clients here.) A buyer who is
               an agent sets up their agent's account from here. */}
-          {agent && dashboard && (
-            <MenuLink href="/dashboard" section icon={<Users aria-hidden size={18} />} onGo={close}>
-              Clients
+          {dashboard && (
+            <MenuLink href="/messages" section icon={<Send aria-hidden size={18} />} onGo={close}>
+              Messages
             </MenuLink>
           )}
           {!agent && (

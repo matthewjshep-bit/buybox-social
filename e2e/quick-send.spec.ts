@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { clientRow, createShare, enterCode, heartOf, homeIn, joinAs, openMore, signInAgent, signUpBuyer, toFirstHome, toLinkReady, toWho, pickHome } from "./helpers";
+import { createShare, enterCode, heartOf, homeIn, joinAs, openMore, signInAgent, signUpBuyer, toFirstHome, toLinkReady, toWho, pickHome } from "./helpers";
 
 type Shared = { title?: string; text?: string; url?: string; inTap: boolean };
 type Stubbed = { shared: Shared[]; shareAnswer: "send" | "cancel"; inTap: boolean };
@@ -150,12 +150,22 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
   await expect(prompt).toBeHidden();
   await expect(heartOf(homeIn(client, "96 Fernhollow Ln"))).toHaveAttribute("aria-pressed", "false");
 
-  // It's on the dashboard like any other link.
-  await agent.goto("/dashboard");
-  const toby = clientRow(agent, "Toby");
-  await expect(toby).toContainText("1 home sent");
+  // It's a conversation with Toby in Messages, like any other link.
+  await agent.goto("/messages");
+  const toby = agent.getByRole("list", { name: "Conversations" }).getByRole("link", { name: /^Toby\b/ });
   // (He's had it open, to be greeted by name.)
-  await expect(toby).toContainText("Opened · no likes yet");
+  await expect(toby).toContainText("Opened");
+  await toby.click();
+  await agent.waitForURL(/\/messages\//);
+  await expect(agent.getByRole("heading", { level: 1, name: "Toby" })).toBeVisible();
+  const sends = agent.getByRole("list", { name: "Messages" });
+  await expect(sends).toContainText("You sent 1 home");
+  await expect(sends.getByRole("link", { name: /96 Fernhollow Ln/ })).toBeVisible();
+  // (Once his look at the home has been kept.)
+  await expect(async () => {
+    await agent.reload();
+    await expect(sends.locator('[id^="home-"]').first()).toContainText(/Opened/, { timeout: 1500 });
+  }).toPass({ timeout: 30_000 });
 
   // The agent looking at their own link isn't taken for Toby: it's their
   // feedback for him, with no name asked, and the heart on the home is his.
@@ -193,7 +203,8 @@ test("closing the share sheet unsent leaves no link behind, and a link that didn
   await expect(agent.getByRole("dialog", { name: "Sent. Who's it for?" })).toBeHidden();
   expect((await shared(agent))[0].url).toContain(`/s/${token}`);
   expect((await request.get(`/s/${token}`)).status()).toBe(404);
-  await agent.goto("/dashboard");
+  await agent.goto("/messages");
+  await expect(agent.getByText("No messages yet")).toBeVisible();
   await expect(agent.getByRole("link", { name: /96 Fernhollow/ })).toHaveCount(0);
 
   // The home sells between the tap and the link being made (the tests' sold
@@ -477,7 +488,7 @@ test("a link held for a day is never handed out: Send this home makes a new one 
   expect((await request.get(url)).status()).toBe(200);
   expect((await request.get(`/s/${token}`)).status()).toBe(404);
   // (Where it is from now on, by the bar's name for the place.)
-  await expect(draft.getByRole("link", { name: "Open in Clients" })).toHaveAttribute("href", /^\/dashboard\/shares\/[\w-]+$/);
+  await expect(draft.getByRole("link", { name: "Link details" })).toHaveAttribute("href", /^\/dashboard\/shares\/[\w-]+$/);
   await draft.getByRole("button", { name: "Close" }).click();
   await expect(draft).toBeHidden();
 

@@ -178,21 +178,24 @@ const eventsOf = (visitorId: string) => sql`
           and q.participant_id is not null and q.created_at < c.created_at)
       then 'agent_reply' else 'agent_note' end,
     coalesce(nullif(btrim(av.first_name), ''), nullif(split_part(btrim(a.full_name), ' ', 1), ''), 'Your agent'),
-    coalesce(av.id::text, 'account:' || a.id), av.id::text, c.body, s.id || ':' || c.listing_key, c.listing_key,
-    c.media_key, c.id::text, '/s/' || coalesce(p.token, s.token), null, c.created_at
+    coalesce(av.id::text, 'account:' || a.id), av.id::text, c.body, s.id || ':' || coalesce(c.listing_key, ''), c.listing_key,
+    c.media_key, c.id::text,
+    -- (A message about no home: the conversation itself.)
+    case when c.listing_key is null then '/messages/acct%3A' || s.agent_id else '/s/' || coalesce(p.token, s.token) end,
+    null, c.created_at
   from self
   join participants p on p.account_id = self.account_id
   join shares s on s.id = p.share_id
   join accounts a on a.id = s.agent_id
   left join visitors av on av.account_id = s.agent_id
   join comments c on c.share_id = s.id and c.agent_id is not null and c.created_at > p.created_at
-  join share_listings sl on sl.share_id = c.share_id and sl.listing_key = c.listing_key and sl.removed_at is null
-  where s.agent_id <> self.account_id
+  left join share_listings sl on sl.share_id = c.share_id and sl.listing_key = c.listing_key and sl.removed_at is null
+  where s.agent_id <> self.account_id and (c.listing_key is null or sl.listing_key is not null)
   union all
   -- An agent's clients, on the agent's own links, by first name: what they
   -- said (but not the words an ask posts, which are the ask)...
   select 'client-comment:' || c.id, 'client_comment', p.first_name, coalesce(pv.id::text, 'participant:' || p.id),
-    pv.id::text, c.body, p.id || ':' || c.listing_key, c.listing_key, c.media_key, c.id::text,
+    pv.id::text, c.body, p.id || ':' || coalesce(c.listing_key, ''), c.listing_key, c.media_key, c.id::text,
     case when (select o.role from accounts o where o.id = s.agent_id) = 'agent'
       then '/dashboard/shares/' || s.id else '/send/' || s.id end, null, c.created_at
   from self
@@ -285,7 +288,9 @@ function hrefOf(row: EventRow, photoIndex: number | null) {
     return `/homes/${key}${search ? `?${search}` : ""}`;
   }
   if (CLIENT_KINDS.has(row.kind) && row.target) {
-    const spot = row.comment_id ? `#comment-${row.comment_id}` : key ? `#home-${key}` : "";
+    // (A message about no home: the page of the link, not a home on it.)
+    if (!key) return row.target;
+    const spot = row.comment_id ? `#comment-${row.comment_id}` : `#home-${key}`;
     return `${row.target}?tab=homes${spot}`;
   }
   if ((row.kind === "agent_reply" || row.kind === "agent_note") && row.target && key) {
@@ -437,9 +442,10 @@ export function describeActivity(
     case "agent_reply":
       return `replied on ${address}`;
     case "agent_note":
-      return `left a note on ${address}`;
+      // (About no home: a message in the conversation itself.)
+      return row.address ? `left a note on ${address}` : "sent you a message";
     case "client_comment":
-      return `${row.likedToo ? "liked and commented" : "commented"} on ${address}`;
+      return row.address ? `${row.likedToo ? "liked and commented" : "commented"} on ${address}` : "sent you a message";
     case "client_like":
       return `liked ${address}`;
     case "client_ask":

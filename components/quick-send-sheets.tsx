@@ -315,11 +315,11 @@ export function SentBody({
             is made (on a slow connection that can take a moment). */}
         {shareId ? (
           <Link href={`/dashboard/shares/${shareId}`} className={cn(dashboardLink, "text-brand")}>
-            Open in Clients <ChevronRight aria-hidden size={16} />
+            Link details <ChevronRight aria-hidden size={16} />
           </Link>
         ) : (
           <span role="link" aria-disabled="true" className={cn(dashboardLink, "text-stone-400")}>
-            Open in Clients <ChevronRight aria-hidden size={16} />
+            Link details <ChevronRight aria-hidden size={16} />
           </span>
         )}
       </div>
@@ -542,7 +542,7 @@ export function DraftBody({ home, onNextToken }: { home: SendHome; onNextToken: 
               href={`/dashboard/shares/${link.shareId}`}
               className="mx-auto flex min-h-11 items-center gap-1 px-3 text-sm font-semibold text-brand"
             >
-              Open in Clients <ChevronRight aria-hidden size={16} />
+              Link details <ChevronRight aria-hidden size={16} />
             </Link>
           </div>
         </div>

@@ -36,14 +36,17 @@ test("someone else typing your email on the agents' form never makes your accoun
   await expect(stranger.getByLabel("Code", { exact: true })).toBeVisible();
   await stranger.context().close();
 
-  // Vic signs in the ordinary way: still a buyer. No Dashboard, and its
-  // address sends him home.
+  // Vic signs in the ordinary way: still a buyer. No listings of his own
+  // under his face (an agent's are), and the dashboard's address sends him home.
   const vic = await (await browser.newContext(DESKTOP)).newPage();
   await vic.goto("/login");
   await emailAndCode(vic, email);
   await vic.waitForURL((url) => url.pathname === "/");
   await expect(vic.getByRole("banner").getByRole("button", { name: "Account menu" })).toBeVisible();
-  await expect(vic.getByRole("banner").getByRole("link", { name: "Clients", exact: true })).toHaveCount(0);
+  await vic.getByRole("banner").getByRole("button", { name: "Account menu" }).click();
+  await expect(vic.locator("#account-menu").getByRole("link", { name: "I'm an agent" })).toBeVisible();
+  await expect(vic.locator("#account-menu").getByRole("link", { name: "Listings" })).toHaveCount(0);
+  await vic.keyboard.press("Escape");
   await vic.goto("/dashboard");
   await expect(vic).toHaveURL(/localhost:\d+\/$/);
 
@@ -54,7 +57,10 @@ test("someone else typing your email on the agents' form never makes your accoun
   await emailAndCode(nia, newcomer);
   await pastNameStep(nia, "Nia");
   await nia.waitForURL((url) => url.pathname === "/");
-  await expect(nia.getByRole("banner").getByRole("link", { name: "Clients", exact: true })).toHaveCount(0);
+  await nia.getByRole("banner").getByRole("button", { name: "Account menu" }).click();
+  await expect(nia.locator("#account-menu").getByRole("link", { name: "I'm an agent" })).toBeVisible();
+  await expect(nia.locator("#account-menu").getByRole("link", { name: "Listings" })).toHaveCount(0);
+  await nia.keyboard.press("Escape");
   await nia.goto("/dashboard");
   await expect(nia).toHaveURL(/localhost:\d+\/$/);
 
@@ -66,20 +72,26 @@ test("someone else typing your email on the agents' form never makes your accoun
   await emailAndCode(vic, email);
   // (Which kind of pro: asked, a step at a time.)
   await throughWelcome(vic, "agent", { name: "Vic Valid" });
-  // Home, like everyone, with his Clients a tap away in the bar.
+  // Home, like everyone; an agent now, with his listings under his face and
+  // no "I'm an agent".
   await vic.waitForURL((url) => url.pathname === "/");
-  await expect(vic.getByRole("banner").getByRole("link", { name: "Clients", exact: true })).toBeVisible();
+  await vic.getByRole("banner").getByRole("button", { name: "Account menu" }).click();
+  await expect(vic.locator("#account-menu").getByRole("link", { name: "Listings" })).toHaveAttribute("href", "/dashboard/listings");
+  await expect(vic.locator("#account-menu").getByRole("link", { name: "I'm an agent" })).toHaveCount(0);
 });
 
 test("signed out at a page that takes an account, signing in lands on that page", async ({ browser }) => {
   test.setTimeout(90_000);
   const stamp = Date.now();
-  // An agent with a client, whose page she's kept the address of.
+  // An agent with a client, whose conversation she's kept the address of.
   const agentEmail = `tess.${stamp}@example.com`;
   const agent = await signInAgent(browser, agentEmail, "Tess Marlow");
   await createShare(agent, [HALVARD], ["Jamie"]);
-  await agent.goto("/dashboard");
-  const clientPage = (await agent.locator('a[href^="/dashboard/clients/"]').first().getAttribute("href"))!;
+  await agent.goto("/messages");
+  const clientPage = (await agent
+    .locator('ul[aria-label="Conversations"] a[href^="/messages/"]')
+    .first()
+    .getAttribute("href"))!;
   await agent.context().close();
 
   // Signed out, it asks her to sign in, and remembers where she was going.
@@ -88,7 +100,7 @@ test("signed out at a page that takes an account, signing in lands on that page"
   await expect(tess).toHaveURL(`/login?next=${encodeURIComponent(clientPage)}`);
   await emailAndCode(tess, agentEmail);
   await tess.waitForURL((url) => url.pathname === clientPage);
-  await expect(tess.getByRole("heading", { level: 1 })).toContainText("Jamie");
+  await expect(tess.getByRole("region", { name: "Conversation" }).getByRole("heading", { level: 1 })).toContainText("Jamie");
 
   // A home someone was about to send, by someone new: sign in, their first
   // name, and the home is still there, picked.

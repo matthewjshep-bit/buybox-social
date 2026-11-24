@@ -1,18 +1,21 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { cn } from "@/lib/format";
 import { button } from "@/lib/ui";
 import { deleteShare } from "../../actions";
 
 // Deletes a link nobody has opened and nobody is named on (one sent by
-// mistake, or to try it out). Quiet, and in two steps: "Delete", then "Yes,
-// delete" or "Keep". `what`: the link's homes, for a screen reader.
+// mistake, or to try it out), from its details page. Quiet, and in two
+// steps: "Delete", then "Yes, delete" or "Keep"; gone, Messages is back
+// without it. `what`: the link's homes, for a screen reader.
 export function DeleteLink({ shareId, what }: { shareId: string; what: string }) {
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const router = useRouter();
   const question = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -49,6 +52,8 @@ export function DeleteLink({ shareId, what }: { shareId: string; what: string })
           startTransition(async () => {
             const result = await deleteShare(shareId);
             if (result.error) setError(result.error);
+            // Gone: back to the conversations, without it.
+            else router.push("/messages");
           });
         }}
         className={button({ kind: "danger", size: "lg" })}

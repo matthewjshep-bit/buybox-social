@@ -6,7 +6,7 @@
 // again, small, each with the same two buttons. And a mouse's wheel goes on a
 // home at a time.
 import { expect, test } from "@playwright/test";
-import { clientRow, createShare, heartOf, joinAs, signInAgent, signUpBuyer, toFirstHome } from "./helpers";
+import { createShare, heartOf, joinAs, signInAgent, signUpBuyer, toFirstHome } from "./helpers";
 
 const PHONE = { width: 390, height: 780 };
 
@@ -144,12 +144,16 @@ test("on an agent's link the wheel leaves the welcome for the homes, and a clien
   await expect(quin.getByRole("article").nth(1)).toBeInViewport({ ratio: 0.9 });
   await expect(heartOf(quin.getByRole("article").nth(1))).toHaveAttribute("aria-pressed", "true");
 
-  // The agent hears of it: Quin liked one and passed on one.
-  await agent.goto("/dashboard");
-  await clientRow(agent, "Quin").getByRole("link", { name: "Quin", exact: true }).click();
-  await agent.waitForURL(/\/dashboard\/clients\//);
-  await expect(agent.getByRole("main")).toContainText("Passed on 1");
-  await expect(agent.getByRole("main")).toContainText(/Liked 1 of 2/);
+  // The agent hears of it in Messages: Quin liked one and passed on one, on
+  // the conversation's line and on each home's card in it.
+  await agent.goto("/messages");
+  const quinRow = agent.getByRole("list", { name: "Conversations" }).getByRole("link", { name: /^Quin\b/ });
+  await expect(quinRow).toContainText("Liked 1 of 2 homes");
+  await quinRow.click();
+  await agent.waitForURL(/\/messages\//);
+  const sends = agent.getByRole("list", { name: "Messages" });
+  await expect(sends.locator('[id^="home-"]').filter({ hasText: "1204 Quillan" })).toContainText("Quin passed");
+  await expect(sends.locator('[id^="home-"]').filter({ hasText: "719 Saltmarsh" })).toContainText("Quin liked it");
 
   // The agent, looking at their own link, sees it as Quin does: the X and the
   // heart on each home, and on the last screen. They're Quin's to tap: the

@@ -74,10 +74,10 @@ export function ClientActivity({
         </ul>
       )}
       <Link
-        href="/dashboard"
+        href="/messages"
         className="mx-4 mt-1 flex min-h-11 items-center justify-center border-t border-stone-200 pt-1 text-sm font-semibold text-stone-700 hover:text-ink"
       >
-        All clients
+        All messages
       </Link>
     </section>
   );

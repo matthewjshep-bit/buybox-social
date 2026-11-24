@@ -228,7 +228,7 @@ const loadPeople = (agentId: string) => sql<PersonRow[]>`
     ) last
     where not exists (
       select 1 from comments r
-      where r.share_id = p.share_id and r.listing_key = last.listing_key
+      where r.share_id = p.share_id and r.listing_key is not distinct from last.listing_key
         and r.agent_id is not null and r.created_at > last.created_at)
   ) waiting
   where s.agent_id = ${agentId} and (p.account_id is null or p.account_id <> s.agent_id)

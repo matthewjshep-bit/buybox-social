@@ -4,7 +4,7 @@ import { DashboardNav } from "./nav";
 
 // What the bar calls this place. (A client's page, a link's and Send homes
 // say their own.)
-export const metadata = { title: "Clients · Porchcard" };
+export const metadata = { title: "Porchcard" };
 
 // The agent's own colour is set around this and the header together, so the
 // logo is theirs too (BrandScope, app/layout.tsx).

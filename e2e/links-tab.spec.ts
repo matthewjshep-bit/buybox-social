@@ -1,12 +1,12 @@
-// Clients' Links tab: every link the agent has sent, newest first,
-// whoever it went to. Each says who it's for ("No name yet", with nobody on
-// it), its homes and when it went (to the minute, when two would otherwise
-// read the same), and how it's gone, in a few words; with one button: the
-// link to copy while nobody has opened it, otherwise its page. A link nobody
-// has opened and nobody is named on can be deleted, there and only there. A
-// link's own page leads back to the client it belongs to, or to Links.
+// Every link the agent has sent, as Messages has them: one conversation per
+// person, newest first, and a link nobody is named on as a conversation of
+// its own, called for its home ("Link for 96 Fernhollow Ln"). Each row says
+// in a line how it's gone, "Waiting" when they're waiting on the agent, and
+// is marked new until the agent looks. Inside, each home is a card with what
+// was done to it; the link's own page is a tap from the top, and leads back
+// to the conversation it belongs to. (The old Links page leads here.)
 import { expect, test, type Page } from "@playwright/test";
-import { clientRow, createShare, heartOf, homeIn, openComments, signedIn, signInAgent } from "./helpers";
+import { createShare, heartOf, homeIn, openComments, signedIn, signInAgent, threadHome, threadRow } from "./helpers";
 
 // A link with nobody named on it: the one anyone can join.
 async function namelessLink(agent: Page, address: string) {
@@ -17,15 +17,13 @@ async function namelessLink(agent: Page, address: string) {
 const actionAnswered = (page: Page) =>
   page.waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
 
-const linkRows = (page: Page) => page.getByRole("list", { name: "Links" }).getByRole("listitem");
+const rows = (page: Page) => page.getByRole("list", { name: "Conversations" }).getByRole("listitem");
 
-test("every link sent, newest first: who it's for, how it's gone, one button, and Delete only while nobody has used it", async ({
+test("every link sent is a conversation, newest first: who it's for, how it's gone, what's new, and its page a tap away", async ({
   browser,
-  request,
 }) => {
   test.setTimeout(180_000);
   const lina = await signInAgent(browser, "lina.links@example.com", "Lina Links");
-  await lina.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   const forJo = await createShare(lina, ["1204 Quillan", "719 Saltmarsh"], ["Jo"]);
   const forMax = await createShare(lina, ["812 N Corbel"], ["Max"]);
   const forKit = await createShare(lina, ["10421 Halvard"], ["Kit"]);
@@ -33,6 +31,7 @@ test("every link sent, newest first: who it's for, how it's gone, one button, an
   const older = await namelessLink(lina, "96 Fernhollow");
   const newer = await namelessLink(lina, "96 Fernhollow");
   const pathOf = (url: string) => new URL(url).pathname;
+  const idOf = (url: string) => pathOf(url).split("/").pop()!;
 
   // A link nobody has opened says so in one line, in place of four boxes of
   // nothing; and "Wants" (what they want) isn't a tab until someone has liked or
@@ -58,163 +57,132 @@ test("every link sent, newest first: who it's for, how it's gone, one button, an
   await kit.goto(forKit.url);
   const halvard = homeIn(kit, "10421 Halvard Way NE");
   // (The heart fills at once; the like is saved a moment later. Lina's
-  // dashboard must read it, so wait until Kit's own Rated homes has it.)
+  // Messages must read it, so wait until Kit's own Rated homes has it.)
   await heartOf(halvard).click();
   await expect(heartOf(halvard)).toHaveAttribute("aria-pressed", "true");
   await expect
     .poll(async () => (await kit.request.get("/people/me/rated")).text(), { timeout: 15_000 })
     .toContain("10421 Halvard Way NE");
 
-  // Clients' second tab.
-  await lina.goto("/dashboard");
-  // (Jo's row there has the mark Home has: something new since Lina looked.)
-  await expect(clientRow(lina, "Jo")).toContainText("New since you last looked");
-  const tabs = lina.getByRole("navigation", { name: "Clients" });
-  await tabs.getByRole("link", { name: "Links" }).click();
-  await lina.waitForURL(/\/dashboard\/links$/);
-  await expect(lina).toHaveTitle("Clients · Porchcard");
-  await expect(lina.getByRole("heading", { level: 1 })).toHaveText("Links");
-  await expect(tabs.getByRole("link", { name: "Links" })).toHaveAttribute("aria-current", "page");
-  await expect(lina.getByRole("main").getByRole("link", { name: "Send homes" })).toHaveAttribute("href", "/dashboard/new");
+  // The Links page is Messages now.
+  await lina.goto("/dashboard/links");
+  await lina.waitForURL(/\/messages$/);
+  await expect(lina).toHaveTitle("Messages · Porchcard");
+  await expect(lina.getByRole("heading", { level: 1 })).toHaveText("Messages");
+  await expect(lina.getByRole("link", { name: "Send homes" })).toHaveAttribute("href", "/dashboard/new");
 
-  // Every link, newest first, each called by who it's for.
-  const rows = linkRows(lina);
-  await expect(rows.getByRole("link", { name: /^(No name yet|Jo|Max|Kit)$/ })).toHaveText([
-    "No name yet",
-    "No name yet",
-    "Kit",
-    "Max",
-    "Jo",
-  ]);
-  const rowFor = (name: string) => rows.filter({ has: lina.getByRole("link", { name, exact: true }) });
-
-  // Jo's: its homes and when it went, that she's waiting, that it's new; and
-  // Open, to its page. (Nothing to copy: she has it.)
-  await expect(rowFor("Jo")).toContainText("1204 Quillan St SE and 1 more · Sent today");
-  await expect(rowFor("Jo")).toContainText("Waiting for you");
-  await expect(rowFor("Jo").getByText("New", { exact: true })).toBeVisible();
-  await expect(rowFor("Kit").getByText("New", { exact: true })).toBeVisible();
-  await expect(rowFor("Max").getByText("New", { exact: true })).toHaveCount(0);
-  await expect(rowFor("Jo").getByRole("link", { name: "Jo", exact: true })).toHaveAttribute("href", pathOf(forJo.dashboardUrl));
-  await expect(rowFor("Jo").getByRole("link", { name: "Open the link for 1204 Quillan St SE and 1 more" })).toHaveAttribute(
-    "href",
-    pathOf(forJo.dashboardUrl),
-  );
-  await expect(rowFor("Jo").getByRole("button")).toHaveCount(0);
-
-  // Kit's: what he made of it. Open.
-  await expect(rowFor("Kit")).toContainText("Liked 1");
-  await expect(rowFor("Kit")).not.toContainText("comment");
-  await expect(rowFor("Kit").getByRole("link", { name: /^Open the link for/ })).toBeVisible();
-  await expect(rowFor("Kit").getByRole("button")).toHaveCount(0);
-
-  // Max's: not opened, so the one button is his link, to send again. No
-  // time of day (nothing else reads like it), and it can't be deleted: it
-  // has his name on it.
-  await expect(rowFor("Max")).toContainText("812 N Corbel St · Sent today");
-  await expect(rowFor("Max")).toContainText("Not opened yet");
-  await expect(rowFor("Max")).not.toContainText(/Sent today, \d/);
-  await expect(rowFor("Max").getByRole("link", { name: /^Open/ })).toHaveCount(0);
-  await expect(rowFor("Max").getByRole("button")).toHaveCount(1);
-  await rowFor("Max").getByRole("button", { name: "Copy link for Max" }).click();
-  await expect(rowFor("Max").getByRole("button", { name: /^Copied/ })).toBeVisible();
-  expect(await lina.evaluate(() => navigator.clipboard.readText())).toBe(forMax.url);
-
-  // The two with no name went to the same home on the same day, so each says
-  // what time; each has its link to copy, and Delete.
-  const nameless = rows.filter({ hasText: "No name yet" });
-  await expect(nameless).toHaveCount(2);
-  for (const row of await nameless.all()) {
-    await expect(row).toContainText(/96 Fernhollow Ln · Sent today, \d{1,2}:\d{2} [ap]m/);
-    await expect(row).toContainText("Not opened yet");
-    await expect(row.getByRole("button", { name: "Copy link for 96 Fernhollow Ln" })).toBeVisible();
-    await expect(row.getByRole("button", { name: "Delete the link for 96 Fernhollow Ln" })).toBeVisible();
+  // Every link, newest thing first, each called by who it's for: Kit and Jo,
+  // who just did something, then the two with nobody on them (by their
+  // home), then Max.
+  await expect(rows(lina)).toHaveCount(5);
+  for (const [i, name] of ["Kit", "Jo", "Link for 96 Fernhollow Ln", "Link for 96 Fernhollow Ln", "Max"].entries()) {
+    await expect(rows(lina).nth(i).getByText(name, { exact: true })).toBeVisible();
   }
-  await nameless.first().getByRole("button", { name: /^Copy link/ }).click();
-  expect(await lina.evaluate(() => navigator.clipboard.readText())).toBe(newer.url);
 
-  // Delete asks first, and Keep keeps it.
-  const ask = lina.getByRole("group", { name: "Delete the link for 96 Fernhollow Ln?" });
-  await nameless.first().getByRole("button", { name: /^Delete the link/ }).click();
-  await expect(ask).toBeFocused();
-  await ask.getByRole("button", { name: "Keep" }).click();
-  await expect(ask).toHaveCount(0);
-  await expect(nameless.first().getByRole("button", { name: /^Delete the link/ })).toBeFocused();
-  await expect(rows).toHaveCount(5);
+  // Jo's: that she's waiting, and that it's new; Kit's is new too; Max's,
+  // with nothing done on it, is neither.
+  const joRow = threadRow(lina, "Jo");
+  await expect(joRow).toContainText(/“Is the roof new\?”\s*·\s*today/);
+  await expect(joRow.getByText("Waiting", { exact: true })).toBeVisible();
+  await expect(joRow.getByText("New", { exact: true })).toBeVisible();
+  await expect(threadRow(lina, "Kit")).toContainText(/Liked 1 of 1 home\s*·\s*today/);
+  await expect(threadRow(lina, "Kit").getByText("New", { exact: true })).toBeVisible();
+  await expect(threadRow(lina, "Kit").getByText("Waiting", { exact: true })).toHaveCount(0);
+  await expect(threadRow(lina, "Max")).toContainText(/Not opened yet\s*·\s*today/);
+  await expect(threadRow(lina, "Max").getByText("New", { exact: true })).toHaveCount(0);
+  await expect(threadRow(lina, "Max").getByRole("button")).toHaveCount(0);
 
-  // Yes: it's gone from the list, and the link itself no longer opens. The
-  // one left reads like no other now, so it says only the day.
-  await nameless.first().getByRole("button", { name: /^Delete the link/ }).click();
-  await ask.getByRole("button", { name: "Yes, delete" }).click();
-  await expect(rows).toHaveCount(4);
-  await expect(nameless).toHaveCount(1);
-  await expect(nameless).toContainText("96 Fernhollow Ln · Sent today");
-  await expect(nameless).not.toContainText(/Sent today, \d/);
-  expect((await request.get(newer.url)).status()).toBe(404);
-  expect((await request.get(older.url)).status()).toBe(200);
-
-  // Someone opens the one that's left while Lina's list still offers Delete
-  // (her page left open, not catching up): the server won't delete it.
-  await lina.evaluate(() => Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true }));
-  const visitor = await (await browser.newContext()).newPage();
-  await Promise.all([actionAnswered(visitor), visitor.goto(older.url)]);
-  await expect(homeIn(visitor, "96 Fernhollow Ln")).toBeVisible();
-  await nameless.getByRole("button", { name: /^Delete the link/ }).click();
-  await ask.getByRole("button", { name: "Yes, delete" }).click();
-  await expect(ask.getByRole("alert")).toHaveText("This link has been opened or named, so it stays.");
-  expect((await request.get(older.url)).status()).toBe(200);
-
-  // And once the list has caught up, Delete isn't offered: it says when it
-  // was opened, and the button is Open.
-  await lina.reload();
-  await expect(rows).toHaveCount(4);
-  await expect(nameless).toContainText("Opened today");
-  await expect(nameless.getByRole("button")).toHaveCount(0);
-  await expect(nameless.getByRole("link", { name: "Open the link for 96 Fernhollow Ln" })).toBeVisible();
-
-  // A link's page leads back to the client it belongs to: Jo's, to Jo. The
-  // Dashboard's tabs aren't on it.
-  await rowFor("Jo").getByRole("link", { name: "Jo", exact: true }).click();
+  // Jo's conversation: her two homes, her words under the one she asked
+  // about, and the link's page from the top, which comes back here.
+  await joRow.getByRole("link").click();
+  await lina.waitForURL(/\/messages\/.+/);
+  await expect(lina.getByRole("heading", { level: 1 })).toHaveText("Jo");
+  const joThread = lina.url();
+  await expect(lina.getByRole("list", { name: "Messages" }).locator("li[id^='home-']")).toHaveCount(2);
+  const quillan = threadHome(lina, "1204 Quillan St SE");
+  await expect(quillan).toContainText("1 comment");
+  await expect(quillan.getByRole("list", { name: "Comments on 1204 Quillan St SE" })).toContainText("Is the roof new?");
+  await expect(threadHome(lina, "719 Saltmarsh Ln")).not.toContainText("comment");
+  await expect(lina.getByRole("link", { name: "Link details" })).toHaveAttribute("href", pathOf(forJo.dashboardUrl));
+  await lina.getByRole("link", { name: "Link details" }).click();
   await lina.waitForURL(/\/dashboard\/shares\/[\w-]+\?tab=homes$/);
   await expect(lina).toHaveTitle("Jo · Porchcard");
-  await expect(tabs).toHaveCount(0);
+  await expect(lina.getByRole("navigation", { name: "Clients" })).toHaveCount(0);
   const back = lina.getByRole("main").getByRole("link").first();
   await expect(back).toHaveText("Jo");
   await back.click();
-  await lina.waitForURL(/\/dashboard\/clients\//);
+  await lina.waitForURL(joThread);
   await expect(lina.getByRole("heading", { level: 1 })).toHaveText("Jo");
 
-  // One with nobody on it belongs to no client: back to Links.
+  // Kit's: what he made of it, on the home.
+  await lina.goto("/messages");
+  await threadRow(lina, "Kit").getByRole("link").click();
+  await lina.waitForURL(/\/messages\/.+/);
+  await expect(threadHome(lina, "10421 Halvard Way NE")).toContainText("Kit liked it");
+  await expect(threadHome(lina, "10421 Halvard Way NE")).not.toContainText("comment");
+
+  // Max's: not opened, so his home says so; his link, to send again, is on
+  // the link's page.
+  await lina.goto("/messages");
+  await threadRow(lina, "Max").getByRole("link").click();
+  await lina.waitForURL(/\/messages\/.+/);
+  await expect(threadHome(lina, "812 N Corbel St")).toContainText("Not opened yet");
+  await lina.getByRole("link", { name: "Link details" }).click();
+  await lina.waitForURL(/\/dashboard\/shares\/[\w-]+\?tab=people$/);
+  await expect(lina.locator("input[readonly]").first()).toHaveValue(forMax.url);
+
+  // The two with no name are each a conversation named for the home, not
+  // opened yet; each one's page is its own.
+  await lina.goto("/messages");
+  const nameless = rows(lina).filter({ hasText: "Link for 96 Fernhollow Ln" });
+  await expect(nameless).toHaveCount(2);
+  for (const row of await nameless.all()) {
+    await expect(row).toContainText(/Not opened yet\s*·\s*today/);
+    await expect(row.getByText("New", { exact: true })).toHaveCount(0);
+  }
+  await expect(nameless.nth(0).getByRole("link")).toHaveAttribute("href", `/messages/link%3A${idOf(newer.dashboardUrl)}`);
+  await expect(nameless.nth(1).getByRole("link")).toHaveAttribute("href", `/messages/link%3A${idOf(older.dashboardUrl)}`);
+  await expect(lina.getByText("No name yet")).toHaveCount(0);
+  await expect(lina.getByText("Unnamed client")).toHaveCount(0);
+
+  // Someone opens the older one: its row says so.
+  const visitor = await (await browser.newContext()).newPage();
+  await Promise.all([actionAnswered(visitor), visitor.goto(older.url)]);
+  await expect(homeIn(visitor, "96 Fernhollow Ln")).toBeVisible();
+  await lina.reload();
+  const opened = nameless.filter({ hasText: /Opened\s*·\s*today/ });
+  await expect(opened).toHaveCount(1);
+  await expect(nameless.filter({ hasText: "Not opened yet" })).toHaveCount(1);
+
+  // One with nobody on it belongs to no client: its page leads back to its
+  // own conversation.
   await lina.goto(older.dashboardUrl);
   await expect(lina.getByRole("heading", { level: 1 })).toHaveText("Link for 96 Fernhollow Ln");
-  await expect(back).toHaveText("Links");
+  await expect(back).toHaveText("Link for 96 Fernhollow Ln");
   await back.click();
-  await lina.waitForURL(/\/dashboard\/links$/);
-  await expect(lina.getByRole("heading", { level: 1 })).toHaveText("Links");
+  await lina.waitForURL(`/messages/link%3A${idOf(older.dashboardUrl)}`);
+  await expect(lina.getByRole("heading", { level: 1 })).toHaveText("Link for 96 Fernhollow Ln");
+  await expect(threadHome(lina, "96 Fernhollow Ln")).toBeVisible();
 });
 
-test("with more than eight, a box finds a link or a client, and the links can be narrowed to who's waiting or what's unopened", async ({
-  browser,
-}) => {
+test("with nine conversations, Messages lists them all, newest first, whoever is waiting marked", async ({ browser }) => {
   test.setTimeout(240_000);
   const nora = await signInAgent(browser, "nora.nine@example.com", "Nora Nine");
   const names = ["Ada", "Bea", "Cal", "Dot", "Eve", "Flo", "Gus", "Hal"];
   for (const [i, name] of names.entries()) {
     await createShare(nora, [i % 2 ? "719 Saltmarsh" : "1204 Quillan"], [name]);
   }
-  const findLink = nora.getByRole("searchbox", { name: "Find a link" });
-  const findClient = nora.getByRole("searchbox", { name: "Find a client" });
-  const show = nora.getByRole("navigation", { name: "Which links to show" });
-  const rows = linkRows(nora);
 
-  // Eight is few enough to look down: no box, no choices, on either page.
-  await nora.goto("/dashboard/links");
-  await expect(rows).toHaveCount(8);
-  await expect(findLink).toHaveCount(0);
-  await expect(show).toHaveCount(0);
-  await nora.goto("/dashboard");
-  await expect(clientRow(nora, "Ada")).toBeVisible();
-  await expect(findClient).toHaveCount(0);
+  // Eight, none opened: every one listed, the newest first, none waiting or new.
+  await nora.goto("/messages");
+  await expect(rows(nora)).toHaveCount(8);
+  await expect(rows(nora).first()).toContainText("Hal");
+  await expect(rows(nora).last()).toContainText("Ada");
+  await expect(rows(nora).getByText("Waiting", { exact: true })).toHaveCount(0);
+  await expect(rows(nora).getByText("New", { exact: true })).toHaveCount(0);
+  for (const row of await rows(nora).all()) {
+    await expect(row).toContainText(/Not opened yet\s*·\s*today/);
+  }
 
   // A ninth, and she says something on it.
   const forIvy = await createShare(nora, ["812 N Corbel"], ["Ivy"]);
@@ -225,51 +193,27 @@ test("with more than eight, a box finds a link or a client, and the links can be
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByLabel("Add a comment")).toHaveValue("");
 
-  // Links: found by a name, or by the first home's address, as it's typed.
-  await nora.goto("/dashboard/links");
-  await expect(rows).toHaveCount(9);
-  await findLink.fill("gus");
-  await expect(rows).toHaveCount(1);
-  await expect(rows).toContainText("Gus");
-  await findLink.fill("Saltmarsh");
-  await expect(rows).toHaveCount(4);
-  await findLink.fill("zzz");
-  await expect(rows).toHaveCount(0);
-  await expect(nora.getByRole("status").filter({ hasText: "No link" })).toHaveText("No link by that name or address.");
-  await findLink.fill("");
-  await expect(rows).toHaveCount(9);
-
-  // Three choices of which to show, kept in the address.
-  await expect(show.getByRole("link")).toHaveText(["All", "Waiting for you", "Not opened"]);
-  await expect(show.getByRole("link", { name: "All" })).toHaveAttribute("aria-current", "true");
-  await show.getByRole("link", { name: "Waiting for you" }).click();
-  await nora.waitForURL(/\/dashboard\/links\?show=waiting$/);
-  await expect(rows).toHaveCount(1);
-  await expect(rows).toContainText("Ivy");
-  await expect(rows).toContainText("Waiting for you");
-  await show.getByRole("link", { name: "Not opened" }).click();
-  await nora.waitForURL(/\/dashboard\/links\?show=unopened$/);
-  await expect(show.getByRole("link", { name: "Not opened" })).toHaveAttribute("aria-current", "true");
-  await expect(rows).toHaveCount(8);
-  await expect(rows.filter({ hasText: "Ivy" })).toHaveCount(0);
-  for (const choice of await show.getByRole("link").all()) {
-    // (A 36px pill in a 44px touch area.)
-    expect((await choice.boundingBox())!.height).toBeGreaterThanOrEqual(36);
+  // Nine: Ivy first, waiting and new, with what she said; everyone else as before.
+  await nora.goto("/messages");
+  await expect(rows(nora)).toHaveCount(9);
+  await expect(rows(nora).first()).toContainText("Ivy");
+  const ivyRow = threadRow(nora, "Ivy");
+  await expect(ivyRow).toContainText("“How old is the furnace?”");
+  await expect(ivyRow.getByText("Waiting", { exact: true })).toBeVisible();
+  await expect(ivyRow.getByText("New", { exact: true })).toBeVisible();
+  await expect(rows(nora).getByText("Waiting", { exact: true })).toHaveCount(1);
+  await expect(rows(nora).getByText("New", { exact: true })).toHaveCount(1);
+  await expect(rows(nora).filter({ hasText: "Not opened yet" })).toHaveCount(8);
+  // Each row a fingertip tall.
+  for (const link of await rows(nora).getByRole("link").all()) {
+    expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   }
-
-  // Clients: found by name; a group with nobody found in it goes, heading and all.
-  await nora.goto("/dashboard");
-  await expect(nora.getByRole("heading", { level: 2 })).toHaveText([/^Waiting for you\s*1$/, /^Haven't opened yet\s*8$/]);
-  expect((await findClient.boundingBox())!.height).toBeGreaterThanOrEqual(48);
-  await findClient.fill("iv");
-  await expect(nora.getByRole("heading", { level: 2 })).toHaveText([/^Waiting for you\s*1$/]);
-  await expect(clientRow(nora, "Ivy")).toBeVisible();
-  await expect(clientRow(nora, "Gus")).toHaveCount(0);
-  await findClient.fill("a");
-  await expect(nora.getByRole("heading", { level: 2 })).toHaveText([/^Haven't opened yet\s*4$/]);
-  await findClient.fill("zzz");
-  await expect(nora.getByRole("heading", { level: 2 })).toHaveCount(0);
-  await expect(nora.getByRole("status").filter({ hasText: "No client" })).toHaveText("No client by that name.");
-  await findClient.fill("");
-  await expect(clientRow(nora, "Gus")).toBeVisible();
+  // Hers: her words under the home, and Reply right there.
+  await ivyRow.getByRole("link").click();
+  await nora.waitForURL(/\/messages\/.+/);
+  await expect(nora.getByRole("heading", { level: 1 })).toHaveText("Ivy");
+  const corbel = threadHome(nora, "812 N Corbel St");
+  await expect(corbel).toContainText("1 comment");
+  await expect(corbel).toContainText("How old is the furnace?");
+  await expect(corbel.getByRole("button", { name: "Reply about 812 N Corbel St" })).toBeVisible();
 });

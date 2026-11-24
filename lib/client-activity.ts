@@ -64,7 +64,7 @@ export async function getClientActivity(agentId: string, book: ClientBook, most 
   return rows.flatMap((row, i) => {
     const client = byParticipant.get(row.participant_id);
     if (!client) return [];
-    const page = `/dashboard/clients/${encodeURIComponent(client.key)}`;
+    const page = `/messages/${encodeURIComponent(client.key)}`;
     return [
       {
         id: `${row.kind}:${row.participant_id}:${row.listing_key ?? ""}:${i}`,
@@ -73,8 +73,8 @@ export async function getClientActivity(agentId: string, book: ClientBook, most 
         client: { key: client.key, name: client.name, photo: client.photo },
         address: row.listing_key ? (addresses.get(row.listing_key) ?? null) : null,
         body: row.body,
-        // Opening a link: their page. Anything about a home: what they did, on it.
-        href: row.kind === "opened" ? page : `${page}#did`,
+        // Their conversation; anything about a home, at that home's card in it.
+        href: row.kind === "opened" || !row.listing_key ? page : `${page}#home-${encodeURIComponent(row.listing_key)}`,
       },
     ];
   });

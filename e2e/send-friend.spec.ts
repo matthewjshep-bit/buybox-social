@@ -2,9 +2,10 @@
 // home, who it's for, their own feedback or none), then the link. Whoever
 // opens it sees who it's from by name, never as "your agent"; and what they
 // say on it reaches the sender's Activity, going back to their link's page.
-// Every link they've made is kept on "Homes you sent": who it's for, whether
-// it's been opened, and the link to copy again; nothing of what a friend
-// liked there, or when or how far they looked.
+// Every link they've made is a conversation in Messages: who it's for,
+// whether it's been opened, each home sent and what the friend made of it,
+// and the link's own page with the link to copy again; never a surname, an
+// email or a phone.
 // On a home for sale, their Send is the home's main button: it goes on to the
 // same three steps with that home picked, from Browse, from a home opened
 // over their feed, and from an agent's own listing on the agent's profile.
@@ -18,7 +19,7 @@ const PNG = Buffer.from(
   "base64",
 );
 
-test("someone who isn't an agent sends a home in three steps, and hears back in Activity", async ({ browser }) => {
+test("someone who isn't an agent sends a home in three steps, and hears back in Messages and Activity", async ({ browser }) => {
   test.setTimeout(150_000);
   const maya = await signUpBuyer(browser, `maya.sends.${Date.now()}@example.com`, "Maya");
 
@@ -28,12 +29,14 @@ test("someone who isn't an agent sends a home in three steps, and hears back in 
   await maya.waitForURL(/\/send$/);
   await expect(maya.getByRole("heading", { level: 1 })).toHaveText("Send homes");
   await expect(maya.getByText("Step 1 of 3")).toBeVisible();
-  // Nothing sent yet: no way back to it offered, and its page says so.
-  await expect(maya.getByRole("main").getByRole("link", { name: "Homes you sent" })).toHaveCount(0);
+  // Nothing sent yet: Messages (where the old "Homes you sent" lands) says so,
+  // with the one way on, sending homes.
+  await expect(maya.getByRole("main").getByRole("link", { name: "Messages" })).toHaveCount(0);
   await maya.goto("/send/sent");
-  await expect(maya.getByRole("heading", { level: 1 })).toHaveText("Homes you sent");
-  await expect(maya.getByRole("main")).toContainText("Nothing sent yet");
-  await maya.getByRole("main").getByRole("link", { name: "Send homes" }).last().click();
+  await maya.waitForURL(/\/messages$/);
+  await expect(maya.getByRole("heading", { level: 1 })).toHaveText("Messages");
+  await expect(maya.getByText("No messages yet")).toBeVisible();
+  await maya.getByRole("link", { name: "Send homes" }).last().click();
   await maya.waitForURL(/\/send$/);
   await pickHome(maya, QUILLAN);
   await maya.getByRole("button", { name: "Next", exact: true }).click();
@@ -58,37 +61,41 @@ test("someone who isn't an agent sends a home in three steps, and hears back in 
   const link = await maya.getByLabel("Sam's link").inputValue();
   expect(link).toMatch(/\/s\/[\w-]{32}$/);
   await expect(maya.getByRole("link", { name: "Send another" })).toHaveAttribute("href", "/send");
-  await expect(maya.getByRole("main").getByRole("link", { name: "Homes you sent" })).toHaveAttribute("href", "/send/sent");
 
-  // Done lands on every link she's made, the new one first: who it's for,
-  // the home, that nobody has opened it, and the link to copy again.
+  // Done lands on Messages: a conversation with Sam, the new one first, with
+  // the home she sent and that nobody has opened it; the link's own page
+  // (with the link to copy again) is at the head of the conversation.
   await maya.getByRole("link", { name: "Done", exact: true }).click();
-  await maya.waitForURL(/\/send\/sent$/);
-  await expect(maya).toHaveTitle("Homes you sent · Porchcard");
-  await expect(maya.getByRole("heading", { level: 1 })).toHaveText("Homes you sent");
-  const row = maya.getByRole("list", { name: "Homes you sent" }).getByRole("listitem").first();
-  await expect(row.getByRole("link", { name: "Sam", exact: true })).toHaveAttribute("href", ownPage);
-  await expect(row).toContainText(QUILLAN);
-  await expect(row.getByText("Not opened yet", { exact: true })).toBeVisible();
-  await expect(row.getByRole("button", { name: "Copy link for Sam" })).toBeVisible();
-  await expect(row.getByRole("link", { name: /^Open/ })).toHaveCount(0);
-  // And from the first step of sending, now there's one to go back to.
-  await maya.getByRole("main").getByRole("link", { name: "Send homes" }).click();
-  await maya.waitForURL(/\/send$/);
-  await maya.getByRole("main").getByRole("link", { name: "Homes you sent" }).click();
-  await maya.waitForURL(/\/send\/sent$/);
+  await maya.waitForURL(/\/messages$/);
+  await expect(maya).toHaveTitle("Messages · Porchcard");
+  await expect(maya.getByRole("heading", { level: 1 })).toHaveText("Messages");
+  const row = maya.getByRole("list", { name: "Conversations" }).getByRole("link", { name: /^Sam\b/ });
+  await expect(row).toContainText("Not opened yet");
+  await row.click();
+  await maya.waitForURL(/\/messages\//);
+  await expect(maya.getByRole("heading", { level: 1, name: "Sam" })).toBeVisible();
+  const sends = maya.getByRole("list", { name: "Messages" });
+  await expect(sends).toContainText("You sent 1 home");
+  const card = sends.locator('[id^="home-"]').filter({ hasText: QUILLAN });
+  await expect(card).toContainText("Not opened yet");
+  // (Her own link, as Sam will see it.)
+  await expect(card.getByRole("link", { name: new RegExp(QUILLAN) })).toHaveAttribute("href", /^\/s\/[\w-]{32}\?home=/);
+  await expect(maya.getByRole("link", { name: "Link details" })).toHaveAttribute("href", ownPage);
+  await maya.goto(ownPage);
+  await expect(maya.getByLabel("Sam's link")).toHaveValue(link);
+  // And from the first step of sending, Messages is in the bar.
+  await maya.goto("/send");
+  await expect(maya.getByRole("banner").getByRole("link", { name: /^Messages/ })).toHaveAttribute("href", "/messages");
 
   // Sam opens it: from Maya, by name, and nowhere "your agent".
   const sam = await (await browser.newContext()).newPage();
   await sam.goto(link);
   await expect(sam.getByRole("region", { name: "Welcome" })).toBeVisible();
-  // Maya's row says so, just that (not when), with the way into its page.
+  // Maya's conversation says so.
   await expect(async () => {
-    await maya.goto("/send/sent");
-    await expect(row.getByText("Opened", { exact: true })).toBeVisible({ timeout: 1000 });
+    await maya.goto("/messages");
+    await expect(row).toContainText("Opened", { timeout: 1000 });
   }).toPass({ timeout: 20_000 });
-  await expect(row.getByRole("link", { name: /^Open/ })).toHaveAttribute("href", ownPage);
-  await expect(row.getByRole("button", { name: /Copy link/ })).toHaveCount(0);
   await expect(sam.getByRole("banner")).toContainText("Maya");
   await expect(sam.locator("body")).not.toContainText(/your agent/i);
   await toFirstHome(sam);
@@ -112,20 +119,32 @@ test("someone who isn't an agent sends a home in three steps, and hears back in 
   await maya.getByRole("link", { name: "See what they said" }).click();
   await maya.waitForURL(/\/s\/[\w-]+$/);
   await expect(maya.getByText("The porch is lovely.").first()).toBeAttached();
-  // Sam likes the home too. On "Homes you sent" it's opened, with one
-  // comment: not what Sam liked, how much he looked at, or when; and nothing
-  // an agent's list would add.
+  // Sam likes the home too. In Maya's conversation with him, under the home:
+  // opened, his like, his one comment and what he said, by his first name
+  // only; nowhere "your agent" or "your client".
   await sam.keyboard.press("Escape");
   await expect(chat).toBeHidden();
   await heartOf(homeIn(sam, QUILLAN)).click();
   await expect(heartOf(homeIn(sam, QUILLAN))).toHaveAttribute("aria-pressed", "true");
-  await maya.goto("/send/sent");
-  await expect(row.getByText("Opened · 1 comment", { exact: true })).toBeVisible();
-  await expect(row).not.toContainText(/Liked|saw |Waiting for you|New|Opened (today|yesterday|at|\d)/);
-  // From a link's page, back to them all.
-  await maya.goto(ownPage);
-  await maya.getByRole("main").getByRole("link", { name: "Homes you sent" }).click();
-  await maya.waitForURL(/\/send\/sent$/);
+  // (Sam has signed up since, so the conversation is his now, under his
+  // name in the list as before: in by its row, not the old address.)
+  await expect(async () => {
+    await maya.goto("/messages");
+    await row.click();
+    await maya.waitForURL(/\/messages\//, { timeout: 2000 });
+    await expect(card).toContainText("Sam liked it", { timeout: 1000 });
+  }).toPass({ timeout: 20_000 });
+  await expect(card).toContainText(/Opened/);
+  await expect(card).toContainText("1 comment");
+  await expect(card.getByRole("list", { name: `Comments on ${QUILLAN}` })).toContainText("The porch is lovely.");
+  await expect(maya.locator("body")).not.toContainText(/your agent|your client/i);
+  // (Her own email is in her account menu; nobody's is in the conversation.)
+  await expect(maya.locator("[data-messages]")).not.toContainText(/@example\.com/);
+  // From the conversation to the link's page, and from there back to Messages.
+  await maya.getByRole("link", { name: "Link details" }).click();
+  await maya.waitForURL(ownPage);
+  await maya.getByRole("main").getByRole("link", { name: "Messages" }).click();
+  await maya.waitForURL(/\/messages$/);
 
   // Nobody else's to open; an agent's Send homes is on their dashboard.
   await sam.goto(ownPage);
@@ -134,10 +153,10 @@ test("someone who isn't an agent sends a home in three steps, and hears back in 
   const agent = await signInAgent(browser, `ag.sends.${Date.now()}@example.com`, "Ag Sends");
   await agent.goto("/send");
   await agent.waitForURL(/\/dashboard\/new$/);
-  // And their links are on its Links tab.
+  // And their links are conversations in Messages too.
   await agent.goto("/send/sent");
-  await agent.waitForURL(/\/dashboard\/links$/);
-  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Links");
+  await agent.waitForURL(/\/messages$/);
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Messages");
 });
 
 test("Send on a home goes on to the three steps with that home picked: in Browse, over their own page, and on an agent's own listing", async ({

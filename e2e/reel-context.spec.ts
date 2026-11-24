@@ -437,7 +437,7 @@ test("a client's homes are their agent's alone: on their page the agent sees who
   await expect(agent.getByText("Your client", { exact: true })).toBeVisible();
   await expect(agent.getByRole("link", { name: "Client page" })).toHaveAttribute(
     "href",
-    /^\/dashboard\/clients\/acct%3A[0-9a-f-]{36}$/,
+    /^\/messages\/acct%3A[0-9a-f-]{36}$/,
   );
   const theirHomes = agent.getByRole("link", { name: "See their homes" });
   const href = (await theirHomes.getAttribute("href"))!;

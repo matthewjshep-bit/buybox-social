@@ -192,19 +192,21 @@ test("the page for agents tells the home page's pitch, and its button says what 
   const buyer = await signUpBuyer(browser, "bea-becomes@example.com", "Bea");
   await buyer.goto("/for-agents");
   const become = buyer.getByRole("main").getByRole("button", { name: "Make my account an agent's" });
-  await expect(become).toHaveAccessibleDescription("You'll get a Clients page for the people you send homes to. Your likes and follows stay.");
-  await expect(buyer.getByRole("main").getByText("You'll get a Clients page for the people you send homes to. Your likes and follows stay.")).toBeVisible();
+  await expect(become).toHaveAccessibleDescription("Everyone you send homes to is a conversation in Messages. Your likes and follows stay.");
+  await expect(buyer.getByRole("main").getByText("Everyone you send homes to is a conversation in Messages. Your likes and follows stay.")).toBeVisible();
   await expect(buyer.getByRole("main").getByRole("link")).toHaveText(["Connect them with the Porchcard API"]);
   // It does what it says: an agent's account, by the name they have. Their
   // details are among their profile settings.
   await become.click();
-  await buyer.waitForURL("**/dashboard");
-  await expect(buyer.getByRole("banner").getByRole("link", { name: "Clients", exact: true })).toBeVisible();
+  // (The old Clients address lands on Messages; sending homes there is an agent's builder.)
+  await buyer.waitForURL((url) => url.pathname === "/messages");
+  await expect(buyer.getByRole("heading", { level: 1 })).toHaveText("Messages");
+  await expect(buyer.getByRole("link", { name: "Send homes" }).first()).toHaveAttribute("href", "/dashboard/new");
 
   // An agent: their dashboard, by its name.
   await buyer.goto("/for-agents");
-  await expect(buyer.getByRole("main").getByRole("link")).toHaveText(["Go to your clients", "Connect them with the Porchcard API"]);
-  await expect(buyer.getByRole("main").getByRole("link", { name: "Go to your clients" })).toHaveAttribute("href", "/dashboard");
+  await expect(buyer.getByRole("main").getByRole("link")).toHaveText(["Go to your messages", "Connect them with the Porchcard API"]);
+  await expect(buyer.getByRole("main").getByRole("link", { name: "Go to your messages" })).toHaveAttribute("href", "/messages");
 });
 
 test("each sign-in form has a quiet way to the other, and a new agent's first screen asks only who they are", async ({ page }) => {
@@ -252,7 +254,7 @@ test("each sign-in form has a quiet way to the other, and a new agent's first sc
   }
   await expect(main.getByRole("heading", { level: 1 })).toHaveText("Pick your color");
   await main.getByRole("button", { name: "Finish" }).click();
-  // Done: Home, like everyone (Clients is in the bar).
+  // Done: Home, like everyone (Messages is in the bar).
   await page.waitForURL((url) => url.pathname === "/");
 
   // What wasn't asked is in Edit profile, empty, for when they want it.

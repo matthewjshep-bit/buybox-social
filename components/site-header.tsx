@@ -1,7 +1,8 @@
-import { Bell, Flame, House, Search as SearchIcon, Send, Users } from "lucide-react";
+import { Bell, Flame, House, Search as SearchIcon, Send } from "lucide-react";
 import { signOut } from "@/app/login/actions";
 import { AccountMenu, NavLink, SignInLink, SiteLogo } from "@/components/header-nav";
 import { countUnreadActivity } from "@/lib/activity";
+import { countUnreadThreads } from "@/lib/messages";
 import { getCurrentUser, isAdmin } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
 import { agentFirstName, cn } from "@/lib/format";
@@ -24,8 +25,10 @@ import { kindOf, listingWords } from "@/lib/kinds";
 export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
   const [user, device] = await Promise.all([getCurrentUser(), readDevice()]);
   const { visitor } = await getPublicIdentity(user?.role ? user : null, device);
-  const [unread, admin, links] = await Promise.all([
+  const [unread, newMessages, admin, links] = await Promise.all([
     visitor ? countUnreadActivity(visitor.id) : 0,
+    // Conversations with something new in them (homes they sent, with something done on them since they looked).
+    user?.role ? countUnreadThreads(user.id) : 0,
     isAdmin(user),
     // Someone on an agent's link (a pro too, when they're someone's client):
     // the way back to it, under their initial, and the homes they've rated.
@@ -82,12 +85,25 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
               <House aria-hidden size={20} />
               <span className={name}>Home</span>
             </NavLink>
-            {agent && (
-              <NavLink href="/dashboard" section except="/dashboard/listings" className={navItem}>
-                <Users aria-hidden size={20} />
-                <span className={name}>Clients</span>
-              </NavLink>
-            )}
+            {/* Every home they sent or were sent, as conversations: for everyone. */}
+            <NavLink href="/messages" section className={navItem}>
+              <span className="relative">
+                <Send aria-hidden size={20} />
+                {newMessages > 0 && (
+                  <span
+                    aria-hidden
+                    className="absolute -right-2.5 -top-1.5 flex min-w-[18px] items-center justify-center rounded-full bg-rose-600 px-1 text-tiny font-bold leading-[18px] text-white tabular-nums [text-shadow:none]"
+                  >
+                    {newMessages > 9 ? "9+" : newMessages}
+                  </span>
+                )}
+              </span>
+              <span className="sr-only">{newMessages > 0 ? `Messages, ${newMessages} new` : "Messages"}</span>
+              <span aria-hidden className={name}>
+                Messages
+              </span>
+            </NavLink>
+
             {/* What everyone likes most: homes, and the people liking them. */}
             <NavLink href="/popular" section className={navItem}>
               <Flame aria-hidden size={20} />
@@ -99,12 +115,6 @@ export async function SiteHeader({ overlay = false }: { overlay?: boolean }) {
               <SearchIcon aria-hidden size={20} />
               <span className={name}>Search</span>
             </NavLink>
-            {!agent && (
-              <NavLink href="/send" section className={navItem}>
-                <Send aria-hidden size={20} />
-                <span className={name}>Send</span>
-              </NavLink>
-            )}
             {visitor && (
               <NavLink href="/activity" className={navItem}>
                 <span className="relative">

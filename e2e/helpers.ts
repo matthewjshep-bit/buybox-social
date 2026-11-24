@@ -441,3 +441,25 @@ export async function photoList(home: Locator) {
   await expect(list).toBeVisible();
   return list;
 }
+
+// A conversation on Messages (/messages): its row in the list, found by the
+// name it's called (a first name; "Jo & Mike" for a link to two people; "Link
+// for 96 Fernhollow Ln" for one nobody is on yet).
+export const threadRow = (page: Page, name: string) =>
+  page
+    .getByRole("list", { name: "Conversations" })
+    .getByRole("listitem")
+    .filter({ has: page.getByText(name, { exact: true }) });
+
+// A home's card in an open conversation (/messages/<key>), by its address:
+// its photo, price and address, then what's happened to it and what was said.
+export const threadHome = (page: Page, address: string) =>
+  page.getByRole("list", { name: "Messages" }).locator("li[id^='home-']").filter({ hasText: address });
+
+// From Messages to someone's conversation: their row, then the page named for them.
+export async function openThread(page: Page, name: string) {
+  await page.goto("/messages");
+  await threadRow(page, name).getByRole("link").click();
+  await page.waitForURL(/\/messages\/.+/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(name);
+}

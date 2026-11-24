@@ -12,7 +12,7 @@ const fullScreen = (pathname: string) => FULL_SCREEN.some((pattern) => pattern.t
 const agentLink = (pathname: string) => pathname.startsWith("/s/");
 
 // The map runs edge to edge, and the header with it.
-const WIDE = [/^\/search$/];
+const WIDE = [/^\/search$/, /^\/messages(\/|$)/];
 
 export function HeaderGate({ children }: { children: ReactNode }) {
   const pathname = usePathname();

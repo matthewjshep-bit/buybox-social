@@ -147,10 +147,14 @@ test("one home: the link opens on a word from the agent, then the home, in the a
     ),
   );
   const middle = frame.x + frame.width / 2;
-  for (const box of [head, photo, words]) {
+  // The head and the words are the 44rem column; the photo keeps its own
+  // shape inside it (its box sizes to the picture), centred and no wider.
+  for (const box of [head, words]) {
     expect(Math.abs(box.width - 44 * 16)).toBeLessThan(2);
     expect(Math.abs(box.x + box.width / 2 - middle)).toBeLessThan(2);
   }
+  expect(photo.width).toBeLessThanOrEqual(44 * 16 + 1);
+  expect(Math.abs(photo.x + photo.width / 2 - middle)).toBeLessThan(2);
   expect(head.y + head.height).toBeLessThanOrEqual(photo.y + 1);
   expect(words.y).toBeGreaterThanOrEqual(photo.y + photo.height - 1);
   const logo = (await header.getByRole("link", { name: "Porchcard" }).boundingBox())!;

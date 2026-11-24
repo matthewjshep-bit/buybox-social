@@ -37,8 +37,6 @@ test("the test password signs in as an account already there, or a new one, and 
   await form.getByLabel("Test password").fill(PASSWORD);
   await form.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL((url) => url.pathname === "/");
-  // (Her Clients page is a tap away in the bar.)
-  await expect(page.getByRole("banner").getByRole("link", { name: "Clients", exact: true })).toBeVisible();
   // (Robin's face is the photo she added on signing up.)
   const me = page.getByRole("banner").getByRole("button", { name: "Account menu" });
   await expect(me.locator("img")).toBeVisible();
@@ -46,6 +44,8 @@ test("the test password signs in as an account already there, or a new one, and 
   // Sign out, then in as someone new: a new buyer's account, asked their
   // first name like anyone new (skipped here), then home.
   await me.click();
+  // (An agent's: her listings are under her face.)
+  await expect(page.locator("#account-menu").getByRole("link", { name: "Listings" })).toHaveAttribute("href", "/dashboard/listings");
   await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
   await page.waitForURL("**/login");
   await testSignIn(page, `casey.${stamp}@example.com`);
@@ -54,5 +54,7 @@ test("the test password signs in as an account already there, or a new one, and 
   await page.waitForURL((url) => url.pathname === "/");
   await me.click();
   await expect(page.getByRole("banner").getByText(`casey.${stamp}@example.com`)).toBeVisible();
-  await expect(page.getByRole("banner").getByRole("link", { name: "Clients", exact: true })).toHaveCount(0);
+  // (A buyer's: no listings, and the way to become an agent.)
+  await expect(page.locator("#account-menu").getByRole("link", { name: "Listings" })).toHaveCount(0);
+  await expect(page.locator("#account-menu").getByRole("link", { name: "I'm an agent" })).toBeVisible();
 });

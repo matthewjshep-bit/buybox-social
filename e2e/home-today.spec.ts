@@ -1,7 +1,7 @@
 // Home, signed in: one feed for everyone, never empty. What the people you
 // follow did, woven together with what everyone's liking this week, new deals
 // and listings pros just put up, homes near where you said you are, and homes
-// picked for you. An agent's clients aren't on it: they're on Clients.
+// picked for you. An agent's clients aren't on it: they're on Messages.
 import { expect, test, type Locator } from "@playwright/test";
 import { enterListingYourself, heartOf, signInAgent, signUpBuyer } from "./helpers";
 
@@ -89,15 +89,15 @@ test("someone who follows nobody still has a full feed: popular homes, a new lis
   await expect(page.getByRole("article", { name: "1204 Quillan St SE" })).toBeInViewport({ ratio: 0.5 });
 });
 
-test("an agent's home is the same feed: no box about clients, no pills; their clients are on Clients", async ({ browser }) => {
+test("an agent's home is the same feed: no box about clients, no pills; their clients are on Messages", async ({ browser }) => {
   const agent = await signInAgent(browser, "nia-nobox@example.com", "Nia Nobox");
   await agent.goto("/");
   await expect(agent.getByText("Send your first homes")).toHaveCount(0);
   await expect(agent.getByRole("region", { name: "Your clients" })).toHaveCount(0);
   await expect(agent.getByRole("group", { name: "Show" })).toHaveCount(0);
   await expect(agent.getByRole("region", { name: "Your feed" }).getByRole("listitem").first()).toBeVisible();
-  // Clients, in the bar, is where they are.
-  await agent.getByRole("banner").getByRole("link", { name: "Clients", exact: true }).click();
-  await agent.waitForURL((url) => url.pathname === "/dashboard");
-  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Clients");
+  // Messages, in the bar, is where they are.
+  await agent.getByRole("banner").getByRole("link", { name: "Messages", exact: true }).click();
+  await agent.waitForURL((url) => url.pathname === "/messages");
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Messages");
 });

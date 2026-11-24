@@ -3,7 +3,7 @@
 // What you saved is yours alone, under Saved on your own profile, and nobody
 // else's page says anything of it.
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, openComments, openScorecard, signedIn, signInAgent, signUpBuyer, clientRow } from "./helpers";
+import { createShare, heartOf, homeIn, openComments, openScorecard, signedIn, signInAgent, signUpBuyer } from "./helpers";
 
 const TAMSEN = "1880 Tamsen Ridge Pl SE";
 const SALTMARSH = "719 Saltmarsh Ln";
@@ -257,22 +257,25 @@ test("the Porchcard is an agent's, going through a link's homes or a client's: n
   await expect(porchcardOf(agent)).toHaveCount(0);
   await expect(agent.getByRole("button", { name: /^Saved? / })).toHaveCount(0);
 
-  // That client's homes, from their card on their own page (a tap from their
-  // name on Clients): the Porchcard again.
+  // That client's homes, from the home's card in their conversation (a tap
+  // from their name in Messages): the Porchcard again.
   // (Once the client's like has been kept: the heart shows it before it is.)
-  await agent.goto("/dashboard");
-  await clientRow(agent, "Jamie").getByRole("link", { name: /^Jamie\b/ }).first().click();
-  await agent.waitForURL(/\/dashboard\/clients\//);
-  const open = agent.getByRole("link", { name: new RegExp(`^${TAMSEN}: `) }).first();
+  await agent.goto("/messages");
+  await agent.getByRole("list", { name: "Conversations" }).getByRole("link", { name: /^Jamie\b/ }).click();
+  await agent.waitForURL(/\/messages\//);
+  await expect(agent.getByRole("heading", { level: 1, name: "Jamie" })).toBeVisible();
+  // (The link's own page is a tap away, at the head of the conversation.)
+  await expect(agent.getByRole("link", { name: "Link details" })).toHaveAttribute("href", new URL(dashboardUrl).pathname);
+  const sentCard = agent.getByRole("list", { name: "Messages" }).locator('[id="home-SAMPLE-1002"]');
   await expect(async () => {
     await agent.reload();
-    await expect(open).toHaveAttribute("href", /^\/reel\?from=client%3A[\w-]+&home=SAMPLE-1002/, { timeout: 1500 });
+    await expect(sentCard).toContainText("Jamie liked it", { timeout: 1500 });
   }).toPass({ timeout: 30_000 });
-  // (By its top corner: the photos in the middle swipe, and open it themselves.)
-  await open.click({ position: { x: 20, y: 20 } });
-  await agent.waitForURL(/\/reel\?from=client%3A[\w-]+&home=SAMPLE-1002/);
-  const popout = agent.getByRole("dialog", { name: "Homes" });
-  home = homeIn(popout, TAMSEN);
+  const open = sentCard.getByRole("link", { name: new RegExp(TAMSEN) });
+  await expect(open).toHaveAttribute("href", /^\/reel\?from=share(:|%3A)[0-9a-f-]{36}&home=SAMPLE-1002/);
+  await open.click();
+  await agent.waitForURL(/\/reel\?from=share(:|%3A)[0-9a-f-]{36}&home=SAMPLE-1002/);
+  home = homeIn(agent, TAMSEN);
   await expect(home).toBeInViewport({ ratio: 0.9 });
   await expect(home.getByRole("button", { name: /^Saved? / })).toHaveCount(0);
   card = await openScorecard(agent, home);

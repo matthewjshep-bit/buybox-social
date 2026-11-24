@@ -18,10 +18,10 @@ export default async function OwnLinkPage({ params }: { params: Promise<{ id: st
   if (me.role === "agent") redirect(`/dashboard/shares/${encodeURIComponent(id)}/sent`);
   return (
     <main className={pageColumn()}>
-      <Link href="/send/sent" className={cn(backLink, "mb-2")}>
-        <ArrowLeft aria-hidden size={18} /> Homes you sent
+      <Link href="/messages" className={cn(backLink, "mb-2")}>
+        <ArrowLeft aria-hidden size={18} /> Messages
       </Link>
-      <LinkReady ownerId={me.id} id={id} done="/send/sent" again="/send" open />
+      <LinkReady ownerId={me.id} id={id} done="/messages" again="/send" open />
     </main>
   );
 }

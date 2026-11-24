@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { clientRow, signedIn, createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, pickHome, signInAgent, passOn } from "./helpers";
+import { signedIn, createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, pickHome, signInAgent, passOn, threadHome, threadRow } from "./helpers";
 
-test("an agent's client page: what they want, remove and restore, add homes, private only", async ({
+test("an agent's link page: what they want, remove and restore, add homes; their conversation says how each home went, private only", async ({
   browser,
 }) => {
   const agent = await signInAgent(browser, "gwen@example.com", "Gwen Agent");
@@ -104,45 +104,37 @@ test("an agent's client page: what they want, remove and restore, add homes, pri
   await joe.reload();
   await expect(homeIn(joe, "812 N Corbel St")).toBeVisible();
 
-  // The dashboard lists the client by name, with how they came down on each home.
+  // Messages lists him by name (the Clients page leads there now), his words
+  // on the line under it while they wait for an answer.
   await agent.goto("/dashboard");
-  const row = clientRow(agent, "Joe");
+  await agent.waitForURL(/\/messages$/);
+  const row = threadRow(agent, "Joe");
   await expect(row).toBeVisible();
-  await expect(row).toContainText("3 homes sent");
+  await expect(row).toContainText("“Not a fan of farmhouse sinks.”");
+  await expect(row.getByText("Waiting", { exact: true })).toBeVisible();
   // ...and only what Joe did, never the public's.
   await expect(row).not.toContainText("Stella");
   await expect(row).not.toContainText("that staircase!");
-  // His page says how it's gone.
-  await row.getByRole("link", { name: "Joe", exact: true }).click();
-  await agent.waitForURL(/\/dashboard\/clients\//);
-  await expect(agent.getByRole("main")).toContainText(/Liked 1 of 3/);
-  await expect(agent.getByRole("main")).toContainText("Passed on 1");
-  await expect(agent.getByRole("main")).not.toContainText("Stella");
 
-  // Feedback, for the client as a whole, right on his page: what he likes
-  // and doesn't across every home he was sent, then each home with what he
-  // made of it. Before what he did, home by home.
-  const feedback = agent.getByRole("region", { name: "Joe's feedback" });
-  await expect(feedback).toBeVisible();
-  const did = agent.getByRole("region", { name: "What Joe did" });
-  if (await did.count()) expect((await feedback.boundingBox())!.y).toBeLessThan((await did.boundingBox())!.y);
-  await expect(feedback).toContainText("Liked 1 of 3 · passed on 1");
-  await expect(feedback.getByRole("region", { name: "Liked", exact: true })).toContainText(/floating staircase/i);
-  await expect(feedback.getByRole("region", { name: "Didn't like" })).toContainText("Exterior");
-  const byHome = feedback.getByRole("region", { name: "Home by home" }).getByRole("listitem");
-  await expect(byHome).toHaveCount(3);
-  await expect(byHome.filter({ hasText: "10421 Halvard Way NE" })).toContainText("Liked");
-  const passed = byHome.filter({ hasText: "1204 Quillan St SE" });
-  await expect(passed).toContainText("Passed");
-  await expect(passed).toContainText("Didn't like: Exterior");
-  await expect(passed).toContainText(/1\s*comment/);
-  // (What he said stays on the home; the summary only counts it.)
-  await expect(feedback).not.toContainText("farmhouse sinks");
-  await expect(byHome.filter({ hasText: "812 N Corbel St" })).toContainText("Nothing yet");
-  // Nothing of anyone else's, and each home is a tap from its own feedback.
-  await expect(feedback).not.toContainText("Stella");
-  await expect(byHome.filter({ hasText: "1204 Quillan St SE" }).getByRole("link")).toHaveAttribute(
-    "href",
-    /\/reel\?from=client%3A[\w-]+&home=SAMPLE-1009$/,
-  );
+  // His conversation says how it's gone: the one send, now three homes, each
+  // a card with how he came down on it and what he said under it.
+  await row.getByRole("link").click();
+  await agent.waitForURL(/\/messages\/.+/);
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Joe");
+  const thread = agent.getByRole("list", { name: "Messages" });
+  await expect(thread.locator("li[id^='send-']")).toHaveCount(1);
+  await expect(thread).toContainText("You sent 3 homes");
+  await expect(thread.locator("li[id^='home-']")).toHaveCount(3);
+  await expect(threadHome(agent, "10421 Halvard Way NE")).toContainText("Joe liked it");
+  const passed = threadHome(agent, "1204 Quillan St SE");
+  await expect(passed).toContainText("Joe passed");
+  await expect(passed).toContainText("1 comment");
+  await expect(passed.getByRole("list", { name: "Comments on 1204 Quillan St SE" })).toContainText("Not a fan of farmhouse sinks.");
+  await expect(threadHome(agent, "812 N Corbel St")).not.toContainText(/liked|passed|comment/);
+  // Nothing of anyone else's, and each home is a tap to the home itself, as his link has it.
+  await expect(thread).not.toContainText("Stella");
+  await expect(thread).not.toContainText("that staircase!");
+  await expect(passed.getByRole("link").first()).toHaveAttribute("href", /\/reel\?from=share%3A[\w-]+&home=SAMPLE-1009$/);
+  // The link's own page, with what he wants, is a tap from the top.
+  await expect(agent.getByRole("link", { name: "Link details" })).toHaveAttribute("href", new URL(dashboardUrl).pathname);
 });

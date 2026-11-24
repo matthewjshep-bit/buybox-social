@@ -11,7 +11,21 @@ export type MyLink = {
   // Their own link if the agent added them by name, else the package's.
   token: string;
   shareId: string;
-  agent: { name: string; firstName: string; brokerage: string | null; photo: string | null; profileId: string | null };
+  // Whoever sent it (an agent, usually; anyone signed in can send homes):
+  // their account, and whether they're a pro.
+  agent: {
+    accountId: string;
+    isAgent: boolean;
+    name: string;
+    firstName: string;
+    brokerage: string | null;
+    photo: string | null;
+    profileId: string | null;
+  };
+  // Everyone on the link, by first name (themselves included), and how many
+  // there are in all (some may have given no name).
+  people: number;
+  names: string[];
   // Homes still on the link, and the ones they haven't reacted to yet.
   homes: number;
   unrated: number;
@@ -20,13 +34,20 @@ export type MyLink = {
   // already rated. Null when there's none.
   firstWaiting: string | null;
   cities: string[];
-  latestAgentReply: { body: string; listingKey: string; address: string; at: string; commentId: string } | null;
+  // (About a home still on the link, or, with no home, the link itself.)
+  latestAgentReply: { body: string; listingKey: string | null; address: string; at: string; commentId: string } | null;
   lastActivityAt: string;
+  // The last the sender did on it: added them or homes, or said something.
+  senderAt: string;
 };
 
 type Row = {
   share_id: string;
   token: string;
+  agent_id: string;
+  agent_role: string | null;
+  people: number;
+  names: string[] | null;
   full_name: string;
   agent_first_name: string | null;
   brokerage: string;
@@ -43,6 +64,7 @@ type Row = {
   reply_address: string | null;
   reply_at: Date | null;
   last_at: Date;
+  sender_at: Date | null;
 };
 
 // Whether the person on the link (p) has rated a home on it (sl): the heart
@@ -62,6 +84,10 @@ const rated = () => sql`(
 export const getMyLinks = cache(async (accountId: string): Promise<MyLink[]> => {
   const rows = await sql<Row[]>`
     select s.id as share_id, coalesce(p.token, s.token) as token,
+      s.agent_id, a.role as agent_role,
+      (select count(*)::int from participants x where x.share_id = s.id) as people,
+      (select array_agg(btrim(x.first_name) order by x.invited_at nulls last, x.position nulls last, x.created_at)
+         from participants x where x.share_id = s.id and btrim(x.first_name) <> '') as names,
       a.full_name, nullif(btrim(av.first_name), '') as agent_first_name, a.brokerage,
       av.id as agent_profile, case when av.id is not null then left(md5(a.photo_data_url), 10) end as photo_v,
       (select count(*)::int from share_listings sl where sl.share_id = s.id and sl.removed_at is null) as homes,
@@ -75,6 +101,9 @@ export const getMyLinks = cache(async (accountId: string): Promise<MyLink[]> => 
         where sl.share_id = s.id and sl.removed_at is null and l.data->>'City' is not null) as cities,
       reply.id as reply_id, reply.body as reply_body, reply.listing_key as reply_key,
       reply.address as reply_address, reply.created_at as reply_at,
+      greatest(p.invited_at,
+        (select max(sl.added_at) from share_listings sl where sl.share_id = s.id and sl.removed_at is null),
+        (select max(c.created_at) from comments c where c.share_id = s.id and c.agent_id is not null)) as sender_at,
       greatest(s.created_at, p.created_at, p.invited_at, reply.created_at,
         (select max(x.at) from (
           select updated_at as at from reactions where participant_id = p.id
@@ -97,9 +126,10 @@ export const getMyLinks = cache(async (accountId: string): Promise<MyLink[]> => 
     left join lateral (
       select c.id, c.body, c.listing_key, l.data->>'UnparsedAddress' as address, c.created_at
       from comments c
-      join share_listings sl on sl.share_id = c.share_id and sl.listing_key = c.listing_key and sl.removed_at is null
-      join listings l on l.listing_key = c.listing_key
+      left join share_listings sl on sl.share_id = c.share_id and sl.listing_key = c.listing_key and sl.removed_at is null
+      left join listings l on l.listing_key = c.listing_key
       where c.share_id = s.id and c.agent_id is not null and c.created_at > p.created_at
+        and (c.listing_key is null or sl.listing_key is not null)
       order by c.created_at desc
       limit 1
     ) reply on true
@@ -108,7 +138,11 @@ export const getMyLinks = cache(async (accountId: string): Promise<MyLink[]> => 
   return rows.map((row) => ({
     token: row.token,
     shareId: row.share_id,
+    people: row.people,
+    names: row.names ?? [],
     agent: {
+      accountId: row.agent_id,
+      isAgent: row.agent_role === "agent",
       name: row.full_name.trim(),
       firstName: row.agent_first_name ?? agentFirstName(row.full_name),
       brokerage: row.brokerage.trim() || null,
@@ -121,7 +155,7 @@ export const getMyLinks = cache(async (accountId: string): Promise<MyLink[]> => 
     firstWaiting: row.first_waiting,
     cities: (row.cities ?? []).sort(),
     latestAgentReply:
-      row.reply_id && row.reply_body && row.reply_key && row.reply_at
+      row.reply_id && row.reply_body && row.reply_at
         ? {
             body: row.reply_body,
             listingKey: row.reply_key,
@@ -131,6 +165,7 @@ export const getMyLinks = cache(async (accountId: string): Promise<MyLink[]> => 
           }
         : null,
     lastActivityAt: row.last_at.toISOString(),
+    senderAt: (row.sender_at ?? row.last_at).toISOString(),
   }));
 });
 

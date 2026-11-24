@@ -34,6 +34,8 @@ import {
   type TakeMark,
   type ThreadComment,
 } from "@/lib/shares";
+import { DeleteLink } from "@/app/dashboard/(overview)/links/delete-link";
+import { threadHref } from "@/lib/messages";
 import { backLink, button, card, link as linkClass, pageTitle, sectionTitle, tab as tabClass } from "@/lib/ui";
 import { addSuggestedHome } from "../../actions";
 import { Opened } from "../../opened";
@@ -86,6 +88,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 // client it belongs to, or to Links), who it's for and how it's going; then
 // the part they asked for. Until it's been opened it starts on sending it,
 // after that on the homes.
+// Who it's for, for the way back: the people on it, else its first home.
+const clientNameFor = (share: { client_name: string }, listings: { UnparsedAddress: string }[]) =>
+  linkTitle(share.client_name, listings[0]?.UnparsedAddress);
+
 export default async function ShareDetailPage({
   params,
   searchParams,
@@ -168,7 +174,10 @@ export default async function ShareDetailPage({
   // Back goes to the client this link belongs to; with nobody on it, or more
   // than one client, to all the links.
   const owners = book.clients.filter((client) => client.links.some((link) => link.shareId === share.id));
-  const back = owners.length === 1 ? { href: owners[0].href, label: owners[0].name } : { href: "/dashboard/links", label: "Links" };
+  const back =
+    owners.length === 1
+      ? { href: threadHref(owners[0].key), label: owners[0].name }
+      : { href: threadHref(`link:${share.id}`), label: clientNameFor(share, listings) };
   const lastOpen = opens.reduce<string | null>((at, open) => (!at || open.lastAt > at ? open.lastAt : at), null);
   const tab = TABS.find((t) => t.key === asked)?.key;
   const tabHref = (key: Tab) => `/dashboard/shares/${share.id}?tab=${key}`;
@@ -521,6 +530,20 @@ export default async function ShareDetailPage({
                       dislikes={take.dislikes}
                     />
                   )}
+                </div>
+              </section>
+            )}
+
+            {/* Sent by mistake, or to try it out: a link nobody has opened and
+                nobody is named on can go, quietly, in two steps. */}
+            {!lastOpen && people.length === 0 && (
+              <section aria-labelledby="delete-link-title" className="mt-10">
+                <h2 id="delete-link-title" className={sectionTitle}>
+                  Delete this link
+                </h2>
+                <p className="mt-1 text-body text-stone-700">Nobody has opened it, and nobody is on it yet.</p>
+                <div className="mt-3">
+                  <DeleteLink shareId={share.id} what={clientName} />
                 </div>
               </section>
             )}

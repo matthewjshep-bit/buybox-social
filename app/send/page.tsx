@@ -57,7 +57,7 @@ export default async function SendPage({ searchParams }: { searchParams: Promise
         aside={
           links.sent && (
             <Link
-              href="/send/sent"
+              href="/messages"
               className="-ml-2 inline-flex min-h-11 items-center gap-1 whitespace-nowrap rounded-full px-2 text-sm font-medium hover:bg-black/5"
             >
               Homes you sent <ChevronRight aria-hidden size={16} />

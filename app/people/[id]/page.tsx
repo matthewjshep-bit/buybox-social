@@ -284,8 +284,8 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                 homes: `/reel?from=client:${client.participantId}`,
                 // (Signed up, or they'd have no page: so their client page is their account's.)
                 page: person.accountId
-                  ? `/dashboard/clients/${encodeURIComponent(`acct:${person.accountId}`)}`
-                  : `/dashboard/shares/${client.shareId}`,
+                  ? `/messages/${encodeURIComponent(`acct:${person.accountId}`)}`
+                  : `/messages/${encodeURIComponent(`link:${client.shareId}`)}`,
               }
             : undefined
         }
