@@ -16,7 +16,7 @@ import { signedIn, enterCode,
   passOn,
 } from "./helpers";
 
-// The latest comments under a home's photo (side by side: in the panel),
+// The latest comments under a home's photo (under its row of things to do),
 // headed by how many liked it.
 const latestOf = (home: Locator) => home.getByRole("group", { name: "Latest comments" });
 
@@ -96,17 +96,24 @@ test("the feed: full-screen homes, a heart, comments in one thread under the pho
   const evergreens = await pick(post, "the evergreens");
   await expect(evergreens.getByRole("button", { name: "Like the evergreens, 1 like", exact: true })).toBeVisible();
   await evergreens.getByRole("button", { name: "Close" }).click();
-  // Yes or no to the home itself is one tap, in the photo's corners.
+  // Yes or no to the home itself is one tap, in the row right under the photo.
   await expect(post.getByRole("button", { name: "Pass on this home" })).toBeVisible();
   await expect(heartOf(post)).toBeVisible();
-  // The heart and the X sit in the photo's corners, at its foot.
+  // The X first, the heart beside it, both under the photo's foot, in the
+  // row of things to do; nothing sits on the photo.
   const corners = (await photoFrame.boundingBox())!;
+  const actions = post.locator("[data-actions]");
   const heartBox = (await heartOf(post).boundingBox())!;
   const passBox = (await post.getByRole("button", { name: "Pass on this home" }).boundingBox())!;
-  expect(heartBox.y + heartBox.height).toBeLessThanOrEqual(corners.y + corners.height + 1);
-  expect(heartBox.x).toBeGreaterThan(passBox.x);
+  expect(passBox.y).toBeGreaterThanOrEqual(corners.y + corners.height - 1);
+  expect(heartBox.y).toBeGreaterThanOrEqual(corners.y + corners.height - 1);
+  expect(Math.abs(heartBox.y - passBox.y)).toBeLessThan(2);
+  expect(heartBox.x).toBeGreaterThan(passBox.x + passBox.width - 1);
   expect(heartBox.width).toBeGreaterThanOrEqual(44);
   expect(heartBox.height).toBeGreaterThanOrEqual(44);
+  await expect(actions.getByRole("button", { name: "Pass on this home" })).toHaveCount(1);
+  await expect(actions.getByRole("button", { name: /^Like 96 Fernhollow Ln/ })).toHaveCount(1);
+  await expect(actions.getByRole("button", { name: /^Comments/ })).toHaveCount(1);
   await expect(buyer.getByText("Toby")).toHaveCount(0);
 
   // The heart likes it; the account supplies the name.
@@ -191,8 +198,8 @@ test("the feed: full-screen homes, a heart, comments in one thread under the pho
   await expect(buyer.getByRole("article")).toHaveCount(13);
 
   // The buyer's activity is tied to their account, and on a desktop screen
-  // the home spreads across it: the photo on the left, the words in a panel
-  // on the right, and the buttons between them.
+  // the home reads as it does on a phone, in one column down the middle: the
+  // head, the photo, the row of things to do under it, then the comments.
   const elsewhere = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   await elsewhere.goto("/login");
   await elsewhere.getByLabel("Email").fill("bea@example.com");
@@ -205,12 +212,25 @@ test("the feed: full-screen homes, a heart, comments in one thread under the pho
   await expect(heartOf(again)).toHaveAttribute("aria-pressed", "true");
   await again.scrollIntoViewIfNeeded();
   expect((await again.boundingBox())!.width).toBeGreaterThan(1400);
-  const price = (await again.getByText("$839,000").boundingBox())!;
+  const price = (await again.locator('[data-fact="Price"]').boundingBox())!;
+  await expect(again.locator('[data-fact="Price"]')).toHaveText("$839,000");
   const heart = (await heartOf(again).boundingBox())!;
   const panel = (await again.locator("[data-words]").boundingBox())!;
-  expect(price.x).toBeGreaterThan(1000);
-  // The heart is on the photo, in its bottom right corner, not in the panel beside it.
-  expect(heart.x + heart.width).toBeLessThanOrEqual(panel.x);
+  const wideHead = (await again.locator("[data-home-head]").boundingBox())!;
+  const widePhoto = (await again.locator("[data-photo-frame]").first().boundingBox())!;
+  // No panel beside the photo: the head and the words are at most 44rem
+  // wide, in the middle of the window, the photo between them.
+  for (const part of [wideHead, panel, widePhoto]) {
+    expect(part.width).toBeLessThanOrEqual(705);
+    expect(Math.abs(part.x + part.width / 2 - 720)).toBeLessThanOrEqual(1);
+  }
+  expect(price.y + 20).toBeLessThanOrEqual(widePhoto.y + 1);
+  expect(Math.abs(panel.y - (widePhoto.y + widePhoto.height))).toBeLessThanOrEqual(1);
+  // The heart is in the words' first row, right under the photo, not on it.
+  expect(heart.y).toBeGreaterThanOrEqual(widePhoto.y + widePhoto.height - 1);
+  expect(heart.y - (widePhoto.y + widePhoto.height)).toBeLessThanOrEqual(12);
+  expect(heart.x).toBeGreaterThanOrEqual(panel.x);
+  expect(heart.x + heart.width).toBeLessThanOrEqual(panel.x + panel.width);
   expect(heart.y).toBeGreaterThan(price.y);
 
   // Buyers don't get the agent dashboard.

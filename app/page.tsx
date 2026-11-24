@@ -8,7 +8,7 @@ import { getClientActivity } from "@/lib/client-activity";
 import { getClientBook } from "@/lib/clients";
 import { readDevice } from "@/lib/engagement";
 import { getFollowCounts } from "@/lib/follows";
-import { feedKeys, getHomeFeed, markHomeSeen, myReactions, type FeedWho } from "@/lib/home-feed";
+import { feedCounts, feedKeys, getHomeFeed, markHomeSeen, myReactions, type FeedWho } from "@/lib/home-feed";
 import { getMyLinks } from "@/lib/my-links";
 import { suggestPeopleFor } from "@/lib/people";
 import { photoUrl, photoVersion } from "@/lib/person-photo";
@@ -75,8 +75,10 @@ export default async function HomePage() {
         said: entry.said.map((quote) => ({ ...quote, who: marked(quote.who) })),
       }))
     : everyone;
-  const [publicTakes, activity] = await Promise.all([
+  const [publicTakes, counts, activity] = await Promise.all([
     myReactions(visitorId, feedKeys(feed)),
+    // Under each card: how many liked it and how many comments it has.
+    feedCounts(feedKeys(feed)),
     // What their clients are doing on the links they sent, beside the feed.
     book ? getClientActivity(user.id, book) : [],
   ]);
@@ -94,6 +96,7 @@ export default async function HomePage() {
       suggestions={suggestions}
       feed={feed}
       mine={mine}
+      counts={counts}
       agent={
         book
           ? {

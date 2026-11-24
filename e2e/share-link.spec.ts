@@ -128,22 +128,44 @@ test("one home: the link opens on a word from the agent, then the home, in the a
   await page.keyboard.press("Escape");
   await expect(contact).toBeHidden();
 
-  // On a laptop the header runs edge to edge like the home under it, and
-  // Contact rises from the white panel beside the photo, as More does.
+  // On a laptop the home reads as on a phone, in one column down the middle
+  // (the head, the photo and the words under it all centred, nothing beside
+  // the photo); the agent's header is the site's width, like the site's own;
+  // and Contact rises from the foot of the screen, centred, as More does.
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.reload();
   await toFirstHome(page);
   await expect(home).toBeInViewport({ ratio: 0.9 });
-  const panel = (await home.locator("[data-words]").boundingBox())!;
+  await expect(home.locator("[data-split]")).toHaveCount(0);
+  // Above the facts, who it's from: the one thing to say about why it's here.
+  const why = home.locator("[data-home-head]").getByRole("region", { name: "Why it's here" });
+  await expect(why).toHaveText("From Jordan Rivera");
+  await expect(why.getByRole("button")).toHaveCount(0);
+  const [head, photo, words, frame] = await Promise.all(
+    [home.locator("[data-home-head]"), home.getByRole("group", { name: /^Photos of/ }).getByRole("img").first(), home.locator("[data-words]"), home].map(
+      async (el) => (await el.boundingBox())!,
+    ),
+  );
+  const middle = frame.x + frame.width / 2;
+  for (const box of [head, photo, words]) {
+    expect(Math.abs(box.width - 44 * 16)).toBeLessThan(2);
+    expect(Math.abs(box.x + box.width / 2 - middle)).toBeLessThan(2);
+  }
+  expect(head.y + head.height).toBeLessThanOrEqual(photo.y + 1);
+  expect(words.y).toBeGreaterThanOrEqual(photo.y + photo.height - 1);
   const logo = (await header.getByRole("link", { name: "Porchcard" }).boundingBox())!;
   const contactButton = (await header.getByRole("button", { name: "Contact" }).boundingBox())!;
-  expect(Math.round(logo.x)).toBe(24);
-  expect(Math.round(contactButton.x + contactButton.width)).toBe(Math.round(panel.x + panel.width));
+  // (The site's header: 72rem wide at most, centred, with 1.5rem to spare at each side.)
+  const gutter = (1440 - 72 * 16) / 2 + 24;
+  expect(Math.round(logo.x)).toBe(gutter);
+  expect(Math.round(contactButton.x + contactButton.width)).toBe(1440 - gutter);
   await header.getByRole("button", { name: "Contact" }).click();
   await expect(contact).toBeVisible();
+  // (Once it has slid up.)
+  await expect.poll(async () => Math.round((await contact.boundingBox())!.y + (await contact.boundingBox())!.height)).toBe(900);
   const sheet = (await contact.boundingBox())!;
-  expect(Math.round(sheet.x)).toBe(Math.round(panel.x));
-  expect(Math.round(sheet.x + sheet.width)).toBe(Math.round(panel.x + panel.width));
+  expect(Math.abs(sheet.x + sheet.width / 2 - 720)).toBeLessThan(2);
+  expect(sheet.width).toBeLessThanOrEqual(42 * 16);
 
   expect(pageErrors).toEqual([]);
 });
@@ -377,8 +399,15 @@ test("the agent's Porchcard for the link says who on it hasn't weighed in yet; t
   await heartOf(home).click();
   await expect(heartOf(home)).toHaveAttribute("aria-pressed", "true");
   await liked;
-  // The comment bar, its count and More on his link (the heart and the X are on the photo): the Porchcard is the agent's.
-  await expect(home.locator("[data-bar-row]").getByRole("button")).toHaveCount(3);
+  // Under the photo on his link: the X, the heart, Comments and More (a link
+  // made for him has nothing to pass on), and the comment bar alone at the
+  // foot; the Porchcard is the agent's.
+  const actions = home.locator("[data-actions]");
+  const onLink = ["Pass on this home", /^Like 812 N Corbel St, 1 like$/, /^Comments/, "More options"];
+  await expect(actions.getByRole("button")).toHaveCount(onLink.length);
+  for (const [i, name] of onLink.entries()) await expect(actions.getByRole("button").nth(i)).toHaveAccessibleName(name);
+  await expect(home.locator("[data-bar-row]").getByRole("button")).toHaveCount(1);
+  await expect(home.locator("[data-bar-row]").getByRole("button")).toHaveAccessibleName(/what you think…$/);
   await noFeedback(owen);
   // Two people on it: never "only you".
   const chat = await openComments(owen, home);

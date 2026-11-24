@@ -1,0 +1,22 @@
+"use client";
+
+import type { ReactNode } from "react";
+import { commentInReel, joinPublic, likeCommentInReel, reactInStream } from "@/app/homes/actions";
+import { NameGate } from "@/components/listing-thread";
+
+// Around a feed of cards: the public conversation's actions (liking a home,
+// commenting, liking a comment), and the sign-up sheet that rises the first
+// time someone signed out tries one, as everywhere else. Each card's bar and
+// its comments (FeedBar) work through it.
+export function FeedGate({ myName, children }: { myName: string | null; children: ReactNode }) {
+  return (
+    <NameGate
+      actions={{ join: joinPublic, react: reactInStream, comment: commentInReel, likeComment: likeCommentInReel }}
+      myName={myName}
+      prompt="Your first name shows publicly."
+      seenBy={{ text: "Public, with your first name.", private: false }}
+    >
+      {children}
+    </NameGate>
+  );
+}

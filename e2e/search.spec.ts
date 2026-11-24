@@ -179,30 +179,17 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await expect(page).toHaveURL(/\/search\?sort=price-desc&home=SAMPLE-(?!1001$)\d+$/);
 
   // Beside the map, on a wide screen, it's the home itself, not just a look
-  // at it: its X and its heart, its comments, its price to tap.
+  // at it: under the photo, one row with its X and its heart, its comments,
+  // Save and More (nothing to send it with here: the pane has its own way),
+  // and the comment bar alone at the foot; above the photo, its price to tap.
   await page.goto("/search?beds=4");
   const found = Number((await page.getByText(/^\d+ homes?$/).textContent())!.split(" ")[0]);
   await page.waitForTimeout(1500);
   await tapPin(page, "10421 Halvard Way NE, $1,349,000");
   const halvard = homeIn(page, "10421 Halvard Way NE");
   await expect(halvard).toBeInViewport({ ratio: 0.9 });
-  await expect(heartOf(halvard)).toBeVisible();
-  await expect(halvard.getByRole("button", { name: "Pass on this home" })).toBeVisible();
-  // The room goes to the photo: no row of round buttons. The comment bar
-  // opens the comments, with Save and More beside it, all on one line.
-  await expect(halvard.locator("[data-rail]")).toBeHidden();
-  // (The comments' count is part of the comment bar, as on a phone: no
-  // button of its own anywhere else.)
-  await expect(halvard.getByRole("button", { name: /^Comments/ }).filter({ visible: true })).toHaveCount(1);
-  await expect(halvard.locator("[data-bar-row]").getByRole("button", { name: /^Comments/ })).toBeVisible();
-  await expect(halvard.getByRole("button", { name: /^Send to/ }).filter({ visible: true })).toHaveCount(0);
-  const bar = halvard.getByRole("button", { name: /^Add a comment…/ });
-  const save = halvard.getByRole("button", { name: /^Save 10421 Halvard Way NE/ }).filter({ visible: true });
-  const more = halvard.getByRole("button", { name: "More options" }).filter({ visible: true });
-  await expect(save).toHaveCount(1);
-  await expect(more).toHaveCount(1);
   // (Measured once the glide to the home has ended: the row is read in
-  // three looks, and one taken mid-glide would put the buttons out of line.)
+  // several looks, and one taken mid-glide would put the buttons out of line.)
   await expect
     .poll(async () => {
       const before = (await halvard.boundingBox())!.y;
@@ -210,12 +197,30 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
       return (await halvard.boundingBox())!.y - before;
     })
     .toBe(0);
-  const [barBox, saveBox, moreBox] = [(await bar.boundingBox())!, (await save.boundingBox())!, (await more.boundingBox())!];
-  expect(Math.abs(barBox.y - saveBox.y)).toBeLessThan(2);
-  expect(Math.abs(barBox.y - moreBox.y)).toBeLessThan(2);
-  expect(saveBox.x).toBeGreaterThan(barBox.x + barBox.width);
-  expect(moreBox.x).toBeGreaterThan(saveBox.x + saveBox.width);
-  expect(saveBox.width).toBeGreaterThanOrEqual(44);
+  const actions = halvard.locator("[data-actions]");
+  const inPane = ["Pass on this home", /^Like 10421 Halvard Way NE/, /^Comments/, /^Save 10421 Halvard Way NE/, "More options"];
+  await expect(actions.getByRole("button")).toHaveCount(inPane.length);
+  for (const [i, name] of inPane.entries()) await expect(actions.getByRole("button").nth(i)).toHaveAccessibleName(name);
+  await expect(heartOf(halvard)).toBeVisible();
+  // Nothing on the photo, and no rail of round buttons down its side.
+  await expect(halvard.locator("[data-rail]")).toBeHidden();
+  // (The comments' count is part of the Comments button in the row: no
+  // button of its own anywhere else.)
+  await expect(halvard.getByRole("button", { name: /^Comments/ }).filter({ visible: true })).toHaveCount(1);
+  await expect(halvard.getByRole("button", { name: /^Send/ }).filter({ visible: true })).toHaveCount(0);
+  const bar = halvard.locator("[data-bar-row]");
+  await expect(bar.getByRole("button")).toHaveCount(1);
+  await expect(bar.getByRole("button")).toHaveAccessibleName("Add a comment…");
+  // One row, each a fingertip wide, then the bar under it.
+  const boxes = await actions.getByRole("button").evaluateAll((all) => all.map((el) => el.getBoundingClientRect().toJSON()));
+  for (const box of boxes) {
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(Math.abs(box.y - boxes[0].y)).toBeLessThan(2);
+  }
+  for (let i = 1; i < boxes.length; i++) expect(boxes[i].x).toBeGreaterThanOrEqual(boxes[i - 1].x + boxes[i - 1].width);
+  const barBox = (await bar.boundingBox())!;
+  expect(barBox.y).toBeGreaterThanOrEqual(boxes[0].y + boxes[0].height - 1);
   // The price and the address are the head of the home, above the photo, and
   // the photo under them keeps its size: wide as the pane, a 4:3 box.
   const head = (await halvard.locator("[data-home-head]").boundingBox())!;

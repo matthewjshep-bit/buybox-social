@@ -105,7 +105,7 @@ test("tap anywhere on a photo to like that spot or comment on it, and it shows w
   expect(pageErrors).toEqual([]);
 });
 
-test("on a desktop, the comment box opens right where you click, and what's said shows in the panel beside the photo and in the comments", async ({
+test("on a desktop, the comment box opens right where you click, and what's said shows under the photo and in the comments", async ({
   browser,
 }) => {
   const page = await (await browser.newContext(DESKTOP)).newPage();
@@ -124,16 +124,32 @@ test("on a desktop, the comment box opens right where you click, and what's said
   await box.press("Enter");
   await expect(trees).toBeHidden();
   // Nothing is left drawn on the photo, and nothing rolls over its foot:
-  // what was said is the newest of the latest comments in the panel beside
-  // the photo, with a pin to say it's about a spot in it.
+  // what was said is the newest of the latest comments under the photo (the
+  // same column as on a phone, under the row of things to do), with a pin to
+  // say it's about a spot in it.
   await expect(home.locator("[data-pin], [data-pins-toggle], [data-spot-highlight]")).toHaveCount(0);
   await expect(home.getByRole("group", { name: "Recent activity" })).toHaveCount(0);
+  // (Whole rows only: in the room a 900px-tall window leaves under a 44rem
+  // photo, the row shows whole or not at all, with "View all" in its place.)
   const latest = home.locator("[data-words]").getByRole("group", { name: "Latest comments" });
   const said = latest.getByRole("button", { name: /These trees make the whole street/ });
-  await expect(said).toBeVisible();
-  await expect(said.locator("svg.lucide-map-pin")).toHaveCount(1);
-  // The panel says how many; the words are in the comments, on a card with
-  // the spot it's about.
+  const viewAll = latest.getByRole("button", { name: /^View all \d+ comments?$/ });
+  await expect(said.or(viewAll).first()).toBeVisible();
+  const photo = (await home.getByRole("img", { name: PHOTO }).boundingBox())!;
+  const actions = (await home.locator("[data-actions]").boundingBox())!;
+  const latestBox = (await latest.boundingBox())!;
+  expect(actions.y).toBeGreaterThanOrEqual(photo.y + photo.height - 1);
+  expect(latestBox.y).toBeGreaterThanOrEqual(actions.y + actions.height - 1);
+  if (await said.isVisible()) {
+    await expect(said.locator("svg.lucide-map-pin")).toHaveCount(1);
+    const saidBox = (await said.boundingBox())!;
+    expect(saidBox.y + saidBox.height).toBeLessThanOrEqual(latestBox.y + latestBox.height + 1);
+  } else {
+    // No half a row: every row of it is out of the way, and "View all" counts them.
+    for (const row of await latest.locator("[data-row]").all()) await expect(row).toBeHidden();
+  }
+  // The row under the photo says how many; the words are in the comments,
+  // on a card with the spot it's about.
   await home.locator("[data-words]").getByRole("button", { name: /^Comments, \d+$/ }).click();
   const comments = commentsOf(home);
   const card = comments.getByRole("listitem").filter({ hasText: "These trees make the whole street" });
@@ -191,8 +207,8 @@ test("a tap on the words or the buttons isn't a tap on the photo, but just besid
   const CORBEL = "812 N Corbel St";
   const SHINGLED = "Shingled home with a wraparound porch and green lawn";
   // On a phone the price, size and address sit in a head above the photo, and
-  // under the photo the latest comments, then the comment bar's row: in the
-  // photo's two bottom corners, only the X and the heart.
+  // under the photo the row of things to do (the X and the heart first), the
+  // latest comments, then the comment bar: nothing on the photo itself.
   await page.goto("/homes/SAMPLE-1003");
   const home = homeIn(page, CORBEL);
   // Scrolled all the way to it, so where things are stays put.
@@ -202,18 +218,22 @@ test("a tap on the words or the buttons isn't a tap on the photo, but just besid
   const headBox = (await head.boundingBox())!;
   expect(headBox.y + headBox.height).toBeLessThanOrEqual(photo.y + 1);
   const latest = (await home.getByRole("group", { name: "Latest comments" }).boundingBox())!;
-  const row = home.locator("[data-bar-row]");
-  const rail = (await row.boundingBox())!;
+  const row = home.locator("[data-actions]");
+  const rowBox = (await row.boundingBox())!;
+  const bar = (await home.locator("[data-bar-row]").boundingBox())!;
   const photoBottom = photo.y + photo.height;
-  expect(latest.y).toBeGreaterThanOrEqual(photoBottom);
-  expect(rail.y).toBeGreaterThanOrEqual(latest.y + latest.height);
+  expect(rowBox.y).toBeGreaterThanOrEqual(photoBottom - 1);
+  expect(latest.y).toBeGreaterThanOrEqual(rowBox.y + rowBox.height - 1);
+  expect(bar.y).toBeGreaterThanOrEqual(latest.y + latest.height - 1);
 
-  // Just above the heart in its bottom right corner is the photo: a tap
-  // there opens a card about that spot. (A tap on the heart itself likes the home.)
+  // The heart is in the row, under the photo, not on it; just above the row,
+  // inside the photo's bottom right corner, is the photo: a tap there opens
+  // a card about that spot. (A tap on the heart itself likes the home.)
   const heart = (await heartOf(home).boundingBox())!;
-  expect(heart.x + heart.width).toBeGreaterThan(photo.x + photo.width - 20);
-  expect(heart.y + heart.height).toBeLessThanOrEqual(photoBottom + 1);
-  const [x, y] = [photo.x + photo.width - 40, heart.y - 24];
+  expect(heart.y).toBeGreaterThanOrEqual(photoBottom - 1);
+  expect(heart.x).toBeGreaterThanOrEqual(rowBox.x);
+  expect(heart.x + heart.width).toBeLessThanOrEqual(rowBox.x + rowBox.width);
+  const [x, y] = [photo.x + photo.width - 40, photoBottom - 24];
   await page.mouse.click(x, y);
   // (Signed out: signing up first, then the card.)
   await joinAs(page, "Sky");
@@ -248,12 +268,16 @@ test("a tap on the words or the buttons isn't a tap on the photo, but just besid
   await expect(about).toBeHidden();
   await page.waitForTimeout(500);
   await expect(home.locator("[data-spot-card]")).toHaveCount(0);
-  // Nor is a tap between the buttons in the row.
-  const save = (await row.getByRole("button", { name: /^Save / }).boundingBox())!;
-  const more = (await row.getByRole("button", { name: "More options" }).boundingBox())!;
-  await page.mouse.click((save.x + save.width + more.x) / 2, more.y + more.height / 2);
+  // Nor is a tap between the buttons in the row under the photo (between
+  // Comments and Share, where there's room).
+  const commentsButton = (await row.getByRole("button", { name: /^Comments/ }).boundingBox())!;
+  // (Signed in, on a public home, it's Send; signed out, Share.)
+  const share = (await row.getByRole("button", { name: /^(Share|Send) / }).boundingBox())!;
+  expect(share.x - (commentsButton.x + commentsButton.width)).toBeGreaterThan(8);
+  await page.mouse.click((commentsButton.x + commentsButton.width + share.x) / 2, share.y + share.height / 2);
   await page.waitForTimeout(500);
   await expect(home.locator("[data-spot-card]")).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.keyboard.press("Escape");
 
   // (No Porchcard to read about it in: that's an agent's, in a client's homes.)

@@ -1,18 +1,19 @@
 import type { ReactNode } from "react";
 import { CaughtUp } from "@/components/home/caught-up";
+import { FeedGate } from "@/components/home/feed-gate";
 import { FollowingCard, StripCard } from "@/components/home/following-card";
 import { cn } from "@/lib/format";
-import type { HomeFeedEntry } from "@/lib/home-feed";
+import type { FeedCounts, HomeFeedEntry } from "@/lib/home-feed";
 import type { ReactionState } from "@/lib/reactions";
 import { card } from "@/lib/ui";
 
 // The Following stream, on anyone's home: one card per home per day from the
-// people they follow (a big photo, a heart to like it too, what they said),
-// newest first; a day when someone liked three homes or more and said
-// nothing is one small strip of them instead. Where what's new since they
-// last looked ends, "You're all caught up", then a few older ones, and then
-// it stops. With nothing new it starts straight on the older ones: no line
-// saying so above a page full of homes.
+// people they follow (a big photo, a bar with its likes and comments, which
+// unfurl right there), newest first; a day when someone liked three homes or
+// more and said nothing is one small strip of them instead. Where what's new
+// since they last looked ends, "You're all caught up", then a few older
+// ones, and then it stops. With nothing new it starts straight on the older
+// ones: no line saying so above a page full of homes.
 
 // Older cards shown after the caught-up line.
 const OLDER_MOST = 20;
@@ -46,6 +47,7 @@ function itemsOf(entries: HomeFeedEntry[]): Item[] {
 export function FollowingFeed({
   entries,
   mine,
+  counts,
   seenAt,
   among = null,
   empty,
@@ -54,6 +56,8 @@ export function FollowingFeed({
   entries: HomeFeedEntry[];
   // Their own take on each home, by key, for the hearts.
   mine: Record<string, ReactionState>;
+  // How many liked each home and how many comments it has, by key, for the bars.
+  counts: Record<string, FeedCounts>;
   // When they last looked at their home: what's new is what's newer.
   seenAt: string | null;
   // Something of the page's to show in the stream, where someone with a busy
@@ -64,8 +68,8 @@ export function FollowingFeed({
   among?: ReactNode;
   // What to say when there's nothing at all.
   empty: ReactNode;
-  // Who's looking, for the box to comment in under each card (`agent`: their
-  // face is an agent's).
+  // Who's looking (by name, for the sign-up gate: someone signed in with a
+  // name is simply in), or nobody.
   me?: { name: string; photo: string | null; agent?: boolean } | null;
 }) {
   if (entries.length === 0) {
@@ -80,7 +84,12 @@ export function FollowingFeed({
       <ul className="flex flex-col gap-4">
         {items.map((item) =>
           item.kind === "card" ? (
-            <FollowingCard key={item.entry.id} entry={item.entry} mine={mine[item.entry.home.key] ?? null} me={me} />
+            <FollowingCard
+              key={item.entry.id}
+              entry={item.entry}
+              mine={mine[item.entry.home.key] ?? null}
+              counts={counts[item.entry.home.key] ?? { likes: 0, comments: 0 }}
+            />
           ) : (
             <StripCard key={`strip:${item.entries[0].id}`} entries={item.entries} />
           ),
@@ -90,31 +99,28 @@ export function FollowingFeed({
 
   // Nothing older to come after it (a feed that isn't one long timeline):
   // the people card after the first few, and the end of it said at the end.
-  if (freshItems.length > 0 && olderItems.length === 0) {
-    return (
+  const body =
+    freshItems.length > 0 && olderItems.length === 0 ? (
       <div className="flex flex-col gap-4">
         {list(freshItems.slice(0, AMONG_AFTER))}
         {among}
         {list(freshItems.slice(AMONG_AFTER))}
         <CaughtUp />
       </div>
-    );
-  }
-  if (freshItems.length === 0) {
-    return (
+    ) : freshItems.length === 0 ? (
       <div className="flex flex-col gap-4">
         {list(olderItems.slice(0, AMONG_AFTER))}
         {among}
         {list(olderItems.slice(AMONG_AFTER))}
       </div>
+    ) : (
+      <div className="flex flex-col gap-4">
+        {list(freshItems)}
+        <CaughtUp />
+        {among}
+        {list(olderItems)}
+      </div>
     );
-  }
-  return (
-    <div className="flex flex-col gap-4">
-      {list(freshItems)}
-      <CaughtUp />
-      {among}
-      {list(olderItems)}
-    </div>
-  );
+  // (The cards' hearts and comments all work through the one gate.)
+  return <FeedGate myName={me?.name || null}>{body}</FeedGate>;
 }

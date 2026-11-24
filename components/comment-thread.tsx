@@ -2,7 +2,7 @@
 
 import { Globe, Heart, Lock, MapPin, X } from "lucide-react";
 import Link from "next/link";
-import { useLayoutEffect, useRef, useState, useTransition, type ReactNode } from "react";
+import { createContext, useContext, useLayoutEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { useCommentLike, useThread, type ReplyTarget, type SpotRef } from "@/components/listing-thread";
 import { spotThread } from "@/components/photo-spots";
 import { Avatar, Badge } from "@/components/ui";
@@ -11,21 +11,87 @@ import { cn, timeAgo } from "@/lib/format";
 import { spotName } from "@/lib/photos";
 import type { TimelineComment, TimelineReaction } from "@/lib/timeline";
 
-// The comments on a home, under its photo, on the dark ground, the one way
-// they're read everywhere: a phone, a desktop's panel, the pane beside the
-// map, a public page, an agent's link. Folded ("latest"): who liked it, then
-// the latest few comments whole, and "View all" to read the rest. Unfurled
-// (open): the whole thread in the same place and the same style, each
-// comment with Reply and a heart, replies folded under it, and the comment
-// box at the foot. Never who reacted how: the likes line says how many (and,
-// on a link, who).
+// The comments on a home, the one way they're read everywhere: under its
+// photo on the dark ground (a phone, a desktop's panel, the pane beside the
+// map, a public page, an agent's link), and on white under a card in a feed.
+// Folded ("latest"): who liked it, then the latest few comments whole, and
+// "View all" to read the rest. Unfurled (open): the whole thread in the same
+// place and the same style, each comment with Reply and a heart, replies
+// folded under it, and the comment box at the foot. Never who reacted how:
+// the likes line says how many (and, on a link, who).
 
 // How many comments show before "View all".
 export const PREVIEW_MOST = 3;
 
 // Where the open thread is drawn: over the photo on a phone (its own header
-// with a Close), or in place in a desktop's panel ("Hide comments" at its end).
-export type ThreadLook = "cover" | "panel";
+// with a Close), in place in a desktop's panel ("Hide comments" at its end),
+// or inline under a card in a feed, on white (no header: the card's own
+// Comments button folds it away).
+export type ThreadLook = "cover" | "panel" | "inline";
+
+// The colours of the ground it's on: white words on the dark ground, ink on white.
+type Tone = {
+  fg: string;
+  body: string;
+  meta: string;
+  dim: string;
+  soft: string;
+  strong: string;
+  faint: string;
+  rowHover: string;
+  btnHover: string;
+  hoverFg: string;
+  chip: string;
+  faceRing: string;
+  badgeRing: string;
+  pill: string;
+  line: string;
+  share: string;
+  likeOn: string;
+};
+
+const DARK: Tone = {
+  fg: "text-white",
+  body: "text-white/90",
+  meta: "text-white/65",
+  dim: "text-white/60",
+  soft: "text-white/70",
+  strong: "text-white/80",
+  faint: "text-white/55",
+  rowHover: "hover:bg-white/[0.06]",
+  btnHover: "hover:bg-white/10",
+  hoverFg: "hover:text-white",
+  chip: "bg-white/10 text-white/85 hover:bg-white/20",
+  faceRing: "ring-white/30",
+  badgeRing: "ring-white/25",
+  pill: "text-white/80 ring-white/25",
+  line: "bg-white/30",
+  share: "text-sky-300",
+  likeOn: "text-rose-400",
+};
+
+const LIGHT: Tone = {
+  fg: "text-ink",
+  body: "text-ink",
+  meta: "text-muted",
+  dim: "text-stone-500",
+  soft: "text-stone-600",
+  strong: "text-stone-700",
+  faint: "text-muted",
+  rowHover: "hover:bg-stone-100",
+  btnHover: "hover:bg-stone-100",
+  hoverFg: "hover:text-ink",
+  chip: "bg-stone-100 text-stone-700 hover:bg-stone-200",
+  faceRing: "ring-stone-300",
+  badgeRing: "ring-stone-300",
+  pill: "text-stone-700 ring-stone-300",
+  line: "bg-stone-300",
+  share: "text-brand",
+  likeOn: "text-rose-600",
+};
+
+const ToneContext = createContext<Tone>(DARK);
+const useTone = () => useContext(ToneContext);
 
 export function CommentThread({
   post,
@@ -75,6 +141,7 @@ export function CommentThread({
   onGoToSpot: (spot: SpotRef) => void;
   className?: string;
 }) {
+  const t = look === "inline" ? LIGHT : DARK;
   const liked = likes ?? post.likes;
   const all = post.timeline.filter((item): item is TimelineComment => item.kind === "comment");
   const inScope = spot ? (spotThread(post.timeline, spot) as TimelineComment[]) : all;
@@ -88,12 +155,19 @@ export function CommentThread({
     .filter((comment) => !comment.parentId || !ids.has(comment.parentId))
     .sort((a, b) => Number(leads(b)) - Number(leads(a)) || b.at.localeCompare(a.at));
   const repliesTo = (id: string) => inScope.filter((comment) => comment.parentId === id).sort((a, b) => a.at.localeCompare(b.at));
-  const likesLine = liked > 0 && !spot && (
+  // (Under a card, the bar's heart already says how many liked it.)
+  const likesLine = liked > 0 && !spot && look !== "inline" && (
     <p className="py-1.5 text-body font-semibold leading-5">{likedLine(liked, mode === "share" ? post.likers : [], mineLiked)}</p>
   );
   const spots = { name: (s: SpotRef) => spotName(post.listing, s), show: onGoToSpot };
 
-  if (!open) return <Latest post={post} all={all} top={top} likesLine={likesLine} spots={spots} onOpen={onOpen} className={className} />;
+  if (!open) {
+    return (
+      <ToneContext.Provider value={t}>
+        <Latest post={post} all={all} top={top} likesLine={likesLine} spots={spots} onOpen={onOpen} className={className} />
+      </ToneContext.Provider>
+    );
+  }
 
   const count = inScope.length;
   const title = name ? `On ${name}` : count ? `${count.toLocaleString("en-US")} ${count === 1 ? "comment" : "comments"}` : "Comments";
@@ -117,12 +191,12 @@ export function CommentThread({
           ))}
         </ul>
       ) : (
-        <p data-comment-list className="py-3 text-body text-white/65">
+        <p data-comment-list className={cn("py-3 text-body", t.meta)}>
           No comments{name ? ` on ${name}` : ""} yet.
         </p>
       )}
       {mode === "public" && !spot && (
-        <p className="mt-4 text-center text-meta leading-5 text-white/55">
+        <p className={cn("mt-4 text-center text-meta leading-5", t.faint)}>
           Comments here are public. Buyers&apos; private chats with their agents stay private unless they choose to share.
         </p>
       )}
@@ -135,7 +209,12 @@ export function CommentThread({
         <button
           type="button"
           onClick={onAllComments}
-          className="flex h-11 shrink-0 items-center rounded-full px-3 text-meta font-semibold text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+          className={cn(
+            "flex h-11 shrink-0 items-center rounded-full px-3 text-meta font-semibold transition-colors",
+            t.strong,
+            t.btnHover,
+            t.hoverFg,
+          )}
         >
           All comments
         </button>
@@ -145,7 +224,12 @@ export function CommentThread({
           type="button"
           aria-label="Hide comments"
           onClick={onClose}
-          className="-mr-2 flex size-11 shrink-0 items-center justify-center rounded-full text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+          className={cn(
+            "-mr-2 flex size-11 shrink-0 items-center justify-center rounded-full transition-colors",
+            t.strong,
+            t.btnHover,
+            t.hoverFg,
+          )}
         >
           <X aria-hidden size={22} />
         </button>
@@ -154,29 +238,45 @@ export function CommentThread({
   );
   if (look === "cover") {
     return (
-      <div className={cn("flex min-h-0 flex-1 flex-col text-white", className)}>
-        <div className="px-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">{head}</div>
-        <div
-          data-thread-scroll
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[max(1rem,env(safe-area-inset-left))] pb-3 pr-[max(1rem,env(safe-area-inset-right))]"
-        >
+      <ToneContext.Provider value={t}>
+        <div className={cn("flex min-h-0 flex-1 flex-col", t.fg, className)}>
+          <div className="px-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">{head}</div>
+          <div
+            data-thread-scroll
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[max(1rem,env(safe-area-inset-left))] pb-3 pr-[max(1rem,env(safe-area-inset-right))]"
+          >
+            {list}
+          </div>
+        </div>
+      </ToneContext.Provider>
+    );
+  }
+  if (look === "inline") {
+    // Under a card: the list alone (the card's Comments button says how many,
+    // and folds it away). About one spot it still says so, with the way back.
+    return (
+      <ToneContext.Provider value={t}>
+        <div className={cn("flex flex-col", t.fg, className)}>
+          {spot && head}
           {list}
         </div>
-      </div>
+      </ToneContext.Provider>
     );
   }
   return (
-    <div className={cn("flex flex-col text-white", className)}>
-      {head}
-      {list}
-      <button
-        type="button"
-        onClick={onClose}
-        className="mt-2 flex min-h-11 items-center text-body font-semibold text-white/70 transition-colors hover:text-white"
-      >
-        Hide comments
-      </button>
-    </div>
+    <ToneContext.Provider value={t}>
+      <div className={cn("flex flex-col", t.fg, className)}>
+        {head}
+        {list}
+        <button
+          type="button"
+          onClick={onClose}
+          className={cn("mt-2 flex min-h-11 items-center text-body font-semibold transition-colors", t.soft, t.hoverFg)}
+        >
+          Hide comments
+        </button>
+      </div>
+    </ToneContext.Provider>
   );
 }
 
@@ -199,6 +299,7 @@ function Latest({
   onOpen: (commentId?: string) => void;
   className?: string;
 }) {
+  const t = useTone();
   const box = useRef<HTMLDivElement>(null);
   const shown = top.slice(0, PREVIEW_MOST);
   const count = all.length;
@@ -238,8 +339,8 @@ function Latest({
   // Nothing yet: said quietly, so the room under the photo reads as what it's for.
   const nothing = !likesLine && count === 0;
   return (
-    <div ref={box} data-comment-list data-keep-clear role="group" aria-label="Latest comments" className={cn("flex flex-col text-white", className)}>
-      {nothing && <p className="py-1.5 text-body text-white/65">No comments yet.</p>}
+    <div ref={box} data-comment-list data-keep-clear role="group" aria-label="Latest comments" className={cn("flex flex-col", t.fg, className)}>
+      {nothing && <p className={cn("py-1.5 text-body", t.meta)}>No comments yet.</p>}
       {likesLine}
       {shown.length > 0 && (
         <ul className="flex flex-col">
@@ -248,7 +349,7 @@ function Latest({
               <button
                 type="button"
                 onClick={() => onOpen(comment.id)}
-                className="flex min-h-11 w-full items-start gap-2.5 rounded-lg py-1.5 text-left transition-colors hover:bg-white/[0.06]"
+                className={cn("flex min-h-11 w-full items-start gap-2.5 rounded-lg py-1.5 text-left transition-colors", t.rowHover)}
               >
                 <Face comment={comment} />
                 <p className="line-clamp-2 min-w-0 flex-1 text-body leading-5">
@@ -265,7 +366,7 @@ function Latest({
           data-view-all
           hidden={count <= shown.length}
           onClick={() => onOpen()}
-          className="flex min-h-11 items-center text-body text-white/70 transition-colors hover:text-white"
+          className={cn("flex min-h-11 items-center text-body transition-colors", t.soft, t.hoverFg)}
         >
           View all {count.toLocaleString("en-US")} {count === 1 ? "comment" : "comments"}
         </button>
@@ -277,12 +378,13 @@ function Latest({
 type SpotLinks = { name: (spot: SpotRef) => string; show: (spot: SpotRef) => void };
 
 function Face({ comment, reply = false }: { comment: TimelineComment; reply?: boolean }) {
+  const t = useTone();
   return (
     <Avatar
       name={comment.name}
       tone={comment.fromPrivateChat ? "anonymous" : comment.isAgent ? "agent" : "person"}
       size={reply ? 6 : 7}
-      className={cn("mt-0.5", comment.isAgent && "ring-1 ring-white/30")}
+      className={cn("mt-0.5", comment.isAgent && cn("ring-1", t.faceRing))}
     />
   );
 }
@@ -305,6 +407,7 @@ function Said({
   // button; which spot waits for the open thread).
   clamp?: boolean;
 }) {
+  const t = useTone();
   const name =
     linked && comment.profileId ? (
       <Link href={`/people/${comment.profileId}`} className="relative z-[1] font-semibold underline-offset-2 hover:underline">
@@ -317,21 +420,21 @@ function Said({
     <>
       {name}
       {comment.isAgent && (
-        <Badge tone="ink" small className="ml-1.5 align-[2px] ring-1 ring-white/25">
+        <Badge tone="ink" small className={cn("ml-1.5 align-[2px] ring-1", t.badgeRing)}>
           Agent
         </Badge>
       )}
-      {comment.fromPrivateChat && <Lock aria-hidden size={11} className="ml-1 inline align-[-1px] text-white/60" />}{" "}
+      {comment.fromPrivateChat && <Lock aria-hidden size={11} className={cn("ml-1 inline align-[-1px]", t.dim)} />}{" "}
       {comment.spot && spots && (
         <>
           {clamp ? (
-            <MapPin aria-hidden size={12} className="inline align-[-1px] text-white/60" />
+            <MapPin aria-hidden size={12} className={cn("inline align-[-1px]", t.dim)} />
           ) : (
             <button
               type="button"
               data-spot-tag={comment.spot.tag}
               onClick={() => spots.show(comment.spot!)}
-              className="relative z-[1] inline-flex min-h-6 items-center gap-1 rounded-full bg-white/10 px-2 text-meta font-semibold text-white/85 hit-44 hover:bg-white/20"
+              className={cn("relative z-[1] inline-flex min-h-6 items-center gap-1 rounded-full px-2 text-meta font-semibold hit-44", t.chip)}
             >
               <MapPin aria-hidden size={12} />
               <span className="sr-only">About </span>
@@ -341,8 +444,8 @@ function Said({
           )}{" "}
         </>
       )}
-      <span className={cn("text-white/90", !clamp && "whitespace-pre-line break-words")}>{comment.body}</span>{" "}
-      <span className="whitespace-nowrap text-meta text-white/65">
+      <span className={cn(t.body, !clamp && "whitespace-pre-line break-words")}>{comment.body}</span>{" "}
+      <span className={cn("whitespace-nowrap text-meta", t.meta)}>
         ·{" "}
         <time dateTime={comment.at} suppressHydrationWarning>
           {timeAgo(comment.at)}
@@ -387,6 +490,7 @@ function Row({
   // Nested under a comment.
   reply?: boolean;
 }) {
+  const t = useTone();
   const { actions } = useThread();
   const [pending, startTransition] = useTransition();
   // Taking a comment back is always allowed; sharing it needs a like.
@@ -402,20 +506,20 @@ function Row({
     <li data-comment={comment.id} className={cn("flex gap-2.5", reply ? "py-1" : "py-1.5")}>
       <Face comment={comment} reply={reply} />
       <div className="min-w-0 flex-1">
-        {answers && <p className="text-meta leading-5 text-white/60">Replying to {answers}</p>}
+        {answers && <p className={cn("text-meta leading-5", t.dim)}>Replying to {answers}</p>}
         <p className="text-body leading-5">
           <Said comment={comment} spots={spots} linked clamp={false} />
         </p>
         {/* The agent hearted it, as a creator does on a reel: a note, not a button. */}
         {comment.likedBy && (
           <p className="mt-1 flex">
-            <span className="inline-flex h-6 items-center gap-1 rounded-full px-2 text-meta font-medium text-white/80 ring-1 ring-inset ring-white/25">
+            <span className={cn("inline-flex h-6 items-center gap-1 rounded-full px-2 text-meta font-medium ring-1 ring-inset", t.pill)}>
               <Heart aria-hidden size={11} className="fill-rose-400 text-rose-400" />
               Liked by {comment.likedBy}
             </span>
           </p>
         )}
-        <div className="flex flex-wrap items-center gap-x-4 text-meta font-semibold text-white/60">
+        <div className={cn("flex flex-wrap items-center gap-x-4 text-meta font-semibold", t.dim)}>
           {replyable && (
             <button
               type="button"
@@ -426,7 +530,7 @@ function Row({
                     : { id: comment.id, name: comment.name, mine: comment.mine },
                 )
               }
-              className="flex min-h-11 items-center transition-colors hover:text-white"
+              className={cn("flex min-h-11 items-center transition-colors", t.hoverFg)}
             >
               Reply
               <span className="sr-only"> to {label}</span>
@@ -456,7 +560,7 @@ function Row({
                   await actions.setSharing!(comment.id, !comment.sharedPublicly);
                 })
               }
-              className="flex min-h-11 items-center text-sky-300 underline-offset-2 hover:underline disabled:opacity-50"
+              className={cn("flex min-h-11 items-center underline-offset-2 hover:underline disabled:opacity-50", t.share)}
             >
               {comment.sharedPublicly ? "Make private" : "Share anonymously"}
             </button>
@@ -473,8 +577,9 @@ function Row({
           aria-label={`Like ${comment.mine ? "your" : `${comment.name}'s`} comment${like.count ? `, ${like.count} ${like.count === 1 ? "like" : "likes"}` : ""}`}
           onClick={like.toggle}
           className={cn(
-            "-mr-2 flex size-11 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-white/10",
-            like.liked ? "text-rose-400" : "text-white/60",
+            "-mr-2 flex size-11 shrink-0 items-center justify-center rounded-full transition-colors",
+            t.btnHover,
+            like.liked ? t.likeOn : t.dim,
           )}
         >
           <Heart aria-hidden size={17} className={cn(like.liked && "fill-current")} />
@@ -503,6 +608,7 @@ function Replies({
   canShare: boolean;
   onReply: (target: ReplyTarget) => void;
 }) {
+  const t = useTone();
   const asked = Boolean(opened && replies.some((child) => child.id === opened));
   const [open, setOpen] = useState(asked);
   const [wasAsked, setWasAsked] = useState(asked);
@@ -522,9 +628,9 @@ function Replies({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="flex min-h-11 items-center gap-2.5 text-meta font-semibold text-white/60 transition-colors hover:text-white"
+        className={cn("flex min-h-11 items-center gap-2.5 text-meta font-semibold transition-colors", t.dim, t.hoverFg)}
       >
-        <span aria-hidden className="h-px w-6 bg-white/30" />
+        <span aria-hidden className={cn("h-px w-6", t.line)} />
         {open ? "Hide replies" : `View ${replies.length} ${replies.length === 1 ? "reply" : "replies"}`}
       </button>
       {open && (

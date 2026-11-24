@@ -1,5 +1,6 @@
-// Yes or no to a home in one tap: an X in the photo's bottom left corner
-// (pass, and on to the next home) and a heart in its bottom right (like).
+// Yes or no to a home in one tap: an X (pass, and on to the next home) and
+// a heart (like) side by side in the row right under the photo, the first
+// two things in it.
 // They are the one heart and the one pass a home has, so they reach your own
 // page and your agent. On an agent's link, the last screen is every home
 // again, small, each with the same two buttons. And a mouse's wheel goes on a
@@ -21,15 +22,25 @@ test("the X passes and goes on to the next home; the heart likes; both show on y
   const firstAddress = (await first.getAttribute("aria-label"))!;
   const secondAddress = (await second.getAttribute("aria-label"))!;
 
-  // Both in the photo's corners, a fingertip wide: the X left, the heart right.
+  // Both in the row under the photo, a fingertip wide: the X first, at the
+  // left, the heart right beside it, both level; neither on the photo.
   const pass = first.getByRole("button", { name: "Pass on this home" });
   const like = heartOf(first);
+  const photo = (await first.locator("[data-photo-frame]").first().boundingBox())!;
+  const row = first.locator("[data-actions]");
+  await expect(row.getByRole("button").nth(0)).toHaveAccessibleName("Pass on this home");
+  await expect(row.getByRole("button").nth(1)).toHaveAccessibleName(/^Like /);
   const [x, heart] = [(await pass.boundingBox())!, (await like.boundingBox())!];
   expect(x.width).toBeGreaterThanOrEqual(44);
+  expect(x.height).toBeGreaterThanOrEqual(44);
   expect(heart.width).toBeGreaterThanOrEqual(44);
+  expect(heart.height).toBeGreaterThanOrEqual(44);
   expect(x.x).toBeLessThan(40);
-  expect(heart.x + heart.width).toBeGreaterThan(PHONE.width - 40);
+  expect(heart.x).toBeGreaterThan(x.x + x.width - 1);
+  expect(heart.x).toBeLessThan(x.x + x.width + 16);
   expect(Math.abs(x.y - heart.y)).toBeLessThan(2);
+  expect(x.y).toBeGreaterThanOrEqual(photo.y + photo.height - 1);
+  expect(x.y - (photo.y + photo.height)).toBeLessThanOrEqual(12);
 
   // The X: passed, and on to the next home without another tap.
   await pass.click();

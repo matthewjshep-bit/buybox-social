@@ -3,19 +3,23 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { CardMenu } from "@/app/people/[id]/client";
 import { CommentBubble } from "@/components/comment-bubble";
+import { FeedBar } from "@/components/home/feed-bar";
 import { PhotoSwipe } from "@/components/photo-swipe";
 import { SaidLine } from "@/components/said-line";
 import { Avatar, Badge } from "@/components/ui";
 import { cn, formatPrice } from "@/lib/format";
+import type { FeedCounts } from "@/lib/home-feed";
 import { cardTime, dayHeading, dayName, type FeedFilters, type ProfileCard } from "@/lib/profile";
+import type { ReactionState } from "@/lib/reactions";
 import { filterParams } from "@/lib/reel-context";
 import { button, card as cardClass } from "@/lib/ui";
 
 // Everything someone has done, Facebook-style: one card per home per day,
 // under "Today", "Yesterday" and so on. Each card shows the photos (the one
 // with the spots they picked out first, the rest a swipe away), the home,
-// and what they said, and opens the homes full screen, in this page's order,
-// on that one.
+// and what they said, then the bar every feed card has (how many liked the
+// home, how many comments, which unfurl right there), and opens the homes
+// full screen, in this page's order, on that one.
 
 export function ProfileFeed({
   cards,
@@ -28,6 +32,7 @@ export function ProfileFeed({
   photo,
   filters,
   control,
+  bars,
 }: {
   cards: ProfileCard[];
   name: string;
@@ -46,6 +51,10 @@ export function ProfileFeed({
   filters?: Partial<FeedFilters>;
   // What the feed shows, to choose from: on the first day's line.
   control?: ReactNode;
+  // For the bar under each card: how many liked each home and how many
+  // comments it has, by key, and the viewer's own take on each (so the heart
+  // starts out right). Unset: no bars (a page with no gate around it).
+  bars?: { counts: Record<string, FeedCounts>; mine: Record<string, ReactionState> };
 }) {
   const days: { heading: string; cards: ProfileCard[] }[] = [];
   // A home on more than one day here: each card's menu says which day it's for.
@@ -76,6 +85,18 @@ export function ProfileFeed({
                 day={seen.get(card.home.key)! > 1 ? dayName(card.day) : undefined}
                 href={reelHref(reelFrom, card, filters)}
                 avatarPhoto={photo}
+                bar={
+                  bars && (
+                    <FeedBar
+                      listingKey={card.home.key}
+                      address={card.home.address}
+                      counts={bars.counts[card.home.key] ?? { likes: 0, comments: 0 }}
+                      mine={bars.mine[card.home.key] ?? null}
+                      active={card.home.active}
+                      reelHref={`/reel?${new URLSearchParams({ from: reelFrom, home: card.home.key })}`}
+                    />
+                  )
+                }
               />
             ))}
           </ul>
@@ -115,6 +136,7 @@ export function ActivityCard({
   only = false,
   header,
   footer,
+  bar,
 }: {
   card: ProfileCard;
   name: string;
@@ -133,6 +155,9 @@ export function ActivityCard({
   header?: ReactNode;
   // Under it all: the agent's replies, and their own box to reply in.
   footer?: ReactNode;
+  // Under the facts: the feed bar (likes, comments that unfurl), where the
+  // page has one.
+  bar?: ReactNode;
 }) {
   const { home } = card;
   // A day when all they did was like someone's comment: a small card, no photo.
@@ -270,7 +295,8 @@ export function ActivityCard({
           </ul>
         </div>
       )}
-      {footer ? <div className="relative z-20 px-4 pb-1">{footer}</div> : <div className="h-4" />}
+      {bar}
+      {footer ? <div className="relative z-20 px-4 pb-1">{footer}</div> : <div className={bar ? "h-1" : "h-4"} />}
     </li>
   );
 }

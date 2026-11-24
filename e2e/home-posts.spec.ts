@@ -3,7 +3,7 @@
 // feeds (where, as on Facebook, they can answer right under it, their face
 // beside the box), and it opens the homes full screen.
 import { expect, test } from "@playwright/test";
-import { signUpBuyer } from "./helpers";
+import { commentIn, signUpBuyer } from "./helpers";
 
 const LARKMOOR = "4127 Larkmoor Ave NE";
 const WORDS = "Drove by this one today. That porch!";
@@ -50,14 +50,30 @@ test("someone posts about a home from their page; a follower sees it in their fe
   // Not someone else's page: no box to post on it.
   await expect(ravi.getByRole("button", { name: "Post or save a home…" })).toHaveCount(0);
 
-  // Ravi's feed has it, and a box right under it, his face beside it.
+  // Ravi's feed has it, with one small bar under it: the home's likes and
+  // how many comments it has (her post is one). No box until he asks: the
+  // bubble unfurls the comments right there, with the box under them, and
+  // what he says joins the thread. Tapped again, they fold away.
   await ravi.goto("/");
   const inFeed = ravi.getByRole("listitem").filter({ hasText: WORDS }).first();
   await expect(inFeed).toContainText(LARKMOOR);
-  const box = inFeed.getByRole("textbox", { name: `Comment on ${LARKMOOR}` });
-  await expect(box).toHaveAttribute("placeholder", "Write a comment…");
+  await expect(inFeed.getByRole("textbox")).toHaveCount(0);
+  const bubble = inFeed.getByRole("button", { name: /^Comments, \d+$/ });
+  await expect(bubble).toHaveAttribute("aria-expanded", "false");
+  // (However many others said something about it, in a run with other tests.)
+  const before = Number((await bubble.getAttribute("aria-label"))!.replace(/\D/g, ""));
+  await bubble.click();
+  const thread = inFeed.getByRole("region", { name: "Comments" });
+  await expect(thread).toBeVisible();
+  await expect(commentIn(thread, "Pia", WORDS)).toBeVisible();
+  const box = thread.getByRole("textbox", { name: "Add a comment" });
   await box.fill("Love a porch like that.");
   await box.press("Enter");
-  await expect(inFeed.getByRole("list", { name: "What you said" })).toContainText("Love a porch like that.");
+  await expect(commentIn(thread, "Ravi", "Love a porch like that.")).toBeVisible();
   await expect(box).toHaveValue("");
+  const after = inFeed.getByRole("button", { name: `Comments, ${before + 1}` });
+  await expect(after).toHaveAttribute("aria-expanded", "true");
+  await after.click();
+  await expect(thread).toHaveCount(0);
+  await expect(ravi).toHaveURL(/\/$/);
 });

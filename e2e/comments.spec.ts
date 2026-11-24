@@ -85,35 +85,62 @@ test("comments unfurl from the comment bar, under the head and over the photo, l
   expect(pageErrors).toEqual([]);
 });
 
-test("on a desktop, the whole photo sits beside the words; press and hold to see it alone", async ({ browser }) => {
+test("on a desktop, the photo and the words are one centred column, as on a phone; press and hold to see the photo alone", async ({
+  browser,
+}) => {
   const page = await (await browser.newContext(DESKTOP)).newPage();
   await page.goto("/homes/SAMPLE-1006");
   const home = homeIn(page, BRACKENFIELD);
   await expect(home).toBeInViewport({ ratio: 0.9 });
 
-  // The whole photo, on a stage of its own on the left, up to just short of
-  // the panel (the buttons float on it).
+  // One layout at every width: the whole photo in a column 44rem wide,
+  // centred in the window, under the head; no panel beside it.
   const photo = home.getByRole("img", { name: "Brick-front home with a wide lawn" });
-  await expect.poll(async () => (await photo.boundingBox())!.width).toBeGreaterThan(800);
+  await expect.poll(async () => (await photo.boundingBox())!.width).toBeLessThanOrEqual(704 + 1);
   const box = (await photo.boundingBox())!;
-  expect(box.width).toBeLessThanOrEqual(1440 - 24 - 400);
-  expect(box.x).toBeGreaterThanOrEqual(23);
-  expect(box.x + box.width).toBeLessThanOrEqual(1440 - 400 + 1);
+  expect(box.width).toBeGreaterThan(600);
+  expect(Math.abs(box.x + box.width / 2 - 1440 / 2)).toBeLessThanOrEqual(2);
+  const head = (await home.locator("[data-home-head]").boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(head.y + head.height - 1);
 
-  // The words are in a white panel down the right, read from the left, inside its padding.
-  const panel = (await home.locator("[data-words]").boundingBox())!;
-  expect(panel.x - (box.x + box.width)).toBeGreaterThanOrEqual(15);
-  expect(panel.x).toBeGreaterThanOrEqual(1000);
-  const description = home.getByText(/^Traditional brick-front home/);
+  // The words are under the photo, in the same column, on the dark ground:
+  // first the row of things to do, then the comments, then the comment bar.
+  const words = (await home.locator("[data-words]").boundingBox())!;
+  expect(words.y).toBeGreaterThanOrEqual(box.y + box.height - 1);
+  expect(Math.abs(words.width - 704)).toBeLessThanOrEqual(1);
+  expect(Math.abs(words.x + words.width / 2 - 1440 / 2)).toBeLessThanOrEqual(2);
+  const actions = (await home.locator("[data-actions]").boundingBox())!;
+  expect(actions.y).toBeGreaterThanOrEqual(box.y + box.height - 1);
+  const latest = (await home.getByRole("group", { name: "Latest comments" }).boundingBox())!;
+  expect(latest.y).toBeGreaterThanOrEqual(actions.y + actions.height - 1);
+  // (The comment bar is the one thing in its row, at the column's foot.)
+  await expect(home.locator("[data-bar-row] button")).toHaveCount(1);
+  const bar = (await home.getByRole("button", { name: "Add a comment…" }).boundingBox())!;
+  expect(bar.y).toBeGreaterThanOrEqual(latest.y + latest.height - 1);
+  expect(bar.x).toBeGreaterThanOrEqual(words.x);
+  expect(bar.x + bar.width).toBeLessThanOrEqual(words.x + words.width + 1);
+  await expect(home.getByRole("textbox", { name: "Add a comment" })).toHaveCount(0);
+
+  // The description isn't under the photo: it opens from the head, over the
+  // photo, read from the left inside its padding.
+  await expect(home.getByText(/^Traditional brick-front home/)).toBeHidden();
+  await home.getByRole("button", { name: "About this home" }).click();
+  const about = home.getByRole("region", { name: "About this home" });
+  await expect(about).toBeVisible();
+  const description = about.getByText(/^Traditional brick-front home/);
+  await expect(description).toBeVisible();
   await expect(description).toHaveCSS("text-align", "start");
-  expect(Math.abs((await description.boundingBox())!.x - (panel.x + 20))).toBeLessThan(2);
-  // (The comment box itself is in the panel, at its foot.)
-  const bar = (await home.getByRole("textbox", { name: "Add a comment" }).boundingBox())!;
-  expect(bar.x).toBeGreaterThanOrEqual(panel.x);
+  const aboutBox = (await about.boundingBox())!;
+  expect(aboutBox.x).toBeGreaterThanOrEqual(words.x - 1);
+  expect(aboutBox.x + aboutBox.width).toBeLessThanOrEqual(words.x + words.width + 1);
+  expect(aboutBox.y).toBeGreaterThanOrEqual(head.y + head.height - 1);
+  expect(Math.abs((await description.boundingBox())!.x - (aboutBox.x + 16))).toBeLessThan(2);
+  await page.keyboard.press("Escape");
+  await expect(about).toBeHidden();
 
   // Pressing and holding the photo clears everything off it; letting go
   // brings it back, without opening anything where it was pressed.
-  const price = home.getByText("$1,089,000");
+  const price = home.locator('[data-fact="Price"]');
   await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.3);
   await page.mouse.down();
   await expect(price).toBeHidden();
@@ -134,34 +161,44 @@ test("on a desktop, the whole photo sits beside the words; press and hold to see
   expect(Math.abs(after.y - box.y)).toBeLessThan(2);
 });
 
-test("on a desktop, comments unfurl in the panel beside the photo", async ({ browser }) => {
+test("on a desktop, comments unfurl over the photo in the same column, from the Comments button", async ({ browser }) => {
   const page = await (await browser.newContext(DESKTOP)).newPage();
   await page.goto("/homes/SAMPLE-1006");
   const home = homeIn(page, BRACKENFIELD);
   await expect(home).toBeInViewport({ ratio: 0.9 });
   const photo = home.getByRole("img", { name: "Brick-front home with a wide lawn" });
-  await expect.poll(async () => (await photo.boundingBox())!.width).toBeGreaterThan(800);
+  await expect.poll(async () => (await photo.boundingBox())!.width).toBeLessThanOrEqual(704 + 1);
   const before = (await photo.boundingBox())!;
-  const panel = (await home.locator("[data-words]").boundingBox())!;
+  const head = (await home.locator("[data-home-head]").boundingBox())!;
+  const words = (await home.locator("[data-words]").boundingBox())!;
+  const { height } = page.viewportSize()!;
   await home.getByRole("button", { name: /^Comments/ }).click();
   const thread = commentsOf(home);
   await expect(thread).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Comments" })).toHaveCount(0);
-  // In the panel itself (level with the photos beside it), the photo just as it was.
-  await expect.poll(async () => Math.round((await thread.boundingBox())!.x)).toBe(1016);
+  // The words' block itself, grown up over the photo to just under the head,
+  // which stays, down to the window's foot, in the column; the photo keeps its
+  // place under it.
+  await expect.poll(async () => Math.round((await thread.boundingBox())!.y)).toBe(Math.round(head.y + head.height));
   const box = (await thread.boundingBox())!;
-  expect(Math.abs(box.x + box.width - 1416)).toBeLessThanOrEqual(2);
-  expect(Math.abs(box.width - 400)).toBeLessThanOrEqual(2);
-  expect(Math.abs(box.y - panel.y)).toBeLessThanOrEqual(2);
-  expect(Math.abs(box.y + box.height - (panel.y + panel.height))).toBeLessThanOrEqual(2);
+  expect(Math.round(box.y + box.height)).toBe(height);
+  expect(Math.abs(box.x - words.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(box.width - words.width)).toBeLessThanOrEqual(1);
+  expect(box.y).toBeLessThanOrEqual(before.y + 1);
+  await expect(home.locator("[data-home-head]")).toBeVisible();
   const after = (await photo.boundingBox())!;
   for (const key of ["x", "y", "width", "height"] as const) expect(Math.abs(after[key] - before[key])).toBeLessThanOrEqual(2);
-  // The panel isn't shut off: its words and buttons stay in reach, with the
-  // comment box at its foot, and "Hide comments" at the thread's end.
+  // Nothing in it is shut off: the heading, the comment box at its foot, and
+  // its own X; the row of buttons waits under it.
   await expect(home.locator("[data-words]")).not.toHaveAttribute("inert");
+  await expect(thread.getByRole("heading", { name: /comments$/i })).toBeVisible();
   await expect(thread.getByLabel("Add a comment")).toBeVisible();
-  await expect(thread.getByRole("button", { name: "Hide comments" })).toBeVisible();
+  const hide = thread.getByRole("button", { name: "Hide comments" });
+  await expect(hide).toBeVisible();
+  expect((await hide.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await expect(home.locator("[data-actions]")).toBeHidden();
   await page.keyboard.press("Escape");
   await expect(thread).toBeHidden();
   await expect(home.getByRole("group", { name: "Latest comments" })).toBeVisible();
+  await expect(home.locator("[data-actions]")).toBeVisible();
 });

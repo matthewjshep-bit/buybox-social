@@ -54,8 +54,8 @@ import {
 } from "@/components/listing-thread";
 import { usePhotoLikes } from "@/components/photo-likes";
 import { SpotLayer, type PickedSpot } from "@/components/photo-spots";
-import { photoFoot, photoHead, photoPlace, ReelPhotos, STAGE_BAND, stageBlock, stageFoot } from "@/components/reel-photos";
-import { TakeCard, type TakeEyebrow } from "@/components/reel-take";
+import { photoFoot, photoPlace, ReelPhotos, STAGE_BAND, stageBlock, stageFoot } from "@/components/reel-photos";
+import { TakeCard, type TakeEyebrow, type TakeFallback } from "@/components/reel-take";
 import { ScorecardBody } from "@/components/scorecard";
 import { useSignedIn } from "@/components/session";
 import { Sheet } from "@/components/sheet";
@@ -83,10 +83,17 @@ import { button, glass } from "@/lib/ui";
 // The side-by-side layout on wide screens. Off (false): the words over the
 // photo, in a column in the middle, and comments rising from the bottom, as
 // before.
-const SPLIT_WIDE = true;
-// What a wide screen looked like before the side-by-side layout (only with
-// SPLIT_WIDE off).
-const legacy = (classes: string) => (SPLIT_WIDE ? "" : classes);
+// Off: one layout at every width (the post's: who and why, the facts, the
+// photo, a row of things to do, the comments under it), in a column no wider
+// than 44rem on a wide screen (`column`). The side-by-side code stays behind
+// this switch for now.
+const SPLIT_WIDE = false;
+// (The layout wide screens had before either: gone.)
+const legacy = (classes: string) => (SPLIT_WIDE ? "" : classes) && "";
+// On a wide screen (the frame 48rem and up), the head and the words sit in
+// a column 44rem wide, centred; the photo's own space is set to match
+// (`--photo-left`, `--photo-right`).
+const column = "@3xl/reel:left-[calc((100cqw-44rem)/2)] @3xl/reel:right-[calc((100cqw-44rem)/2)]";
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -1845,103 +1852,121 @@ function Panel({
   // sign in, and back with nothing saved).
   const saveIt = onSave && (() => (canReact ? onSave() : signUpThen(onSave)));
 
-  // Yes or no to the home itself, in a tap: an X at the photo's bottom left
-  // (pass, and on to the next home), a heart at its bottom right (like: the
-  // one heart a home has; held, or under a pointer, it lists what's in the
-  // photo to like). Small and see-through, in the corners, so the photo stays
-  // the photo. There from the start, before the photos themselves load, so a
-  // home further down has them too. Not on a phone on its side, where the
-  // words sit over the photo's foot: there, both are on the rail instead. An
-  // agent on their own link sees both, as their client will; the X there is
-  // the client's to tap, and says so.
-  const yesNo = !hidden && !bare && !onOpen && (
-    <>
+  // Under the photo, one row of things to do with the home, as a post has
+  // under its picture: the X (pass, and on to the next home), the heart (the
+  // one heart a home has, with how many liked it; held, or under a pointer,
+  // it lists what's in the photo to like), the comments (how many; a tap
+  // reads them), then Send (to a client, an agent; on to Send homes with it
+  // picked, anyone else signed in; its link, anyone else, or a home that's
+  // sold; Invite, on a client's link), Save (an agent: Feedback) and More.
+  // Nothing sits on the photo. Not on a phone on its side, where the words
+  // sit over the photo's foot: there, the rail down the right has them. An
+  // agent on their own link sees the X, as their client will; it's the
+  // client's to tap, and says so. Beside the map, just a look: none of it.
+  const action =
+    "flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-full px-2 text-sm font-semibold text-white/90 tabular-nums transition-colors hover:bg-white/10 active:bg-white/15";
+  const sending = shareAs === "sending";
+  const actions = !bare && !onOpen && !short && (
+    <div
+      data-actions
+      data-keep-clear
+      className="flex items-center gap-0.5 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] pt-1"
+    >
       <button
         type="button"
-        data-keep-clear
         aria-label="Pass on this home"
         aria-pressed={state.reaction === "dislike"}
         onClick={onPass}
-        style={{ top: `calc(${photoFoot(current)} - 0.75rem)`, left: `calc(${photoPlace(current).left} + 0.75rem)` }}
-        className={cn(
-          "absolute z-10 flex size-12 -translate-y-full items-center justify-center rounded-full ring-1 ring-white/25 backdrop-blur-md transition-colors short:hidden",
-          state.reaction === "dislike" ? "bg-amber-600 text-white" : "bg-black/45 text-white hover:bg-black/65",
-        )}
+        className={cn(action, state.reaction === "dislike" && "text-amber-400")}
       >
-        <X aria-hidden size={24} strokeWidth={2.5} />
+        <X aria-hidden size={23} strokeWidth={2.5} />
       </button>
-      <LikeWithList
-        things={things}
-        corner
-        style={{
-          top: `calc(${photoFoot(current)} - 0.75rem)`,
-          left: `calc(${photoPlace(current).left} + ${photoPlace(current).width} - 0.75rem)`,
-        }}
-        className="absolute z-10 -translate-x-full -translate-y-full short:hidden"
-      >
+      <LikeWithList things={things}>
         <button
           type="button"
-          data-keep-clear
           aria-label={`Like ${listing.UnparsedAddress}${likes ? `, ${likes} ${likes === 1 ? "like" : "likes"}` : ""}`}
           aria-pressed={liked}
           data-tour="heart"
           onClick={onLike}
-          className={cn(
-            "flex size-12 items-center justify-center rounded-full ring-1 ring-white/25 backdrop-blur-md transition-colors",
-            liked ? "bg-rose-600 text-white" : "bg-black/45 text-white hover:bg-black/65",
-          )}
+          className={cn(action, liked && "text-rose-400")}
         >
-          <Heart aria-hidden size={24} strokeWidth={2.5} className={liked ? "fill-white" : undefined} />
+          <Heart aria-hidden size={22} strokeWidth={2.25} className={cn(liked && "fill-current")} />
+          {likes > 0 && <span>{countLabel(likes)}</span>}
         </button>
       </LikeWithList>
-    </>
-  );
-
-  // Sending it on, in a tap, from the photo's top left corner, wherever a
-  // home is shown: to a client (an agent), on to Send homes with it picked
-  // (anyone else signed in), or its link (anyone else, or a home that's sold).
-  // On a wide screen it says so; on a phone it's the paper plane alone.
-  // (Beside the map, the page has its own; on a client's link, Invite is on
-  // the rail.)
-  const sendCorner = !hidden && !bare && !onOpen && !lean && onShare && shareAs && shareAs !== "invite" && (
-    <button
-      type="button"
-      data-keep-clear
-      data-send-corner
-      aria-label={
-        shareAs === "share"
-          ? `Share ${listing.UnparsedAddress}`
-          : shareAs === "sending"
-            ? "Send this home, getting a new link…"
-            : `Send ${listing.UnparsedAddress}`
-      }
-      aria-disabled={shareAs === "sending" || undefined}
-      onClick={() => {
-        if (shareAs !== "sending") onShare();
-      }}
-      style={{ top: `calc(${photoHead(current)} + 0.75rem)`, left: `calc(${photoPlace(current).left} + 0.75rem)` }}
-      className={cn(
-        "absolute z-10 flex h-12 min-w-12 items-center justify-center gap-2 rounded-full bg-white px-3.5 font-semibold text-ink shadow-lg ring-1 ring-stone-200 hover:bg-stone-50 split:px-5",
-        shareAs === "sending" && "cursor-progress text-muted",
+      <button type="button" aria-label={`Comments${comments ? `, ${comments}` : ""}`} onClick={onComments} className={action}>
+        <MessageCircle aria-hidden size={22} />
+        {comments > 0 && <span>{countLabel(comments)}</span>}
+      </button>
+      <span className="ml-auto" />
+      {onShare && shareAs && !lean && (
+        <button
+          type="button"
+          aria-label={
+            shareAs === "share"
+              ? `Share ${listing.UnparsedAddress}`
+              : shareAs === "invite"
+                ? "Invite someone"
+                : sending
+                  ? "Send this home, getting a new link…"
+                  : `Send ${listing.UnparsedAddress}`
+          }
+          title={shareAs === "share" ? "Share" : shareAs === "invite" ? "Invite" : "Send"}
+          aria-disabled={sending || undefined}
+          onClick={() => {
+            if (!sending) onShare();
+          }}
+          className={cn(action, sending && "cursor-progress opacity-60")}
+        >
+          {sending ? (
+            <LoaderCircle aria-hidden size={21} className="animate-spin motion-reduce:animate-none" />
+          ) : shareAs === "share" ? (
+            <Share2 aria-hidden size={21} />
+          ) : shareAs === "invite" ? (
+            <UserPlus aria-hidden size={21} />
+          ) : (
+            <Send aria-hidden size={21} />
+          )}
+        </button>
       )}
-    >
-      {shareAs === "sending" ? (
-        <LoaderCircle aria-hidden size={19} className="animate-spin motion-reduce:animate-none" />
-      ) : shareAs === "share" ? (
-        <Share2 aria-hidden size={19} />
+      {onScorecard ? (
+        <button
+          type="button"
+          data-follow="scorecard"
+          aria-label="Feedback"
+          title="Feedback"
+          onClick={() => onScorecard()}
+          className={action}
+        >
+          <ClipboardList aria-hidden size={21} />
+        </button>
       ) : (
-        <Send aria-hidden size={19} />
+        onSave && (
+          <button
+            type="button"
+            aria-label={saved ? `Saved ${listing.UnparsedAddress}` : `Save ${listing.UnparsedAddress}`}
+            title={saved ? "Saved" : "Save"}
+            aria-pressed={saved}
+            onClick={saveIt}
+            className={action}
+          >
+            <Bookmark aria-hidden size={21} className={cn(saved && "fill-white")} />
+          </button>
+        )
       )}
-      <span aria-hidden className="hidden split:inline">
-        {shareAs === "share" ? "Share this home" : "Send this home"}
-      </span>
-    </button>
+      <button
+        ref={moreButton}
+        type="button"
+        data-follow="more"
+        aria-label="More options"
+        title="More"
+        onClick={onMore}
+        className={action}
+      >
+        <Ellipsis aria-hidden size={22} />
+      </button>
+    </div>
   );
-
-  // On a phone, why it's here, in a band over the photo's top left corner
-  // (under the head), one line until it's tapped open. (Side by side, it's
-  // in the panel.)
-  const band = !onOpen && Boolean(take || eyebrow);
   // The head above the photo: on a phone, upright, with the photo showing.
   // (Side by side the panel has the same words; on a phone on its side
   // they're over the photo's foot.) What it opens, over the photo: not
@@ -1949,6 +1974,23 @@ function Panel({
   const headShown = !bare && !sideBySide && !short;
   const aboutShown = !bare && !sideBySide && !onOpen;
   const listedBy = listedByOf(listing);
+  // Who and why, above the facts: whose take this is, when someone's is why
+  // it's here; else who sent it (a link), why it was picked (public, from
+  // what they like), or who listed it. Beside the map, the pane is just a
+  // look: nothing above the facts there.
+  const fallback: TakeFallback | null =
+    take?.takes.length || take?.forYou?.length
+      ? null
+      : mode === "share"
+        ? { icon: "send", text: `From ${agentCalled(agentName)}` }
+        : post.reasons.length > 0
+          ? { icon: "sparkles", title: "Picked for you", text: post.reasons.join(" · ") }
+          : listedBy
+            ? { icon: "home", text: listedBy }
+            : null;
+  // (Beside the map, wide (`lean`), the page keeps its own buttons over the
+  // photo's top corners, 4rem under the chrome: the head stays the facts alone.)
+  const contextRow = headShown && !lean && Boolean(take?.takes.length || take?.forYou?.length || eyebrow || fallback);
   // From the latest comments under the photo: the comments, on that one.
   // (Beside the map, just a look: a tap opens the home.)
   const openComment = onOpen ? () => onOpen() : (id?: string) => (id ? onCommentAt(id) : onComments());
@@ -2000,20 +2042,27 @@ function Panel({
       className={cn(
         "relative h-full snap-start snap-always overflow-hidden bg-night",
         "[--photo-fit:1] [--backdrop-shade:0.4] [--words-pad:calc(12px+env(safe-area-inset-bottom))]",
-        // (The photo's label steps down, clear of Send in its corner, or of
-        // the band saying why the home is here.)
-        sendCorner ? "[--photo-label-drop:3.5rem]" : band && "[--photo-label-drop:3.5rem] split:[--photo-label-drop:0px]",
         // Beside the map on a phone, its Map button floats at the bottom.
         onOpen && "max-lg:[--words-pad:6rem]",
+        // The head: the facts (4rem), with the line saying who and why above
+        // them (3.5rem) when there is one.
+        contextRow ? "[--head-h:7.5rem]" : "[--head-h:4rem]",
         bare
           ? "[--backdrop-bottom:0px] [--backdrop-top:0px] [--photo-align:0.5] [--photo-bottom:env(safe-area-inset-bottom)] [--photo-top:env(safe-area-inset-top)]"
           : cn(
               // The head right under the chrome, the photo's space right
               // under the head, and the words at least tall enough for the
-              // comment bar (and, beside the map, the Map button) under it.
-              "[--head-top:var(--chrome-foot)] [--photo-top:calc(var(--head-top)+4rem)] [--photo-align:0]",
-              "[--words-min:max(5.5rem,calc(3.5rem+var(--words-pad)))]",
-              "[--stage-height:min(75cqw,calc(100cqh-var(--photo-top)-var(--words-min)-env(safe-area-inset-bottom)))]",
+              // row of things to do and the comment bar (and, beside the
+              // map, the Map button) under it.
+              "[--head-top:var(--chrome-foot)] [--photo-top:calc(var(--head-top)+var(--head-h))] [--photo-align:0]",
+              onOpen
+                ? "[--words-min:max(5.5rem,calc(3.5rem+var(--words-pad)))]"
+                : // (On a wide screen, a third of the frame at least: room for
+                  // a couple of comments under the photo, as on a phone.)
+                  "[--words-min:max(8.75rem,calc(6.75rem+var(--words-pad)))] @3xl/reel:[--words-min:max(8.75rem,calc(6.75rem+var(--words-pad)),28cqh)]",
+              // (On a wide screen, as tall as the column is wide, at most.)
+              "[--stage-height:min(calc(0.75*min(100cqw,44rem)),calc(100cqh-var(--photo-top)-var(--words-min)-env(safe-area-inset-bottom)))]",
+              "@3xl/reel:[--photo-left:calc((100cqw-44rem)/2)] @3xl/reel:[--photo-right:calc((100cqw-44rem)/2)]",
               "[--photo-bottom:calc(100cqh-var(--photo-top)-var(--stage-height))]",
               "[--backdrop-top:var(--photo-top)] [--backdrop-bottom:var(--photo-bottom)]",
               // On its side there's no head: the photo starts at the chrome's
@@ -2045,7 +2094,6 @@ function Panel({
         } as CSSProperties
       }
     >
-      {!loaded && yesNo}
       {loaded && (
         <ReelPhotos
           media={listing.Media}
@@ -2071,8 +2119,6 @@ function Panel({
           overlay={
             <>
               {nudge && <NudgeHint nudge={nudge} />}
-              {yesNo}
-              {sendCorner}
               {bare && (
                 // Never stuck with nothing to tap: one way back, at the foot
                 // of the photo (with the words gone, its own bottom edge).
@@ -2142,27 +2188,44 @@ function Panel({
             ref={headBox}
             data-home-head
             data-keep-clear
-            className="absolute inset-x-0 top-(--head-top) z-20 h-16 short:hidden split:hidden"
+            className={cn("absolute inset-x-0 top-(--head-top) z-20 h-(--head-h) short:hidden split:hidden", column)}
           >
-            <div className="flex h-16 items-center pl-[max(1rem,env(safe-area-inset-left))] pr-[max(3.5rem,calc(2.75rem+env(safe-area-inset-right)))]">
-              <Facts listing={listing} trending={post.buzz.trending} />
-            </div>
-            <button
-              ref={headButton}
-              type="button"
-              aria-expanded={onOpen ? undefined : about}
-              aria-controls={onOpen ? undefined : aboutId}
-              aria-label="About this home"
-              // (A card open on the photo goes away, as it does for a tap anywhere else.)
-              onClick={onOpen ? () => onOpen() : () => { setPicked(null); setAbout(!about); }}
-              className="absolute inset-0 flex items-center justify-end pr-[max(1rem,env(safe-area-inset-right))] transition-colors hover:bg-white/[0.04]"
-            >
-              <ChevronDown
-                aria-hidden
-                size={22}
-                className={cn("text-white/70 transition-transform motion-reduce:transition-none", about && "rotate-180")}
+            {/* First, who and why: whose take this is ("Ines liked the bar
+                stools"), who sent it, or why it was picked; tapped, the
+                whole take opens over the photo. */}
+            {contextRow && (
+              <TakeCard
+                look="head"
+                home={take}
+                eyebrow={eyebrow}
+                fallback={fallback}
+                hidden={sheetOver || !active}
+                onSpot={(spot) => onGoToSpot?.(spot)}
+                onComment={onCommentAt}
+                onAll={onComments}
               />
-            </button>
+            )}
+            <div className="relative h-16">
+              <div className="flex h-16 items-center pl-[max(1rem,env(safe-area-inset-left))] pr-[max(3.5rem,calc(2.75rem+env(safe-area-inset-right)))]">
+                <Facts listing={listing} trending={post.buzz.trending} />
+              </div>
+              <button
+                ref={headButton}
+                type="button"
+                aria-expanded={onOpen ? undefined : about}
+                aria-controls={onOpen ? undefined : aboutId}
+                aria-label="About this home"
+                // (A card open on the photo goes away, as it does for a tap anywhere else.)
+                onClick={onOpen ? () => onOpen() : () => { setPicked(null); setAbout(!about); }}
+                className="absolute inset-0 flex items-center justify-end pr-[max(1rem,env(safe-area-inset-right))] transition-colors hover:bg-white/[0.04]"
+              >
+                <ChevronDown
+                  aria-hidden
+                  size={22}
+                  className={cn("text-white/70 transition-transform motion-reduce:transition-none", about && "rotate-180")}
+                />
+              </button>
+            </div>
           </div>
         )}
         {/* What the home is, opened from the head, over the photo (which
@@ -2181,7 +2244,8 @@ function Panel({
               "pointer-events-auto absolute inset-x-0 z-[35] max-h-[60cqh] overflow-y-auto overscroll-contain rounded-b-2xl bg-night/95 px-4 pb-4 pt-2 text-white shadow-[0_16px_40px_rgb(0_0_0/0.45)] backdrop-blur-md",
               "animate-[nudge-in_200ms_ease-out_both] motion-reduce:animate-none",
               // Under the head; on a phone on its side (no head), under the chrome.
-              "top-[calc(var(--head-top)+4rem)] short:top-(--head-top)",
+              "top-[calc(var(--head-top)+var(--head-h))] short:top-(--head-top)",
+              column,
             )}
           >
             <About listing={listing} greeting={post.greeting} note={post.note} agentName={agentName} mode={mode} listedBy={listedBy} />
@@ -2247,11 +2311,13 @@ function Panel({
           }
           className={cn(
             "absolute inset-x-0 bottom-0 flex flex-col bg-night transition-[opacity,visibility] duration-300",
+            // (On a wide screen, in the column with the head and the photo.)
+            column,
             threadOpen && !sideBySide
               ? // Unfurled on a phone: up over the photo, to just under the
                 // head (on its side, to the chrome), everything in it to be
                 // tapped and scrolled.
-                "pointer-events-auto top-[calc(var(--head-top)+4rem)] z-30 short:top-(--head-top)"
+                "pointer-events-auto top-[calc(var(--head-top)+var(--head-h))] z-30 short:top-(--head-top)"
               : cn(
                   "top-[calc(var(--photo-top)+var(--stage-height))]",
                   // On its side: over the photo, on a shade of their own that
@@ -2267,6 +2333,8 @@ function Panel({
             covered && "invisible opacity-0",
           )}
         >
+          {/* Under the photo, first: the row of things to do with the home. */}
+          {!threadOpen && actions}
           {short && !sideBySide && !threadOpen && (
             <div
               data-keep-clear
@@ -2377,19 +2445,6 @@ function Panel({
               "split:mt-0 split:border-t split:border-white/[0.08] split:p-3",
             )}
           >
-            {!onOpen && (
-              <PanelActions
-                address={listing.UnparsedAddress}
-                comments={comments}
-                shareAs={shareAs}
-                onComments={onComments}
-                onScorecard={onScorecard && (() => onScorecard())}
-                saved={saved}
-                onSave={saveIt}
-                onShare={onShare}
-                onMore={onMore}
-              />
-            )}
             {onOpen ? (
               <button
                 type="button"
@@ -2443,11 +2498,10 @@ function Panel({
                 />
               </div>
             ) : (
-              // One row, as beside the map: the comment bar, which says how
-              // many comments there are (a tap there reads them), then Save
-              // (an agent: Feedback) and More. Nothing else under the photo.
-              // (Side by side, the row above has those; on a phone on its
-              // side, the buttons down the right.)
+              // At the foot: the comment bar alone (a tap opens the comments
+              // with the cursor in the box). Everything else to do with the
+              // home is in the row under the photo (on a phone on its side,
+              // down the right).
               <div data-bar-row className="flex items-center gap-2">
                 <div
                   data-keep-clear
@@ -2456,7 +2510,7 @@ function Panel({
                   <button
                     type="button"
                     onClick={compose}
-                    className="flex h-full min-w-0 flex-1 items-center gap-3 rounded-full pl-5 pr-2 text-left text-base text-white/75 transition-colors hover:bg-white/[0.06]"
+                    className="flex h-full min-w-0 flex-1 items-center gap-3 rounded-full pl-5 pr-4 text-left text-base text-white/75 transition-colors hover:bg-white/[0.06]"
                   >
                     <span className="min-w-0 flex-1 truncate">
                       {notes
@@ -2466,57 +2520,9 @@ function Panel({
                           : "Add a comment…"}
                     </span>
                     {/* (Not the paper plane: that only ever means sending homes.) */}
-                    <ArrowUp aria-hidden size={18} className="hidden shrink-0 opacity-70 split:block short:block" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Comments${comments ? `, ${comments}` : ""}`}
-                    onClick={onComments}
-                    className="flex h-full min-w-12 shrink-0 items-center justify-center gap-1.5 rounded-full pl-2 pr-4 text-sm font-semibold text-white/90 tabular-nums transition-colors hover:bg-white/[0.06] split:hidden short:hidden"
-                  >
-                    <MessageCircle aria-hidden size={19} />
-                    {comments > 0 && countLabel(comments)}
+                    <ArrowUp aria-hidden size={18} className="shrink-0 opacity-70" />
                   </button>
                 </div>
-                {onScorecard ? (
-                  <button
-                    type="button"
-                    data-keep-clear
-                    data-follow="scorecard"
-                    aria-label="Feedback"
-                    title="Feedback"
-                    onClick={() => onScorecard()}
-                    className="flex size-12 shrink-0 items-center justify-center rounded-full bg-white/12 text-white ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18 split:hidden short:hidden"
-                  >
-                    <ClipboardList aria-hidden size={20} />
-                  </button>
-                ) : (
-                  onSave && (
-                    <button
-                      type="button"
-                      data-keep-clear
-                      aria-label={saved ? `Saved ${listing.UnparsedAddress}` : `Save ${listing.UnparsedAddress}`}
-                      title={saved ? "Saved" : "Save"}
-                      aria-pressed={saved}
-                      onClick={saveIt}
-                      className="flex size-12 shrink-0 items-center justify-center rounded-full bg-white/12 text-white ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18 split:hidden short:hidden"
-                    >
-                      <Bookmark aria-hidden size={20} className={cn(saved && "fill-white")} />
-                    </button>
-                  )
-                )}
-                <button
-                  ref={moreButton}
-                  type="button"
-                  data-keep-clear
-                  data-follow="more"
-                  aria-label="More options"
-                  title="More"
-                  onClick={onMore}
-                  className="flex size-12 shrink-0 items-center justify-center rounded-full bg-white/12 text-white ring-1 ring-white/20 backdrop-blur-md transition-colors hover:bg-white/18 split:hidden short:hidden"
-                >
-                  <Ellipsis aria-hidden size={20} />
-                </button>
               </div>
             )}
           </div>
@@ -2538,24 +2544,6 @@ function Panel({
           onPosted={() => setPicked(null)}
           nudge={nudge}
         />
-      )}
-      {/* On a phone, why it's here, in a band over the photo's top left
-          corner, under the head: one line until it's tapped open. (Side by
-          side, it's in the panel.) */}
-      {band && (
-        <div className="split:hidden">
-          <TakeCard
-            look="band"
-            home={take}
-            eyebrow={eyebrow}
-            // (After the Send pill: its left edge, its width, and a gap.)
-            beside={sendCorner ? `calc(${photoPlace(current).left} + 0.75rem + 3rem + 0.5rem)` : null}
-            hidden={hidden || sheetOver || !active}
-            onSpot={(spot) => onGoToSpot?.(spot)}
-            onComment={onCommentAt}
-            onAll={onComments}
-          />
-        </div>
       )}
       {/* Side by side, the homes before and after: a small arrow centred in
           the band above the block, and one in the band below it, each
@@ -2932,108 +2920,6 @@ function About({
 // Porchcard, then share (or invite, or send) and more. (On a phone these run
 // down the rail instead, and this row isn't there.) The same names, so the
 // keyboard and screen readers meet the same buttons either way.
-function PanelActions({
-  address,
-  comments,
-  shareAs,
-  onComments,
-  onScorecard,
-  saved,
-  onSave,
-  onShare,
-  onMore,
-}: {
-  address: string;
-  comments: number;
-  shareAs: ShareKind | null;
-  onComments: () => void;
-  // The Porchcard (an agent's), or else Save.
-  onScorecard?: () => void;
-  saved: boolean;
-  onSave?: () => void;
-  onShare?: () => void;
-  onMore: () => void;
-}) {
-  // Each a fingertip tall (44px), and all but More with its word beside it.
-  const action =
-    "flex h-11 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-sm font-semibold text-white/90 transition-colors hover:bg-white/10 active:bg-white/15";
-  const iconOnly = "flex size-11 shrink-0 items-center justify-center rounded-full text-white/85 transition-colors hover:bg-white/10 hover:text-white active:bg-white/15";
-  const sending = shareAs === "sending";
-  return (
-    <div data-actions className="-mx-1 mb-2 hidden items-center gap-0.5 split:flex">
-      {/* (The heart is on the photo, opposite the X.) */}
-      <button type="button" aria-label={`Comments${comments ? `, ${comments}` : ""}`} onClick={onComments} className={action}>
-        <MessageCircle aria-hidden size={21} />
-        {comments > 0 && <span className="tabular-nums">{countLabel(comments)}</span>}
-      </button>
-      {onScorecard && (
-        <button type="button" aria-label="Feedback" data-follow="scorecard" onClick={onScorecard} className={action}>
-          <ClipboardList aria-hidden size={20} />
-          Feedback
-        </button>
-      )}
-      {!onScorecard && onSave && (
-        <button
-          type="button"
-          aria-label={saved ? `Saved ${address}` : `Save ${address}`}
-          aria-pressed={saved}
-          onClick={onSave}
-          className={action}
-        >
-          <Bookmark aria-hidden size={20} className={cn("transition-transform active:scale-90", saved && "fill-white")} />
-          {saved ? "Saved" : "Save"}
-        </button>
-      )}
-      <span className="ml-auto" />
-      {onShare && (shareAs === "send" || sending) && (
-        <button
-          type="button"
-          aria-label={sending ? "Send to a client, getting a new link…" : "Send to a client"}
-          title="Send to a client"
-          aria-disabled={sending || undefined}
-          onClick={sending ? undefined : onShare}
-          className={cn(action, sending && "cursor-progress opacity-60")}
-        >
-          {sending ? (
-            <LoaderCircle aria-hidden size={20} className="animate-spin motion-reduce:animate-none" />
-          ) : (
-            <Send aria-hidden size={20} />
-          )}
-          Send
-        </button>
-      )}
-      {onShare && shareAs === "steps" && (
-        <button type="button" aria-label="Send to someone" title="Send to someone" onClick={onShare} className={action}>
-          <Send aria-hidden size={20} />
-          Send
-        </button>
-      )}
-      {onShare && shareAs === "invite" && (
-        <button type="button" aria-label="Invite someone" title="Invite someone" onClick={onShare} className={action}>
-          <UserPlus aria-hidden size={20} />
-          Invite
-        </button>
-      )}
-      {onShare && shareAs === "share" && (
-        <button type="button" aria-label="Share" title="Share" onClick={onShare} className={action}>
-          <Share2 aria-hidden size={20} />
-          Share
-        </button>
-      )}
-      <button
-        type="button"
-        aria-label="More options"
-        title="More"
-        data-follow="more"
-        onClick={onMore}
-        className={iconOnly}
-      >
-        <Ellipsis aria-hidden size={22} />
-      </button>
-    </div>
-  );
-}
-
 // What the home is, beyond the price, beds, baths and size, side by side in
 // the panel: the details that used to be down in the Porchcard. Just to read.
 function HomeDetails({ listing }: { listing: Listing }) {

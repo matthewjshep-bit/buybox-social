@@ -477,8 +477,8 @@ test("a tool adds an agent's own listing (a deal) with photos, closes it, hides 
   expectError(await tool.post(`/listings/${key}/photos`, { data: "data:image/gif;base64,R0lGOD" }), 400, "invalid_request", "data");
 
   // With a photo it's on Dee's profile, for anyone, signed out, with its price; and its own page
-  // has the deal's numbers. On a desktop the price is in the panel beside the photo, and the
-  // details open under the description when its "more" is pressed.
+  // has the deal's numbers. At every width the price is in the facts above the photo, and the
+  // details open in "About this home" from the facts head, over the photo.
   const profile = await profilePath(agent);
   const visitor = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   await visitor.goto(profile);
@@ -487,13 +487,13 @@ test("a tool adds an agent's own listing (a deal) with photos, closes it, hides 
   await visitor.goto(`/homes/${key}`);
   const home = visitor.getByRole("article", { name: address });
   await expect(home).toContainText("$389,000");
-  const details = home.getByRole("list", { name: "The details" });
+  const details = home.getByRole("region", { name: "About this home" });
   await expect(details).toBeHidden();
-  const more = home.getByRole("button", { name: "more", exact: true });
-  await expect(more).toHaveAttribute("aria-expanded", "false");
-  await more.click();
-  // The same button now reads "less", and the details are out.
-  await expect(home.getByRole("button", { name: "less", exact: true })).toHaveAttribute("aria-expanded", "true");
+  const about = home.getByRole("button", { name: "About this home" });
+  await expect(about).toHaveAttribute("aria-expanded", "false");
+  await about.click();
+  // The same button is now open, and the details are out.
+  await expect(about).toHaveAttribute("aria-expanded", "true");
   await expect(details).toBeVisible();
   await expect(details).toContainText("After repair value");
   await expect(details).toContainText("$520,000");

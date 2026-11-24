@@ -51,6 +51,10 @@ test("after rating every home on her link the card is gone from Home and they're
   await heartOf(homeIn(ivy, QUILLAN)).click();
   await joinAs(ivy, "Ivy", "ivy.rated@example.com");
   await expect(heartOf(homeIn(ivy, QUILLAN))).toHaveAttribute("aria-pressed", "true");
+  // (Her heart shows at once; leaving the page before it's saved would lose it.)
+  await expect
+    .poll(async () => (await ivy.request.get("/people/me/rated")).text(), { timeout: 15_000 })
+    .toContain(QUILLAN);
 
   // One still waiting: the card's there. Under it, her feed leads with the
   // home she just liked, as her own.

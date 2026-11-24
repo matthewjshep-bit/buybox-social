@@ -61,8 +61,8 @@ async function agentOnHome(page: Page, key = "SAMPLE-1004") {
   return { seen, token: seen.token[0] };
 }
 
-// Send, in the photo's top left corner (on a phone, the row under the words
-// has no room for it: it's on the photo, wherever a home is shown).
+// Send, in the row of buttons under the photo (with the X, the heart and
+// Comments), wherever a home is shown, at every width.
 const sendButton = (page: Page, address: string) =>
   homeIn(page, address).getByRole("button", { name: `Send ${address}`, exact: true });
 
@@ -88,7 +88,7 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
   await sendButton(agent, "96 Fernhollow Ln").click();
   const sheet = agent.getByRole("dialog", { name: "Sent. Who's it for?" });
   await expect(sheet).toBeVisible();
-  // (The one on the photo's corner.)
+  // (The one in the row under the photo.)
   const waiting = agent.locator(
     'article[aria-label="96 Fernhollow Ln"] button[aria-label="Send this home, getting a new link…"]:visible',
   );
@@ -559,32 +559,44 @@ test("what follows a Send downloads only for an agent, never for anyone else on 
   await expect.poll(async () => (await agentScripts()).includes(SHEETS), { timeout: 15_000 }).toBe(true);
 });
 
-test("every home has Send in its photo's top left corner: a client's link for an agent, Send homes for anyone else, the link signed out", async ({
+test("every home has Send in the row of buttons under its photo, nothing on the photo: a client's link for an agent, Send homes for anyone else, the link signed out", async ({
   browser,
 }) => {
   test.setTimeout(90_000);
-  // An agent, on a phone: the paper plane alone, and the same sheet as the rail's Send.
+  // An agent, on a phone: the paper plane alone, in the actions row under the
+  // photo (with the X, the heart and Comments), and the same sheet as the rail's Send.
   const agent = await signInAgent(browser, "cora-corner@example.com", "Cora Corner");
   await agentOnHome(agent);
   const home = homeIn(agent, "96 Fernhollow Ln");
-  const corner = home.getByRole("button", { name: "Send 96 Fernhollow Ln" });
-  await expect(corner).toBeVisible();
-  // (In the photo's top left: above and to the left of its middle.)
+  const actions = home.locator("[data-actions]");
+  const send = actions.getByRole("button", { name: "Send 96 Fernhollow Ln" });
+  await expect(send).toBeVisible();
+  await expect(send).toHaveText("");
+  // (Under the photo, not on it: the old corner pill is gone, and the button
+  // starts below the photo's foot, a 44px target.)
+  await expect(home.locator("[data-send-corner]")).toHaveCount(0);
   const photo = (await home.getByRole("img").first().boundingBox())!;
-  const box = (await corner.boundingBox())!;
-  expect(box.x).toBeLessThan(photo.x + photo.width / 2);
-  expect(box.y).toBeLessThan(photo.y + photo.height / 2);
-  await corner.click();
-  await expect(agent.getByRole("dialog", { name: "Sent. Who's it for?" })).toBeVisible();
+  const box = (await send.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(photo.y + photo.height - 1);
+  expect(box.height).toBeGreaterThanOrEqual(44);
+  expect(box.width).toBeGreaterThanOrEqual(44);
+  await send.click();
+  await expect(agent.getByRole("dialog", { name: "Sent. Who's it for?" })).toBeVisible({ timeout: 15_000 });
   const [handed] = await shared(agent);
   expect(handed.url).toMatch(/\/s\/[\w-]{32}$/);
 
-  // On a wide screen it says what it does; an agent's own listings have it too.
+  // On a wide screen the same row, under the photo, with the same icon alone:
+  // signed out it's Share; an agent's own listings have it too.
   const wide = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   await wide.goto("/homes/SAMPLE-1004");
-  await expect(homeIn(wide, "96 Fernhollow Ln").getByRole("button", { name: "Share 96 Fernhollow Ln" })).toContainText(
-    "Share this home",
-  );
+  const wideHome = homeIn(wide, "96 Fernhollow Ln");
+  const share = wideHome.locator("[data-actions]").getByRole("button", { name: "Share 96 Fernhollow Ln" });
+  await expect(share).toBeVisible();
+  await expect(share).toHaveText("");
+  await expect(wideHome.getByRole("button", { name: "Send 96 Fernhollow Ln" })).toHaveCount(0);
+  const widePhoto = (await wideHome.getByRole("img").first().boundingBox())!;
+  const shareBox = (await share.boundingBox())!;
+  expect(shareBox.y).toBeGreaterThanOrEqual(widePhoto.y + widePhoto.height - 1);
 
   // A buyer: on to Send homes, with this one picked.
   const buyer = await signUpBuyer(browser, `cal.corner.${Date.now()}@example.com`, "Cal");

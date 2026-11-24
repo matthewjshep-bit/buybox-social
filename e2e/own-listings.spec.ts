@@ -290,14 +290,16 @@ test("a deal's own numbers show when they're given, and the price per square foo
   const editUrl = new URL(agent.url()).pathname;
   const key = decodeURIComponent(editUrl.split("/").pop()!);
 
-  // On the home itself, beside the photo: the details open from the panel's
-  // "more" (the deal's numbers, and no price per square foot).
+  // On the home itself, at any width: the details open in "About this home"
+  // from the facts head, over the photo (the deal's numbers, and no price per
+  // square foot).
   const visitor = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   await visitor.goto(`/homes/${key}`);
   const home = visitor.getByRole("article", { name: "31 Flipper Ln" });
-  const facts = home.getByRole("list", { name: "The details" });
-  await expect(facts).toHaveCount(0);
-  await home.getByRole("button", { name: "more", exact: true }).click();
+  const facts = home.getByRole("region", { name: "About this home" });
+  await expect(facts).toBeHidden();
+  await home.getByRole("button", { name: "About this home" }).click();
+  await expect(facts).toBeVisible();
   await expect(facts).toContainText("After repair value");
   await expect(facts).toContainText("$465,000");
   await expect(facts).toContainText("Estimated rehab");
@@ -313,7 +315,8 @@ test("a deal's own numbers show when they're given, and the price per square foo
   await details.getByRole("button", { name: "Save", exact: true }).click();
   await expect(details.getByRole("status")).toHaveText("Saved");
   await visitor.reload();
-  await home.getByRole("button", { name: "more", exact: true }).click();
+  await home.getByRole("button", { name: "About this home" }).click();
+  await expect(facts).toBeVisible();
   await expect(facts).toContainText("Price per sq ft");
   await expect(facts).toContainText("$250");
   await expect(home).not.toContainText(/After repair value|Estimated rehab/);

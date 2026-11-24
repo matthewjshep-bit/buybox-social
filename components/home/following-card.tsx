@@ -1,24 +1,23 @@
 import { ArrowRight, Flame, Heart, MapPin, Sparkles, X } from "lucide-react";
 import type { CSSProperties } from "react";
 import Link from "next/link";
-import { CommentBubble } from "@/components/comment-bubble";
-import { FeedHeart } from "@/components/home/feed-heart";
-import { InlineComment } from "@/components/home/inline-comment";
+import { FeedBar } from "@/components/home/feed-bar";
 import { PhotoSwipe } from "@/components/photo-swipe";
 import { SaidLine } from "@/components/said-line";
 import { Avatar, Badge, HomeThumb } from "@/components/ui";
 import { cn, formatPrice, namesOrOthers } from "@/lib/format";
-import type { FeedWho, HomeFeedEntry } from "@/lib/home-feed";
+import type { FeedCounts, FeedWho, HomeFeedEntry } from "@/lib/home-feed";
 import { cardTime } from "@/lib/profile";
 import type { ReactionState } from "@/lib/reactions";
 import { card } from "@/lib/ui";
 
-// One home in the Following stream: who liked it (or said something about
-// it), the home large (its other photos a swipe away), its facts, a heart to
-// like it too, what they said, and a box to say something too, with your
-// face beside it. When all one person did was comment, what they said is the
-// line at the top ("Matt commented “Love the porch”").
-// The whole card opens the stream's homes in the pop-out, on this one, on the
+// One home in the feed, shaped like a post: across the top, who and what
+// ("Matt liked this home", "Matt commented “Love the porch”", or why it's
+// here: popular, near you, picked for you, what you just rated), the home
+// large (its other photos a swipe away), its facts in a line, and under it
+// one small bar: a heart with how many liked it, a bubble with how many
+// comments. The bubble unfurls the comments right there (FeedBar).
+// The whole card opens the feed's homes in the pop-out, on this one, on the
 // photo it's about (a tap on the photos, on the one showing); the names go to
 // each person's page.
 
@@ -93,12 +92,12 @@ function FaceStack({ who }: { who: FeedWho[] }) {
 export function FollowingCard({
   entry,
   mine,
-  me = null,
+  counts,
 }: {
   entry: HomeFeedEntry;
   mine: ReactionState | null;
-  // Who's looking, for the box to comment in under it.
-  me?: { name: string; photo: string | null; agent?: boolean } | null;
+  // How many liked it and how many comments it has, for the bar.
+  counts: FeedCounts;
 }) {
   const { home, why, reason } = entry;
   const label = reason ? `${home.address}: ${reason.text}` : `${home.address}: ${namesText(why.who)} ${why.sentence}`;
@@ -124,7 +123,9 @@ export function FollowingCard({
   // One person, who only commented: the newest of what they said leads.
   const lead =
     !reason && why.who.length === 1 && /^commented\b/.test(why.sentence) ? entry.said[0] : undefined;
-  const said = lead ? entry.said.slice(1) : entry.said;
+  // A post from someone's page ("Pia posted about this home"): their words
+  // are the post, under the line, above the photo.
+  const post = !reason && why.who.length === 1 && /^posted\b/.test(why.sentence) ? entry.said[0] : undefined;
   const href = feedReel(home.key, home.photo?.index);
   const time = cardTime(entry.at);
   return (
@@ -166,7 +167,7 @@ export function FollowingCard({
               why.sentence
             )}
             {/* Held to the last word, so the time never starts a line on its own. */}
-            {" "}
+            {" "}
             <span className="whitespace-nowrap text-meta text-muted">
               {"· "}
               <time dateTime={entry.at}>{time}</time>
@@ -174,6 +175,7 @@ export function FollowingCard({
           </p>
         </div>
       )}
+      {post && <p className="-mt-1 whitespace-pre-line break-words px-3.5 pb-3 text-body leading-snug">{post.body}</p>}
       {home.photos.length > 0 && (
         <PhotoSwipe
           photos={home.photos}
@@ -187,39 +189,28 @@ export function FollowingCard({
           className="aspect-(--shape) w-full bg-stone-100 sm:aspect-auto sm:h-[28rem]"
         />
       )}
-      <div className="flex items-start gap-2 px-3.5 pt-3">
-        <div className="min-w-0 flex-1">
-          <p className="flex flex-wrap items-baseline gap-x-2">
-            <span className="font-display text-2xl leading-tight">{formatPrice(home.price)}</span>
-            {!home.active && <Badge className="self-center">Off market</Badge>}
-          </p>
-          <p className="text-body text-stone-700">
-            {home.beds} bd · {home.baths} ba · {home.sqft.toLocaleString("en-US")} sq ft
-          </p>
-          <p className="truncate text-meta text-muted">
-            {home.address}, {home.city}
-          </p>
-        </div>
-        {home.active && <FeedHeart listingKey={home.key} address={home.address} initial={mine} />}
+      {/* The facts, in a line: the price large, the rest after it. */}
+      <div className="px-3.5 pt-3">
+        <p className="flex flex-wrap items-baseline gap-x-1.5">
+          <span className="font-display text-xl font-semibold">{formatPrice(home.price)}</span>
+          <span className="text-body text-stone-700">
+            · {home.beds} bd · {home.baths} ba · {home.sqft.toLocaleString("en-US")} sq ft
+          </span>
+          {!home.active && <Badge className="self-center">Off market</Badge>}
+        </p>
+        <p className="truncate text-meta text-muted">
+          {home.address}, {home.city}
+        </p>
       </div>
-      {said.length > 0 && (
-        <ul className="flex flex-col gap-2 px-3.5 pt-3">
-          {said.map((quote, i) => (
-            <li key={i}>
-              <CommentBubble
-                name={quote.who.name}
-                face={quote.who.face || quote.who.name}
-                photo={quote.who.photo}
-                agent={quote.who.agent}
-              >
-                {quote.body}
-              </CommentBubble>
-            </li>
-          ))}
-        </ul>
-      )}
-      {me && <InlineComment me={me} agent={me.agent} listingKey={home.key} address={home.address} />}
-      <div className="h-3.5" />
+      <FeedBar
+        listingKey={home.key}
+        address={home.address}
+        counts={counts}
+        mine={mine}
+        active={home.active}
+        reelHref={feedReel(home.key)}
+      />
+      <div className="h-1" />
     </li>
   );
 }

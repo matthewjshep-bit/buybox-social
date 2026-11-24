@@ -11,7 +11,7 @@ import type { ClientEvent } from "@/lib/client-activity";
 import type { ClientBook } from "@/lib/clients";
 import type { FollowCounts } from "@/lib/follows";
 import { cn } from "@/lib/format";
-import type { HomeFeedEntry } from "@/lib/home-feed";
+import type { FeedCounts, HomeFeedEntry } from "@/lib/home-feed";
 import { hasRated, waitingLinks, type MyLink } from "@/lib/my-links";
 import type { FoundPerson } from "@/lib/people";
 import type { ReactionState } from "@/lib/reactions";
@@ -114,6 +114,7 @@ export function Home({
   suggestions,
   feed,
   mine,
+  counts,
   agent,
 }: {
   firstName: string;
@@ -126,6 +127,8 @@ export function Home({
   suggestions: FoundPerson[];
   feed: HomeFeedEntry[];
   mine: Record<string, ReactionState>;
+  // How many liked each home in the feed and how many comments it has, by key.
+  counts: Record<string, FeedCounts>;
   // An agent, and so their clients too (and what those clients did on the
   // homes they were sent): everything else is anyone's home.
   agent?: { book: ClientBook; brokerage: string; brandColor: string; listings?: string; activity: ClientEvent[] };
@@ -167,6 +170,7 @@ export function Home({
     <FollowingFeed
       entries={feed}
       mine={mine}
+      counts={counts}
       me={{ name: me.name, photo: me.photo, agent: Boolean(agent) }}
       seenAt={null}
       among={peopleInline("following")}

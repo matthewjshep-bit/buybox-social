@@ -115,10 +115,12 @@ test("a card on someone's page opens their highlights on a stage that takes the 
   const stage = (await popout.locator("[data-dark-ground]").boundingBox())!;
   expect(stage.width * stage.height).toBeGreaterThanOrEqual(0.9 * 1440 * 900);
 
-  // Whose homes these are and how far through, across the top, to her page;
-  // and the same homes on a page of their own.
-  await expect(popout.getByRole("link", { name: "Ines's highlights" })).toHaveAttribute("href", inesPage);
-  await expect(popout.getByText("· 1 of 3", { exact: true })).toBeVisible();
+  // Whose homes these are and how far through: the line above each home's
+  // facts, as a post is headed by who posted it; no bar across the stage.
+  await expect(popout.getByRole("link", { name: "Ines's highlights" })).toHaveCount(0);
+  await expect(popout.locator("[data-stage-bar]")).toBeHidden();
+  const lakeviewWhy = lakeview.getByRole("region", { name: "Why it's here" });
+  await expect(lakeviewWhy.getByRole("button", { expanded: false })).toContainText("Ines's highlights · 1 of 3Ines liked this");
   // (No second way to see the same thing: the pop-out is the one view.)
   await expect(popout.getByRole("link", { name: "Open full page" })).toHaveCount(0);
 
@@ -131,16 +133,23 @@ test("a card on someone's page opens their highlights on a stage that takes the 
   const corbel = homeIn(popout, CORBEL);
   await expect(corbel).toBeInViewport({ ratio: 0.9 });
   await page.waitForURL(/home=SAMPLE-1003/);
-  await expect(popout.getByText("· 2 of 3", { exact: true })).toBeVisible();
   // It opens on her photo, not its first: the kitchen, where she liked the bar stools.
   await expect(corbel.getByRole("img", { name: KITCHEN })).toBeInViewport();
 
-  // Why it's here: her face and name, to her page, what she liked and what
-  // she said. Not what she didn't like: that's for her own page only.
+  // Why it's here: one line above the facts, with her face, whose homes these
+  // are and what she liked; tapped, the whole take, with her name to her page
+  // and what she said. Not what she didn't like: that's for her own page only.
   const why = corbel.getByRole("region", { name: "Why it's here" });
+  const row = why.getByRole("button", { expanded: false });
+  await expect(row).toContainText("Ines's highlights · 2 of 3Ines liked the bar stools");
+  const [rowBox, facts] = [(await row.boundingBox())!, (await corbel.getByRole("button", { name: "About this home" }).boundingBox())!];
+  expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(facts.y + 1);
+  expect(rowBox.height).toBeGreaterThanOrEqual(44);
+  await row.click();
+  await expect(why.getByRole("button", { expanded: true })).toBeVisible();
   await expect(why.getByRole("link", { name: "Ines", exact: true })).toHaveAttribute("href", inesPage);
   await expect(why).toContainText("Ines liked the bar stools");
-  await expect(why).toContainText(SAID);
+  await expect(why.getByText(SAID)).toBeVisible();
   await expect(why.getByRole("button", { name: /^Didn't like/ })).toHaveCount(0);
   await expect(why).not.toContainText(/shingles|but not/);
   // A spot she picked out: its photo, right there. (Signed out, signing up
@@ -245,8 +254,8 @@ test("under a filter, the pop-out holds only what the page shows, and keeps the 
   await expect(homeIn(popout, CORBEL)).toBeInViewport({ ratio: 0.9 });
   // Only the one she commented on, and saying so.
   await expect(popout.getByRole("article")).toHaveCount(1);
-  await expect(popout.getByRole("link", { name: "Ines's comments" })).toHaveAttribute("href", `${inesPage}?show=comments`);
-  await expect(popout.getByText("· 1 of 1", { exact: true })).toBeVisible();
+  await expect(popout.getByRole("link", { name: "Ines's comments" })).toHaveCount(0);
+  await expect(homeIn(popout, CORBEL).getByRole("region", { name: "Why it's here" })).toContainText("Ines's comments · 1 of 1");
   await popout.getByRole("button", { name: "Next home", exact: true }).click();
   await expect(popout.getByRole("region", { name: "The end" }).getByRole("heading", { level: 2 })).toHaveText(
     "That's all from Ines",
@@ -284,7 +293,7 @@ test("a card from further down the page (Show earlier) opens on itself, with the
   await page.waitForURL(/home=SAMPLE-1002/);
   const popout = page.getByRole("dialog", { name: "Homes" });
   await expect(homeIn(popout, TAMSEN)).toBeInViewport({ ratio: 0.9 });
-  await expect(popout.getByText("· 3 of 3", { exact: true })).toBeVisible();
+  await expect(homeIn(popout, TAMSEN).getByRole("region", { name: "Why it's here" })).toContainText("Ines's highlights · 3 of 3");
   // Before it, the page's card before it, not the newest of all.
   await popout.getByRole("button", { name: "Previous home", exact: true }).click();
   await expect(homeIn(popout, CORBEL)).toBeInViewport({ ratio: 0.9 });
@@ -292,7 +301,7 @@ test("a card from further down the page (Show earlier) opens on itself, with the
   await expect(homeIn(popout, LAKEVIEW)).toBeInViewport({ ratio: 0.9 });
 });
 
-test("on a phone the pop-out is the whole screen, with whose take it is over the photo's top, under the home's head, opened with a tap", async ({
+test("on a phone the pop-out is the whole screen, with whose take it is heading the home above the facts, opened with a tap", async ({
   browser,
 }) => {
   test.setTimeout(60_000);
@@ -308,16 +317,18 @@ test("on a phone the pop-out is the whole screen, with whose take it is over the
   const why = corbel.getByRole("region", { name: "Why it's here" });
   await expect(why).toBeVisible();
   await expect(why).toContainText("Ines's highlights · 2 of 3");
-  // The home's head (price, address) is above the photo; the take is a bar
-  // over the photo's top corner, just under the head, one row tall.
+  // The home's head is above the photo, and the take is its first row, one
+  // row tall, above the facts (price, address); nothing is drawn on the photo.
   const head = (await corbel.locator("[data-home-head]").boundingBox())!;
   const photo = (await corbel.getByRole("img", { name: KITCHEN }).boundingBox())!;
   const take = (await why.boundingBox())!;
+  const facts = (await corbel.getByRole("button", { name: "About this home" }).boundingBox())!;
   expect(head.y + head.height).toBeLessThanOrEqual(photo.y + 1);
-  expect(take.y).toBeGreaterThanOrEqual(photo.y);
-  expect(take.y).toBeLessThanOrEqual(photo.y + 12);
-  expect(take.x).toBeGreaterThanOrEqual(photo.x);
-  expect(take.x + take.width).toBeLessThanOrEqual(photo.x + photo.width);
+  expect(take.y).toBeGreaterThanOrEqual(head.y - 1);
+  expect(take.y + take.height).toBeLessThanOrEqual(facts.y + 1);
+  expect(facts.y + facts.height).toBeLessThanOrEqual(photo.y + 1);
+  expect(take.x).toBeGreaterThanOrEqual(head.x - 1);
+  expect(take.x + take.width).toBeLessThanOrEqual(head.x + head.width + 1);
   expect(take.height).toBeGreaterThanOrEqual(44);
 
   // One line until it's tapped; then all of it, in place.
@@ -451,7 +462,11 @@ test("a client's homes are their agent's alone: on their page the agent sees who
   await expect(other.getByText("Your client", { exact: true })).toHaveCount(0);
   await other.goto(href);
   await expect(other.getByRole("article").first()).toBeVisible();
-  await expect(other.getByRole("region", { name: "Why it's here" })).toHaveCount(0);
+  // (Above the facts, only who listed it: no take to open, nothing of Jenny's.)
+  const plain = other.getByRole("article").first().getByRole("region", { name: "Why it's here" });
+  await expect(plain).toContainText(/^Listed by /);
+  await expect(plain.getByRole("button")).toHaveCount(0);
+  await expect(other.getByRole("region", { name: "Why it's here" })).not.toContainText(/Jenny|liked|homes/);
   await expect(other.getByText("Jenny's homes")).toHaveCount(0);
   expect(await (await other.request.get(href)).text()).not.toContain("Jenny's homes");
 });

@@ -24,6 +24,13 @@ const DESKTOP = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, 
 const HEADER = 56;
 // Where the chrome over the top ends: the header, and a little under it.
 const CHROME_FOOT = 60;
+// From a tablet up, the head, the photo and the words are one column in the
+// middle of the frame, this wide (44rem).
+const COLUMN = 704;
+// The facts row of the head; above it, when there's anything to say (whose
+// take, who sent it, why it was picked, or who listed it), a row of 56.
+const FACTS_ROW = 64;
+const WHY_ROW = 56;
 
 const phone = async (browser: Browser, options?: typeof IPHONE) => (await browser.newContext(options)).newPage();
 
@@ -50,11 +57,23 @@ async function swipeLeft(page: Page, y: number) {
 // The price, the size and the address: plain words, never buttons.
 const priceOf = (home: Locator) => home.locator('[data-fact="Price"]');
 const sizeOf = (home: Locator) => home.locator('[data-fact="Size"] [aria-hidden]');
+// The row of things to do with the home, under its photo.
+const actionsOf = (home: Locator) => home.locator("[data-actions]");
+// How tall the head is: the facts row, and the "Why it's here" row above it
+// when the home has one.
+const headHeightOf = async (home: Locator) =>
+  FACTS_ROW + ((await home.locator("[data-home-head]").getByRole("region", { name: "Why it's here" }).count()) ? WHY_ROW : 0);
+// On a wide frame: no wider than the column, in the middle of the frame.
+const inTheColumn = (at: { x: number; width: number }, frameWidth: number) => {
+  expect(at.width).toBeLessThanOrEqual(COLUMN + 1);
+  expect(Math.abs(at.x + at.width / 2 - frameWidth / 2)).toBeLessThanOrEqual(1);
+};
 
-test("on a phone, the photo has most of the screen, whole, in the middle of its room; under it the activity line and a few lines of plain words, the same on every home", async ({ browser }) => {
-  // (Now the way a post reads: the price, the size and the address in a head
-  // above the photo, the photo whole under it, and the latest comments under
-  // that, down to the comment bar.)
+test("on a phone, the photo has most of the screen, whole, in the middle of its room; under it the row of things to do and a few lines of plain words, the same on every home", async ({ browser }) => {
+  // (Now the way a post reads: who and why, then the price, the size and the
+  // address in a head above the photo, the photo whole under it, then the
+  // X, the heart, Comments, Share, Save and More in one row, and the latest
+  // comments under that, down to the comment bar.)
   for (const options of [undefined, IPHONE, SMALL]) {
     const page = await phone(browser, options);
     const pageErrors: string[] = [];
@@ -73,10 +92,14 @@ test("on a phone, the photo has most of the screen, whole, in the middle of its 
       tops.push(words.y);
       heights.push(words.height);
       const { width, height } = page.viewportSize()!;
-      // The head right under the chrome, always the same height, and the
-      // photo right under the head: never under either.
+      // The head right under the chrome: its facts row always the same
+      // height (with a row of who and why above it, when there's anything to
+      // say), and the photo right under the head: never under either.
       expect(Math.abs(head.y - CHROME_FOOT)).toBeLessThanOrEqual(1);
-      expect(Math.abs(head.height - 64)).toBeLessThanOrEqual(1);
+      expect(Math.abs(head.height - (await headHeightOf(home)))).toBeLessThanOrEqual(1);
+      const facts = await box(home.getByRole("button", { name: "About this home" }));
+      expect(Math.abs(facts.height - FACTS_ROW)).toBeLessThanOrEqual(1);
+      expect(Math.abs(facts.y + facts.height - (head.y + head.height))).toBeLessThanOrEqual(1);
       expect(Math.abs(photo.y - (head.y + head.height))).toBeLessThanOrEqual(1);
       // As wide as the screen, and whole, never cropped: nothing of it past
       // the screen's sides (a flyer's words run to its edges). (The sample
@@ -86,24 +109,29 @@ test("on a phone, the photo has most of the screen, whole, in the middle of its 
       expect(Math.abs(photo.height - width * 0.75)).toBeLessThanOrEqual(2);
       expect(photo.x).toBeGreaterThanOrEqual(-1);
       expect(photo.x + photo.width).toBeLessThanOrEqual(width + 1);
-      // The X and the heart on it stay on the screen.
-      for (const button of [heartOf(home), home.getByRole("button", { name: "Pass on this home" })]) {
-        await expect(button).toBeInViewport({ ratio: 1 });
-      }
       // The words start at the photo's foot, none of them on it, and run to
       // the bottom of the screen.
       const foot = photo.y + photo.height;
       expect(Math.abs(words.y - foot)).toBeLessThanOrEqual(1);
       expect(Math.abs(words.y + words.height - height)).toBeLessThanOrEqual(1);
-      // What people said about the home is in that room, under the photo,
-      // never on it: no line going round over the photo's foot any more.
+      // First under the photo, the X and the heart, in one row with the rest
+      // of what there is to do, whole on the screen: nothing sits on the photo.
+      const row = await box(actionsOf(home));
+      expect(row.y).toBeGreaterThanOrEqual(foot - 1);
+      expect(row.y - foot).toBeLessThanOrEqual(12);
+      for (const button of [home.getByRole("button", { name: "Pass on this home" }), heartOf(home)]) {
+        await expect(button).toBeInViewport({ ratio: 1 });
+        expect((await box(button)).y).toBeGreaterThanOrEqual(foot - 1);
+      }
+      // What people said about the home is in that room, under the row,
+      // never on the photo: no line going round over the photo's foot any more.
       const latest = await box(home.getByRole("group", { name: "Latest comments" }));
-      expect(latest.y).toBeGreaterThanOrEqual(foot - 1);
+      expect(latest.y).toBeGreaterThanOrEqual(row.y + row.height - 1);
       expect(latest.y + latest.height).toBeLessThanOrEqual(words.y + words.height + 1);
       await expect(home.getByRole("group", { name: "Recent activity" })).toHaveCount(0);
       await expect(home.locator("[data-photo-caption]")).toHaveCount(0);
       await expect(home.getByText("Tap the photo to like or comment")).toHaveCount(0);
-      // No row of round buttons: what there is to do is in the comment bar's row.
+      // No column of round buttons on the photo: what there is to do is in the row under it.
       await expect(home.locator("[data-rail]")).toBeHidden();
       // Plain words, not chips to tap: the price, then "4 bd · 3 ba · 2,780 sq
       // ft" (a lot has no "0 bd"), the address, all in the head above the
@@ -113,7 +141,15 @@ test("on a phone, the photo has most of the screen, whole, in the middle of its 
       await expect(home.getByRole("button", { name: /^\$[\d,]+/ })).toHaveCount(0);
       await expect(home.getByRole("button", { name: /^\d+ (bd|beds?)\b/ })).toHaveCount(0);
       await expect(home.locator("[data-fact]").filter({ has: page.locator("button") })).toHaveCount(0);
-      await expect(home.getByText(/^Listed by/)).toBeHidden();
+      // (With nothing else to say about why it's here, the row above the
+      // facts says who listed it: one line, plain words. The rest waits.)
+      const why = home.locator("[data-home-head]").getByRole("region", { name: "Why it's here" });
+      if (await why.count()) {
+        const at = await box(why);
+        expect(Math.abs(at.height - WHY_ROW)).toBeLessThanOrEqual(1);
+        expect(at.y + at.height).toBeLessThanOrEqual(facts.y + 1);
+      }
+      await expect(home.getByRole("region", { name: "About this home" }).getByText(/^Listed by/)).toBeHidden();
       await expect(home.getByRole("region", { name: "About this home" })).toBeHidden();
       await expect(home.getByRole("button", { name: "About this home" })).toHaveAttribute("aria-expanded", "false");
       for (const fact of [priceOf(home), sizeOf(home), home.locator('[data-fact="Address"]')]) {
@@ -134,46 +170,61 @@ test("on a phone, the photo has most of the screen, whole, in the middle of its 
   }
 });
 
-test("under the words, one row: the comment bar with its count, Save and More; the heart and the X are on the photo, Share in its corner", async ({
+test("under the photo, one row: the X, the heart, Comments with its count, then Share, Save and More; under the words, the comment bar alone; nothing on the photo", async ({
   page,
 }) => {
   await page.goto("/homes/SAMPLE-1013");
   const home = homeIn(page, "5902 Lakeview Terrace SE");
   await settled(home);
-  const row = home.locator("[data-bar-row]");
-  const names = ["Add a comment…", /^Comments/, "Save 5902 Lakeview Terrace SE", "More options"];
+  const row = actionsOf(home);
+  const names = [
+    "Pass on this home",
+    /^Like 5902 Lakeview Terrace SE/,
+    /^Comments/,
+    "Share 5902 Lakeview Terrace SE",
+    "Save 5902 Lakeview Terrace SE",
+    "More options",
+  ];
   await expect(row.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(row.getByRole("button").nth(i)).toHaveAccessibleName(name);
   // (The Porchcard is an agent's, in a client's homes: not here.)
   await expect(home.getByRole("button", { name: "Feedback" })).toHaveCount(0);
-  // One row, left to right, at the foot, each a fingertip tall.
+  // One row, left to right, each a fingertip tall; the X first, the heart
+  // beside it, the rest to the right.
   const buttons = await Promise.all(names.map((_, i) => box(row.getByRole("button").nth(i))));
   for (const [i, button] of buttons.entries()) {
     expect(Math.abs(button.y + button.height / 2 - (buttons[0].y + buttons[0].height / 2))).toBeLessThanOrEqual(1);
     expect(button.height).toBeGreaterThanOrEqual(44);
+    expect(button.width).toBeGreaterThanOrEqual(44);
     if (i > 0) expect(button.x).toBeGreaterThan(buttons[i - 1].x + buttons[i - 1].width - 1);
   }
-  // Right under the words: no empty band between them.
-  const words = await box(home.locator("[data-words] [data-keep-clear]").first());
-  expect(buttons[0].y - (words.y + words.height)).toBeLessThanOrEqual(12);
-  // The count reads the comments, for anyone.
+  // Right under the photo: no empty band between them, and none of them on it.
+  const frame = (await home.locator("[data-photo-frame]").first().boundingBox())!;
+  expect(buttons[0].y).toBeGreaterThanOrEqual(frame.y + frame.height - 1);
+  expect(buttons[0].y - (frame.y + frame.height)).toBeLessThanOrEqual(12);
+  for (const name of ["Pass on this home", "Share 5902 Lakeview Terrace SE"]) {
+    await expect(home.getByRole("button", { name })).toHaveCount(1);
+  }
+  await expect(heartOf(home)).toHaveCount(1);
+  await expect(home.getByRole("button", { name: "Share", exact: true })).toHaveCount(0);
+  // Then the latest comments, and at the foot the comment bar: one button,
+  // the whole row, and nothing else in it.
+  const bar = home.locator("[data-bar-row]");
+  await expect(bar.getByRole("button")).toHaveCount(1);
+  await expect(bar.getByRole("button")).toHaveAccessibleName("Add a comment…");
+  const latest = await box(home.getByRole("group", { name: "Latest comments" }));
+  const barBox = await box(bar);
+  expect(latest.y).toBeGreaterThanOrEqual(buttons[0].y + buttons[0].height - 1);
+  expect(barBox.y).toBeGreaterThanOrEqual(latest.y + latest.height - 1);
+  expect(barBox.height).toBeGreaterThanOrEqual(44);
+  // The count reads the comments, for anyone; while they're open the row
+  // steps aside, and Escape brings it back.
   await row.getByRole("button", { name: /^Comments/ }).click();
   await expect(commentsOf(home)).toBeVisible();
+  await expect(row).toBeHidden();
   await page.keyboard.press("Escape");
   await expect(commentsOf(home)).toBeHidden();
-  // The one heart is in the photo's bottom right corner, opposite the X that passes.
-  const frame = (await home.locator("[data-photo-frame]").first().boundingBox())!;
-  const heart = (await heartOf(home).boundingBox())!;
-  const x = (await home.getByRole("button", { name: "Pass on this home" }).boundingBox())!;
-  expect(heart.x + heart.width).toBeLessThanOrEqual(frame.x + frame.width);
-  expect(heart.x).toBeGreaterThan(frame.x + frame.width / 2);
-  expect(x.x).toBeGreaterThanOrEqual(frame.x);
-  expect(x.x).toBeLessThan(frame.x + frame.width / 2);
-  expect(Math.abs(heart.y - x.y)).toBeLessThan(2);
-  expect(heart.y + heart.height).toBeLessThanOrEqual(frame.y + frame.height + 1);
-  // Sharing it is in the photo's top left corner.
-  await expect(home.getByRole("button", { name: "Share 5902 Lakeview Terrace SE" })).toBeVisible();
-  await expect(home.getByRole("button", { name: "Share", exact: true })).toHaveCount(0);
+  await expect(row).toBeVisible();
 });
 
 test("photos say which room and which of how many, in place of dots", async ({ page }) => {
@@ -308,10 +359,16 @@ test("the head above the photo opens all of what the home is, over the photo: th
   expect(row.height).toBeGreaterThanOrEqual(44);
   expect(row.width).toBeGreaterThanOrEqual(width - 1);
   // Closed, the words wait, out of sight: the description, who listed it.
+  // (With nothing else to say about why it's here, who listed it is the one
+  // line above the facts: plain words there, the rest in About this home.)
   const about = home.getByRole("region", { name: "About this home" });
   await expect(about).toBeHidden();
   await expect(home.getByText(/^A warm Ravenna-area Craftsman/)).toBeHidden();
-  await expect(home.getByText(/^Listed by/)).toBeHidden();
+  await expect(about.getByText(/^Listed by/)).toBeHidden();
+  const why = head.getByRole("region", { name: "Why it's here" });
+  await expect(why).toHaveText(/^Listed by .+ · .+$/);
+  await expect(why.getByRole("button")).toHaveCount(0);
+  expect((await box(why)).y + (await box(why)).height).toBeLessThanOrEqual(row.y + 1);
   // A tap opens it right under the head, over the photo (which stays put),
   // never more than most of the screen.
   const photo = await box(photoOf(home));
@@ -607,6 +664,12 @@ test("nothing anyone liked is drawn on the photo: the line at its foot says who 
   await expect(card.getByRole("button", { name: /^Like .*, 1 like$/ })).toHaveAttribute("aria-pressed", "true");
   await card.getByRole("button", { name: "Close" }).click();
   await expect(card).toBeHidden();
+  // Kept: back from the server, her home counts the like, under the photo
+  // and on its heart. (Saved, so, before anyone else looks.)
+  await page.reload();
+  await settled(home);
+  await expect(heartOf(home)).toHaveAccessibleName("Like 5902 Lakeview Terrace SE, 1 like");
+  await expect(home.getByRole("group", { name: "Latest comments" })).toContainText("1 like");
   // No heart, pin or count stays on the photo, even for her.
   await expect(home.locator("[data-pin], [data-pins-toggle]")).toHaveCount(0);
   await expect(home.getByRole("button", { name: /: 1 like$/ })).toHaveCount(0);
@@ -635,7 +698,7 @@ test("nothing anyone liked is drawn on the photo: the line at its foot says who 
   expect(photo.width).toBeGreaterThan(0);
 });
 
-test("on a desktop, the photo has a stage of its own with nothing on it, and everything to read and do in the panel", async ({
+test("on a desktop, the home reads as on a phone, in one column down the middle: the head, the photo whole, the row of things to do and the comments under it", async ({
   browser,
 }) => {
   const page = await phone(browser, DESKTOP);
@@ -644,159 +707,119 @@ test("on a desktop, the photo has a stage of its own with nothing on it, and eve
   await page.goto("/homes/SAMPLE-1002");
   const home = homeIn(page, "1880 Tamsen Ridge Pl SE");
   await settled(home);
+  const { width, height } = page.viewportSize()!;
 
-  // The photo, whole, on the stage on the left, up to the panel down the
-  // right.
+  // No panel beside the photo any more: the head, the photo and the words
+  // are one column, no wider than a phone's would be stretched, in the
+  // middle of the window, the head right under the chrome.
+  await expect(home.locator("[data-split]")).toHaveCount(0);
+  const head = await box(home.locator("[data-home-head]"));
   const photo = await box(photoOf(home));
-  expect(photo.x).toBeGreaterThanOrEqual(23);
-  expect(photo.x + photo.width).toBeLessThanOrEqual(1440 - 24 - 360 - 16 + 1);
-  expect(photo.y).toBeGreaterThanOrEqual(72 - 1);
-  // It's fetched about as wide as it shows, not as wide as the window.
-  await expect
-    .poll(() =>
-      photoOf(home).evaluate((img: HTMLImageElement) =>
-        img.currentSrc ? Number(new URL(img.currentSrc).searchParams.get("w")) : Infinity,
-      ),
-    )
-    .toBeLessThan(1440);
-  const panel = await box(home.locator("[data-words]"));
-  expect(Math.abs(panel.x + panel.width - 1416)).toBeLessThanOrEqual(1);
-  expect(panel.x - (photo.x + photo.width)).toBeGreaterThanOrEqual(15);
-  // No rail on the photo: each thing to do is in the panel, once, in a row
-  // just over the comment box (like, comments, save, share, more).
+  const words = await box(home.locator("[data-words]"));
+  for (const part of [head, photo, words]) inTheColumn(part, width);
+  expect(Math.abs(head.y - CHROME_FOOT)).toBeLessThanOrEqual(1);
+  expect(Math.abs(head.height - (await headHeightOf(home)))).toBeLessThanOrEqual(1);
+  // The photo whole, four by three, right under the head; the words from
+  // its foot to the foot of the window.
+  expect(Math.abs(photo.y - (head.y + head.height))).toBeLessThanOrEqual(1);
+  expect(Math.abs(photo.height - photo.width * 0.75)).toBeLessThanOrEqual(2);
+  const foot = photo.y + photo.height;
+  expect(Math.abs(words.y - foot)).toBeLessThanOrEqual(1);
+  expect(Math.abs(words.y + words.height - height)).toBeLessThanOrEqual(1);
+
+  // No rail on the photo, and nothing else on it: each thing to do is in the
+  // row under it, once (pass, like, comments, share, save, more).
   await expect(home.locator("[data-rail]")).toBeHidden();
-  const panelWords = home.locator("[data-words]");
-  const actions = panelWords.locator("[data-actions]");
-  const names = [/^Comments/, "Save 1880 Tamsen Ridge Pl SE", "Share", "More options"];
+  const actions = actionsOf(home);
+  const names = [
+    "Pass on this home",
+    /^Like 1880 Tamsen Ridge Pl SE/,
+    /^Comments/,
+    "Share 1880 Tamsen Ridge Pl SE",
+    "Save 1880 Tamsen Ridge Pl SE",
+    "More options",
+  ];
   await expect(actions.getByRole("button")).toHaveCount(names.length);
   for (const [i, name] of names.entries()) await expect(actions.getByRole("button").nth(i)).toHaveAccessibleName(name);
   for (const name of names) {
     await expect(home.getByRole("button", typeof name === "string" ? { name, exact: true } : { name })).toHaveCount(1);
   }
-  // And, on the photo's top left corner, a quick way to send it on.
-  await expect(home.getByRole("button", { name: "Share 1880 Tamsen Ridge Pl SE" })).toHaveText("Share this home");
-  // Share has its word beside it, as Save has.
-  await expect(actions.getByRole("button", { name: "Share", exact: true })).toHaveText("Share");
+  await expect(home.getByRole("button", { name: "Share", exact: true })).toHaveCount(0);
   const row = await box(actions);
-  const compose = await box(panelWords.getByRole("textbox", { name: "Add a comment" }));
-  expect(row.y + row.height).toBeLessThanOrEqual(compose.y);
-  expect(compose.y - (row.y + row.height)).toBeLessThanOrEqual(12);
+  expect(row.y).toBeGreaterThanOrEqual(foot - 1);
+  expect(row.y - foot).toBeLessThanOrEqual(12);
+  inTheColumn(row, width);
+  for (const button of await actions.getByRole("button").all()) {
+    const at = await box(button);
+    expect(at.height).toBeGreaterThanOrEqual(44);
+    expect(at.width).toBeGreaterThanOrEqual(44);
+  }
   // Nothing floats over the photo's foot: no line of what people did, no
-  // caption. What was said is in the panel's latest comments, and in the
-  // comments themselves.
+  // caption. What was said is in the latest comments under the row, and in
+  // the comments themselves; at the foot, the comment bar alone.
   await expect(home.getByRole("group", { name: "Recent activity" })).toHaveCount(0);
   await expect(home.locator("[data-photo-caption]")).toHaveCount(0);
-  const latest = await box(panelWords.getByRole("group", { name: "Latest comments" }));
-  expect(latest.x).toBeGreaterThanOrEqual(photo.x + photo.width);
+  await expect(home.locator("[data-words]").getByRole("list", { name: "Comments and likes" })).toHaveCount(0);
+  const latest = await box(home.getByRole("group", { name: "Latest comments" }));
+  expect(latest.y).toBeGreaterThanOrEqual(row.y + row.height - 1);
+  const bar = home.locator("[data-bar-row]");
+  await expect(bar.getByRole("button")).toHaveCount(1);
+  await expect(bar.getByRole("button")).toHaveAccessibleName("Add a comment…");
+  const barBox = await box(bar);
+  expect(barBox.y).toBeGreaterThanOrEqual(latest.y + latest.height - 1);
+  expect(barBox.y + barBox.height).toBeGreaterThan(height - 20);
   // The photo's own arrow just inside its right edge.
   const arrow = await box(home.getByRole("button", { name: "Next photo" }));
   expect(arrow.x + arrow.width).toBeLessThanOrEqual(photo.x + photo.width - 7.5);
   expect(arrow.x + arrow.width).toBeGreaterThanOrEqual(photo.x + photo.width - 30);
-  // The rest of the words, not one of them on the photo: the panel says what
-  // the home is (what was said is in one place only: the comments).
-  await expect(panelWords.getByRole("list", { name: "Comments and likes" })).toHaveCount(0);
-  // The description to two lines, then "more", which reads the rest in
-  // place, with who listed it and the details; until then they wait.
-  const more = panelWords.getByRole("button", { name: "more", exact: true });
-  await expect(more).toHaveAttribute("aria-expanded", "false");
-  expect(await more.getAttribute("aria-haspopup")).toBeNull();
-  await expect(panelWords.getByText("Price per sq ft")).toHaveCount(0);
-  await expect(panelWords.getByRole("list", { name: "The details" })).toHaveCount(0);
-  await expect(home.getByText(/^Listed by/)).toHaveCount(0);
-  await more.click();
-  await expect(panelWords.getByRole("button", { name: "less", exact: true })).toHaveAttribute("aria-expanded", "true");
-  await expect(panelWords.getByText("Price per sq ft")).toBeVisible();
-  // On the stage's own dark, the facts and the details are words to read,
-  // not things to tap: what someone thinks goes in a comment.
-  await expect(panelWords.getByText("Tap any detail", { exact: true })).toHaveCount(0);
-  const details = panelWords.getByRole("list", { name: "The details" }).getByRole("listitem");
-  expect(await details.count()).toBeGreaterThanOrEqual(3);
-  await expect(panelWords.getByRole("list", { name: "The details" }).getByRole("button")).toHaveCount(0);
+  // No strip of photos under it, no arrows in the gutters to go up and down
+  // the homes: the feed scrolls, as on a phone.
+  await expect(home.getByRole("list", { name: "Photos" })).toHaveCount(0);
+  await expect(home.getByRole("button", { name: /^Go to the (previous|next) home$/ })).toHaveCount(0);
+
+  // The facts in the head, plain words, not things to tap; what the home is
+  // waits behind the head, as on a phone: the description whole, who listed
+  // it and the details open over the photo, and until then they wait.
+  const open = home.getByRole("button", { name: "About this home" });
+  const about = home.getByRole("region", { name: "About this home" });
+  await expect(open).toHaveAttribute("aria-expanded", "false");
+  await expect(about).toBeHidden();
+  await expect(home.getByRole("button", { name: "more", exact: true })).toHaveCount(0);
+  await expect(about.getByText("Price per sq ft")).toBeHidden();
+  await expect(about.getByText(/^Listed by/)).toBeHidden();
+  await expect(home.getByText("Tap any detail", { exact: true })).toHaveCount(0);
   await expect(home.getByRole("button", { name: /^\$[\d,]+/ })).toHaveCount(0);
   await expect(sizeOf(home)).toHaveText(/^\d+ bd · \d+ ba · [\d,]+ sq ft$/);
-  expect(await panelWords.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe("rgb(255, 255, 255)");
-  for (const words of [
-    priceOf(home),
-    sizeOf(home),
-    home.locator('[data-fact="Address"]'),
-    home.getByText(/^Clean modern lines under a mature shade tree/),
-    home.getByText(/^Listed by/),
-  ]) {
-    expect((await box(words)).x).toBeGreaterThanOrEqual(photo.x + photo.width);
+  for (const fact of [priceOf(home), sizeOf(home), home.locator('[data-fact="Address"]')]) {
+    const at = await box(fact);
+    expect(at.x).toBeGreaterThanOrEqual(head.x - 1);
+    expect(at.x + at.width).toBeLessThanOrEqual(head.x + head.width + 1);
+    expect(at.y + at.height).toBeLessThanOrEqual(photo.y + 1);
   }
-  // The panel has the room: the whole description, right there, and "less"
-  // puts the rest away again (the one button, where the keyboard is).
-  await expect(panelWords.getByText(/^Clean modern lines under a mature shade tree.+\.$/)).toBeVisible();
-  await panelWords.getByRole("button", { name: "less", exact: true }).click();
-  await expect(more).toHaveAttribute("aria-expanded", "false");
-  await expect(panelWords.getByText("Price per sq ft")).toHaveCount(0);
+  expect(await home.locator("[data-words]").evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe("rgb(255, 255, 255)");
+  await open.click();
+  await expect(about).toBeVisible();
+  await settle(about);
+  const card = await box(about);
+  inTheColumn(card, width);
+  expect(Math.abs(card.y - (head.y + head.height))).toBeLessThanOrEqual(1);
+  expect(card.height).toBeLessThanOrEqual(height * 0.6 + 1);
+  await expect(about.getByText(/^Clean modern lines under a mature shade tree.+\.$/)).toBeVisible();
+  await expect(about.getByText(/^Listed by .+ · .+$/)).toBeVisible();
+  await expect(about.getByText("Price per sq ft")).toBeVisible();
+  await expect(about.getByRole("button")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(about).toBeHidden();
+  await expect(open).toBeFocused();
 
-  // Every photo in a strip just under it, lined up with it: the one on screen
-  // marked, a click goes straight there.
-  const strip = home.getByRole("list", { name: "Photos" });
-  await expect(strip.getByRole("button")).toHaveCount(4);
-  await expect(strip.getByRole("button").first()).toHaveAttribute("aria-current", "true");
-  const first = await box(strip.getByRole("button").first());
-  expect(Math.abs(first.x - photo.x)).toBeLessThanOrEqual(1);
-  expect(first.y - (photo.y + photo.height)).toBeGreaterThanOrEqual(0);
-  expect(first.y - (photo.y + photo.height)).toBeLessThanOrEqual(16);
-  const third = strip.getByRole("button", { name: /^Photo 3: / });
-  await third.click();
-  await expect(home.getByText("Photo 3 of 4")).toBeAttached();
-  await expect(third).toHaveAttribute("aria-current", "true");
-
-  // The panel starts level with the photo and ends level with the strip of
-  // photos under it (with one photo, the photo itself), whichever is showing.
-  const panelNow = await box(panelWords);
-  const thumb = await box(strip.getByRole("button").first());
-  expect(Math.abs(panelNow.y - photo.y)).toBeLessThanOrEqual(1);
-  expect(Math.abs(panelNow.y + panelNow.height - (thumb.y + thumb.height))).toBeLessThanOrEqual(1);
-  // A home with one photo: level with the photo's foot.
-  const lone = await phone(browser, DESKTOP);
-  await lone.goto("/homes/SAMPLE-1009");
-  const alone = homeIn(lone, "1204 Quillan St SE");
-  await settled(alone);
-  const lonePhoto = await box(photoOf(alone));
-  const lonePanel = await box(alone.locator("[data-words]"));
-  expect(Math.abs(lonePanel.y + lonePanel.height - (lonePhoto.y + lonePhoto.height))).toBeLessThanOrEqual(1);
-  await lone.close();
-
-  // Nothing over the photo to go up and down the homes: a small arrow in the
-  // middle of the band under the block (and, past the first home, one in the
-  // band over it). The feed scrolls on to the next too.
-  await expect(home.getByRole("button", { name: "Go to the previous home" })).toHaveCount(0);
-  const downArrow = await box(home.getByRole("button", { name: "Go to the next home" }));
-  expect(Math.abs(downArrow.x + downArrow.width / 2 - 720)).toBeLessThanOrEqual(2);
-  expect(downArrow.y).toBeGreaterThanOrEqual(thumb.y + thumb.height);
-  expect(downArrow.y + downArrow.height).toBeLessThanOrEqual(900);
-  await home.getByRole("button", { name: "Go to the next home" }).click();
-  const second = page.getByRole("article").nth(1);
-  await settled(second);
-  const upArrow = await box(second.getByRole("button", { name: "Go to the previous home" }));
-  const secondPhoto = await box(photoOf(second));
-  expect(Math.abs(upArrow.x + upArrow.width / 2 - 720)).toBeLessThanOrEqual(2);
-  expect(upArrow.y).toBeGreaterThanOrEqual(56);
-  expect(upArrow.y + upArrow.height).toBeLessThanOrEqual(secondPhoto.y);
-  // From the keyboard, again and again: the keyboard goes along to the same
-  // arrow on each home, never left behind out of sight.
-  await page.keyboard.press("Enter");
-  const thirdHome = page.getByRole("article").nth(2);
-  await settled(thirdHome);
-  await expect(thirdHome.getByRole("button", { name: "Go to the next home" })).toBeFocused();
-  await thirdHome.getByRole("button", { name: "Go to the previous home" }).press("Enter");
-  await settled(second);
-  await expect(second.getByRole("button", { name: "Go to the previous home" })).toBeFocused();
-  await page.keyboard.press("Enter");
-  await settled(home);
   // J and K only while the feed itself has the keyboard: not on a button (a
   // letter meant for it, or a word said to the computer), but after a click
-  // on the feed anywhere else.
-  // Somewhere with nothing on it: in the panel, between the latest comments
-  // and the row of things to do.
+  // on the feed anywhere else. Somewhere with nothing on it: the first line
+  // of the latest comments, how many liked it or "No comments yet.", which
+  // is plain words.
   const blankIn = async (article: typeof home) => {
     const list = await box(article.getByRole("group", { name: "Latest comments" }));
-    const row = await box(article.locator("[data-actions]"));
-    await page.mouse.click(list.x + list.width / 2, (list.y + list.height + row.y) / 2);
+    await page.mouse.click(list.x + list.width / 2, list.y + 10);
   };
   await heartOf(home).focus();
   await page.keyboard.press("j");
@@ -804,14 +827,33 @@ test("on a desktop, the photo has a stage of its own with nothing on it, and eve
   await settled(home);
   await blankIn(home);
   await page.keyboard.press("j");
+  const second = page.getByRole("article").nth(1);
   await settled(second);
+  // The same column on the next home: no jump from home to home.
+  const secondHead = await box(second.locator("[data-home-head]"));
+  const secondPhoto = await box(photoOf(second));
+  inTheColumn(secondHead, width);
+  inTheColumn(secondPhoto, width);
+  expect(Math.abs(secondPhoto.x - photo.x)).toBeLessThanOrEqual(1);
   await blankIn(second);
   await page.keyboard.press("k");
   await settled(home);
   expect(pageErrors).toEqual([]);
+
+  // The photo is fetched about as wide as it shows (the column), not as wide
+  // as the window, let alone wider.
+  await expect
+    .poll(
+      () =>
+        photoOf(home).evaluate((img: HTMLImageElement) =>
+          img.currentSrc ? Number(new URL(img.currentSrc).searchParams.get("w")) : Infinity,
+        ),
+      { timeout: 5_000 },
+    )
+    .toBeLessThan(1440);
 });
 
-test("on a desktop, comments unfurl in the panel beside the photo, which can still be tapped; Escape folds them away", async ({
+test("on a desktop, comments unfurl up over the photo in the same column, as on a phone, to just under the head; Escape folds them away", async ({
   browser,
 }) => {
   // (On a home already among the busiest this week by now: what's said here
@@ -820,21 +862,30 @@ test("on a desktop, comments unfurl in the panel beside the photo, which can sti
   await page.goto("/homes/SAMPLE-1007");
   const home = homeIn(page, "3518 Wexford Ave N");
   await settled(home);
-  // (The Comments button, in the row of things to do at the panel's foot.)
+  const { width, height } = page.viewportSize()!;
+  // (The Comments button, in the row of things to do under the photo.)
   const rail = home.getByRole("button", { name: /^Comments/ });
+  const head = await box(home.locator("[data-home-head]"));
   await rail.click();
   const sheet = commentsOf(home);
   await expect(sheet).toBeVisible();
-  // In the panel itself, not a dialog over the page: nothing is shut off,
-  // the panel's own buttons stay in reach, and no tabs (the Porchcard beside
-  // them is an agent's).
+  // The words under the photo, grown: the same column, up over the photo to
+  // just under the head (which stays), down to the foot of the window. Not a
+  // dialog over the page: nothing is shut off, and no tabs (the Porchcard is
+  // an agent's). The row of things to do steps aside while they're open.
   const words = home.locator("[data-words]");
   const panel = await box(words);
   await expect.poll(async () => Math.round((await box(sheet)).x)).toBe(Math.round(panel.x));
+  inTheColumn(await box(sheet), width);
+  await expect.poll(async () => Math.round((await box(sheet)).y)).toBe(Math.round(head.y + head.height));
+  expect(Math.round((await box(sheet)).y + (await box(sheet)).height)).toBe(height);
+  await expect(home.locator("[data-home-head]")).toBeVisible();
+  await expect(actionsOf(home)).toBeHidden();
   await expect(page.getByRole("dialog", { name: "Comments" })).toHaveCount(0);
   await expect(words).not.toHaveAttribute("inert");
   await expect(sheet.getByRole("tablist")).toHaveCount(0);
   await expect(sheet.getByRole("button", { name: "Hide comments" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: /^(Expand|Shrink) comments$/ })).toHaveCount(0);
   // Escape folds them away from anywhere: from out on the photo's own arrow,
   // the keyboard stays where it is.
   const nextPhoto = home.getByRole("button", { name: "Next photo" });
@@ -848,10 +899,10 @@ test("on a desktop, comments unfurl in the panel beside the photo, which can sti
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
   await expect(rail).toBeFocused();
-  // The comment box is in the panel, at its foot. Signed out, the first word
-  // asks them to sign up: the prompt rises from the foot of the panel, not
-  // across the photo, the cursor in the first name. Then it posts, and the
-  // comments unfurl to show it.
+  // The comment box is in the comments, at their foot. Signed out, the first
+  // word asks them to sign up: the prompt rises from the foot of the window,
+  // in the middle, the cursor in the first name. Then it posts, and the
+  // comments show it.
   const field = home.getByRole("textbox", { name: "Add a comment" });
   await rail.click();
   await expect(sheet).toBeVisible();
@@ -860,8 +911,8 @@ test("on a desktop, comments unfurl in the panel beside the photo, which can sti
   const prompt = page.getByRole("dialog", { name: "Sign up to like and comment" });
   await expect(prompt).toBeVisible();
   await expect(prompt.getByRole("textbox", { name: "First name" })).toBeFocused();
-  await expect.poll(async () => Math.round((await box(prompt)).y + (await box(prompt)).height)).toBe(Math.round(panel.y + panel.height));
-  expect(Math.abs((await box(prompt)).x - panel.x)).toBeLessThanOrEqual(1);
+  await expect.poll(async () => Math.round((await box(prompt)).y + (await box(prompt)).height)).toBe(height);
+  expect(Math.abs((await box(prompt)).x + (await box(prompt)).width / 2 - width / 2)).toBeLessThanOrEqual(1);
   await joinAs(page, "Wren");
   await expect(commentIn(sheet, "Wren", "The porch swing stays, I hope.")).toBeVisible();
   // (Posted, the box is empty again and has the keyboard; the feed never shifted.)
@@ -887,29 +938,26 @@ test("on a desktop, comments unfurl in the panel beside the photo, which can sti
   await expect(sheet).toBeHidden();
   await expect(rail).toBeFocused();
 
-  // With the comments open, a tap on the photo still opens a card about that spot,
-  // whole, over anyone's words on the photo.
+  // With the comments open, the photo is under them: a click where the
+  // photo was lands on the comments, and opens no card about a spot. The X
+  // folds them away, and the photo and its row are back.
   await rail.click();
   await expect(sheet).toBeVisible();
-  await tapPhoto(home, "Modern townhouse with a lit front entry at dusk", 0.6, 0.66);
-  const card = home.locator("[data-spot-card]");
-  await expect(card).toBeVisible();
-  await expect(sheet).toBeVisible();
-  await settle(card);
-  const cardBox = await box(card);
+  const photo = await box(photoOf(home));
   expect(
     await page.evaluate(
-      ({ x, y }) => Boolean(document.elementFromPoint(x, y)?.closest("[data-spot-card]")),
-      { x: cardBox.x + cardBox.width / 2, y: cardBox.y + 20 },
+      ({ x, y }) => Boolean(document.elementFromPoint(x, y)?.closest("[role='region'][aria-label='Comments']")),
+      { x: photo.x + photo.width * 0.6, y: photo.y + photo.height * 0.66 },
     ),
   ).toBe(true);
-  // Escape puts the card away (the keyboard stays on the photo), then the comments.
-  await page.keyboard.press("Escape");
-  await expect(card).toBeHidden();
+  await page.mouse.click(photo.x + photo.width * 0.6, photo.y + photo.height * 0.66);
+  await page.waitForTimeout(500);
+  await expect(home.locator("[data-spot-card]")).toHaveCount(0);
   await expect(sheet).toBeVisible();
-  await expect.poll(() => page.evaluate(() => document.activeElement !== document.body)).toBe(true);
-  await page.keyboard.press("Escape");
+  await sheet.getByRole("button", { name: "Hide comments" }).click();
   await expect(sheet).toBeHidden();
+  await expect(actionsOf(home)).toBeVisible();
+  await expect(home.getByRole("button", { name: "Next photo" })).toBeAttached();
   // Moving on to another home puts them away.
   await rail.click();
   await expect(sheet).toBeVisible();

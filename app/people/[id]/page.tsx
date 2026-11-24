@@ -6,6 +6,7 @@ import { cache, type CSSProperties } from "react";
 import { FollowButton, Toast } from "@/app/people/[id]/client";
 import { BetweenCard } from "@/components/between-card";
 import { FeedFilter } from "@/components/feed-filter";
+import { FeedGate } from "@/components/home/feed-gate";
 import { ListingGrid } from "@/components/listing-grid";
 import { ListingsMap } from "@/components/listings-map";
 import { PostComposer } from "@/components/post-composer";
@@ -27,6 +28,7 @@ import { getBetween } from "@/lib/between";
 import { readDevice } from "@/lib/engagement";
 import { follows, getFollowCounts } from "@/lib/follows";
 import { cn } from "@/lib/format";
+import { feedCounts, myReactions } from "@/lib/home-feed";
 import { getMyLinks } from "@/lib/my-links";
 import {
   getProfileFeed,
@@ -168,6 +170,10 @@ export default async function ProfilePage({ params, searchParams }: Props) {
     // First on the page, for the one looking only.
     !isMe && account?.role && person.accountId ? getBetween(account.id, person.accountId) : [],
   ]);
+  // Under each card: how many liked the home and how many comments it has,
+  // and the viewer's own take on it, for the heart.
+  const feedHomes = [...new Set(feed.cards.map((card) => card.home.key))];
+  const [barCounts, barMine] = await Promise.all([feedCounts(feedHomes), myReactions(visitor?.id ?? null, feedHomes)]);
 
   // The same page with other filters; paging starts over.
   const href = (next: { show?: ProfileShow; about?: string | null; side?: TopicSide; before?: string | null }) => {
@@ -485,18 +491,21 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                 }
               />
             ) : feed.cards.length > 0 || feed.earlier ? (
-              <ProfileFeed
-                cards={feed.cards}
-                name={name}
-                face={face}
-                isMe={isMe}
-                agent={person.isAgent}
-                earlierHref={feed.earlier ? href({ before: feed.earlier }) : null}
-                reelFrom={person.id}
-                photo={person.photo}
-                filters={{ show, about, side }}
-                control={control}
-              />
+              <FeedGate myName={account?.full_name?.trim() || null}>
+                <ProfileFeed
+                  cards={feed.cards}
+                  name={name}
+                  face={face}
+                  isMe={isMe}
+                  agent={person.isAgent}
+                  earlierHref={feed.earlier ? href({ before: feed.earlier }) : null}
+                  reelFrom={person.id}
+                  photo={person.photo}
+                  filters={{ show, about, side }}
+                  control={control}
+                  bars={{ counts: barCounts, mine: barMine }}
+                />
+              </FeedGate>
             ) : (
               <>
                 {/* Nothing to show still leaves the way to show something else. */}

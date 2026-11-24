@@ -449,6 +449,41 @@ export async function myReactions(visitorId: string | null, keys: string[]): Pro
   );
 }
 
+// Under each card: how many liked the home, and how many comments it has.
+export type FeedCounts = { likes: number; comments: number };
+
+// How many liked each of these homes (anyone, in public or on a link,
+// once each, as the home's own page counts them) and how many comments its
+// public conversation has (the public ones, and those shared from a link).
+export async function feedCounts(keys: string[]): Promise<Record<string, FeedCounts>> {
+  if (keys.length === 0) return {};
+  const [likes, comments] = await Promise.all([
+    sql<{ listing_key: string; n: number }[]>`
+      select listing_key, count(*)::int as n from (
+        select listing_key, 'v' || visitor_id as who from public_reactions
+        where reaction = 'like' and listing_key in ${sql(keys)}
+        union
+        select listing_key, 'p' || participant_id from reactions
+        where reaction = 'like' and listing_key in ${sql(keys)}
+        union
+        select listing_key, 'v' || visitor_id from public_photo_likes where listing_key in ${sql(keys)}
+        union
+        select listing_key, 'p' || participant_id from photo_likes where listing_key in ${sql(keys)}) x
+      group by listing_key`,
+    sql<{ listing_key: string; n: number }[]>`
+      select listing_key, count(*)::int as n from (
+        select listing_key from public_comments where listing_key in ${sql(keys)}
+        union all
+        select listing_key from comments where shared_publicly and listing_key in ${sql(keys)}) x
+      group by listing_key`,
+  ]);
+  const counts: Record<string, FeedCounts> = {};
+  for (const key of keys) counts[key] = { likes: 0, comments: 0 };
+  for (const row of likes) counts[row.listing_key] = { ...counts[row.listing_key], likes: row.n };
+  for (const row of comments) counts[row.listing_key] = { ...counts[row.listing_key], comments: row.n };
+  return counts;
+}
+
 // Where "new" starts on their home page: the last time they had it open
 // before this visit, or null (never, or not since this was kept). Read before
 // the page marks it seen. Half an hour without the home page ends a visit.

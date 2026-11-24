@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Heart, Lock, MessageCircle, Sparkles, ThumbsDown } from "lucide-react";
+import { ChevronDown, Heart, House, Lock, MessageCircle, Send, Sparkles, ThumbsDown } from "lucide-react";
 import Link from "next/link";
 import { useId, useState } from "react";
 import type { SpotRef } from "@/components/listing-thread";
@@ -24,9 +24,15 @@ const TAKES_SHOWN = 3;
 
 export type TakeEyebrow = { title: string; place: string | null };
 
+// Above the facts, with nobody's take to show: who sent the home ("From
+// Lena"), why it was picked ("Picked for you · 3 beds · under $900k"), or
+// who listed it.
+export type TakeFallback = { icon: "send" | "sparkles" | "home"; title?: string; text: string };
+
 export function TakeCard({
   home,
   eyebrow,
+  fallback = null,
   look,
   beside = null,
   hidden = false,
@@ -37,7 +43,12 @@ export function TakeCard({
   home: HomeContext | undefined;
   // Whose homes these are, and which of them this is: "Maya's highlights · 2 of 7".
   eyebrow?: TakeEyebrow | null;
-  look: "panel" | "band";
+  // Above the facts ("head"), with no take to show: what to say instead.
+  fallback?: TakeFallback | null;
+  // "head": the row above the facts, at the top of the home, as a post is
+  // headed by who posted it: one line (two, with whose homes these are),
+  // and the whole take opens from it, over the photo.
+  look: "panel" | "band" | "head";
   // On a phone, Send sits in the photo's top left corner: the band starts
   // after it, at this left edge (a CSS length; the photo may not reach the
   // frame's edge, so the pill isn't always at it).
@@ -63,6 +74,86 @@ export function TakeCard({
         className="mb-3 rounded-xl bg-white/[0.06] p-3 ring-1 ring-inset ring-white/10 [text-shadow:none]"
       >
         {body}
+      </section>
+    );
+  }
+
+  if (look === "head") {
+    if (!something && !eyebrow && !fallback) return null;
+    const where = eyebrow ? [eyebrow.title, eyebrow.place].filter(Boolean).join(" · ") : null;
+    const lead = takes[0];
+    const line = lead ? (
+      <>
+        <strong className="font-semibold text-white">{lead.who.name}</strong>
+        {afterName(lead)}
+      </>
+    ) : forYou ? (
+      <>
+        <strong className="font-semibold text-white">Picked for you</strong> · {forYou.join(" · ")}
+      </>
+    ) : fallback ? (
+      <>
+        {fallback.title && <strong className="font-semibold text-white">{fallback.title} · </strong>}
+        {fallback.text}
+      </>
+    ) : null;
+    const Icon = forYou || fallback?.icon === "sparkles" ? Sparkles : fallback?.icon === "send" ? Send : House;
+    const face = lead ? (
+      <Face who={lead.who} />
+    ) : line ? (
+      <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/80">
+        <Icon size={16} />
+      </span>
+    ) : null;
+    const words = (
+      <>
+        {face}
+        <span className="min-w-0 flex-1">
+          {where && (
+            <span className="block truncate text-[11px] font-semibold uppercase leading-4 tracking-wide text-white/60">{where}</span>
+          )}
+          {line && <span className="block truncate text-body leading-5 text-white/90">{line}</span>}
+        </span>
+      </>
+    );
+    const row = "flex h-14 w-full items-center gap-2.5 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] text-left";
+    return (
+      <section
+        aria-label="Why it's here"
+        data-take
+        className={cn(
+          "relative h-14 text-white transition-[opacity,visibility] duration-300 [text-shadow:none] motion-reduce:transition-none",
+          hidden && "invisible opacity-0",
+        )}
+      >
+        {something ? (
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={bodyId}
+            onClick={() => setOpen(!open)}
+            className={cn(row, "transition-colors hover:bg-white/[0.04]")}
+          >
+            {words}
+            <ChevronDown
+              aria-hidden
+              size={18}
+              className={cn("shrink-0 text-white/70 transition-transform motion-reduce:transition-none", open && "rotate-180")}
+            />
+          </button>
+        ) : (
+          <p className={row}>{words}</p>
+        )}
+        {/* The whole take, opened from the row: over the photo, under the head. */}
+        {something && (
+          <div
+            id={bodyId}
+            hidden={!open}
+            className="absolute inset-x-0 top-(--head-h) z-[35] max-h-[50cqh] overflow-y-auto overscroll-contain rounded-b-2xl bg-night/95 px-4 pb-4 pt-3 shadow-[0_16px_40px_rgb(0_0_0/0.45)] backdrop-blur-md animate-[nudge-in_200ms_ease-out_both] motion-reduce:animate-none"
+          >
+            {body}
+          </div>
+        )}
       </section>
     );
   }

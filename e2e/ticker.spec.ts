@@ -27,7 +27,7 @@ const settled = async (home: Locator) => {
   await expect.poll(async () => Math.abs((await home.boundingBox())?.y ?? 99)).toBeLessThan(1);
 };
 
-// The latest comments, under the photo (side by side: in the panel).
+// The latest comments, under the photo (at every width: no panel beside it any more).
 const latestOf = (home: Locator) => home.getByRole("group", { name: "Latest comments" });
 // One comment's row in it, by its words.
 const rowOf = (home: Locator, words: string) => latestOf(home).getByRole("listitem").filter({ hasText: words });
@@ -249,19 +249,31 @@ test("who liked the home: a bold line of how many, above the comments, that the 
   await page.context().close();
 });
 
-test("side by side, the comments are in the panel beside the photo, not over its foot; a row opens them docked there", async ({ browser }) => {
+test("on a wide screen, the comments are under the photo in its centred column, not beside it; a row opens them over the photo", async ({ browser }) => {
   const page = await signedInStillPage(browser, DESKTOP);
   await page.goto("/homes/SAMPLE-1007");
   const home = homeIn(page, WEXFORD);
   await settled(home);
   const latest = latestOf(home);
   await expect(latest).toContainText(`Bo ${BO_SAID}`);
-  // In the panel, to the right of the photo, inside the words. Nothing over
-  // the photo's foot but the X and the heart.
-  const [list, photo, panel] = [await box(latest), await box(photoOf(home)), await box(home.locator("[data-words]"))];
-  expect(list.x).toBeGreaterThanOrEqual(photo.x + photo.width);
-  expect(list.x).toBeGreaterThanOrEqual(panel.x);
-  expect(list.x + list.width).toBeLessThanOrEqual(panel.x + panel.width + 1);
+  // One layout at every width: the photo and the words in one column, 44rem
+  // wide and centred in the frame. Under the photo, first the row of things
+  // to do, then the comments inside the words; no panel beside the photo.
+  const [list, photo, words, actions, frame] = [
+    await box(latest),
+    await box(photoOf(home)),
+    await box(home.locator("[data-words]")),
+    await box(home.locator("[data-actions]")),
+    await box(home),
+  ];
+  expect(Math.abs(words.width - 704)).toBeLessThanOrEqual(1);
+  expect(Math.abs(words.x + words.width / 2 - (frame.x + frame.width / 2))).toBeLessThanOrEqual(2);
+  expect(Math.abs(photo.x + photo.width / 2 - (frame.x + frame.width / 2))).toBeLessThanOrEqual(2);
+  expect(photo.x + photo.width).toBeLessThan(words.x + words.width + 1);
+  expect(actions.y).toBeGreaterThanOrEqual(photo.y + photo.height - 1);
+  expect(list.y).toBeGreaterThanOrEqual(actions.y + actions.height - 1);
+  expect(list.x).toBeGreaterThanOrEqual(words.x);
+  expect(list.x + list.width).toBeLessThanOrEqual(words.x + words.width + 1);
   await nothingGoesRound(home);
   for (let i = 0; i < 3; i++) await tick(page, 8000);
   await expect(latest).toContainText(`Bo ${BO_SAID}`);
@@ -271,12 +283,36 @@ test("side by side, the comments are in the panel beside the photo, not over its
   await expect(latest).toBeVisible();
   await card.getByRole("button", { name: "Close" }).click();
   await expect(card).toBeHidden();
-  // A row opens the comments, on that comment, beside the photo.
-  await rowOf(home, BO_SAID).getByRole("button").click();
+  // Whole rows only, measured: a row that wouldn't fit whole under the photo
+  // waits behind "View all" rather than showing cut (at this height, with the
+  // row of buttons and the bar to hold, that's every row: just the likes line
+  // and View all). View all opens the comments at their top, every row there.
+  const group = await box(latest);
+  for (const row of await latest.getByRole("listitem").filter({ visible: true }).all()) {
+    const shown = await box(row);
+    expect(shown.y).toBeGreaterThanOrEqual(group.y - 0.5);
+    expect(shown.y + shown.height).toBeLessThanOrEqual(group.y + group.height + 0.5);
+  }
+  const viewAll = latest.getByRole("button", { name: /^View all \d+ comments$/ });
+  await expect(viewAll).toBeVisible();
+  const bar = await box(home.locator("[data-bar-row]"));
+  expect(group.y + group.height).toBeLessThanOrEqual(bar.y + 0.5);
+  await viewAll.click();
   const sheet = commentsOf(home);
   await expect(sheet).toBeVisible();
-  await expect(sheet.locator("[data-comment][data-flash]")).toContainText(BO_SAID);
-  expect((await box(sheet)).x).toBeGreaterThanOrEqual(photo.x + photo.width - 1);
+  await expect(sheet.locator("[data-comment]").filter({ hasText: BO_SAID })).toBeVisible();
+  await expect(sheet.locator("[data-comment]").filter({ hasText: AL_SAID })).toBeVisible();
+  expect(await sheet.locator("[data-thread-scroll]").evaluate((el) => el.scrollTop)).toBe(0);
+  // Opened, the block grows up over the photo to just under the head, in the
+  // same column, with its own X.
+  const head = await box(home.locator("[data-home-head]"));
+  await expect.poll(async () => Math.round((await box(sheet)).y)).toBe(Math.round(head.y + head.height));
+  const open = await box(sheet);
+  expect(open.y).toBeLessThanOrEqual(photo.y + 1);
+  expect(Math.abs(open.x - words.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(open.width - words.width)).toBeLessThanOrEqual(1);
+  await expect(sheet.getByRole("button", { name: "Hide comments" })).toBeVisible();
+  await expect(home.locator("[data-actions]")).toBeHidden();
 });
 
 test("opened from someone's profile, what they did is in Why it's here; under the photo, the home's own comments", async ({ browser }) => {
@@ -295,10 +331,22 @@ test("opened from someone's profile, what they did is in Why it's here; under th
   await page.waitForURL(/\/reel\?from=/);
   const home = homeIn(page.getByRole("dialog", { name: "Homes" }), WEXFORD);
   await expect(home).toBeVisible();
-  // What Bo did, over the photo's top, as the reason it's here: Bo's, never Al's.
+  // What Bo did, as the reason it's here: the row above the facts, headed by
+  // whose homes these are, with Bo's face and name. Bo's, never Al's; tapped,
+  // the whole take opens, with what Bo said.
   const why = home.getByRole("region", { name: "Why it's here" });
-  await expect(why).toContainText(/^Bo\b/);
+  const row = why.getByRole("button", { expanded: false });
+  await expect(row).toContainText("Bo's highlights · 1 of 1Bo commented on this home");
   await expect(why).not.toContainText(/Al\b|A buyer/);
+  const [rowBox, facts] = [await box(row), await box(home.getByRole("button", { name: "About this home" }))];
+  expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(facts.y + 1);
+  expect(rowBox.height).toBeGreaterThanOrEqual(44);
+  await row.click();
+  await expect(why.getByRole("button", { expanded: true })).toBeVisible();
+  await expect(why.getByText(BO_SAID)).toBeVisible();
+  await expect(why).not.toContainText(/Al\b|A buyer/);
+  await why.getByRole("button", { expanded: true }).click();
+  await expect(why.getByText(BO_SAID)).toBeHidden();
   // Under the photo, the home's comments as anywhere: Bo's and Al's, by name,
   // and nothing from anyone's private link.
   await expect(rowOf(home, BO_SAID)).toContainText(`Bo ${BO_SAID}`);
@@ -332,9 +380,9 @@ test("beside the map: on a phone, the comments under the photo and Open full scr
   await phone.context().close();
 
   // Wide: the pane is a phone's width, so the comments are under the photo
-  // here too, between its foot and the bar; the X and the heart keep the
-  // photo's bottom corners, and the pane's own Open full screen sits over
-  // the photo's top corner, under the head.
+  // here too; the X and the heart are in the row under the photo (nothing
+  // sits on the photo), the comments under that row, and the pane's own
+  // Open full screen sits over the photo's top corner, under the head.
   const page = await (await browser.newContext(DESKTOP)).newPage();
   await page.goto("/search?home=SAMPLE-1007");
   const home = homeIn(page, WEXFORD);
@@ -348,10 +396,13 @@ test("beside the map: on a phone, the comments under the photo and Open full scr
     await box(heartOf(home)),
     await box(page.getByRole("button", { name: "Open full screen" })),
   ];
-  expect(wideList.y).toBeGreaterThanOrEqual(widePhoto.y + widePhoto.height - 1);
-  expect(pass.y + pass.height).toBeLessThanOrEqual(widePhoto.y + widePhoto.height + 1);
-  expect(heart.y + heart.height).toBeLessThanOrEqual(widePhoto.y + widePhoto.height + 1);
+  expect(pass.y).toBeGreaterThanOrEqual(widePhoto.y + widePhoto.height - 1);
+  expect(heart.y).toBeGreaterThanOrEqual(widePhoto.y + widePhoto.height - 1);
+  expect(Math.abs(pass.y - heart.y)).toBeLessThanOrEqual(1);
   expect(pass.x + pass.width).toBeLessThan(heart.x);
+  expect(pass.height).toBeGreaterThanOrEqual(44);
+  expect(heart.height).toBeGreaterThanOrEqual(44);
+  expect(wideList.y).toBeGreaterThanOrEqual(pass.y + pass.height - 1);
   expect(wideOpen.y).toBeGreaterThanOrEqual(widePhoto.y - 1);
   expect(wideOpen.y + wideOpen.height).toBeLessThan(widePhoto.y + widePhoto.height / 2);
   expect(wideOpen.height).toBeGreaterThanOrEqual(44);
@@ -630,7 +681,8 @@ test("isolation: kept private, what you said on an agent's link stays off your o
   const hers = await look(own);
   await expect(likesLineOf(hers.home)).toHaveText(/^\d+ likes?$/);
   await expect(hers.home.getByRole("region", { name: "Why it's here" })).toContainText("You liked this");
-  await expect(hers.home.getByRole("region", { name: "Why it's here" }).locator("img")).toHaveAttribute(
+  // (The row's face; the take it opens has the same face again.)
+  await expect(hers.home.getByRole("region", { name: "Why it's here" }).locator("img").first()).toHaveAttribute(
     "src",
     new RegExp(`^/people/${wrenId}/photo`),
   );

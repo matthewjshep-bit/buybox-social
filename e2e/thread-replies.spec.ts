@@ -143,7 +143,7 @@ test("on a link, a reply to someone's comment stays on the link", async ({ brows
   }
 });
 
-test("the year built, the description and who listed it are words to read; what someone thinks of them goes in a comment", async ({ browser }) => {
+test("the year built, the description and who listed it are words to read, opened from the head at every width; what someone thinks of them goes in a comment", async ({ browser }) => {
   test.setTimeout(90_000);
   const page = await (await browser.newContext(DESKTOP)).newPage();
   const pageErrors: string[] = [];
@@ -152,28 +152,38 @@ test("the year built, the description and who listed it are words to read; what 
   const home = homeIn(page, HALVARD);
   await expect(home).toBeInViewport({ ratio: 0.9 });
 
-  // Beside the photo, the description is two lines and "more" reads it all
-  // in place, with who listed it and the details. They're plain words:
-  // nothing on them to like or dislike, and no card.
-  const details = home.getByRole("list", { name: "The details" });
-  await expect(details).toHaveCount(0);
-  await home.getByRole("button", { name: "more", exact: true }).click();
-  await expect(home.getByRole("button", { name: "less", exact: true })).toHaveAttribute("aria-expanded", "true");
-  await expect(details).toContainText("Year built");
-  await expect(details).toContainText("2016");
-  await expect(details.getByRole("button")).toHaveCount(0);
+  // On a desktop as on a phone: the price, size and address head the photo,
+  // and the head opens what the home is over the photo: all of the
+  // description, who listed it and the details. They're plain words: nothing
+  // on them to like or dislike, no card, and no "more" under the photo.
+  await expect(home.getByRole("button", { name: "more", exact: true })).toHaveCount(0);
+  await expect(home.getByRole("list", { name: "The details" })).toHaveCount(0);
+  // (Who listed it heads the home as why it's here; under the photo, nothing of it.)
+  await expect(home.getByRole("region", { name: "Why it's here" })).toContainText("Listed by Luis Romero");
+  await expect(home.locator("[data-words]").getByText(/^Listed by/)).toHaveCount(0);
+  const deskHead = home.getByRole("button", { name: "About this home" });
+  await deskHead.click();
+  await expect(deskHead).toHaveAttribute("aria-expanded", "true");
+  const deskAbout = home.getByRole("region", { name: "About this home" });
+  await expect(deskAbout).toBeVisible();
+  await expect(deskAbout.getByText("Year built", { exact: true })).toBeVisible();
+  await expect(deskAbout).toContainText("2016");
+  await expect(deskAbout.getByRole("button")).toHaveCount(0);
   await expect(home.getByRole("button", { name: /^Year built/ })).toHaveCount(0);
   await expect(home.locator('[data-fact="Description"]')).toHaveCount(0);
-  await expect(home.getByText(/^Listed by Luis Romero/)).toBeVisible();
+  await expect(deskAbout.getByText(/^Listed by Luis Romero/)).toBeVisible();
   await expect(home.getByRole("button", { name: /^Listed by/ })).toHaveCount(0);
   await expect(home.getByRole("button", { name: /^Like the (year built|description|listing agent)/ })).toHaveCount(0);
-  await home.getByText(/^Listed by Luis Romero/).click();
+  await deskAbout.getByText(/^Listed by Luis Romero/).click();
   await expect(home.locator("[data-spot-card]")).toHaveCount(0);
+  await expect(deskAbout).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(deskAbout).toBeHidden();
   expect(pageErrors).toEqual([]);
 
-  // On a phone: the price, size and address head the photo, and tapping the
-  // head opens what the home is over the photo, with all of the description,
-  // every detail and who listed it. Nothing of that is in More any more.
+  // On a phone, the same: the head opens what the home is over the photo, with
+  // all of the description, every detail and who listed it. Nothing of that
+  // is in More any more.
   const phone = await (await browser.newContext()).newPage();
   phone.on("pageerror", (error) => pageErrors.push(error.message));
   await phone.goto("/homes/SAMPLE-1005");

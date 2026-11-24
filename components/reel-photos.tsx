@@ -100,13 +100,15 @@ export function stageFoot(media: ListingMedia[]) {
 }
 
 // How wide a photo shows, for the browser to fetch no bigger a copy than
-// that. At most the window's width; less where the window is wider than the
-// photo (a phone on its side), where it's only as wide as the height allows;
-// beside the words on a wide screen, about two thirds of the window.
+// that. On a wide screen, the column a home is laid out in (44rem); else at
+// most the window's width; less where the window is wider than the photo (a
+// phone on its side), where it's only as wide as the height allows; beside
+// the words (side by side, off for now), about two thirds of the window.
 function sizesFor(photo: ListingMedia, beside = false) {
   const wide = photo.ImageWidth && photo.ImageHeight ? `${photo.ImageWidth}/${photo.ImageHeight}` : null;
   return [
     beside && "(min-width: 64rem) 65vw",
+    "(min-width: 48rem) 44rem",
     wide && `(min-aspect-ratio: ${wide}) ${Math.ceil((100 * photo.ImageWidth!) / photo.ImageHeight!)}vh`,
     "100vw",
   ]
