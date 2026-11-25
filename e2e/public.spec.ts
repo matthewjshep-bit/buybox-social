@@ -16,6 +16,8 @@ import {
   signUpBuyer,
   passOn,
   openMore,
+  toLinkReady,
+  toWho,
 } from "./helpers";
 
 const SECRET = "We could go 50k over asking.";
@@ -256,16 +258,14 @@ test("a home sent on a link never says so on its page: not to anyone else, and, 
   await createShare(agent, ["10421 Halvard"], ["Pat"]);
   // And someone who isn't an agent sends another to a friend.
   const mo = await signUpBuyer(browser, "mo.sent@example.com", "Mo Sent");
+  // (In the box: the home, Someone, a first name, Send; the conversation opens.)
   await mo.goto("/send");
   await pickHome(mo, HERON);
-  await mo.getByRole("button", { name: "Next", exact: true }).click();
+  await toWho(mo);
   const who = mo.getByRole("combobox", { name: "Who's it for?" });
   await who.fill("Sam");
   await who.press("Enter");
-  await mo.getByRole("button", { name: "Next", exact: true }).click();
-  await mo.waitForURL(/\/s\/[\w-]+\?step=thoughts$/);
-  await mo.getByRole("link", { name: "Skip this step" }).click();
-  await mo.waitForURL(/\/send\/[\w-]+$/);
+  await toLinkReady(mo);
 
   // The home's page says nothing of it, even to the one who sent it: the
   // line that used to say "You sent this" went with the rotating activity.

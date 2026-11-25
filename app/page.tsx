@@ -69,11 +69,15 @@ export default async function HomePage() {
   const clientIds = new Set((book?.clients ?? []).flatMap((client) => (client.profileId ? [client.profileId] : [])));
   const marked = (who: FeedWho): FeedWho => (who.profileId && clientIds.has(who.profileId) ? { ...who, client: true } : who);
   const feed = clientIds.size
-    ? everyone.map((entry) => ({
-        ...entry,
-        why: { ...entry.why, who: entry.why.who.map(marked) },
-        said: entry.said.map((quote) => ({ ...quote, who: marked(quote.who) })),
-      }))
+    ? everyone.map((entry) =>
+        entry.kind === "post"
+          ? { ...entry, who: marked(entry.who) }
+          : {
+              ...entry,
+              why: { ...entry.why, who: entry.why.who.map(marked) },
+              said: entry.said.map((quote) => ({ ...quote, who: marked(quote.who) })),
+            },
+      )
     : everyone;
   const [publicTakes, counts, activity] = await Promise.all([
     myReactions(visitorId, feedKeys(feed)),

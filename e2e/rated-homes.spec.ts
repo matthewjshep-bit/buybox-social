@@ -125,9 +125,11 @@ test("after rating every home on her link the card is gone from Home and they're
   // Rhea adds a home to the same link: one waiting again, so the card's back.
   await agent.goto(dashboardUrl);
   await agent.getByRole("link", { name: "Send more homes" }).click();
+  await agent.waitForURL(/\/send\?share=/);
+  await expect(agent.getByRole("form", { name: "Send Ivy homes" })).toContainText("To Ivy");
   await pickHome(agent, "812 N Corbel");
-  await agent.getByRole("button", { name: "Add 1 home to Ivy's link" }).click();
-  await agent.waitForURL(/\/dashboard\/shares\/[\w-]+\/sent$/);
+  await agent.getByRole("button", { name: "Send", exact: true }).click();
+  await agent.waitForURL((u) => /^\/messages\/.+/.test(u.pathname) && !u.searchParams.has("sent"));
   await ivy.goto("/");
   await expect(fromAgentCard(ivy)).toHaveAccessibleName("1 new home for you");
   await expect(fromAgentCard(ivy)).toContainText("From Rhea Rated");

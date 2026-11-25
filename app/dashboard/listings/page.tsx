@@ -211,7 +211,7 @@ function Row({
         )}
         {send && (
           <Link
-            href={`/dashboard/new?home=${encodeURIComponent(listing.ListingKey)}`}
+            href={`/send?home=${encodeURIComponent(listing.ListingKey)}`}
             aria-label={`Send ${listing.UnparsedAddress}`}
             className={cn(button({ kind: "secondary", size: "lg" }), "shrink-0")}
           >

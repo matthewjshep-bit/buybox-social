@@ -1,21 +1,19 @@
 "use client";
 
-import { DoorOpen, Eye, Heart, MessageCircle, X } from "lucide-react";
+import { DoorOpen, Eye, Heart, X } from "lucide-react";
 import Link from "next/link";
-import { CommentBubble } from "@/components/comment-bubble";
+import type { ReactNode } from "react";
 import { Avatar, HomeThumb } from "@/components/ui";
 import { cn, formatPrice, timeAgo, whenWords } from "@/lib/format";
-import type { HomesItem, MessageItem, ThreadHome } from "@/lib/messages";
+import type { CommentItem, HomesItem, MessageItem, ThreadHome, ThreadPerson } from "@/lib/messages";
 
 // One send, as a message in the conversation: who sent it and when, their
 // note, then each home as a card (its photo, price and address; a tap opens
 // it), with what's happened to it in a line under it (opened and for how
-// long, who liked it or passed, how many said something, who asked to see
-// it), and what was said about it under that, each a bubble. The viewer's
-// own sends sit to the right, like their messages on a phone.
-
-// How many comments show under a home before "Show all".
-const COMMENTS_SHOWN = 3;
+// long, who liked it or passed, who asked to see it). What's said about a
+// home is a bubble of its own in the conversation (CommentMessage), not
+// something inside the card. The viewer's own sends sit to the right, like
+// their messages on a phone.
 
 // "45 sec", "3 min", "1 hr 5 min": time spent, for the sender (as lib/shares says it).
 function duration(seconds: number) {
@@ -29,14 +27,11 @@ function duration(seconds: number) {
 export function HomesMessage({
   item,
   viewerIsAgent,
-  showAll = false,
   onReply,
 }: {
   item: HomesItem;
   viewerIsAgent: boolean;
-  // Every comment, not just the latest few (one conversation open).
-  showAll?: boolean;
-  // Reply under a home: the box at the foot answers in that home's thread.
+  // Reply under a home: the box at the foot answers about that home.
   onReply?: (home: ThreadHome) => void;
 }) {
   const n = item.homes.length;
@@ -53,7 +48,9 @@ export function HomesMessage({
         <span>
           <span className="font-semibold text-ink">{item.mine ? "You" : item.by.name}</span> sent {n} {n === 1 ? "home" : "homes"}
           {" · "}
-          <time dateTime={item.at}>{timeAgo(item.at)}</time>
+          <time dateTime={item.at} suppressHydrationWarning>
+            {timeAgo(item.at)}
+          </time>
         </span>
       </p>
       {item.welcome && (
@@ -68,15 +65,8 @@ export function HomesMessage({
       )}
       <ul className={cn("flex w-full max-w-[36rem] flex-col gap-3", item.mine && "items-end")}>
         {item.homes.map((home) => (
-          <li key={home.key} id={`home-${home.key}`} className="w-full">
-            <HomeCard
-              home={home}
-              href={open(home)}
-              mine={item.mine}
-              sender={item.mine}
-              showAll={showAll}
-              onReply={onReply && (() => onReply(home))}
-            />
+          <li key={home.key} id={home.anchor} className="w-full">
+            <HomeCard home={home} href={open(home)} mine={item.mine} sender={item.mine} onReply={onReply && (() => onReply(home))} />
           </li>
         ))}
       </ul>
@@ -89,7 +79,6 @@ function HomeCard({
   href,
   mine,
   sender,
-  showAll,
   onReply,
 }: {
   home: ThreadHome;
@@ -97,14 +86,12 @@ function HomeCard({
   mine: boolean;
   // The viewer sent it: opens and time spent are theirs to see.
   sender: boolean;
-  showAll: boolean;
   onReply?: () => void;
 }) {
   const likes = home.takes.filter((take) => take.verdict === "like");
   const passes = home.takes.filter((take) => take.verdict === "pass");
   const who = (takes: typeof home.takes) =>
     takes.length === 1 && takes[0].mine ? "You" : takes.map((take) => (take.mine ? "you" : take.name)).join(", ");
-  const comments = showAll ? home.comments : home.comments.slice(-COMMENTS_SHOWN);
   const chip = "inline-flex min-h-7 items-center gap-1 rounded-full px-2 text-meta font-semibold";
   return (
     <div className={cn("overflow-hidden rounded-2xl ring-1", mine ? "bg-brand/[0.07] ring-brand/20" : "bg-stone-100 ring-stone-200")}>
@@ -116,9 +103,9 @@ function HomeCard({
           <span className="block truncate text-meta text-muted">{home.city}</span>
         </span>
       </Link>
-      {/* What's happened to it, in one line of chips. */}
-      {(sender || likes.length > 0 || passes.length > 0 || home.comments.length > 0 || home.asked.length > 0) && (
-        <div className="flex flex-wrap items-center gap-1 px-2.5 pb-2.5">
+      {/* What's happened to it, in one line of chips, and Reply beside them. */}
+      {(sender || likes.length > 0 || passes.length > 0 || home.asked.length > 0 || onReply) && (
+        <div className="flex flex-wrap items-center gap-1 px-2.5 pb-1.5">
           {sender &&
             (home.opened ? (
               <span className={cn(chip, "bg-white/70 text-emerald-800")}>
@@ -140,59 +127,21 @@ function HomeCard({
               {who(passes)} passed
             </span>
           )}
-          {home.comments.length > 0 && (
-            <span className={cn(chip, "bg-white/70 text-stone-700")}>
-              <MessageCircle aria-hidden size={13} />
-              {home.comments.length} {home.comments.length === 1 ? "comment" : "comments"}
-            </span>
-          )}
           {home.asked.map((ask) => (
-            <span key={ask.at} className={cn(chip, "bg-amber-100 text-amber-900")}>
+            <span key={ask.at} suppressHydrationWarning className={cn(chip, "bg-amber-100 text-amber-900")}>
               <DoorOpen aria-hidden size={13} />
               {ask.mine ? "You asked" : `${ask.name} asked`} to see it · {whenWords(new Date(ask.at))}
             </span>
           ))}
-        </div>
-      )}
-      {comments.length > 0 && (
-        <ul aria-label={`Comments on ${home.address}`} className="flex flex-col gap-2 border-t border-black/[0.06] px-2.5 py-2.5">
-          {home.comments.length > comments.length && (
-            <li className="text-meta text-muted">{home.comments.length - comments.length} earlier</li>
+          {onReply && (
+            <button
+              type="button"
+              onClick={onReply}
+              className="ml-auto flex min-h-11 min-w-11 items-center justify-center px-2.5 text-meta font-semibold text-brand hover:underline"
+            >
+              Reply<span className="sr-only"> about {home.address}</span>
+            </button>
           )}
-          {comments.map((comment) => (
-            <li key={comment.id}>
-              <CommentBubble
-                name={
-                  <>
-                    {comment.mine ? "You" : comment.name}
-                    {comment.replyTo && (
-                      <span className="font-normal text-muted">
-                        {" "}
-                        replied to {comment.replyTo.name}
-                        {comment.replyTo.likes && "'s likes"}
-                      </span>
-                    )}
-                  </>
-                }
-                face={comment.name}
-                agent={comment.fromSender}
-                meta={<time dateTime={comment.at}>{timeAgo(comment.at)}</time>}
-              >
-                {comment.body}
-              </CommentBubble>
-            </li>
-          ))}
-        </ul>
-      )}
-      {onReply && (
-        <div className={cn("px-2.5 pb-1", comments.length === 0 && "border-t border-black/[0.06]")}>
-          <button
-            type="button"
-            onClick={onReply}
-            className="flex min-h-11 items-center text-meta font-semibold text-brand hover:underline"
-          >
-            Reply<span className="sr-only"> about {home.address}</span>
-          </button>
         </div>
       )}
     </div>
@@ -203,22 +152,85 @@ function HomeCard({
 // right in the site's blue, anyone else's on the left, their face beside it.
 export function MessageBubble({ item }: { item: MessageItem }) {
   return (
-    <li id={`message-${item.id}`} className={cn("flex items-end gap-2", item.mine ? "justify-end" : "justify-start")}>
-      {!item.mine && <Avatar name={item.by.name} photo={item.by.photo} tone={item.by.agent ? "agent" : "person"} size={6} />}
-      <div className={cn("flex max-w-[85%] flex-col", item.mine ? "items-end" : "items-start")}>
-        <p
+    <li id={`message-${item.id}`} className={cn("flex flex-col", item.mine ? "items-end" : "items-start")}>
+      <Bubble mine={item.mine} by={item.by} at={item.at}>
+        {item.body}
+      </Bubble>
+    </li>
+  );
+}
+
+// A word about one of the homes: the same bubble, with the home it's about
+// quoted above it (its photo and street, a tap to the home's card), as a
+// reply to a story is on a phone. `quote`: off when the word before it was
+// about the same home, from the same side (said once over the run).
+export function CommentMessage({ item, quote = true }: { item: CommentItem; quote?: boolean }) {
+  const street = item.about.address.split(",")[0];
+  return (
+    <li id={`comment-${item.id}`} className={cn("flex flex-col", item.mine ? "items-end" : "items-start")}>
+      {quote && (
+        <a
+          href={`#${item.about.anchor}`}
           className={cn(
-            "whitespace-pre-line break-words rounded-2xl px-4 py-2.5 text-body leading-snug",
-            item.mine ? "bg-brand text-white" : "bg-stone-100 text-ink",
+            "mb-1 flex min-h-11 max-w-[85%] items-center gap-2 border-stone-300 px-2 text-body text-stone-600 hover:text-ink",
+            item.mine ? "mr-0 border-r-2 text-right" : "ml-8 border-l-2",
           )}
         >
-          {item.body}
-        </p>
-        <span className="mt-0.5 px-1 text-meta text-muted">
-          {!item.mine && <span className="sr-only">{item.by.name}, </span>}
-          <time dateTime={item.at}>{timeAgo(item.at)}</time>
+          <HomeThumb src={item.about.photo} sizes="44px" className="size-10 shrink-0 rounded-lg" />
+          <span className="min-w-0 truncate">
+            About <span className="font-semibold text-ink">{street}</span>
+          </span>
+        </a>
+      )}
+      {item.replyTo && (
+        <span className={cn("px-1 text-meta text-muted", !item.mine && "ml-8")}>
+          Replying to {item.replyTo.name}
+          {item.replyTo.likes && "'s likes"}
         </span>
-      </div>
+      )}
+      <Bubble mine={item.mine} by={item.by} at={item.at} ask={item.ask}>
+        {item.body}
+      </Bubble>
     </li>
+  );
+}
+
+// The bubble itself: their face at its foot (not the viewer's own), the
+// words, and when under them.
+function Bubble({
+  mine,
+  by,
+  at,
+  ask = false,
+  children,
+}: {
+  mine: boolean;
+  by: ThreadPerson;
+  at: string;
+  ask?: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <div className={cn("flex max-w-[85%] flex-col", mine ? "items-end" : "items-start")}>
+      <div className="flex max-w-full items-end gap-2">
+        {!mine && <Avatar name={by.name} photo={by.photo} tone={by.agent ? "agent" : "person"} size={6} className="shrink-0" />}
+        <p
+          className={cn(
+            "min-w-0 whitespace-pre-line break-words rounded-2xl px-4 py-2.5 text-body leading-snug",
+            mine ? "bg-brand text-white" : "bg-stone-100 text-ink",
+            ask && !mine && "ring-2 ring-amber-300",
+          )}
+        >
+          {ask && <DoorOpen aria-hidden size={16} className="mr-1.5 inline align-[-3px]" />}
+          {children}
+        </p>
+      </div>
+      <span className={cn("mt-0.5 px-1 text-meta text-muted", !mine && "ml-8")}>
+        {!mine && <span className="sr-only">{by.name}, </span>}
+        <time dateTime={at} suppressHydrationWarning>
+          {timeAgo(at)}
+        </time>
+      </span>
+    </div>
   );
 }

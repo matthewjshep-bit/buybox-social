@@ -3,7 +3,7 @@
 // What you saved is yours alone, under Saved on your own profile, and nobody
 // else's page says anything of it.
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, openComments, openScorecard, signedIn, signInAgent, signUpBuyer } from "./helpers";
+import { createShare, heartOf, homeIn, openComments, openScorecard, pickHome, signedIn, signInAgent, signUpBuyer } from "./helpers";
 
 const TAMSEN = "1880 Tamsen Ridge Pl SE";
 const SALTMARSH = "719 Saltmarsh Ln";
@@ -193,19 +193,31 @@ test("from the box on your own page, a home is saved with nothing said, and it's
   test.setTimeout(60_000);
   const cora = await signUpBuyer(browser, "cora.composer@example.com", "Cora Composer");
   const profile = await ownPage(cora);
-  await cora.getByRole("button", { name: "Post or save a home…" }).click();
-  const form = cora.getByRole("form", { name: "Post or save a home" });
-  await form.getByRole("searchbox", { name: "Which home? Address, city, ZIP or MLS number" }).fill("Saltmarsh");
-  await form.getByRole("list", { name: "Homes" }).getByRole("button", { name: new RegExp(SALTMARSH) }).click();
-  await expect(form).toContainText(SALTMARSH);
-  // Post needs something said; Save doesn't.
-  await expect(form.getByRole("button", { name: "Post", exact: true })).toBeDisabled();
-  await expect(form.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
-  await form.getByRole("button", { name: "Save", exact: true }).click();
+  // The one box for posting or sending homes, opened in place at the top of her page.
+  await cora.getByRole("button", { name: "Send homes to someone" }).click();
+  const form = cora.locator("form[data-compose]");
+  await expect(form.getByRole("heading", { level: 2, name: "Post or send homes" })).toBeVisible();
+  await expect(form.getByRole("radio", { name: "Everyone" })).toHaveAttribute("aria-checked", "true");
+  await pickHome(cora, SALTMARSH);
+  // A home alone can go as a post; with nothing said, Save is there beside
+  // it to keep the home for her alone instead.
+  const save = form.getByRole("button", { name: "Save", exact: true });
+  await expect(form.getByRole("button", { name: "Post", exact: true })).toBeEnabled();
+  await expect(save).toBeEnabled();
+  // Once she says something it's a post: Save goes, and comes back when the words do.
+  const words = form.getByRole("textbox", { name: "Say something" });
+  await words.fill("Hmm");
+  await expect(save).toHaveCount(0);
+  await words.selectText();
+  await words.press("Backspace");
+  await expect(words).toHaveValue("");
+  await expect(save).toBeEnabled();
+  await save.click();
   await expect(cora.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
   await expect(form).toHaveCount(0);
   // Nothing posted: her page still has nothing on it for anyone.
   await expect(cora.getByRole("main")).not.toContainText("posted about this home");
+  await expect(cora.locator("main li[data-post]")).toHaveCount(0);
   await expect(cora.getByText("Nothing here yet")).toBeVisible();
 
   // It's under Saved.

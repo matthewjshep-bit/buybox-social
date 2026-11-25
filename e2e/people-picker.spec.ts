@@ -3,9 +3,10 @@ import { expect, test, type Page } from "@playwright/test";
 import { createShare, heartOf, homeIn, joinAs, linkMade, signInAgent, signUpBuyer, toFirstHome, toWho, pickHome } from "./helpers";
 
 // A link is named for the people it's for, and the people come from one
-// picker: a first name typed in, or someone on Porchcard, found by their
-// public first name only. (The names here are unusual on purpose: every test
-// shares one database, and "On Porchcard" finds anyone.)
+// picker, inside the box for sending homes (/send, under "Someone"): a first
+// name typed in, or someone on Porchcard, found by their public first name
+// only. (The names here are unusual on purpose: every test shares one
+// database, and "On Porchcard" finds anyone.)
 
 const emailsTo = (address: string) =>
   readFileSync("test-results-server.log", "utf8")
@@ -30,12 +31,13 @@ test("a link is named for its people, in the order they were added, and follows 
 }) => {
   test.setTimeout(90_000);
   const agent = await signInAgent(browser, "nora-names@example.com", "Nora Names");
-  await agent.goto("/dashboard/new");
+  await agent.goto("/send");
   await pickHome(agent, "1204 Quillan");
   await toWho(agent);
 
-  // Nobody yet: a link anyone can use.
-  await expect(agent.getByText("Leave it empty for a link anyone can use.")).toBeVisible();
+  // Nobody yet: the box says so, and won't send.
+  await expect(agent.getByText("Say who it's for.")).toBeVisible();
+  await expect(agent.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
   for (const name of ["Joe", "Ana", "Sam", "Lee"]) {
     await who.fill(name);
@@ -43,11 +45,10 @@ test("a link is named for its people, in the order they were added, and follows 
   }
   const chips = agent.getByRole("list", { name: "Who it's for" });
   await expect(chips.getByRole("listitem")).toHaveCount(4);
-  const preview = agent.getByText(/^This link will be called /);
-  await expect(preview).toHaveText("This link will be called Joe, Ana, Sam & 1 more.");
+  await expect(agent.getByText("Say who it's for.")).toHaveCount(0);
   await linkMade(agent);
 
-  // The page's title is the same, and there's no title to type.
+  // The link is named for them, in order, and there's no title to type.
   const title = agent.getByRole("heading", { level: 1 });
   await expect(title).toHaveText("Joe, Ana, Sam & 1 more");
   await expect(agent.getByRole("button", { name: /Rename/ })).toHaveCount(0);
@@ -98,8 +99,7 @@ test("someone who's already a client is picked from the list, by first name only
   test.setTimeout(120_000);
   const agent = await signInAgent(browser, "pia-picker@example.com", "Pia Picker");
   // A link anyone can join, and Xiomara joins it: she's Pia's client now.
-  await createShare(agent, ["1204 Quillan"], []);
-  const packageUrl = await agent.getByLabel("Your link is ready").inputValue();
+  const { url: packageUrl } = await openLink(agent, "SAMPLE-1009", "1204 Quillan St SE");
   const email = "xiomara.client@example.com";
   const xio = await signUpBuyer(browser, email, "Xiomara Client");
   await xio.goto(packageUrl);
@@ -108,7 +108,7 @@ test("someone who's already a client is picked from the list, by first name only
   await expect(heartOf(homeIn(xio, "1204 Quillan St SE"))).toHaveAttribute("aria-pressed", "true");
 
   // On a new link, two letters find her: her name and how Pia knows her, never her email.
-  await agent.goto("/dashboard/new");
+  await agent.goto("/send");
   await pickHome(agent, "4127 Larkmoor");
   await toWho(agent);
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
@@ -127,7 +127,6 @@ test("someone who's already a client is picked from the list, by first name only
   await who.press("Enter");
   await expect(agent.getByRole("list", { name: "Who it's for" })).toContainText("Xiomara");
   await expect(agent.getByText("We'll let Xiomara know on Porchcard.")).toBeVisible();
-  await expect(agent.getByText(/^This link will be called /)).toHaveText("This link will be called Xiomara.");
   await linkMade(agent);
 
   // She's on Porchcard already, so her profile is right there, and she's told.
@@ -162,7 +161,7 @@ test("someone Pia's never met: found only from two letters, never by email, told
   const agent = await signInAgent(browser, "bea-broker@example.com", "Bea Broker");
   const beaPage = await pageOf(agent);
 
-  await agent.goto("/dashboard/new");
+  await agent.goto("/send");
   await pickHome(agent, "1204 Quillan");
   await toWho(agent);
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
@@ -211,7 +210,7 @@ test("someone Pia's never met: found only from two letters, never by email, told
 
   // A second link from Bea: she's Bea's client now, isn't emailed again the
   // same day, and opening it doesn't start following Bea again.
-  await agent.goto("/dashboard/new");
+  await agent.goto("/send");
   await pickHome(agent, "4127 Larkmoor");
   await toWho(agent);
   await who.fill("Yv");
@@ -235,8 +234,8 @@ test("nobody is on a link twice: the same name, the same person, or an email", a
   test.setTimeout(120_000);
   const agent = await signInAgent(browser, "cy-dedupe@example.com", "Cy Dedupe");
 
-  // In the builder, a name typed twice is one person.
-  await agent.goto("/dashboard/new");
+  // In the box, a name typed twice is one person.
+  await agent.goto("/send");
   await pickHome(agent, "1204 Quillan");
   await toWho(agent);
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
@@ -264,8 +263,7 @@ test("nobody is on a link twice: the same name, the same person, or an email", a
   // Someone already on a link isn't suggested for it: Zuzanna joins a link
   // anyone can open, and isn't in its list.
   const zuzana = await signUpBuyer(browser, "zuzanna.dedupe@example.com", "Zuzanna Dedupe");
-  const { dashboardUrl } = await createShare(agent, ["4127 Larkmoor"], []);
-  const open = await agent.getByLabel("Your link is ready").inputValue();
+  const { url: open, dashboardUrl } = await openLink(agent, "SAMPLE-1001", "4127 Larkmoor Ave NE");
   await zuzana.goto(open);
   await toFirstHome(zuzana);
   await heartOf(homeIn(zuzana, "4127 Larkmoor Ave NE")).click();
@@ -312,11 +310,30 @@ async function watchLinks(page: Page) {
 }
 
 // An agent on a home, once the page has a link waiting for Send.
-async function readyToSend(page: Page) {
+async function readyToSend(page: Page, key = "SAMPLE-1004") {
   const tokens = await watchLinks(page);
   const before = tokens.length;
-  await page.goto("/homes/SAMPLE-1004");
+  await page.goto(`/homes/${key}`);
   await expect.poll(() => tokens.length).toBeGreaterThan(before);
+}
+
+// A link anyone can open, the way an agent gets one in a tap: Send on the
+// home, the share sheet (stood in for) handed the link, and nobody named in
+// the sheet that follows. (The box won't send to nobody: "Say who it's for.")
+// Gives back the link, and where it is on the dashboard.
+async function openLink(page: Page, key: string, address: string) {
+  await readyToSend(page, key);
+  await homeIn(page, address).getByRole("button", { name: `Send ${address}`, exact: true }).click();
+  const sheet = page.getByRole("dialog", { name: "Sent. Who's it for?" });
+  await expect(sheet).toBeVisible();
+  const details = sheet.getByRole("link", { name: "Link details" });
+  await expect(details).toHaveAttribute("href", /^\/dashboard\/shares\/[\w-]+$/);
+  const dashboardUrl = (await details.getAttribute("href"))!;
+  await sheet.getByRole("button", { name: "Skip" }).click();
+  await expect(sheet).toBeHidden();
+  const url = await page.evaluate(() => (window as unknown as { shared: ShareData[] }).shared.at(-1)?.url ?? "");
+  expect(url).toMatch(/\/s\/[\w-]{32}$/);
+  return { url, dashboardUrl };
 }
 
 test("a home from Send named for Toby: whoever opens it as Toby is Toby, once; and an unsaved name doesn't stop Undo", async ({
@@ -378,12 +395,13 @@ test("the picker works from the keyboard and says what it finds", async ({ brows
   test.setTimeout(60_000);
   const agent = await signInAgent(browser, "ari-aria@example.com", "Ari Aria");
 
-  // Who it's for is a step of its own, ready to type.
-  await agent.goto("/dashboard/new");
+  // Who it's for opens in the box under "Someone", ready to type.
+  await agent.goto("/send");
   await pickHome(agent, "1204 Quillan");
   await toWho(agent);
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
-  await expect(who).toBeFocused();
+  await expect(who).toBeVisible();
+  await who.focus();
   await expect(who).toHaveAttribute("aria-autocomplete", "list");
   await expect(who).toHaveAttribute("aria-expanded", "false");
 
@@ -414,7 +432,7 @@ test("the picker works from the keyboard and says what it finds", async ({ brows
   const chips = agent.getByRole("list", { name: "Who it's for" });
   await expect(chips.getByRole("listitem")).toHaveCount(2);
   await expect(who).toHaveValue("");
-  await expect(agent.getByText(/^This link will be called /)).toHaveText("This link will be called Rosamund & Remiel.");
+  await expect(agent.getByText("Say who it's for.")).toHaveCount(0);
 
   // Backspace in the empty field takes the last one off, and says so.
   await who.press("Backspace");
@@ -424,7 +442,8 @@ test("the picker works from the keyboard and says what it finds", async ({ brows
   await chips.getByRole("button", { name: "Remove Rosamund" }).click();
   await expect(chips).toHaveCount(0);
   await expect(who).toBeFocused();
-  await expect(agent.getByText("Leave it empty for a link anyone can use.")).toBeVisible();
+  // Nobody again: the box says so.
+  await expect(agent.getByText("Say who it's for.")).toBeVisible();
 
   // Tab leaves without picking anything.
   await who.fill("Tamsin");

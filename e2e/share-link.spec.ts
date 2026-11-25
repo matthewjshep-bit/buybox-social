@@ -2,9 +2,26 @@ import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 import { commentIn, createShare, heartOf, homeIn, joinAs, linkPorchcard, openComments, pick, saveDetails, signedIn, signInAgent, toFirstHome } from "./helpers";
 
-// The link anyone can join, when no one was named.
-async function packageLink(agent: Page, addresses: string[]) {
-  const { dashboardUrl } = await createShare(agent, addresses, []);
+// The link anyone can join, when no one was named. The box for sending
+// homes asks who it's for, so this is the one-tap Send on the home itself
+// (which makes the link first and asks who it's for after): skipped past,
+// straight to the link's own page, where the link is read.
+async function packageLink(agent: Page, key: string, address: string) {
+  await agent.goto(`/homes/${key}`);
+  await homeIn(agent, address).getByRole("button", { name: `Send ${address}`, exact: true }).click();
+  // (On a computer the link is copied; the sheet asks who it's for. On a
+  // busy machine the link takes a moment to be made.)
+  const sheet = agent.getByRole("dialog", { name: /^(Sent\. )?Who's it for\?$|^Send this home$/ });
+  await expect(sheet).toBeVisible({ timeout: 15_000 });
+  // (The sheet's body loads a beat after it opens.) The slower way, when the
+  // one tap couldn't copy the link: made here.
+  const create = sheet.getByRole("button", { name: "Create link" });
+  const details = sheet.getByRole("link", { name: "Link details", disabled: false });
+  await expect(create.or(details)).toBeVisible();
+  if (await create.isVisible()) await create.click();
+  await details.click();
+  await agent.waitForURL(/\/dashboard\/shares\/[\w-]+(\?tab=.*)?$/);
+  const dashboardUrl = agent.url().split("?")[0];
   return { url: await agent.getByLabel("Your link is ready").inputValue(), dashboardUrl };
 }
 
@@ -179,7 +196,7 @@ test("ask to see it: a first name, then the ask under the home and an email to t
 }) => {
   test.setTimeout(60_000);
   const agent = await signInAgent(browser, "ask-agent@example.com", "Priya Shah");
-  const { url } = await packageLink(agent, ["812 N Corbel"]);
+  const { url } = await packageLink(agent, "SAMPLE-1003", "812 N Corbel St");
 
   // Someone opens it and likes the home: the agent hears about both, the
   // open never holding back the like, and the next batched email is 10 minutes off.
@@ -435,7 +452,7 @@ test("the agent's Porchcard for the link says who on it hasn't weighed in yet; t
 test("one person on two devices is one person: on the agent's Porchcard once, and not still to come", async ({ browser }) => {
   test.setTimeout(90_000);
   const agent = await signInAgent(browser, "twice-agent@example.com", "Jordan Rivera");
-  const { url, dashboardUrl } = await packageLink(agent, ["812 N Corbel"]);
+  const { url, dashboardUrl } = await packageLink(agent, "SAMPLE-1003", "812 N Corbel St");
   const ADDRESS = "812 N Corbel St";
 
   // Says who they are with a pass (a pass stays on the link), and unless
@@ -478,7 +495,7 @@ test("one person on two devices is one person: on the agent's Porchcard once, an
 test("'only you' is said only when nobody else can read it: not once the package link is out", async ({ browser }) => {
   test.setTimeout(60_000);
   const agent = await signInAgent(browser, "out-agent@example.com", "Jordan Rivera");
-  const { url } = await packageLink(agent, ["4127 Larkmoor"]);
+  const { url } = await packageLink(agent, "SAMPLE-1001", "4127 Larkmoor Ave NE");
 
   // Someone opens the package's own link, and never says who they are.
   const holder = await (await browser.newContext()).newPage();

@@ -97,33 +97,32 @@ export async function enterListingYourself(page: Page) {
 // Sending homes goes a step at a time: the homes, who it's for, then (on the
 // link itself) what the agent thinks of them. From the homes (one picked), on
 // to who it's for.
+// On the box for sending homes (/send): Someone, and the picker for who.
 export async function toWho(page: Page) {
-  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page.getByRole("radio", { name: "Someone" }).click();
   await expect(page.getByRole("combobox", { name: "Who's it for?" })).toBeVisible();
 }
 
-// Who it's for is said: Next makes the link and opens it for the agent's own
-// thoughts (the last step), which Done skips; then the link, ready to copy.
+// Send: the homes go, and the conversation with them opens, each person's
+// link ready to copy at its foot.
 export async function toLinkReady(page: Page) {
-  await page.getByRole("button", { name: "Next", exact: true }).click();
-  await page.waitForURL(/\/s\/[\w-]+\?step=thoughts$/);
-  // (Skip, with nothing said on it; Done, once there is.)
-  await page.getByRole("banner").getByRole("link", { name: /^(Skip|Done)$/ }).click();
-  await page.waitForURL(/\/dashboard\/shares\/[\w-]+\/sent$/);
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await page.waitForURL(/\/messages\/.+\?sent=/);
+  await expect(page.getByRole("region", { name: "Links to send" })).toBeVisible();
 }
 
-// The same, and then Done again: on to the link's own page.
+// The same, and then on to the link's own page (Link details).
 export async function linkMade(page: Page) {
   await toLinkReady(page);
-  await page.getByRole("link", { name: "Done", exact: true }).click();
-  await page.waitForURL(/\/dashboard\/shares\/[\w-]+\?tab=/);
+  await page.getByRole("link", { name: "Link details" }).click();
+  await page.waitForURL(/\/dashboard\/shares\/[\w-]+(\?tab=.*)?$/);
 }
 
-// On Send homes: a home found by typing its address, and picked from what's
-// offered under the box. (With nothing typed, the agent's own listings, homes
-// they've had to do with, then "Homes to send", each picked with a tap.)
+// On the box: a home found by typing its address (the search opens with
+// "Add a home" when it isn't open yet), picked from the homes that match.
 export async function pickHome(page: Page, address: string) {
   const search = page.getByRole("combobox", { name: "Address, MLS number, or a link to the home" });
+  if (!(await search.isVisible())) await page.getByRole("button", { name: /^Add (a|another) home$/ }).click();
   await search.fill(address);
   await page.getByRole("listbox", { name: "Homes that match" }).getByRole("option", { name: new RegExp(address) }).click();
   await expect(page.getByRole("list", { name: "Picked homes" })).toContainText(address);
@@ -132,9 +131,8 @@ export async function pickHome(page: Page, address: string) {
 // A package of homes for one or more people. Each person gets their own link.
 // (With nobody, it's a link anyone can join: packageLink, in share-link.spec.ts.)
 export async function createShare(page: Page, addresses: string[], people: string[] = ["Jamie"]) {
-  await page.goto("/dashboard/new");
+  await page.goto("/send?aud=someone");
   for (const address of addresses) await pickHome(page, address);
-  await toWho(page);
   // Who it's for: each first name typed, then Enter, as someone new.
   const who = page.getByRole("combobox", { name: "Who's it for?" });
   for (const name of people) {
@@ -142,13 +140,14 @@ export async function createShare(page: Page, addresses: string[], people: strin
     await who.press("Enter");
     await expect(page.getByRole("list", { name: "Who it's for" }).getByText(name, { exact: true })).toBeVisible();
   }
-  // The link's made, the agent's own thoughts skipped, and it's ready: each person's, to copy.
+  // Sent: the conversation opens, each person's link ready to copy.
   await toLinkReady(page);
   const urls: Record<string, string> = {};
   for (const name of people) urls[name] = await page.getByLabel(`${name}'s link`).inputValue();
-  const dashboardUrl = page.url().replace(/\/sent$/, "");
+  const details = (await page.getByRole("link", { name: "Link details" }).getAttribute("href"))!;
+  const dashboardUrl = new URL(details, page.url()).toString();
   // On to the link's own page, where everything after carries on.
-  await page.getByRole("link", { name: "Done", exact: true }).click();
+  await page.goto(dashboardUrl);
   await page.waitForURL(/\/dashboard\/shares\/[\w-]+\?tab=/);
   return { url: urls[people[0]], urls, dashboardUrl };
 }
@@ -171,7 +170,7 @@ export async function signUpBuyer(browser: Browser, email: string, name: string,
   await throughWelcome(page, "buyer");
   await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
   await expect(page.getByRole("form", { name: "Sign up" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Send homes to someone" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send homes to someone" })).toBeVisible();
   await page.goto("/browse");
   await expect(page.getByRole("article").first()).toBeVisible();
   return page;
@@ -452,9 +451,21 @@ export const threadRow = (page: Page, name: string) =>
     .filter({ has: page.getByText(name, { exact: true }) });
 
 // A home's card in an open conversation (/messages/<key>), by its address:
-// its photo, price and address, then what's happened to it and what was said.
+// its photo, price and address, then one line of what's happened to it
+// (opened, liked, passed, asked to see it) and Reply. Nothing said about it
+// is in the card: each word is a message of its own (threadComment).
 export const threadHome = (page: Page, address: string) =>
   page.getByRole("list", { name: "Messages" }).locator("li[id^='home-']").filter({ hasText: address });
+
+// What was said about a home in an open conversation: a bubble of its own
+// among the messages (not inside the home's card), the home it's about
+// quoted above it as "About <street>" (a link to the home's card).
+export const threadComment = (page: Page, street: string, words: string) =>
+  page
+    .getByRole("list", { name: "Messages" })
+    .locator("li[id^='comment-']")
+    .filter({ hasText: words })
+    .filter({ hasText: `About ${street}` });
 
 // From Messages to someone's conversation: their row, then the page named for them.
 export async function openThread(page: Page, name: string) {

@@ -129,7 +129,7 @@ export function FollowingCard({
   const href = feedReel(home.key, home.photo?.index);
   const time = cardTime(entry.at);
   return (
-    <li className={cn(card, "relative overflow-hidden")}>
+    <li data-item={`home:${home.key}`} className={cn(card, "relative overflow-hidden")}>
       <Link
         href={href}
         aria-label={label}
@@ -224,7 +224,7 @@ export function StripCard({ entries }: { entries: HomeFeedEntry[] }) {
   const highlights = (key?: string) =>
     `/reel?${new URLSearchParams({ from: who.profileId ?? "feed", ...(key && { home: key }) })}`;
   return (
-    <li className={cn(card, "p-3.5")}>
+    <li data-item={entries.map((entry) => `home:${entry.home.key}`).join(" ")} className={cn(card, "p-3.5")}>
       <div className="flex items-center gap-3">
         <FaceStack who={[who]} />
         <p className="min-w-0 flex-1 text-body leading-snug">

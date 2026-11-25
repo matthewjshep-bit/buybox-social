@@ -6,6 +6,7 @@ import { createContext, useContext, useLayoutEffect, useRef, useState, useTransi
 import { useCommentLike, useThread, type ReplyTarget, type SpotRef } from "@/components/listing-thread";
 import { spotThread } from "@/components/photo-spots";
 import { Avatar, Badge } from "@/components/ui";
+import { FEED_FIRST, FEED_MORE, rankComments } from "@/lib/comment-rank";
 import type { FeedPost } from "@/lib/feed";
 import { cn, timeAgo } from "@/lib/format";
 import { spotName } from "@/lib/photos";
@@ -18,7 +19,9 @@ import type { TimelineComment, TimelineReaction } from "@/lib/timeline";
 // "View all" to read the rest. Unfurled (open): the whole thread in the same
 // place and the same style, each comment with Reply and a heart, replies
 // folded under it, and the comment box at the foot. Never who reacted how:
-// the likes line says how many (and, on a link, who).
+// the likes line says how many (and, on a link, who). Under a card in a
+// feed, as LinkedIn has it: a few at a time, the ones with something to
+// them first (lib/comment-rank.ts), and "See N more comments" for the rest.
 
 // How many comments show before "View all".
 export const PREVIEW_MOST = 3;
@@ -48,6 +51,10 @@ type Tone = {
   line: string;
   share: string;
   likeOn: string;
+  // Rows read as a post's comments do: the name and when on one line, the
+  // words under them (on white, under a card); else name, words and when
+  // run on, as a reel's do.
+  stacked: boolean;
 };
 
 const DARK: Tone = {
@@ -68,13 +75,14 @@ const DARK: Tone = {
   line: "bg-white/30",
   share: "text-sky-300",
   likeOn: "text-rose-400",
+  stacked: false,
 };
 
 const LIGHT: Tone = {
   fg: "text-ink",
   body: "text-ink",
   meta: "text-muted",
-  dim: "text-stone-500",
+  dim: "text-stone-600",
   soft: "text-stone-600",
   strong: "text-stone-700",
   faint: "text-muted",
@@ -88,6 +96,7 @@ const LIGHT: Tone = {
   line: "bg-stone-300",
   share: "text-brand",
   likeOn: "text-rose-600",
+  stacked: true,
 };
 
 const ToneContext = createContext<Tone>(DARK);
@@ -142,8 +151,16 @@ export function CommentThread({
   className?: string;
 }) {
   const t = look === "inline" ? LIGHT : DARK;
+  const inline = look === "inline";
   const liked = likes ?? post.likes;
   const all = post.timeline.filter((item): item is TimelineComment => item.kind === "comment");
+  // Under a card: what was there when the thread opened. Anything since (the
+  // viewer's own words, first of all) leads, whatever its rank, so a comment
+  // just posted is in sight, not behind "See more".
+  const [known] = useState(() => new Set(all.map((comment) => comment.id)));
+  const isNew = (comment: TimelineComment) => inline && !known.has(comment.id);
+  // How many times "See more" has been asked for.
+  const [more, setMore] = useState(0);
   const inScope = spot ? (spotThread(post.timeline, spot) as TimelineComment[]) : all;
   const name = spot ? spotName(post.listing, spot) : null;
   // The agent's first (on a link, theirs are marked; on their own listing's
@@ -155,6 +172,12 @@ export function CommentThread({
     .filter((comment) => !comment.parentId || !ids.has(comment.parentId))
     .sort((a, b) => Number(leads(b)) - Number(leads(a)) || b.at.localeCompare(a.at));
   const repliesTo = (id: string) => inScope.filter((comment) => comment.parentId === id).sort((a, b) => a.at.localeCompare(b.at));
+  // Under a card: the ones with something to them first, a few at a time.
+  const ranked = inline ? rankComments(top, (id) => repliesTo(id).length) : top;
+  const fresh = ranked.filter((comment) => isNew(comment) || repliesTo(comment.id).some(isNew));
+  const rest = ranked.filter((comment) => !fresh.includes(comment));
+  const shownTop = inline ? [...fresh, ...rest.slice(0, FEED_FIRST + more * FEED_MORE)] : ranked;
+  const hidden = ranked.length - shownTop.length;
   // (Under a card, the bar's heart already says how many liked it.)
   const likesLine = liked > 0 && !spot && look !== "inline" && (
     <p className="py-1.5 text-body font-semibold leading-5">{likedLine(liked, mode === "share" ? post.likers : [], mineLiked)}</p>
@@ -176,7 +199,7 @@ export function CommentThread({
       {likesLine}
       {top.length > 0 ? (
         <ul data-comment-list data-keep-clear aria-label={name ? `Comments on ${name}` : "Comments"} className="flex flex-col">
-          {top.map((comment) => (
+          {shownTop.map((comment) => (
             <Row
               key={comment.id}
               comment={comment}
@@ -194,6 +217,15 @@ export function CommentThread({
         <p data-comment-list className={cn("py-3 text-body", t.meta)}>
           No comments{name ? ` on ${name}` : ""} yet.
         </p>
+      )}
+      {hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => setMore(more + 1)}
+          className={cn("flex min-h-11 items-center text-body font-semibold transition-colors", t.soft, t.hoverFg)}
+        >
+          See {hidden.toLocaleString("en-US")} more {hidden === 1 ? "comment" : "comments"}
+        </button>
       )}
       {mode === "public" && !spot && (
         <p className={cn("mt-4 text-center text-meta leading-5", t.faint)}>
@@ -416,6 +448,49 @@ function Said({
     ) : (
       <b className="font-semibold">{comment.name}</b>
     );
+  const when = (
+    <span className={cn("whitespace-nowrap text-meta", t.meta)}>
+      ·{" "}
+      <time dateTime={comment.at} suppressHydrationWarning>
+        {timeAgo(comment.at)}
+      </time>
+    </span>
+  );
+  // As a post's comments read: who and when on one line, the words under.
+  if (t.stacked && !clamp) {
+    return (
+      <>
+        <span className="flex flex-wrap items-center gap-x-1.5">
+          {name}
+          {comment.isAgent && (
+            <Badge tone="ink" small className={cn("ring-1", t.badgeRing)}>
+              Agent
+            </Badge>
+          )}
+          {comment.fromPrivateChat && <Lock aria-hidden size={11} className={cn("inline", t.dim)} />}
+          {when}
+        </span>
+        <span className="block">
+          {comment.spot && spots && (
+            <>
+              <button
+                type="button"
+                data-spot-tag={comment.spot.tag}
+                onClick={() => spots.show(comment.spot!)}
+                className={cn("relative z-[1] inline-flex min-h-6 items-center gap-1 rounded-full px-2 text-meta font-semibold hit-44", t.chip)}
+              >
+                <MapPin aria-hidden size={12} />
+                <span className="sr-only">About </span>
+                {spots.name(comment.spot)}
+                <span className="sr-only">: show it</span>
+              </button>{" "}
+            </>
+          )}
+          <span className={cn(t.body, "whitespace-pre-line break-words")}>{comment.body}</span>
+        </span>
+      </>
+    );
+  }
   return (
     <>
       {name}
@@ -444,13 +519,7 @@ function Said({
           )}{" "}
         </>
       )}
-      <span className={cn(t.body, !clamp && "whitespace-pre-line break-words")}>{comment.body}</span>{" "}
-      <span className={cn("whitespace-nowrap text-meta", t.meta)}>
-        ·{" "}
-        <time dateTime={comment.at} suppressHydrationWarning>
-          {timeAgo(comment.at)}
-        </time>
-      </span>
+      <span className={cn(t.body, !clamp && "whitespace-pre-line break-words")}>{comment.body}</span> {when}
     </>
   );
 }

@@ -236,7 +236,7 @@ test("a home found by its address is added with one tap, says who listed it, and
   const row = agent.getByRole("list", { name: "Your listings" }).getByRole("listitem").filter({ hasText: "1204 Quillan St SE" });
   await expect(row).toContainText("On your profile");
   // It can be sent from here: the way to a link, with this home picked.
-  await expect(row.getByRole("link", { name: "Send 1204 Quillan St SE" })).toHaveAttribute("href", "/dashboard/new?home=SAMPLE-1009");
+  await expect(row.getByRole("link", { name: "Send 1204 Quillan St SE" })).toHaveAttribute("href", "/send?home=SAMPLE-1009");
   // On a small phone (360px) Send, Remove and the star share one line under the words.
   await agent.setViewportSize({ width: 360, height: 740 });
   await expectOneLine(row, ["Send 1204 Quillan St SE", "Remove 1204 Quillan St SE", "Feature 1204 Quillan St SE"]);
@@ -337,7 +337,7 @@ test("an MLS listing of theirs is changed through their own copy, which takes it
   await expect(fromMls.getByRole("listitem")).toHaveCount(2);
   // Each can be sent as it is, and what the star does is said once above them.
   await expect(fromMls.getByRole("link", { name: /^Send / })).toHaveCount(2);
-  await expect(fromMls.getByRole("link", { name: "Send 96 Fernhollow Ln" })).toHaveAttribute("href", "/dashboard/new?home=SAMPLE-1004");
+  await expect(fromMls.getByRole("link", { name: "Send 96 Fernhollow Ln" })).toHaveAttribute("href", "/send?home=SAMPLE-1004");
   await expect(agent.getByRole("main")).toContainText("The starred listing shows first on your profile.");
   await fromMls.getByRole("button", { name: "Edit 96 Fernhollow Ln" }).click();
   await agent.waitForURL(/\/dashboard\/listings\/OWN-[\w-]+$/);
@@ -605,12 +605,15 @@ test("on a phone a listing's address and price are never cut short, and Send sta
   // Send: on to Send homes, with this listing already picked.
   await agent.setViewportSize({ width: 390, height: 780 });
   await row.getByRole("link", { name: `Send ${LONG}` }).click();
-  await agent.waitForURL(/\/dashboard\/new\?home=OWN-[\w-]+$/);
-  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send this home");
-  const picked = agent.getByRole("button", { pressed: true });
+  await agent.waitForURL(/\/send\?home=OWN-[\w-]+$/);
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send homes");
+  const picked = agent.getByRole("list", { name: "Picked homes" }).getByRole("listitem");
   await expect(picked).toHaveCount(1);
   await expect(picked).toContainText(LONG);
-  await expect(agent.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
+  await expect(picked.getByRole("button", { name: `Remove ${LONG}` })).toBeVisible();
+  // For someone, since a home's picked; all that's missing is who.
+  await expect(agent.getByRole("radio", { name: "Someone" })).toHaveAttribute("aria-checked", "true");
+  await expect(agent.getByText("Say who it's for.")).toBeVisible();
 
   // Closed, it stays on her profile (so it keeps its star), but a link takes only homes for sale: no Send.
   await agent.goto("/dashboard/listings");

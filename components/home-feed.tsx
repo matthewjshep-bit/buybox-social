@@ -2,8 +2,11 @@ import type { ReactNode } from "react";
 import { CaughtUp } from "@/components/home/caught-up";
 import { FeedGate } from "@/components/home/feed-gate";
 import { FollowingCard, StripCard } from "@/components/home/following-card";
+import { PostCard } from "@/components/home/post-card";
+import { Seen } from "@/components/home/seen";
 import { cn } from "@/lib/format";
-import type { FeedCounts, HomeFeedEntry } from "@/lib/home-feed";
+import type { FeedCounts, FeedItem, HomeFeedEntry } from "@/lib/home-feed";
+import type { PostEntry } from "@/lib/posts";
 import type { ReactionState } from "@/lib/reactions";
 import { card } from "@/lib/ui";
 
@@ -22,7 +25,7 @@ const STRIP_FROM = 3;
 // With nothing new, whatever goes in the stream (`among`) comes after this many cards.
 const AMONG_AFTER = 3;
 
-type Item = { kind: "card"; entry: HomeFeedEntry } | { kind: "strip"; entries: HomeFeedEntry[] };
+type Item = { kind: "card"; entry: HomeFeedEntry } | { kind: "strip"; entries: HomeFeedEntry[] } | { kind: "post"; entry: PostEntry };
 
 // One person's like with nothing said: what a strip is made of.
 const quiet = (entry: HomeFeedEntry) =>
@@ -30,12 +33,13 @@ const quiet = (entry: HomeFeedEntry) =>
 
 // The stream's cards, with each person's busy, wordless days drawn as strips
 // where their first card would have been.
-function itemsOf(entries: HomeFeedEntry[]): Item[] {
+function itemsOf(entries: FeedItem[]): Item[] {
   const dayOf = (entry: HomeFeedEntry) => `${entry.why.who[0].profileId}|${entry.day}`;
   const days = new Map<string, HomeFeedEntry[]>();
-  for (const entry of entries.filter(quiet)) days.set(dayOf(entry), [...(days.get(dayOf(entry)) ?? []), entry]);
+  for (const entry of entries) if (entry.kind !== "post" && quiet(entry)) days.set(dayOf(entry), [...(days.get(dayOf(entry)) ?? []), entry]);
   const placed = new Set<string>();
   return entries.flatMap((entry): Item[] => {
+    if (entry.kind === "post") return [{ kind: "post", entry }];
     const day = quiet(entry) ? days.get(dayOf(entry)) : undefined;
     if (!day || day.length < STRIP_FROM) return [{ kind: "card", entry }];
     if (placed.has(dayOf(entry))) return [];
@@ -53,7 +57,7 @@ export function FollowingFeed({
   empty,
   me = null,
 }: {
-  entries: HomeFeedEntry[];
+  entries: FeedItem[];
   // Their own take on each home, by key, for the hearts.
   mine: Record<string, ReactionState>;
   // How many liked each home and how many comments it has, by key, for the bars.
@@ -90,6 +94,8 @@ export function FollowingFeed({
               mine={mine[item.entry.home.key] ?? null}
               counts={counts[item.entry.home.key] ?? { likes: 0, comments: 0 }}
             />
+          ) : item.kind === "post" ? (
+            <PostCard key={item.entry.id} entry={item.entry} reelFrom="feed" mine={mine} counts={counts} />
           ) : (
             <StripCard key={`strip:${item.entries[0].id}`} entries={item.entries} />
           ),
@@ -121,6 +127,11 @@ export function FollowingFeed({
         {list(olderItems)}
       </div>
     );
-  // (The cards' hearts and comments all work through the one gate.)
-  return <FeedGate myName={me?.name || null}>{body}</FeedGate>;
+  // (The cards' hearts and comments all work through the one gate; what was
+  // in front of them is noted, for next time.)
+  return (
+    <FeedGate myName={me?.name || null}>
+      <Seen>{body}</Seen>
+    </FeedGate>
+  );
 }

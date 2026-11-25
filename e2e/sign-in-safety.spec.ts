@@ -110,8 +110,8 @@ test("signed out at a page that takes an account, signing in lands on that page"
   await emailAndCode(sender, `sol.${stamp}@example.com`);
   await pastNameStep(sender, "Sol");
   await expect(sender).toHaveURL("/send?home=SAMPLE-1005");
-  await expect(sender.getByRole("heading", { level: 1 })).toHaveText("Send this home");
-  await expect(sender.getByRole("main")).toContainText(HALVARD);
+  await expect(sender.getByRole("heading", { level: 1 })).toHaveText("Send homes");
+  await expect(sender.getByRole("list", { name: "Picked homes" })).toContainText(HALVARD);
 
   // Your own profile's short address, and the admin: the same.
   const anon = await (await browser.newContext()).newPage();

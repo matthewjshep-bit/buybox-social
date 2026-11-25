@@ -39,7 +39,7 @@ export function Composer({
             type="button"
             onClick={onClearAbout}
             aria-label="Reply to the conversation instead"
-            className="flex size-9 shrink-0 items-center justify-center rounded-full hover:bg-stone-100"
+            className="flex size-9 shrink-0 items-center justify-center rounded-full hover:bg-stone-100 hit-44"
           >
             <X aria-hidden size={16} />
           </button>

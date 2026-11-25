@@ -198,10 +198,10 @@ test("the page for agents tells the home page's pitch, and its button says what 
   // It does what it says: an agent's account, by the name they have. Their
   // details are among their profile settings.
   await become.click();
-  // (The old Clients address lands on Messages; sending homes there is an agent's builder.)
+  // (The old Clients address lands on Messages; sending homes there is the box, for someone.)
   await buyer.waitForURL((url) => url.pathname === "/messages");
   await expect(buyer.getByRole("heading", { level: 1 })).toHaveText("Messages");
-  await expect(buyer.getByRole("link", { name: "Send homes" }).first()).toHaveAttribute("href", "/dashboard/new");
+  await expect(buyer.getByRole("link", { name: "Send homes" }).first()).toHaveAttribute("href", "/send?aud=someone");
 
   // An agent: their dashboard, by its name.
   await buyer.goto("/for-agents");

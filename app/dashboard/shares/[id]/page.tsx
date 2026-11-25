@@ -267,7 +267,7 @@ export default async function ShareDetailPage({
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
           <h1 className={cn(pageTitle, "mt-1 min-w-0")}>{clientName}</h1>
           <Link
-            href={`/dashboard/new?share=${share.id}`}
+            href={`/send?share=${share.id}`}
             className={cn(button({ kind: "primary", size: "lg" }), "mt-1 shrink-0 whitespace-nowrap")}
           >
             <Plus aria-hidden size={20} /> Send more homes

@@ -566,7 +566,7 @@ export function DraftBody({ home, onNextToken }: { home: SendHome; onNextToken: 
               {pending ? "Creating…" : "Create link"}
             </button>
             <Link
-              href={`/dashboard/new?home=${encodeURIComponent(home.listingKey)}`}
+              href={`/send?home=${encodeURIComponent(home.listingKey)}`}
               className="mx-auto flex min-h-11 items-center gap-1 px-3 text-sm font-semibold text-brand"
             >
               More homes or people <ChevronRight aria-hidden size={16} />

@@ -1,21 +1,22 @@
-import { Bookmark, Building2, House, ListChecks, Send, UserRoundSearch } from "lucide-react";
+import { Bookmark, Building2, House, ListChecks, UserRoundSearch } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { HomeShell, ProfileRail, type RailLink } from "@/components/home/home-shell";
 import { ClientActivity } from "@/components/home/client-activity";
 import { PeopleCard } from "@/components/home/people-card";
 import { FollowingFeed } from "@/components/home-feed";
+import { Compose } from "@/components/compose/compose";
 import { Avatar } from "@/components/ui";
 import type { BannerChoice } from "@/lib/banner";
 import type { ClientEvent } from "@/lib/client-activity";
 import type { ClientBook } from "@/lib/clients";
 import type { FollowCounts } from "@/lib/follows";
 import { cn } from "@/lib/format";
-import type { FeedCounts, HomeFeedEntry } from "@/lib/home-feed";
+import type { FeedCounts, FeedItem } from "@/lib/home-feed";
 import { hasRated, waitingLinks, type MyLink } from "@/lib/my-links";
 import type { FoundPerson } from "@/lib/people";
 import type { ReactionState } from "@/lib/reactions";
-import { button, card } from "@/lib/ui";
+import { button } from "@/lib/ui";
 
 // Home, one page for everyone. Down the left, them: their card and the places
 // the bar at the top doesn't have. In the middle: the box to send homes; the
@@ -125,7 +126,7 @@ export function Home({
   links: MyLink[];
   // People to follow, the likeliest first: the card shows three.
   suggestions: FoundPerson[];
-  feed: HomeFeedEntry[];
+  feed: FeedItem[];
   mine: Record<string, ReactionState>;
   // How many liked each home in the feed and how many comments it has, by key.
   counts: Record<string, FeedCounts>;
@@ -231,19 +232,13 @@ export function Home({
         )
       }
     >
-      {/* Shaped like a box to type in, with the bar's own paper plane in it:
-          the steps for sending homes (an agent's, to a client). */}
-      <div className={cn(card, "flex items-center gap-3 p-3")}>
-        <Avatar name={me.name} tone={agent ? "agent" : "person"} photo={me.photo} size={10} />
-        <Link
-          href={agent ? "/dashboard/new" : "/send"}
-          aria-label={agent ? "Send homes to a client" : "Send homes to someone"}
-          className="flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-full border border-stone-300 px-4 text-body hover:border-stone-400 hover:bg-stone-50"
-        >
-          <Send aria-hidden size={18} className="shrink-0 text-stone-500" />
-          <span className="text-stone-600">Send homes…</span>
-        </Link>
-      </div>
+      {/* The box for saying something and sending homes, opening in place. */}
+      <Compose
+        mode="inline"
+        me={{ name: me.name, photo: me.photo, agent: Boolean(agent) }}
+        peer={!agent}
+        audience={agent ? "someone" : "everyone"}
+      />
       {/* (An agent's clients, and what they did, are on Clients.) */}
       {waiting.length > 0 && <FromYourAgent links={waiting} />}
       <section aria-labelledby="stream-title">

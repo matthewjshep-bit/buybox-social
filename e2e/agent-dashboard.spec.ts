@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import type { Listing } from "../lib/listings/types";
 import { mediaKeyOf } from "../lib/photos";
 import { describeReaction, spotPlace } from "../lib/reactions";
-import { commentIn, createShare, detailsForm, heartOf, homeIn, joinAs, likeInPhoto, missedTaps, openComments, openMore, openThread, pick, settle, signedIn, signInAgent, tapPhoto, threadHome, threadRow, toFirstHome, toWho, pickHome, passOn } from "./helpers";
+import { commentIn, createShare, detailsForm, heartOf, homeIn, joinAs, likeInPhoto, missedTaps, openComments, openMore, openThread, pick, settle, signedIn, signInAgent, tapPhoto, threadComment, threadHome, threadRow, toFirstHome, toWho, pickHome, passOn } from "./helpers";
 
 const emailsTo = (address: string) =>
   readFileSync("test-results-server.log", "utf8")
@@ -111,23 +111,26 @@ test("an agent's phone and email for clients: checked, kept as digits, on their 
 
 test("a home that has sold can't go on a new link, and nothing is made", async ({ browser }) => {
   const agent = await signInAgent(browser, "gone-agent@example.com", "Gale Agent");
-  await agent.goto("/dashboard/new");
+  await agent.goto("/send");
   await pickHome(agent, "812 N Corbel");
   await toWho(agent);
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
   await who.fill("Zuri");
   await who.press("Enter");
-  // The home sells between picking it and creating the link: the tests' sold
-  // home (in the listings, but not for sale) stands in for it.
-  await agent.route("**/dashboard/new", async (route) => {
+  // The home sells between picking it and sending: the tests' sold home (in
+  // the listings, but not for sale) stands in for it.
+  const sending = /\/send(\?.*)?$/;
+  await agent.route(sending, async (route) => {
     const body = route.request().postData();
     if (route.request().method() !== "POST" || !body?.includes("SAMPLE-1003")) return route.continue();
     await route.continue({ postData: body.replace("SAMPLE-1003", "SAMPLE-SOLD") });
   });
-  await agent.getByRole("button", { name: "Next", exact: true }).click();
+  await agent.getByRole("button", { name: "Send", exact: true }).click();
+  // Said in the box, which stays put with everything in it.
   await expect(agent.getByText("One of those homes is no longer available.")).toHaveAttribute("role", "alert");
-  await expect(agent).toHaveURL(/\/dashboard\/new$/);
-  await agent.unroute("**/dashboard/new");
+  await expect(agent).toHaveURL(/\/send$/);
+  await expect(agent.getByRole("list", { name: "Picked homes" })).toContainText("812 N Corbel St");
+  await agent.unroute(sending);
 
   // No link was made.
   await agent.goto("/messages");
@@ -215,10 +218,19 @@ test("Messages leads with what's new, and says when each link was opened, never 
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Owen");
   await expect(quillanCard).toContainText("Opened");
   await expect(quillanCard).toContainText("Owen liked it");
-  await expect(quillanCard).toContainText("1 comment");
-  await expect(quillanCard.getByRole("list", { name: "Comments on 1204 Quillan St SE" })).toContainText("Love the porch.");
+  // His words are a message of their own under the card, on his side, with
+  // the home they're about quoted above them: not something inside the card.
+  const porch = threadComment(agent, "1204 Quillan St SE", "Love the porch.");
+  await expect(porch).toHaveCount(1);
+  await expect(porch).toContainText("Owen, ");
+  await expect(porch.getByRole("link", { name: /About 1204 Quillan St SE/ })).toHaveAttribute(
+    "href",
+    `#${await quillanCard.getAttribute("id")}`,
+  );
+  await expect(quillanCard).not.toContainText("Love the porch.");
+  await expect(quillanCard).not.toContainText("comment");
   await expect(saltmarshCard).toContainText("Owen passed");
-  await expect(saltmarshCard).not.toContainText("comment");
+  await expect(agent.getByRole("list", { name: "Messages" }).locator("li[id^='comment-']")).toHaveCount(1);
   await quillanCard.getByRole("button", { name: "Reply about 1204 Quillan St SE" }).click();
   await expect(agent.getByRole("textbox", { name: "Reply about 1204 Quillan St SE" })).toBeFocused();
   await expect(agent.getByText("Replying about 1204 Quillan")).toBeVisible();
@@ -952,24 +964,26 @@ test("adding someone to a link whose one person was told it's private asks first
   await expect(agent.getByLabel("Dos's link")).toHaveCount(0);
 });
 
-test("on a phone, picked homes stay in view whatever the search, and a bar leads on to who it's for", async ({ browser }) => {
+test("on a phone, picked homes stay in view whatever the search, and who it's for is right under them", async ({ browser }) => {
   test.setTimeout(60_000);
   const agent = await signInAgent(browser, "pip-picker@example.com", "Pip Picker");
   await agent.setViewportSize({ width: 393, height: 660 });
-  await agent.goto("/dashboard/new");
-  const cards = agent.getByRole("button", { name: /^\$/ });
-  const next = agent.getByRole("button", { name: "Next", exact: true });
+  await agent.goto("/send?aud=someone");
+  const send = agent.getByRole("button", { name: "Send", exact: true });
   const tray = agent.getByRole("list", { name: "Picked homes" });
   const pageWidth = () => agent.evaluate(() => document.documentElement.scrollWidth);
   // New here, with no listings and nothing liked or sent: still homes to
-  // pick from, under the box, before anything's typed.
-  await expect(agent.getByRole("region", { name: "Homes to send" })).toBeVisible();
-  await expect(cards.first()).toBeVisible();
-  await expect(next).toHaveCount(0);
+  // pick from, under the search, before anything's typed; nothing to send yet.
+  await expect(send).toBeDisabled();
+  await expect(agent.getByText("Add a home to send.")).toBeVisible();
+  await agent.getByRole("button", { name: "Add a home" }).click();
+  const popular = agent.getByRole("region", { name: "Popular and near you" });
+  await expect(popular.getByRole("button", { name: /^\$/ }).first()).toBeVisible();
+  await expect(agent.getByRole("region", { name: "Your listings" })).toHaveCount(0);
 
   await pickHome(agent, "1204 Quillan");
-  await expect(agent.getByText("1 picked", { exact: true })).toBeVisible();
-  await expect(next).toBeVisible();
+  await expect(agent.getByText("Say who it's for.")).toBeVisible();
+  await expect(send).toBeDisabled();
 
   // Typing looks for another: what's picked stays put, above the homes that
   // match, and can come off from there.
@@ -982,23 +996,23 @@ test("on a phone, picked homes stay in view whatever the search, and a bar leads
   expect((await tray.boundingBox())!.y).toBeLessThan((await offered.boundingBox())!.y);
   await tray.getByRole("button", { name: "Remove 1204 Quillan St SE" }).click();
   await expect(tray).toHaveCount(0);
-  await expect(next).toHaveCount(0);
-  await expect(agent.getByRole("button", { name: "Pick a home" })).toBeVisible();
+  await expect(agent.getByText("Add a home to send.")).toBeVisible();
 
-  // As many as they like (four here): one row of them that slides rather
-  // than widening the page, and Next goes to who it's for, ready to type.
+  // As many as they like (four here): a row each, none widening the page,
+  // and who it's for right under them, ready to type.
   await box.fill("");
   await expect(offered).toHaveCount(0);
   for (const address of ["1204 Quillan", "719 Saltmarsh", "812 N Corbel", "96 Fernhollow"]) await pickHome(agent, address);
-  await expect(agent.getByText("4 picked", { exact: true })).toBeVisible();
   await expect(tray.getByRole("listitem")).toHaveCount(4);
   expect(await pageWidth()).toBeLessThanOrEqual(393);
-  await next.click();
-  await expect(agent.getByText("Step 2 of 3")).toBeVisible();
+  await expect(agent.getByRole("radio", { name: "Someone" })).toHaveAttribute("aria-checked", "true");
   const name = agent.getByRole("combobox", { name: "Who's it for?" });
+  await name.focus();
   await expect(name).toBeFocused();
   await expect(name).toBeInViewport();
-  await expect(agent.getByText("4 picked", { exact: true })).toHaveCount(0);
+  await expect(send).toBeDisabled();
+  await name.fill("Pat");
+  await expect(send).toBeEnabled();
 });
 
 test("Remove and Restore keep the keyboard with the home, and each person's link buttons say whose they are", async ({

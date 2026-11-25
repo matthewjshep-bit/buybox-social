@@ -4,11 +4,13 @@ import type { ReactNode } from "react";
 import { CardMenu } from "@/app/people/[id]/client";
 import { CommentBubble } from "@/components/comment-bubble";
 import { FeedBar } from "@/components/home/feed-bar";
+import { PostCard } from "@/components/home/post-card";
 import { PhotoSwipe } from "@/components/photo-swipe";
 import { SaidLine } from "@/components/said-line";
 import { Avatar, Badge } from "@/components/ui";
 import { cn, formatPrice } from "@/lib/format";
 import type { FeedCounts } from "@/lib/home-feed";
+import type { PostEntry } from "@/lib/posts";
 import { cardTime, dayHeading, dayName, type FeedFilters, type ProfileCard } from "@/lib/profile";
 import type { ReactionState } from "@/lib/reactions";
 import { filterParams } from "@/lib/reel-context";
@@ -23,6 +25,7 @@ import { button, card as cardClass } from "@/lib/ui";
 
 export function ProfileFeed({
   cards,
+  posts = [],
   name,
   face = name,
   isMe,
@@ -35,6 +38,8 @@ export function ProfileFeed({
   bars,
 }: {
   cards: ProfileCard[];
+  // Their posts, among the cards by time (the first page only).
+  posts?: PostEntry[];
   name: string;
   // What their initial is from, if not their name ("" for a plain figure).
   face?: string;
@@ -56,14 +61,18 @@ export function ProfileFeed({
   // starts out right). Unset: no bars (a page with no gate around it).
   bars?: { counts: Record<string, FeedCounts>; mine: Record<string, ReactionState> };
 }) {
-  const days: { heading: string; cards: ProfileCard[] }[] = [];
+  type Entry = { kind: "card"; card: ProfileCard } | { kind: "post"; post: PostEntry };
+  const entries: Entry[] = [...cards.map((card): Entry => ({ kind: "card", card })), ...posts.map((post): Entry => ({ kind: "post", post }))].sort(
+    (a, b) => atOf(b).localeCompare(atOf(a)),
+  );
+  const days: { heading: string; entries: Entry[] }[] = [];
   // A home on more than one day here: each card's menu says which day it's for.
   const seen = new Map<string, number>();
   for (const card of cards) seen.set(card.home.key, (seen.get(card.home.key) ?? 0) + 1);
-  for (const card of cards) {
-    const heading = dayHeading(card.day);
-    if (days.at(-1)?.heading === heading) days.at(-1)!.cards.push(card);
-    else days.push({ heading, cards: [card] });
+  for (const entry of entries) {
+    const heading = dayHeading(entry.kind === "card" ? entry.card.day : entry.post.day);
+    if (days.at(-1)?.heading === heading) days.at(-1)!.entries.push(entry);
+    else days.push({ heading, entries: [entry] });
   }
   return (
     <div className="flex flex-col gap-6">
@@ -74,31 +83,42 @@ export function ProfileFeed({
             {i === 0 && control}
           </div>
           <ul className={cn("flex flex-col gap-3", i === 0 && control ? "mt-1" : "mt-2")}>
-            {day.cards.map((card) => (
+            {day.entries.map((entry) =>
+              entry.kind === "post" ? (
+                <PostCard
+                  key={entry.post.id}
+                  entry={entry.post}
+                  reelFrom={reelFrom}
+                  isMe={isMe}
+                  mine={bars?.mine ?? {}}
+                  counts={bars?.counts ?? {}}
+                />
+              ) : (
               <ActivityCard
-                key={card.id}
-                card={card}
+                key={entry.card.id}
                 name={name}
                 face={face}
                 isMe={isMe}
                 agent={agent}
-                day={seen.get(card.home.key)! > 1 ? dayName(card.day) : undefined}
-                href={reelHref(reelFrom, card, filters)}
+                day={seen.get(entry.card.home.key)! > 1 ? dayName(entry.card.day) : undefined}
+                href={reelHref(reelFrom, entry.card, filters)}
                 avatarPhoto={photo}
                 bar={
                   bars && (
                     <FeedBar
-                      listingKey={card.home.key}
-                      address={card.home.address}
-                      counts={bars.counts[card.home.key] ?? { likes: 0, comments: 0 }}
-                      mine={bars.mine[card.home.key] ?? null}
-                      active={card.home.active}
-                      reelHref={`/reel?${new URLSearchParams({ from: reelFrom, home: card.home.key })}`}
+                      listingKey={entry.card.home.key}
+                      address={entry.card.home.address}
+                      counts={bars.counts[entry.card.home.key] ?? { likes: 0, comments: 0 }}
+                      mine={bars.mine[entry.card.home.key] ?? null}
+                      active={entry.card.home.active}
+                      reelHref={`/reel?${new URLSearchParams({ from: reelFrom, home: entry.card.home.key })}`}
                     />
                   )
                 }
+                card={entry.card}
               />
-            ))}
+              ),
+            )}
           </ul>
         </section>
       ))}
@@ -110,6 +130,9 @@ export function ProfileFeed({
     </div>
   );
 }
+
+const atOf = (entry: { kind: "card"; card: ProfileCard } | { kind: "post"; post: PostEntry }) =>
+  entry.kind === "card" ? entry.card.at : entry.post.at;
 
 // The homes of a feed full screen, opened on this card's (on its photo),
 // with the page's filter, when it has one on, just after `from`.

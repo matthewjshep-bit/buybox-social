@@ -29,7 +29,7 @@ export function FeedEnd({
           <Search aria-hidden size={17} /> Search homes
         </Link>
         {account?.role === "agent" && (
-          <Link href="/dashboard/new" className={button({ kind: "primary", size: "lg" })}>
+          <Link href="/send?aud=someone" className={button({ kind: "primary", size: "lg" })}>
             <Send aria-hidden size={17} /> Send homes
           </Link>
         )}

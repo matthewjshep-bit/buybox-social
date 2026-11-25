@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { placeWords } from "@/lib/format";
+import { noteImpressions } from "@/lib/feed-rank";
 import { importMissing, runImportsAndContinue } from "@/lib/listings/imports";
 import { findOnRepliers } from "@/lib/listings/repliers";
 import {
@@ -245,6 +246,17 @@ export async function postAboutHome(listingKey: string, body: string): Promise<A
   const result = await saveComment(listingKey, body.trim(), null, null, true);
   if (result.ok) refresh();
   return result;
+}
+
+// Cards that were in front of them in their feed just now ("home:<key>" or
+// "post:<id>"): noted, so next time leads with what they haven't seen.
+export async function noteSeen(items: unknown): Promise<void> {
+  if (!Array.isArray(items) || items.length === 0 || items.length > 100) return;
+  const ids = [...new Set(items.filter((item): item is string => typeof item === "string" && /^(home|post):[\w-]{1,100}$/.test(item)))];
+  const account = await getCurrentUser();
+  if (!account?.role || ids.length === 0) return;
+  const visitor = await ensureAccountVisitor(account);
+  await noteImpressions(visitor.id, ids);
 }
 
 // A home saved, to come back to (or taken off the list): theirs alone. One

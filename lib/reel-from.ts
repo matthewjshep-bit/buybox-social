@@ -218,9 +218,31 @@ async function savedScope(visitorId: string): Promise<ReelScope> {
 async function feedScope(viewer: Account, visitorId: string | null): Promise<ReelScope> {
   const entries = await getHomeFeed(viewer, visitorId);
   // (You, for the home you rated, as your own page has you.)
-  const me = entries.some((entry) => entry.reason?.kind === "rated") && visitorId ? await getProfilePerson(visitorId) : null;
+  const me = entries.some((entry) => entry.kind !== "post" && entry.reason?.kind === "rated") && visitorId ? await getProfilePerson(visitorId) : null;
   const homes: Record<string, HomeContext> = {};
   for (const entry of entries) {
+    if (entry.kind === "post") {
+      for (const home of entry.homes) {
+        if (homes[home.key]) continue;
+        homes[home.key] = {
+          photo: home.photo?.index ?? null,
+          takes: [
+            {
+              who: whoOfFeed(entry.who),
+              sentence: entry.homes.length === 1 ? "posted about this home" : `posted ${entry.homes.length} homes`,
+              at: entry.at,
+              verdict: null,
+              spots: [],
+              facts: [],
+              comments: entry.body ? [{ id: "", body: clipTake(entry.body), spot: null, likes: 0, replies: 0 }] : [],
+              private: false,
+              reason: "who you follow",
+            },
+          ],
+        };
+      }
+      continue;
+    }
     const key = entry.home.key;
     if (homes[key]) continue;
     const { why, reason } = entry;

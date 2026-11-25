@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { signedIn, createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, pickHome, signInAgent, passOn, threadHome, threadRow } from "./helpers";
+import { signedIn, createShare, heartOf, homeIn, joinAs, likeInPhoto, openComments, pickHome, signInAgent, passOn, threadComment, threadHome, threadRow } from "./helpers";
 
 test("an agent's link page: what they want, remove and restore, add homes; their conversation says how each home went, private only", async ({
   browser,
@@ -91,15 +91,15 @@ test("an agent's link page: what they want, remove and restore, add homes; their
 
   // More homes can go on the same link, so Joe's history stays in one place.
   await agent.getByRole("link", { name: "Send more homes" }).click();
-  await expect(agent.getByRole("heading", { name: "Add homes for Joe" })).toBeVisible();
-  await expect(agent.getByRole("button", { name: /10421 Halvard/ })).toHaveCount(0);
+  await agent.waitForURL(/\/send\?share=/);
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send Joe homes");
+  await expect(agent.getByRole("form", { name: "Send Joe homes" })).toContainText("To Joe");
   await pickHome(agent, "812 N Corbel");
-  await agent.getByRole("button", { name: "Add 1 home to Joe's link" }).click();
-  // Then his link again, ready to send, as when it was first made; Done is the link's page.
-  await agent.waitForURL(/\/dashboard\/shares\/[\w-]+\/sent$/);
-  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Your link is ready");
-  await agent.getByRole("link", { name: "Done", exact: true }).click();
-  await agent.waitForURL(/\/dashboard\/shares\/[\w-]+(\?tab=\w+)?$/);
+  await agent.getByRole("button", { name: "Send", exact: true }).click();
+  // Then his conversation, the new home in it; the link's page has it too.
+  await agent.waitForURL((u) => /^\/messages\/.+/.test(u.pathname) && !u.searchParams.has("sent"));
+  await expect(threadHome(agent, "812 N Corbel St")).toBeVisible();
+  await agent.goto(`${dashboardUrl}?tab=homes`);
   await expect(agent.getByRole("region", { name: "812 N Corbel St" })).toBeVisible();
   await joe.reload();
   await expect(homeIn(joe, "812 N Corbel St")).toBeVisible();
@@ -117,7 +117,8 @@ test("an agent's link page: what they want, remove and restore, add homes; their
   await expect(row).not.toContainText("that staircase!");
 
   // His conversation says how it's gone: the one send, now three homes, each
-  // a card with how he came down on it and what he said under it.
+  // a card with how he came down on it; what he said is a message of its
+  // own under the cards, quoting the home, under his name.
   await row.getByRole("link").click();
   await agent.waitForURL(/\/messages\/.+/);
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Joe");
@@ -128,8 +129,11 @@ test("an agent's link page: what they want, remove and restore, add homes; their
   await expect(threadHome(agent, "10421 Halvard Way NE")).toContainText("Joe liked it");
   const passed = threadHome(agent, "1204 Quillan St SE");
   await expect(passed).toContainText("Joe passed");
-  await expect(passed).toContainText("1 comment");
-  await expect(passed.getByRole("list", { name: "Comments on 1204 Quillan St SE" })).toContainText("Not a fan of farmhouse sinks.");
+  await expect(passed).not.toContainText(/comment|farmhouse/);
+  const said = threadComment(agent, "1204 Quillan St SE", "Not a fan of farmhouse sinks.");
+  await expect(said).toContainText("Joe");
+  await expect(said.getByRole("link", { name: /About 1204 Quillan St SE/ })).toHaveAttribute("href", "#home-SAMPLE-1009");
+  await expect(thread.locator("li[id^='comment-']")).toHaveCount(1);
   await expect(threadHome(agent, "812 N Corbel St")).not.toContainText(/liked|passed|comment/);
   // Nothing of anyone else's, and each home is a tap to the home itself, as his link has it.
   await expect(thread).not.toContainText("Stella");

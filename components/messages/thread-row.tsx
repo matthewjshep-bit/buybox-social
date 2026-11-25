@@ -11,9 +11,11 @@ import type { Thread } from "@/lib/messages";
 // A blue dot on the face when there's something new; "Waiting" in amber when
 // they're waiting on you. The one that's open is marked.
 
-export function ThreadRow({ thread }: { thread: Thread }) {
+export function ThreadRow({ thread, fallback = false }: { thread: Thread; fallback?: boolean }) {
   const pathname = usePathname();
   const open = pathname === thread.href;
+  // The one Messages opens on by itself (the newest), on a wide screen.
+  const shown = fallback && pathname === "/messages";
   const [first, second] = thread.people;
   return (
     <li>
@@ -23,6 +25,7 @@ export function ThreadRow({ thread }: { thread: Thread }) {
         className={cn(
           "flex min-h-[4.5rem] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-stone-50",
           open && "bg-stone-100",
+          shown && "lg:bg-stone-100",
         )}
       >
         <span className="relative shrink-0">

@@ -2,8 +2,11 @@ import { cache } from "react";
 import type { Account } from "./auth";
 import { sql } from "./db";
 import { getReel, type FeedPost } from "./feed";
+import { feedHomeOf, type FeedHome, type FeedWho } from "./feed-home";
+import { getAffinity, getEngagement, getImpressions, rankFeed, type Candidate } from "./feed-rank";
 import { getFollowedIds } from "./follows";
-import { buildCards, cardPhotos, getProfilePerson, getProfileRows, withoutPasses, type CardPhoto, type ProfileCard } from "./profile";
+import { getPostsBy, type PostEntry } from "./posts";
+import { buildCards, getProfilePerson, getProfileRows, withoutPasses, type ProfileCard } from "./profile";
 import { getRatedHomes } from "./my-links";
 import type { ReactionState } from "./reactions";
 import { getTaste, hasTaste } from "./taste";
@@ -26,34 +29,8 @@ import { US_STATES } from "./places";
 // (`ratedEntries`). Any home in it opens the homes full screen, in the
 // feed's order (`feedKeys`).
 
-// `photo`: their own, where they've added one, in place of their initial.
-// (`client`: to an agent looking at their own feed, one of their own clients.)
-export type FeedWho = {
-  name: string;
-  face: string;
-  profileId: string | null;
-  agent: boolean;
-  photo: string | null;
-  client?: boolean;
-};
-
-// A home as a card shows it: the facts, and the photo it's about (the one
-// with the newest thing they liked, else the first), large; then the rest of
-// its photos to swipe through (a few: full screen has them all), and how
-// many it has in all.
-type FeedHome = {
-  key: string;
-  address: string;
-  city: string;
-  price: number;
-  beds: number;
-  baths: number;
-  sqft: number;
-  active: boolean;
-  photo: { url: string; index: number; alt: string; width?: number; height?: number } | null;
-  photos: CardPhoto[];
-  photoCount: number;
-};
+// (Who, and a home as a card shows it: lib/feed-home.ts, shared with posts.)
+export type { FeedHome, FeedWho };
 
 // Why a home is in your feed, for the card and for the reel's take on it:
 // who (likers first), what they did without their names ("liked this home"),
@@ -68,6 +45,7 @@ export type FeedReason =
   | { kind: "rated"; text: string; verdict: "like" | "pass" };
 
 export type HomeFeedEntry = {
+  kind?: undefined;
   // The home and the day: one entry each.
   id: string;
   at: string;
@@ -83,6 +61,10 @@ export type HomeFeedEntry = {
   // Not from anyone you follow: why it's here instead.
   reason?: FeedReason;
 };
+
+// What a feed holds: a home someone did something on, or a post (their
+// words, with homes or none).
+export type FeedItem = HomeFeedEntry | PostEntry;
 
 // How far the feed reads, and how much it holds.
 const FOLLOWED_MOST = 100;
@@ -183,34 +165,17 @@ function entriesOf(takes: Take[]): HomeFeedEntry[] {
     .sort((a, b) => b.at.localeCompare(a.at) || a.id.localeCompare(b.id));
 }
 
-// What the people you follow did, newest first.
-async function followingEntries(visitorId: string | null): Promise<HomeFeedEntry[]> {
+// What the people you follow did, newest first: their takes on homes, and
+// their posts, in one order.
+async function followingEntries(visitorId: string | null): Promise<FeedItem[]> {
   if (!visitorId) return [];
   const ids = [...(await getFollowedIds(visitorId))].slice(0, FOLLOWED_MOST);
-  const takes = (await Promise.all(ids.map(takesOf))).flat();
-  return entriesOf(takes).slice(0, FEED_MOST);
+  const [takes, posts] = await Promise.all([Promise.all(ids.map(takesOf)), getPostsBy(ids, { most: FEED_MOST })]);
+  return [...entriesOf(takes.flat()), ...posts].sort((a, b) => b.at.localeCompare(a.at) || a.id.localeCompare(b.id)).slice(0, FEED_MOST);
 }
 
-// A home as a card shows it, from the listing: its first photo, large, and
-// the rest after it.
-function feedHomeOf(listing: Listing): FeedHome {
-  const sorted = { ...listing, Media: [...(listing.Media ?? [])].sort((a, b) => a.Order - b.Order) };
-  const swipe = cardPhotos(sorted);
-  const first = swipe.photos[0];
-  return {
-    key: listing.ListingKey,
-    address: listing.UnparsedAddress,
-    city: listing.City ?? "",
-    price: listing.ListPrice ?? 0,
-    beds: listing.BedroomsTotal ?? 0,
-    baths: listing.BathroomsTotalInteger ?? 0,
-    sqft: listing.LivingArea ?? 0,
-    active: listing.StandardStatus === "Active",
-    photo: first ?? null,
-    photos: swipe.photos,
-    photoCount: swipe.count,
-  };
-}
+// The homes an item is about: one, or a post's.
+const homesOf = (item: FeedItem): FeedHome[] => (item.kind === "post" ? item.homes : [item.home]);
 
 // One home in the feed for a reason of its own (or, `who`, someone who just
 // added it: a new deal or listing).
@@ -357,19 +322,32 @@ async function ratedEntries(rated: Awaited<ReturnType<typeof getRatedHomes>>): P
   ];
 }
 
-// The order the feed takes from each source, over and over: what the people
-// you follow did most often, between what's popular, what's new, what's
-// near you and what's picked for you. A source with nothing left is passed
-// over, so someone who follows nobody still has a full feed.
-const PATTERN = ["following", "popular", "following", "new", "near", "following", "picked", "popular", "near", "following", "new", "picked"] as const;
+// What an item is to the ranking: its id, when, its homes, whose it is, and
+// where it came from.
+const describe = (item: FeedItem): Candidate =>
+  item.kind === "post"
+    ? { id: item.id, at: item.at, keys: item.homes.map((home) => home.key), author: item.who.profileId, source: "post" }
+    : {
+        id: `home:${item.home.key}`,
+        at: item.at,
+        keys: [item.home.key],
+        author: item.reason ? null : (item.why.who[0]?.profileId ?? null),
+        source: item.reason ? (item.reason.kind === "rated" ? "following" : item.reason.kind) : item.id.startsWith("new:") ? "new" : "following",
+      };
+
+// A session: half an hour of looking. The shuffle among near-equal scores
+// holds for that long, then comes out a little differently.
+const SESSION = 30 * 60 * 1000;
 
 // Someone's home feed: the home they just rated on an agent's link, when
-// they have; then what the people they follow did, woven together with
+// they have; then what the people they follow did since they last looked,
+// then everything else in order of what's worth their time (lib/feed-rank.ts):
 // what's popular, new deals and listings, homes near them and homes picked
-// for them. Each home once (the people you follow first), never one they
-// passed on, in public or on a link. (`account` is who's asking: the reel's
-// `from=feed` reads the same feed, in the same order.)
-export const getHomeFeed = cache(async (account: Account, visitorId: string | null): Promise<HomeFeedEntry[]> => {
+// for them, with what they've already seen falling back, and a few places
+// kept for homes they've never seen. Each home once (the people you follow
+// first), never one they passed on, in public or on a link. (`account` is
+// who's asking: the reel's `from=feed` reads the same feed, in the same order.)
+export const getHomeFeed = cache(async (account: Account, visitorId: string | null): Promise<FeedItem[]> => {
   if (!account) return [];
   const [[place], passed, rated, following, popular, fresh] = await Promise.all([
     sql<{ city: string; state: string }[]>`
@@ -390,35 +368,40 @@ export const getHomeFeed = cache(async (account: Account, visitorId: string | nu
     ...passed.map((row) => row.listing_key),
     ...rated.flatMap((home) => (home.verdict === "pass" ? [home.listingKey] : [])),
   ]);
-  const taken = [...lead, ...following, ...popular, ...fresh, ...near].map((entry) => entry.home.key);
+  const taken = [...lead, ...following, ...popular, ...fresh, ...near].flatMap((item) => homesOf(item).map((home) => home.key));
   const picked = await pickedEntries(account, visitorId, [...new Set([...taken, ...skip])]);
-  const sources: Record<(typeof PATTERN)[number], HomeFeedEntry[]> = { following, popular, new: fresh, near, picked };
-  // (The home they just rated leads, whatever they decided: their own take
-  // on it isn't skipped, and the home isn't in the feed again for another reason.)
-  const feed: HomeFeedEntry[] = [...lead];
   // (A home someone you follow is in the feed for is theirs: never again
-  // for another reason, wherever that would have come first.)
-  const seen = new Set<string>([...lead, ...following].map((entry) => entry.home.key));
-  let turn = 0;
-  while (feed.length < FEED_MOST && Object.values(sources).some((list) => list.length > 0)) {
-    const list = sources[PATTERN[turn++ % PATTERN.length]];
-    while (list.length > 0) {
-      const entry = list.shift()!;
-      const key = entry.home.key;
-      // (The people you follow, on a home, however often; anything else once.)
-      if (entry.reason || entry.id.startsWith("new:")) {
-        if (seen.has(key) || skip.has(key)) continue;
-        seen.add(key);
-      }
-      feed.push(entry);
-      break;
-    }
+  // for another reason. Anything else once, and never a home they passed on.)
+  const theirs = new Set<string>([...lead, ...following].flatMap((item) => homesOf(item).map((home) => home.key)));
+  const once = new Set<string>();
+  const candidates: FeedItem[] = [];
+  for (const entry of [...popular, ...fresh, ...near, ...picked]) {
+    const key = entry.kind === "post" ? "" : entry.home.key;
+    if (theirs.has(key) || once.has(key) || skip.has(key)) continue;
+    once.add(key);
+    candidates.push(entry);
   }
-  return feed;
+  const all = [...following, ...candidates];
+  const ids = all.map((item) => describe(item).id);
+  const [engagement, affinity, seen, seenAt] = await Promise.all([
+    getEngagement([...new Set(all.flatMap((item) => homesOf(item).map((home) => home.key)))]),
+    getAffinity(visitorId),
+    getImpressions(visitorId, ids),
+    getHomeSeen(visitorId),
+  ]);
+  const now = Date.now();
+  const ranked = rankFeed(
+    all,
+    describe,
+    { now, seed: `${visitorId ?? account.id}:${Math.floor(now / SESSION)}`, engagement, affinity, seen, seenAt },
+    FEED_MOST - lead.length,
+  );
+  // (The home they just rated leads, whatever they decided.)
+  return [...lead, ...ranked];
 });
 
 // The homes in a feed, in its order, each once: what opens full screen.
-export const feedKeys = (entries: HomeFeedEntry[]) => [...new Set(entries.map((entry) => entry.home.key))];
+export const feedKeys = (entries: FeedItem[]) => [...new Set(entries.flatMap((item) => homesOf(item).map((home) => home.key)))];
 
 // Homes picked for someone by their taste, none of them already in their
 // feed: the masonry under it, and the reel's `from=picks`, in the same order.

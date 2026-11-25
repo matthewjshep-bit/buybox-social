@@ -54,23 +54,11 @@ export type Thread = {
   counts: { homes: number; liked: number; comments: number };
 };
 
-export type ThreadComment = {
-  id: string;
-  name: string;
-  // The sender's own words (an agent's, usually).
-  fromSender: boolean;
-  mine: boolean;
-  body: string;
-  at: string;
-  parentId: string | null;
-  // Whose comment, or whose likes, a reply answers.
-  replyTo: { name: string; likes: boolean } | null;
-  // A request to see the home in person (ASK_TO_SEE), said in words.
-  ask: boolean;
-};
-
 export type ThreadHome = {
   key: string;
+  // The card's id on the page: home-<key> on the newest send of the home,
+  // home-<share>-<key> on an earlier one (a home sent twice is two cards).
+  anchor: string;
   address: string;
   city: string;
   price: number;
@@ -80,7 +68,6 @@ export type ThreadHome = {
   seconds: number;
   // Who liked it or passed on it (passes only on the sender's side, or the viewer's own).
   takes: { name: string; mine: boolean; verdict: "like" | "pass" }[];
-  comments: ThreadComment[];
   // Who asked to see it.
   asked: { name: string; mine: boolean; at: string }[];
 };
@@ -110,7 +97,24 @@ export type MessageItem = {
   body: string;
 };
 
-export type ThreadItem = HomesItem | MessageItem;
+// A word about one of the homes: a bubble in the conversation, like any
+// other, quoting the home above it (as a reply to a story does).
+export type CommentItem = {
+  kind: "comment";
+  id: string;
+  at: string;
+  shareId: string;
+  by: ThreadPerson;
+  mine: boolean;
+  body: string;
+  about: { key: string; anchor: string; address: string; photo: string | null };
+  // Whose comment, or whose likes, it answers.
+  replyTo: { name: string; likes: boolean } | null;
+  // A request to see the home in person (ASK_TO_SEE), said in words.
+  ask: boolean;
+};
+
+export type ThreadItem = HomesItem | MessageItem | CommentItem;
 
 export type ThreadView = {
   thread: Thread;
@@ -364,6 +368,18 @@ export const getThread = cache(async (me: Account, key: string): Promise<ThreadV
   const book = thread.direction === "received" ? null : await getClientBook(me.id);
   const shareOf = new Map(shares.map((share) => [share.id, share]));
   const myPlace = new Map(mine.map((row) => [row.share_id, row]));
+  // Whoever sent a link, as the conversation names them.
+  const senderOf = (share: ShareRow): ThreadPerson => ({
+    name: share.full_name.trim(),
+    photo: share.profile ? photoUrl(share.profile, share.photo_v) : null,
+    profileId: share.profile,
+    agent: share.role === "agent",
+  });
+  // Everything said about a home, each a bubble of its own among the sends.
+  const saidAboutHomes: CommentItem[] = [];
+  // Homes seen so far, newest send first: the first card of a home keeps the
+  // plain anchor the bell and the feed link to.
+  const cardsSoFar = new Set<string>();
 
   const items = ids.flatMap((shareId, i): ThreadItem[] => {
     const share = shareOf.get(shareId);
@@ -371,8 +387,6 @@ export const getThread = cache(async (me: Account, key: string): Promise<ThreadV
     const sentByMe = share.agent_id === me.id;
     const place = myPlace.get(shareId);
     const { comments, reactions, photoLikes, photoDislikes } = threads[i];
-    const nameOf = (participantId: string | null) =>
-      participantId === null ? share.full_name.trim() : null;
     const homes = listings[i].map((listing): ThreadHome => {
       const key = listing.ListingKey;
       const view = views.get(homeViewKey(shareId, key));
@@ -392,19 +406,30 @@ export const getThread = cache(async (me: Account, key: string): Promise<ThreadV
       for (const d of photoDislikes.filter((d) => d.listingKey === key)) note(d.participantId, d.name, "pass");
       // Someone sent the homes never sees who else passed: only likes, and their own take.
       const takes = [...verdicts.values()].filter((take) => sentByMe || take.mine || take.verdict === "like");
+      const anchor = cardsSoFar.has(key) ? `home-${shareId}-${key}` : `home-${key}`;
+      cardsSoFar.add(key);
+      const home = { key, anchor, address: listing.UnparsedAddress, photo: listing.Media[0]?.MediaURL ?? null };
       const said = comments
-          .filter((c) => c.listingKey === key)
-          .map((c) => ({
+        .filter((c) => c.listingKey === key)
+        .map(
+          (c): CommentItem => ({
+            kind: "comment",
             id: c.id,
-            name: c.isAgent ? (nameOf(null) ?? "Agent") : c.name.trim() || ANONYMOUS_BUYER,
-            fromSender: c.isAgent,
+            at: c.createdAt,
+            shareId,
+            by: c.isAgent
+              ? sentByMe
+                ? { name: "You", photo: null, profileId: null, agent: me.role === "agent" }
+                : senderOf(share)
+              : { name: c.name.trim() || ANONYMOUS_BUYER, photo: null, profileId: null, agent: false },
             mine: c.isAgent ? sentByMe : place?.id === c.participantId,
             body: c.body,
-            at: c.createdAt,
-            parentId: null,
+            about: home,
             replyTo: c.replyTo ?? null,
             ask: c.body === ASK_TO_SEE,
-          }));
+          }),
+        );
+      saidAboutHomes.push(...said);
       const asked = asks
         .filter((ask) => ask.share_id === shareId && ask.listing_key === key)
         .map((ask) => ({
@@ -415,9 +440,10 @@ export const getThread = cache(async (me: Account, key: string): Promise<ThreadV
       // (Anything done on it means it was open then, as the link counts it;
       // and a link with one home, opened, is that home opened.)
       const touched =
-        verdicts.size > 0 || said.some((c) => !c.fromSender) || asked.length > 0 || (Boolean(share.opened_at) && listings[i].length === 1);
+        verdicts.size > 0 || comments.some((c) => c.listingKey === key && !c.isAgent) || asked.length > 0 || (Boolean(share.opened_at) && listings[i].length === 1);
       return {
         key,
+        anchor,
         address: listing.UnparsedAddress,
         city: listing.City,
         price: listPrice(listing.ListPrice),
@@ -425,7 +451,6 @@ export const getThread = cache(async (me: Account, key: string): Promise<ThreadV
         opened: sentByMe ? Boolean(view) || touched : false,
         seconds: sentByMe ? (view?.seconds ?? 0) : 0,
         takes,
-        comments: said,
         asked,
       };
     });
@@ -436,20 +461,14 @@ export const getThread = cache(async (me: Account, key: string): Promise<ThreadV
         at: share.created_at.toISOString(),
         shareId,
         token: place?.token ?? share.token,
-        by: sentByMe
-          ? { name: "You", photo: null, profileId: null, agent: me.role === "agent" }
-          : {
-              name: share.full_name.trim(),
-              photo: share.profile ? photoUrl(share.profile, share.photo_v) : null,
-              profileId: share.profile,
-              agent: share.role === "agent",
-            },
+        by: sentByMe ? { name: "You", photo: null, profileId: null, agent: me.role === "agent" } : senderOf(share),
         mine: sentByMe,
         welcome: share.note?.trim() || null,
         homes,
       },
     ];
   });
+  items.push(...saidAboutHomes);
   // The plain messages, each a bubble of its own, among the sends.
   for (const word of words) {
     const share = shareOf.get(word.share_id);
@@ -462,14 +481,7 @@ export const getThread = cache(async (me: Account, key: string): Promise<ThreadV
       id: word.id,
       at: word.created_at.toISOString(),
       shareId: word.share_id,
-      by: fromSender
-        ? {
-            name: share.full_name.trim(),
-            photo: share.profile ? photoUrl(share.profile, share.photo_v) : null,
-            profileId: share.profile,
-            agent: share.role === "agent",
-          }
-        : { name: word.first_name?.trim() || ANONYMOUS_BUYER, photo: null, profileId: null, agent: false },
+      by: fromSender ? senderOf(share) : { name: word.first_name?.trim() || ANONYMOUS_BUYER, photo: null, profileId: null, agent: false },
       mine,
       body: word.body,
     });

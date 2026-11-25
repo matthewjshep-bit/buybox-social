@@ -486,7 +486,7 @@ const loadRows = cache(
       left join public_comments p on p.id = c.parent_id
       -- (Or, for a reply to someone's likes, them.)
       left join visitors pv on pv.id = coalesce(p.visitor_id, c.reply_to_visitor) and pv.id <> c.visitor_id
-      where c.visitor_id = ${visitorId} ${until ? sql`and c.created_at < ${until}` : sql``}
+      where c.visitor_id = ${visitorId} and c.post_id is null ${until ? sql`and c.created_at < ${until}` : sql``}
       order by c.created_at desc
       limit ${PROFILE_ROW_LIMIT}`,
     mine

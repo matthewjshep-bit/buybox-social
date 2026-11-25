@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, openComments, signInAgent, signUpBuyer } from "./helpers";
+import { createShare, heartOf, homeIn, joinAs, openComments, signInAgent, signUpBuyer, threadComment } from "./helpers";
 
 const saved = (page: Page) =>
   page.waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
@@ -36,7 +36,9 @@ test("an agent's home is everyone's home, a feed with nothing of their clients o
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Your home");
   await expect(agent.getByRole("main")).not.toContainText("Agent dashboard");
   await expect(agent.getByRole("main")).not.toContainText("Hi Fern");
-  await expect(agent.getByRole("link", { name: "Send homes to a client" })).toHaveAttribute("href", "/dashboard/new");
+  // (The box to send homes, closed, at the top of the feed: a button, not a link away.)
+  await expect(agent.getByRole("button", { name: "Send homes to a client" })).toBeVisible();
+  await expect(agent.getByRole("link", { name: /^Send homes/ })).toHaveCount(0);
   await expect(agent.getByRole("region", { name: "Your clients" })).toHaveCount(0);
   await expect(agent.getByRole("group", { name: "Show" })).toHaveCount(0);
   await expect(agent.getByText("Send your first homes")).toHaveCount(0);
@@ -68,33 +70,40 @@ test("an agent's home is everyone's home, a feed with nothing of their clients o
   await said.click();
   await agent.waitForURL(/\/messages\/acct%3A[\w-]+#home-SAMPLE-\d+$/);
 
-  // Her conversation on Messages: the home she spoke about, what she said
-  // under it, and Reply right there. Only her agent sees that she opened it.
+  // Her conversation on Messages: the home she spoke about as a card, what
+  // she said as a message of its own under it quoting the home, and Reply
+  // right on the card. Only her agent sees that she opened it.
   await agent.goto("/messages");
   await agent.locator('ul[aria-label="Conversations"]').getByRole("link", { name: /^Jo\b/ }).click();
   await agent.waitForURL(/\/messages\/acct%3A[\w-]+$/);
   const joClientPage = new URL(agent.url()).pathname;
-  const thread = agent.getByRole("region", { name: "Conversation" });
+  const thread = agent.getByRole("region", { name: "Conversation", exact: true });
   await expect(thread.getByRole("heading", { level: 1 })).toHaveText("Jo");
-  const card = thread.locator('li[id^="home-"]').filter({ hasText: "Is the basement finished?" });
-  await expect(card).toContainText("1204 Quillan St SE");
+  const card = thread.locator('li[id^="home-"]').filter({ hasText: "1204 Quillan St SE" });
   await expect(card).toContainText("Opened");
   await expect(card).toContainText("Jo liked it");
-  await expect(card.getByRole("list", { name: "Comments on 1204 Quillan St SE" })).toContainText("Is the basement finished?");
+  await expect(card).not.toContainText("Is the basement finished?");
+  const asked = threadComment(agent, "1204 Quillan St SE", "Is the basement finished?");
+  await expect(asked).toContainText("Jo");
+  await expect(asked.getByRole("link", { name: /About 1204 Quillan St SE/ })).toHaveAttribute("href", /^#home-SAMPLE-\d+$/);
   await card.getByRole("button", { name: /^Reply about 1204 Quillan St SE/ }).click();
   const box = thread.getByRole("textbox", { name: /^Reply about 1204 Quillan St SE/ });
   await expect(box).toBeVisible();
   await expect(thread).toContainText("Replying about 1204 Quillan St SE");
   await box.fill("Yes, it was finished in 2019.");
   await box.press("Enter");
-  await expect(card.getByRole("list", { name: "Comments on 1204 Quillan St SE" })).toContainText("Yes, it was finished in 2019.");
-  await expect(card.getByRole("list", { name: "Comments on 1204 Quillan St SE" })).toContainText("You");
+  // Her answer: her own message quoting the home, with no name on it (her
+  // own side of the conversation), not in the card.
+  const answer = threadComment(agent, "1204 Quillan St SE", "Yes, it was finished in 2019.");
+  await expect(answer).toBeVisible();
+  await expect(answer).not.toContainText("Jo");
+  await expect(card).not.toContainText("Yes, it was finished in 2019.");
   // It's in the conversation on her link: the agent's page for it shows it.
   await agent.goto(`${dashboardUrl}?tab=homes`);
   await expect(agent.getByText("Yes, it was finished in 2019.")).toBeVisible();
   await agent.goto(joClientPage);
   await expect(card.getByRole("button", { name: /^Reply about 1204 Quillan St SE/ })).toBeVisible();
-  await expect(card).toContainText("Yes, it was finished in 2019.");
+  await expect(answer).toBeVisible();
   // The link's details page is a tap from the conversation's head.
   await expect(thread.getByRole("link", { name: "Link details" })).toHaveAttribute("href", new URL(dashboardUrl).pathname);
   // Her card opens her homes in a pop-out over the page, on that one;

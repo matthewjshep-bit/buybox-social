@@ -9,7 +9,7 @@ import { FeedFilter } from "@/components/feed-filter";
 import { FeedGate } from "@/components/home/feed-gate";
 import { ListingGrid } from "@/components/listing-grid";
 import { ListingsMap } from "@/components/listings-map";
-import { PostComposer } from "@/components/post-composer";
+import { Compose } from "@/components/compose/compose";
 import { ProfileFeed } from "@/components/profile-feed";
 import { ProfileHeader } from "@/components/profile-header";
 import { TasteControls } from "@/components/taste-controls";
@@ -29,6 +29,7 @@ import { readDevice } from "@/lib/engagement";
 import { follows, getFollowCounts } from "@/lib/follows";
 import { cn } from "@/lib/format";
 import { feedCounts, myReactions } from "@/lib/home-feed";
+import { getPostsBy, postKeys } from "@/lib/posts";
 import { getMyLinks } from "@/lib/my-links";
 import {
   getProfileFeed,
@@ -162,17 +163,19 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   const tabs = listings.length > 0;
   const tab: "listings" | "activity" =
     tabs && query.tab !== "activity" && show === "all" && !savedView && !about && !before ? "listings" : "activity";
-  const [feed, between] = await Promise.all([
+  const [feed, posts, between] = await Promise.all([
     keptPrivate || tab === "listings"
       ? { cards: [], earlier: null }
       : getProfileFeed(person.id, { show, about, side, before, mine: isMe, passes }),
+    // Their posts: on the first page of everything, among the cards.
+    tab === "activity" && show === "all" && !about && !before ? getPostsBy([person.id]) : [],
     // What's between whoever's looking and them: the links they're both on.
     // First on the page, for the one looking only.
     !isMe && account?.role && person.accountId ? getBetween(account.id, person.accountId) : [],
   ]);
   // Under each card: how many liked the home and how many comments it has,
   // and the viewer's own take on it, for the heart.
-  const feedHomes = [...new Set(feed.cards.map((card) => card.home.key))];
+  const feedHomes = [...new Set([...feed.cards.map((card) => card.home.key), ...postKeys(posts)])];
   const [barCounts, barMine] = await Promise.all([feedCounts(feedHomes), myReactions(visitor?.id ?? null, feedHomes)]);
 
   // The same page with other filters; paging starts over.
@@ -191,7 +194,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
     return `/people/${person.id}${search ? `?${search}` : ""}`;
   };
 
-  const nothingYet = summary.counts.homes === 0 && feed.cards.length === 0 && !before;
+  const nothingYet = summary.counts.homes === 0 && feed.cards.length === 0 && posts.length === 0 && !before;
   const chipHref = (key: string, side: TopicSide) => href({ about: key, side });
   const current = about ? { key: about.toLowerCase(), side } : null;
   // Everyone else sees only what they've kept on; they see it all, marked,
@@ -366,7 +369,11 @@ export default async function ProfilePage({ params, searchParams }: Props) {
         )}
         <div className="min-w-0">
         {isMe && tab === "activity" && show === "all" && !about && !before && (
-          <PostComposer me={{ name: face || name, photo: person.photo, agent: person.isAgent }} />
+          <Compose
+            mode="inline"
+            me={{ name: face || name, photo: person.photo, agent: person.isAgent }}
+            peer={!person.isAgent}
+          />
         )}
         {tab === "listings" ? (
           <>
@@ -490,10 +497,11 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                   </Link>
                 }
               />
-            ) : feed.cards.length > 0 || feed.earlier ? (
+            ) : feed.cards.length > 0 || posts.length > 0 || feed.earlier ? (
               <FeedGate myName={account?.full_name?.trim() || null}>
                 <ProfileFeed
                   cards={feed.cards}
+                  posts={posts}
                   name={name}
                   face={face}
                   isMe={isMe}

@@ -50,7 +50,7 @@ export function ClientActivity({
       {events.length === 0 ? (
         <div className="px-4 pb-1 pt-2">
           <p className="text-body text-stone-700">When clients open the homes you send, what they do shows here.</p>
-          <Link href="/dashboard/new" className={cn(button({ kind: "secondary" }), "mt-3")}>
+          <Link href="/send?aud=someone" className={cn(button({ kind: "secondary" }), "mt-3")}>
             Send homes
           </Link>
         </div>

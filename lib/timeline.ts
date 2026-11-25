@@ -26,6 +26,8 @@ export type TimelineComment = {
   fromPrivateChat?: boolean;
   // Their public profile, on public pages.
   profileId?: string;
+  // On public pages: someone the viewer follows.
+  followed?: boolean;
   // The spot in a photo it's about ("the front door"), if it's about one.
   spot?: { mediaKey: string; tag: string };
   // On an agent's link: who said it, as a key that stays the same and gives
@@ -163,7 +165,7 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
   const keys = listings.map((l) => l.ListingKey);
   const me = visitorId ? `v:${visitorId}` : null;
 
-  const [comments, shared, publicReactions, privateReactions, publicPhotos, privatePhotos, publicDislikes] = await Promise.all([
+  const [comments, shared, publicReactions, privateReactions, publicPhotos, privatePhotos, publicDislikes, follows] = await Promise.all([
     sql<
       {
         id: string;
@@ -217,7 +219,12 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
         pd.media_key, pd.tag, pd.created_at as at
       from public_photo_dislikes pd join visitors v on v.id = pd.visitor_id
       where pd.listing_key in ${sql(keys)}`,
+    // Who the viewer follows, so their comments can lead in a feed.
+    visitorId
+      ? sql<{ followed_id: string }[]>`select followed_id from follows where follower_id = ${visitorId}`
+      : Promise.resolve([] as { followed_id: string }[]),
   ]);
+  const followed = new Set(follows.map((row) => row.followed_id));
 
   // Private reactions only ever show their likes.
   const privateLikes = privateReactions.map((r) => ({ ...r, ...publicSideOf(r)! }));
@@ -251,6 +258,7 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
             likes: c.likes,
             likedByMe: c.liked_by_me,
             profileId: c.visitor_id,
+            ...(followed.has(c.visitor_id) && { followed: true }),
             ...spotOf(c),
           }),
         ),

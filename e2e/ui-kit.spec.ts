@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
-import { enterCode, createShare, pastNameStep, signInAgent, signUpBuyer } from "./helpers";
+import { enterCode, createShare, pastNameStep, pickHome, signInAgent, signUpBuyer } from "./helpers";
 
 // The light pages are made of one kit (lib/ui.ts, components/ui.tsx): one
 // button, one text box, one face for each kind of person, prices in the
@@ -111,16 +111,21 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   await expect(big).toHaveAttribute("src", /^\/people\/[\w-]+\/photo\?v=\w+$/);
   await expect(agent.getByRole("banner").getByRole("button", { name: "Account menu" }).locator("img")).toBeVisible();
 
-  // Picking homes for a link: the search box, and each home's price.
-  await agent.goto("/dashboard/new");
+  // Picking homes to send, in the box: the search (once asked for), and each home's price.
+  await agent.goto("/send?aud=someone");
+  await agent.getByRole("button", { name: "Add a home" }).click();
   const search = await expectFieldFocus(agent, "Address, MLS number, or a link to the home");
   expect(search.height).toBe(48);
-  const heading = await agent.getByRole("heading", { level: 1 }).evaluate((el) => getComputedStyle(el).fontFamily);
 
   const { dashboardUrl } = await createShare(agent, ["812 N Corbel"], ["Kit"]);
-  // (A home they've sent before is listed there, under the box.)
-  await agent.goto("/dashboard/new");
-  const price = agent.getByRole("button", { name: /812 N Corbel/ }).getByText("$724,900");
+  // (The display type, as a page's title has it: the link's page, where sending ends up.)
+  const heading = await agent.getByRole("heading", { level: 1 }).evaluate((el) => getComputedStyle(el).fontFamily);
+  // (A home they've sent before is offered there, and its price once picked is in the display type.)
+  await agent.goto("/send?aud=someone");
+  await agent.getByRole("button", { name: "Add a home" }).click();
+  await expect(agent.getByRole("region", { name: "Homes you've liked, saved or sent" }).getByRole("button", { name: /812 N Corbel/ })).toBeVisible();
+  await pickHome(agent, "812 N Corbel");
+  const price = agent.getByRole("list", { name: "Picked homes" }).getByText("$724,900");
   expect(await price.evaluate((el) => getComputedStyle(el).fontFamily)).toBe(heading);
   // The conversation the link started, and its foot: the box and the + to send more.
   await agent.goto("/messages");

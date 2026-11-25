@@ -15,7 +15,7 @@ export const metadata = { title: "Your link is ready · Porchcard" };
 export default async function OwnLinkPage({ params }: { params: Promise<{ id: string }> }) {
   const me = await requireUser();
   const { id } = await params;
-  if (me.role === "agent") redirect(`/dashboard/shares/${encodeURIComponent(id)}/sent`);
+  if (me.role === "agent") redirect(`/dashboard/shares/${encodeURIComponent(id)}`);
   return (
     <main className={pageColumn()}>
       <Link href="/messages" className={cn(backLink, "mb-2")}>

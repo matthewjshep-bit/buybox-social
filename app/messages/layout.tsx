@@ -13,8 +13,8 @@ export const metadata: Metadata = { title: "Messages · Porchcard" };
 export default async function MessagesLayout({ children }: { children: ReactNode }) {
   const me = await requireUser();
   const threads = await getThreads(me);
-  // Starting a conversation is sending homes: an agent's builder, or the steps for anyone else.
-  const compose = me.role === "agent" ? "/dashboard/new" : "/send";
+  // Starting a conversation is sending homes.
+  const compose = "/send?aud=someone";
   return (
     <MessagesShell list={<ThreadList threads={threads} compose={compose} />}>{children}</MessagesShell>
   );

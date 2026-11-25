@@ -265,7 +265,7 @@ function EndCard({
           </Link>
         )}
         {context.shareId && (
-          <Link href={`/dashboard/new?share=${context.shareId}`} className={quiet}>
+          <Link href={`/send?share=${context.shareId}`} className={quiet}>
             <Send aria-hidden size={17} /> {name ? `Send ${name} more` : "Send more homes"}
           </Link>
         )}

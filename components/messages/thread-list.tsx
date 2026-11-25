@@ -1,18 +1,20 @@
 import { PenLine, Send } from "lucide-react";
 import Link from "next/link";
+import { ListTitle } from "@/components/messages/list-title";
 import { ThreadRow } from "@/components/messages/thread-row";
 import { EmptyState } from "@/components/ui";
 import type { Thread } from "@/lib/messages";
 import { button } from "@/lib/ui";
 
 // The conversations, newest first, under "Messages" and the pencil that
-// starts a new one (sending homes). With none yet: what this is for, and
-// the way to send homes.
+// starts a new one (sending homes). The newest reads as open on a wide
+// screen until one is picked (Messages opens on it). With none yet: what
+// this is for, and the way to send homes.
 export function ThreadList({ threads, compose }: { threads: Thread[]; compose: string }) {
   return (
     <div className="flex flex-col">
       <div className="flex h-14 items-center justify-between gap-3 px-4">
-        <h1 className="text-xl font-semibold">Messages</h1>
+        <ListTitle />
         <Link
           href={compose}
           aria-label="Send homes"
@@ -38,8 +40,8 @@ export function ThreadList({ threads, compose }: { threads: Thread[]; compose: s
         </div>
       ) : (
         <ul aria-label="Conversations" className="flex flex-col">
-          {threads.map((thread) => (
-            <ThreadRow key={thread.key} thread={thread} />
+          {threads.map((thread, i) => (
+            <ThreadRow key={thread.key} thread={thread} fallback={i === 0} />
           ))}
         </ul>
       )}

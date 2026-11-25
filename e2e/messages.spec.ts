@@ -5,8 +5,26 @@
 // and passes; whoever was sent the homes sees their own take and the
 // sender's words, never other people's passes. Opening a conversation is
 // having seen it, on either side.
-import { expect, test } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, openComments, signInAgent, signUpBuyer } from "./helpers";
+import { expect, test, type Page } from "@playwright/test";
+import { createShare, heartOf, homeIn, joinAs, openComments, signInAgent, signUpBuyer, threadComment } from "./helpers";
+
+// A link with nobody named on it. The box for sending homes asks who it's
+// for, so this is the one-tap Send on the home itself (which makes the link
+// first and asks who it's for after), skipped past to the link's own page.
+async function namelessLink(agent: Page, key: string, address: string) {
+  await agent.goto(`/homes/${key}`);
+  await homeIn(agent, address).getByRole("button", { name: `Send ${address}`, exact: true }).click();
+  const sheet = agent.getByRole("dialog", { name: /^(Sent\. )?Who's it for\?$|^Send this home$/ });
+  await expect(sheet).toBeVisible({ timeout: 15_000 });
+  // (The sheet's body loads a beat after it opens.) The slower way, when the
+  // one tap couldn't copy the link: made here.
+  const create = sheet.getByRole("button", { name: "Create link" });
+  const details = sheet.getByRole("link", { name: "Link details", disabled: false });
+  await expect(create.or(details)).toBeVisible();
+  if (await create.isVisible()) await create.click();
+  await details.click();
+  await agent.waitForURL(/\/dashboard\/shares\/[\w-]+(\?tab=.*)?$/);
+}
 
 const QUILLAN = "1204 Quillan St SE";
 const SALTMARSH = "719 Saltmarsh Ln";
@@ -53,12 +71,16 @@ test("an agent's Messages: one thread per person and one per group link, the hom
   await expect(joRow).toContainText("New");
   const group = list.getByRole("link", { name: /^Ravi & Mia/ });
   await expect(group).toContainText("Not opened yet");
-  await expect(agent.getByRole("link", { name: "Send homes" })).toHaveAttribute("href", "/dashboard/new");
-  // On a phone the list is the page; nothing of a conversation beside it.
+  await expect(agent.getByRole("link", { name: "Send homes" })).toHaveAttribute("href", "/send?aud=someone");
+  // On a phone the list is the page; nothing of a conversation beside it
+  // (not even the newest, which a wide screen opens by itself).
   await expect(agent.getByRole("heading", { level: 1, name: "Messages" })).toBeVisible();
-  await expect(agent.getByText("Pick a conversation.")).toBeHidden();
+  await expect(agent.getByRole("region", { name: "Conversation", exact: true })).toBeHidden();
+  await expect(agent.getByRole("heading", { level: 1, name: "Jo" })).toBeHidden();
 
-  // Jo's thread: the send as a message, each home a card with what happened.
+  // Jo's thread: the send as a message, each home a card with what happened;
+  // what she said about a home is a message of its own under the cards,
+  // quoting the home, with her name (not inside the card).
   await joRow.click();
   await agent.waitForURL(/\/messages\/acct%3A/);
   await expect(agent.getByRole("heading", { level: 1, name: "Jo" })).toBeVisible();
@@ -70,24 +92,32 @@ test("an agent's Messages: one thread per person and one per group link, the hom
   await expect(first).toContainText(QUILLAN);
   await expect(first).toContainText("Opened");
   await expect(first).toContainText("Jo liked it");
-  await expect(first).toContainText("1 comment");
-  await expect(first.getByRole("list", { name: `Comments on ${QUILLAN}` })).toContainText("Is the basement finished?");
+  await expect(first).not.toContainText(/comment/i);
+  await expect(first).not.toContainText("Is the basement finished?");
+  const asked = threadComment(agent, QUILLAN, "Is the basement finished?");
+  await expect(asked).toContainText("Jo");
+  await expect(asked.getByRole("link", { name: new RegExp(`About ${QUILLAN}`) })).toHaveAttribute("href", `#home-${quillanKey}`);
   const second = sends.locator("li").filter({ hasText: SALTMARSH }).first();
   await expect(second).toContainText("Jo passed");
   // The card opens the home: the agent's pop-out over the page.
   await expect(first.getByRole("link", { name: new RegExp(QUILLAN) })).toHaveAttribute("href", /^\/reel\?from=share%3A/);
   // Sending more homes adds to her link.
-  await expect(agent.getByRole("link", { name: "Send homes" })).toHaveAttribute("href", /^\/dashboard\/new\?share=/);
+  await expect(agent.getByRole("link", { name: "Send homes" })).toHaveAttribute("href", /^\/send\?to=acct%3A/);
 
   // Reply under the home: the box answers in that home's thread; what's
-  // said lands under the card, and on Jo's link.
-  await first.getByRole("button", { name: `Reply about ${QUILLAN}` }).click();
+  // said lands as the agent's own message quoting the home (no name on
+  // their own, as on a phone), and on Jo's link.
+  const reply = first.getByRole("button", { name: `Reply about ${QUILLAN}` });
+  expect((await reply.boundingBox())!.height, "Reply on a home's card is a tap target").toBeGreaterThanOrEqual(44);
+  await reply.click();
   const replyBox = agent.getByRole("textbox", { name: `Reply about ${QUILLAN}` });
   await expect(replyBox).toBeFocused();
   await replyBox.fill("Yes, it was finished in 2019.");
   await replyBox.press("Enter");
-  await expect(first.getByRole("list", { name: `Comments on ${QUILLAN}` })).toContainText("Yes, it was finished in 2019.");
-  await expect(first.getByRole("list", { name: `Comments on ${QUILLAN}` })).toContainText("You");
+  const answer = threadComment(agent, QUILLAN, "Yes, it was finished in 2019.");
+  await expect(answer).toBeVisible();
+  await expect(answer).not.toContainText("Jo");
+  await expect(first).not.toContainText("Yes, it was finished in 2019.");
   // Then a word to the conversation itself.
   const box = agent.getByRole("textbox", { name: "Message", exact: true });
   await box.fill("More coming Friday!");
@@ -99,10 +129,18 @@ test("an agent's Messages: one thread per person and one per group link, the hom
   await expect(list.getByRole("link", { name: /^Jo\b/ })).not.toContainText("New");
   await expect(list.getByRole("link", { name: /^Jo\b/ })).not.toContainText("Waiting");
 
-  // Wide: both at once, the list down the left and the conversation beside it.
+  // Wide: both at once, the list down the left and the conversation beside
+  // it. Nothing picked, Messages opens on the newest conversation (Jo's,
+  // just written to) by itself, at its own address still, that row shown
+  // but not marked as the page.
   await agent.setViewportSize({ width: 1280, height: 900 });
   await agent.goto("/messages");
-  await expect(agent.getByText("Pick a conversation.")).toBeVisible();
+  const pane = agent.getByRole("region", { name: "Conversation", exact: true });
+  await expect(pane.getByRole("heading", { level: 2, name: "Jo" })).toBeVisible();
+  await expect(pane.getByRole("list", { name: "Messages" })).toContainText("More coming Friday!");
+  expect(new URL(agent.url()).pathname).toBe("/messages");
+  await expect(list.getByRole("link", { name: /^Jo\b/ })).not.toHaveAttribute("aria-current", "page");
+  await expect(agent.getByText("Pick a conversation.")).toHaveCount(0);
   await list.getByRole("link", { name: /^Ravi & Mia/ }).click();
   await agent.waitForURL(/\/messages\/link%3A/);
   await expect(agent.getByRole("heading", { level: 1, name: "Ravi & Mia" })).toBeVisible();
@@ -130,10 +168,17 @@ test("an agent's Messages: one thread per person and one per group link, the hom
   await expect(theirs).toContainText("You liked it");
   await expect(theirs).toContainText("You passed");
   await expect(theirs).not.toContainText(/Opened|Not opened|\d+ (sec|min)/);
-  await expect(theirs.locator(`[id="home-${quillanKey}"]`)).toContainText("Yes, it was finished in 2019.");
+  // Lena's answer: her message quoting the home, under her name; Jo's own
+  // question the same, with no name on it.
+  const lenasAnswer = threadComment(jo, QUILLAN, "Yes, it was finished in 2019.");
+  await expect(lenasAnswer).toContainText("Lena Messages");
+  await expect(lenasAnswer.getByRole("link", { name: new RegExp(`About ${QUILLAN}`) })).toHaveAttribute("href", `#home-${quillanKey}`);
+  await expect(threadComment(jo, QUILLAN, "Is the basement finished?")).not.toContainText("Lena");
+  await expect(theirs.locator(`[id="home-${quillanKey}"]`)).not.toContainText(/finished|comment/);
   await expect(theirs).toContainText("More coming Friday!");
-  await expect(theirs.getByRole("link", { name: new RegExp(QUILLAN) })).toHaveAttribute("href", /^\/s\/[\w-]+\?home=/);
-  await expect(jo.getByRole("link", { name: "Send homes" })).toHaveAttribute("href", "/send");
+  // (The card opens the home on her own link; the quotes above her words only point at the card.)
+  await expect(theirs.locator(`[id="home-${quillanKey}"]`).getByRole("link", { name: new RegExp(QUILLAN) })).toHaveAttribute("href", /^\/s\/[\w-]+\?home=/);
+  await expect(jo.getByRole("link", { name: "Send homes" })).toHaveAttribute("href", /^\/send\?to=acct%3A/);
   const joBox = jo.getByRole("textbox", { name: "Message", exact: true });
   await joBox.fill("Thanks Lena!");
   await joBox.press("Enter");
@@ -142,12 +187,18 @@ test("an agent's Messages: one thread per person and one per group link, the hom
   await expect(jo.getByRole("list", { name: "Conversations" }).getByRole("link", { name: /Lena Messages/ })).not.toContainText("New");
   await expect(jo.getByRole("banner").getByRole("link", { name: "Messages", exact: true })).toBeVisible();
 
-  // Her word reaches Lena: in the conversation, and in the bell.
-  await agent.goto("/messages");
-  await expect(list.getByRole("link", { name: /^Jo\b/ })).toContainText("Thanks Lena!");
-  await expect(list.getByRole("link", { name: /^Jo\b/ })).toContainText("New");
+  // Her word reaches Lena: something new in the bar and in the bell; on
+  // Messages (wide), her conversation is the newest and opens by itself,
+  // her word in it, and so it's been seen: no longer new.
   await agent.goto("/activity");
   await expect(agent.getByRole("main")).toContainText("Jo sent you a message");
+  await expect(agent.getByRole("banner").getByRole("link", { name: /^Messages, \d+ new$/ })).toBeVisible();
+  await agent.goto("/messages");
+  await expect(pane.getByRole("heading", { level: 2, name: "Jo" })).toBeVisible();
+  await expect(pane.getByRole("list", { name: "Messages" })).toContainText("Thanks Lena!");
+  await expect(list.getByRole("link", { name: /^Jo\b/ })).toContainText("Thanks Lena!");
+  await expect(list.getByRole("link", { name: /^Jo\b/ })).not.toContainText("New");
+  await expect(agent.getByRole("banner").getByRole("link", { name: "Messages", exact: true })).toBeVisible();
 
   // A link sent to nobody yet, unopened, can go from its details page; the
   // conversations come back without it. (Jo's, opened, offers no such thing.)
@@ -158,7 +209,7 @@ test("an agent's Messages: one thread per person and one per group link, the hom
   await agent.waitForURL(/\/dashboard\/shares\//);
   await agent.goto(`${agent.url().split("?")[0]}?tab=people`);
   await expect(agent.getByRole("button", { name: /^Delete\b/ })).toHaveCount(0);
-  await createShare(agent, ["5902 Lakeview"], []);
+  await namelessLink(agent, "SAMPLE-1013", "5902 Lakeview Terrace SE");
   await agent.goto("/messages");
   const nameless = list.getByRole("link", { name: /^Link for 5902 Lakeview/ });
   await expect(nameless).toContainText("Not opened yet");
@@ -172,9 +223,12 @@ test("an agent's Messages: one thread per person and one per group link, the hom
   await agent.waitForURL(/\/messages$/);
   await expect(list.getByRole("link", { name: /^Link for 5902 Lakeview/ })).toHaveCount(0);
 
-  // Someone with nothing sent or received: what this is for.
+  // Someone with nothing sent or received: what this is for, in the list,
+  // and (wide) where a conversation would be.
   const ned = await signUpBuyer(browser, "ned.messages@example.com", "Ned Messages");
+  await ned.setViewportSize({ width: 1280, height: 900 });
   await ned.goto("/messages");
   await expect(ned.getByText("No messages yet")).toBeVisible();
-  await expect(ned.getByRole("link", { name: "Send homes" }).first()).toHaveAttribute("href", "/send");
+  await expect(ned.getByRole("region", { name: "Conversation", exact: true })).toContainText("Homes you send, and homes sent to you, show up here.");
+  await expect(ned.getByRole("link", { name: "Send homes" }).first()).toHaveAttribute("href", "/send?aud=someone");
 });
