@@ -24,17 +24,22 @@ export default async function EditListingPage({ params }: { params: Promise<{ ke
   const shown = active && photosOf(listing).length > 0;
   return (
     <>
-      <Link href="/dashboard/listings" className={backLink}>
-        <ArrowLeft aria-hidden size={18} /> {listingWords(agent.kind).Many}
-      </Link>
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-        <h1 className={cn(pageTitle, "min-w-0")}>{listing.UnparsedAddress}</h1>
+      {/* The way back, and the way to it as everyone sees it, on one line:
+          under them the address and where it stands, together. */}
+      <div className="flex items-center justify-between gap-3">
+        <Link href="/dashboard/listings" className={backLink}>
+          <ArrowLeft aria-hidden size={18} /> {listingWords(agent.kind).Many}
+        </Link>
         {shown && (
-          <Link href={`/homes/${encodeURIComponent(listing.ListingKey)}`} className={cn(button({ kind: "secondary" }), "shrink-0")}>
+          <Link
+            href={`/homes/${encodeURIComponent(listing.ListingKey)}`}
+            className={cn(button({ kind: "ghost", flush: true }), "-mr-2 shrink-0")}
+          >
             <ExternalLink aria-hidden size={16} /> View
           </Link>
         )}
       </div>
+      <h1 className={cn(pageTitle, "mt-2")}>{listing.UnparsedAddress}</h1>
       <p className={cn("mt-1 text-body", shown ? "text-emerald-700" : "text-amber-800")}>
         {shown ? (closed ? "Closed · On your profile" : "On your profile") : active ? "Add a photo to show it on your profile" : "Hidden"}
       </p>

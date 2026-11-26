@@ -9,7 +9,8 @@ import { card } from "@/lib/ui";
 // Everyone's home, laid out the same way: who you are and the places the bar
 // at the top doesn't have, down the left (from a tablet up); the feed in the
 // middle; what's beside it (people worth following) down the right on a wide
-// screen. Both sides stay put while the feed scrolls.
+// screen. Both sides stay put while the feed scrolls, under the bar at the
+// top, as far below it as the feed starts (so nothing jumps).
 
 export type RailLink = { href: string; label: string; icon: ReactNode };
 type RailStat = { href: string; label: string; value: number };
@@ -55,9 +56,22 @@ export function ProfileRail({
         </div>
         <div className={cn("flex flex-col items-center px-4 pb-4 text-center", ownImage ? "mt-3" : "-mt-9")}>
           <Avatar name={name} tone={agent ? "agent" : "person"} photo={photo} size={18} className="ring-4 ring-white" />
-          <Link href={href} className="mt-2 text-lg font-semibold leading-tight underline-offset-2 hover:underline">
-            {name}
-          </Link>
+          {name ? (
+            <Link
+              href={href}
+              className="mt-2 max-w-full text-lg font-semibold leading-tight [overflow-wrap:anywhere] underline-offset-2 hover:underline"
+            >
+              {name}
+            </Link>
+          ) : (
+            // No name yet: where theirs would be, the way to add it.
+            <Link
+              href="/people/me/edit"
+              className="mt-1 inline-flex min-h-11 items-center text-body font-semibold text-brand underline-offset-2 hover:underline"
+            >
+              Add your name
+            </Link>
+          )}
           {line && <p className="mt-0.5 text-meta text-muted">{line}</p>}
         </div>
         {stats.length > 0 && (
@@ -115,11 +129,11 @@ export function HomeShell({
   return (
     <main className="mx-auto grid max-w-[1140px] grid-cols-1 gap-6 px-4 pb-16 pt-4 md:grid-cols-[220px_minmax(0,1fr)] lg:grid-cols-[220px_minmax(0,560px)_300px] lg:justify-center lg:pt-6">
       <h1 className="sr-only">{title}</h1>
-      <aside aria-label="Your profile" className="hidden md:sticky md:top-5 md:block md:self-start">
+      <aside aria-label="Your profile" className="hidden md:sticky md:top-[calc(var(--header)+1rem)] md:block md:self-start lg:top-[calc(var(--header)+1.5rem)]">
         {left}
       </aside>
       <div className="flex min-w-0 flex-col gap-5">{children}</div>
-      <aside aria-label="Beside your feed" className="hidden flex-col gap-4 lg:sticky lg:top-5 lg:flex lg:self-start">
+      <aside aria-label="Beside your feed" className="hidden flex-col gap-4 lg:sticky lg:top-[calc(var(--header)+1.5rem)] lg:flex lg:self-start">
         {right}
       </aside>
     </main>

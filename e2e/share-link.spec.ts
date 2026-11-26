@@ -164,13 +164,16 @@ test("one home: the link opens on a word from the agent, then the home, in the a
     ),
   );
   const middle = frame.x + frame.width / 2;
-  // The head and the words are the 44rem column; the photo keeps its own
-  // shape inside it (its box sizes to the picture), centred and no wider.
+  // The head and the words are one column (44rem at most, as wide as the
+  // photo's space, never under 30rem); the photo keeps its own shape inside
+  // it (its box sizes to the picture), centred and no wider.
   for (const box of [head, words]) {
-    expect(Math.abs(box.width - 44 * 16)).toBeLessThan(2);
+    expect(Math.abs(box.width - words.width)).toBeLessThan(2);
+    expect(box.width).toBeLessThanOrEqual(44 * 16 + 1);
+    expect(box.width).toBeGreaterThanOrEqual(30 * 16 - 1);
     expect(Math.abs(box.x + box.width / 2 - middle)).toBeLessThan(2);
   }
-  expect(photo.width).toBeLessThanOrEqual(44 * 16 + 1);
+  expect(photo.width).toBeLessThanOrEqual(words.width + 1);
   expect(Math.abs(photo.x + photo.width / 2 - middle)).toBeLessThan(2);
   expect(head.y + head.height).toBeLessThanOrEqual(photo.y + 1);
   expect(words.y).toBeGreaterThanOrEqual(photo.y + photo.height - 1);

@@ -11,8 +11,9 @@ const FULL_SCREEN = [/^\/s\//, /^\/homes(\/|$)/, /^\/reel$/, /^\/browse$/];
 const fullScreen = (pathname: string) => FULL_SCREEN.some((pattern) => pattern.test(pathname));
 const agentLink = (pathname: string) => pathname.startsWith("/s/");
 
-// The map runs edge to edge, and the header with it.
-const WIDE = [/^\/search$/, /^\/messages(\/|$)/];
+// The map runs edge to edge, and the header with it (and on Search's People
+// tab too, so the bar and the Homes | People row line up the same on both).
+const WIDE = [/^\/search(\/people)?$/, /^\/messages(\/|$)/];
 
 export function HeaderGate({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -42,4 +43,13 @@ export function BrandScope({ brand, children }: { brand: string | null; children
       {children}
     </div>
   );
+}
+
+// Getting started (/welcome), a question a screen: the bar is just the logo
+// and Sign out (`onboarding`), so nothing leads away half way through, and
+// nothing in it (a face with no name yet) is out of date. Anywhere else, the
+// bar's places.
+export function OnboardingGate({ onboarding, children }: { onboarding: ReactNode; children: ReactNode }) {
+  const pathname = usePathname();
+  return /^\/welcome(\/|$)/.test(pathname) ? onboarding : children;
 }

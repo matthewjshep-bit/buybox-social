@@ -2,13 +2,17 @@ import { X } from "lucide-react";
 import Link from "next/link";
 import { SendLink } from "@/app/dashboard/shares/[id]/client";
 import { sql } from "@/lib/db";
-import { appUrl } from "@/lib/format";
+import { appUrl, cn, namesList } from "@/lib/format";
 import { threadHref } from "@/lib/messages";
+import { closeButton } from "@/lib/ui";
 
 // Just after sending homes to someone: their link, ready to text, share or
 // copy, right in the conversation, for whoever isn't on Porchcard (anyone
 // who is was told). Nobody named: the one link anyone can use. Only ever
 // the sender's; gone with Done, or the next time the conversation opens.
+// Never more than about half the screen, however many people it's for: it
+// scrolls on its own, its title and Done held at its top, so the
+// conversation and the box stay in view.
 export async function LinkReadyCard({ ownerId, threadKey, shareId }: { ownerId: string; threadKey: string; shareId: string }) {
   if (!/^[0-9a-f-]{36}$/i.test(shareId)) return null;
   const [share] = await sql<{ token: string; homes: number; address: string | null; price: number | null }[]>`
@@ -30,22 +34,17 @@ export async function LinkReadyCard({ ownerId, threadKey, shareId }: { ownerId: 
   const title =
     people.length === 0 ? "Your link is ready" : toSend.length === 1 ? `${toSend[0].first_name.trim()}'s link is ready` : toSend.length > 1 ? "Their links are ready" : "Sent";
   return (
-    <section aria-label="Links to send" className="shrink-0 border-t border-stone-200 bg-stone-50 px-3 py-3 sm:px-4">
-      <div className="flex items-center gap-2">
+    <section
+      aria-label="Links to send"
+      className="relative max-h-[45dvh] shrink-0 overflow-y-auto overscroll-contain border-t border-stone-200 bg-stone-50 px-3 pb-3 sm:px-4"
+    >
+      <div className="sticky top-0 z-10 -mx-3 flex items-center gap-2 bg-stone-50 py-1 pl-3 pr-1 sm:-mx-4 sm:pl-4 sm:pr-2">
         <h2 className="min-w-0 flex-1 text-body font-semibold">{title}</h2>
-        <Link
-          href={threadHref(threadKey)}
-          aria-label="Done"
-          className="flex size-11 shrink-0 items-center justify-center rounded-full text-ink hover:bg-stone-200"
-        >
+        <Link href={threadHref(threadKey)} aria-label="Done" className={cn(closeButton, "shrink-0")}>
           <X aria-hidden size={20} />
         </Link>
       </div>
-      {told.length > 0 && (
-        <p className="text-meta text-muted">
-          We let {told.join(", ")} know on Porchcard.
-        </p>
-      )}
+      {told.length > 0 && <p className="text-meta text-muted">We let {namesList(told)} know on Porchcard.</p>}
       {people.length === 0 && (
         <SendLink bare url={`${appUrl()}/s/${share.token}`} clientName="" count={share.homes} home={home} />
       )}

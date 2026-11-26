@@ -76,6 +76,15 @@ const brandPalette = (brand: string): Palette => ({
 export const WARM_SCENES = SCENES.map((_, i) => `scene${i}`);
 export const BRAND_SCENES: string[] = MOTIFS;
 
+// The scene someone gets before they've chosen one, by the name the picker
+// gives it: one of an agent's own-colour scenes ("porch"), else a warm one
+// ("scene3"). The same pick as BannerArt's below.
+export function defaultScene(seed: string, brand?: string | null) {
+  const n = hashOf(seed);
+  const own = brand && /^#[0-9a-f]{6}$/i.test(brand);
+  return own ? MOTIFS[n % MOTIFS.length] : `scene${n % SCENES.length}`;
+}
+
 // `pick`: the scene they chose ("scene3", or "porch" in an agent's colour);
 // without one, the scene picked for them from `seed`.
 export function BannerArt({ seed, brand, pick }: { seed: string; brand?: string | null; pick?: string | null }) {

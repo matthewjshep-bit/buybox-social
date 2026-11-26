@@ -1,15 +1,17 @@
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { Suspense } from "react";
 import { Compose, type ComposeTo } from "@/components/compose/compose";
+import { Loading, Placeholder } from "@/components/route-state";
 import { firstName, requireUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { cn } from "@/lib/format";
 import { homeLiteOf } from "@/lib/home-lite";
 import type { Listing } from "@/lib/listings/types";
-import { getThread, getThreads } from "@/lib/messages";
+import { getThread, getThreads, threadHref } from "@/lib/messages";
 import { photoUrl, photoVersion } from "@/lib/person-photo";
 import { ensureAccountVisitor } from "@/lib/public";
-import { backLink, pageColumn } from "@/lib/ui";
+import { backLink, card, pageColumn } from "@/lib/ui";
 
 export const metadata = { title: "Send homes · Porchcard" };
 
@@ -22,7 +24,25 @@ export default async function SendPage({
 }: {
   searchParams: Promise<{ home?: string; to?: string; share?: string; aud?: string }>;
 }) {
+  // (Signed out, to sign in, before anything is drawn.)
   const me = await requireUser();
+  // The box's shape at once, the box itself as soon as what goes in it is read.
+  return (
+    <main className={pageColumn({ tray: true })}>
+      <Suspense fallback={<SendSkeleton />}>
+        <SendBox me={me} searchParams={searchParams} />
+      </Suspense>
+    </main>
+  );
+}
+
+async function SendBox({
+  me,
+  searchParams,
+}: {
+  me: Awaited<ReturnType<typeof requireUser>>;
+  searchParams: Promise<{ home?: string; to?: string; share?: string; aud?: string }>;
+}) {
   const query = await searchParams;
   const visitor = await ensureAccountVisitor(me);
   const homeKey = typeof query.home === "string" && query.home.length <= 100 ? query.home : null;
@@ -37,23 +57,52 @@ export default async function SendPage({
   ]);
   const agent = me.role === "agent";
   return (
-    <main className={pageColumn({ tray: true })}>
-      <Link href="/messages" className={cn(backLink, "mb-2")}>
-        <ArrowLeft aria-hidden size={18} /> Messages
-      </Link>
+    <>
+      {/* Back where it opened from: the conversation it's for, or Messages. */}
+      <BackToMessages href={to?.key ? threadHref(to.key) : "/messages"} />
       <Compose
         mode="page"
         me={{
-          name: (agent ? me.full_name.trim() : firstName(me)) || me.email,
+          // (Never their email: with no name yet, their initial-less face.)
+          name: agent ? me.full_name.trim() : firstName(me),
           photo: photoUrl(visitor.id, photoVersion(me.photo_data_url)),
           agent,
         }}
         peer={!agent}
         start={start.map((row) => homeLiteOf(row.data))}
         to={to}
-        audience={query.aud === "someone" || homeKey ? "someone" : "everyone"}
+        // To someone for an agent (as on their Home), from Messages, and with a
+        // home already picked; anyone else starts out posting to everyone.
+        audience={agent || query.aud === "someone" || homeKey ? "someone" : "everyone"}
       />
-    </main>
+    </>
+  );
+}
+
+function BackToMessages({ href }: { href: string }) {
+  return (
+    <Link href={href} className={cn(backLink, "mb-2")}>
+      <ArrowLeft aria-hidden size={18} /> Messages
+    </Link>
+  );
+}
+
+// While it's read: the way back, and the box's shape (a face and its title,
+// the box to say something in, a button).
+function SendSkeleton() {
+  return (
+    <div aria-busy>
+      <BackToMessages href="/messages" />
+      <Loading what="Send homes" />
+      <div aria-hidden className={cn(card, "flex flex-col gap-3 p-4")}>
+        <div className="flex items-center gap-3">
+          <Placeholder className="size-10 shrink-0" />
+          <Placeholder className="h-9 w-48" />
+        </div>
+        <Placeholder className="h-20 rounded-2xl" />
+        <Placeholder className="h-11 w-36" />
+      </div>
+    </div>
   );
 }
 

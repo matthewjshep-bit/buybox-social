@@ -55,8 +55,8 @@ test("someone who follows nobody still has a full feed: popular homes, a new lis
   const cards = stream.getByRole("listitem").filter({ has: page.getByRole("link", { name: /^.+: / }) });
   expect(await cards.count()).toBeGreaterThanOrEqual(6);
   // Each says why it's there.
-  // (However many others like it too, in a run with other tests.)
-  await expect(stream.getByText(/^Popular this week · \d+ likes?/).first()).toBeVisible();
+  // (Just why: how many liked it is in the bar under it.)
+  await expect(stream.getByText(/^Popular this week$/).first()).toBeVisible();
   // The home Pia liked is in it, once: as popular, or (in a run with other
   // tests, busier homes ahead of it in the week's popular) as near Una in
   // Olympia, whichever comes first.

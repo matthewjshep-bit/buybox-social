@@ -52,6 +52,9 @@ type TourStep = {
   // Round, the size of a fingertip's reach, in the middle of what it points
   // at (a photo), rather than around all of it.
   spot?: boolean;
+  // `false`: a step that's only to read (where the agent's notes are), so no
+  // finger tapping, which would ask for a tap it doesn't want.
+  point?: false;
   title: string;
   body: string;
 };
@@ -82,6 +85,8 @@ type Box = { left: number; top: number; width: number; height: number };
 const PAD = 6;
 const SPOT = 132;
 const GUTTER = 16;
+// How far in from the screen's sides a highlight's ring stays.
+const EDGE = 4;
 
 // The steps, drawn over the page: the screen dimmed but for what each points
 // at, and a card beside it.
@@ -93,7 +98,7 @@ export function Tour({ root: rootOf, steps, onDone }: { root: () => HTMLElement 
   // Only the steps whose thing is on screen.
   const [shown] = useState(() => steps.filter((step) => root && find(root, step.target)));
   const [index, setIndex] = useState(0);
-  const [hole, setHole] = useState<{ box: Box; round: boolean; tap: { x: number; y: number } } | null>(null);
+  const [hole, setHole] = useState<{ box: Box; round: boolean; tap: { x: number; y: number }; point: boolean } | null>(null);
   const [cardTop, setCardTop] = useState<number | null>(null);
   const card = useRef<HTMLDivElement>(null);
   const next = useRef<HTMLButtonElement>(null);
@@ -119,10 +124,14 @@ export function Tour({ root: rootOf, steps, onDone }: { root: () => HTMLElement 
       const tap = step.spot
         ? { x: r.left + r.width / 2, y: r.top + r.height * 0.45 }
         : { x: t.left + t.width / 2, y: t.top + t.height * 0.7 };
+      // Kept inside the screen, a little in from its edges: something as wide
+      // as the screen (the comments) still shows the whole of its ring.
+      const left = Math.max(EDGE, r.left - PAD);
+      const right = Math.min(window.innerWidth - EDGE, r.right + PAD);
       const box = step.spot
         ? { left: tap.x - SPOT / 2, top: tap.y - SPOT / 2, width: SPOT, height: SPOT }
-        : { left: r.left - PAD, top: r.top - PAD, width: r.width + PAD * 2, height: r.height + PAD * 2 };
-      setHole({ box, round: Boolean(step.spot), tap });
+        : { left, top: r.top - PAD, width: Math.max(0, right - left), height: r.height + PAD * 2 };
+      setHole({ box, round: Boolean(step.spot), tap, point: step.point !== false });
     };
     place();
     window.addEventListener("resize", place);
@@ -186,17 +195,19 @@ export function Tour({ root: rootOf, steps, onDone }: { root: () => HTMLElement 
       />
       {/* A finger, tapping where to tap: a ring spreading from the spot, and
           the fingertip just under it, so what it points at stays readable. */}
-      <span
-        key={`tap-${index}`}
-        aria-hidden
-        style={{ left: hole.tap.x, top: hole.tap.y }}
-        className="pointer-events-none absolute"
-      >
-        <span className="absolute -left-5 -top-5 size-10 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.2)] animate-[spot-ripple_1.4s_ease-out_infinite]" />
-        <span className="absolute -left-2.5 top-2 block origin-[30%_0] animate-[tour-tap_1.4s_ease-in-out_infinite]">
-          <Pointer size={30} strokeWidth={1.75} className="fill-white text-ink drop-shadow-[0_2px_4px_rgb(0_0_0/0.45)]" />
+      {hole.point && (
+        <span
+          key={`tap-${index}`}
+          aria-hidden
+          style={{ left: hole.tap.x, top: hole.tap.y }}
+          className="pointer-events-none absolute"
+        >
+          <span className="absolute -left-5 -top-5 size-10 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.2)] animate-[spot-ripple_1.4s_ease-out_infinite]" />
+          <span className="absolute -left-2.5 top-2 block origin-[30%_0] animate-[tour-tap_1.4s_ease-in-out_infinite]">
+            <Pointer size={30} strokeWidth={1.75} className="fill-white text-ink drop-shadow-[0_2px_4px_rgb(0_0_0/0.45)]" />
+          </span>
         </span>
-      </span>
+      )}
       <div
         ref={card}
         key={`card-${index}`}
@@ -207,7 +218,7 @@ export function Tour({ root: rootOf, steps, onDone }: { root: () => HTMLElement 
         <p id={title} className="text-body font-semibold">
           {step.title}
         </p>
-        <p className="mt-1 text-sm leading-relaxed text-stone-600">
+        <p className="mt-1 text-sm leading-relaxed text-muted">
           {step.body}
         </p>
         <div className="mt-3 flex items-center gap-2">
@@ -282,6 +293,7 @@ export function tourSteps(
           {
             // (The latest comments, under the photo: the agent's lead them.)
             target: "[data-comment-list]",
+            point: false as const,
             title: `${Agent} left you notes`,
             body: "They show here.",
           },

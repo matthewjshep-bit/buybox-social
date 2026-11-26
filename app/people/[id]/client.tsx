@@ -17,7 +17,7 @@ import { Sheet } from "@/components/sheet";
 import type { ActionResult } from "@/lib/engagement";
 import { cn } from "@/lib/format";
 import type { CardControl } from "@/lib/profile";
-import { button } from "@/lib/ui";
+import { button, pill } from "@/lib/ui";
 import { resizePhoto } from "@/lib/resize-photo";
 import { deleteMyComment, removeMyReaction, removeMySpots, setFollowing, setMyPhoto } from "./actions";
 
@@ -97,10 +97,11 @@ export function ShareMyPage({ title }: { title: string }) {
       onClick={share}
       // It can't share or copy without scripts, so without them it isn't there.
       aria-label="Share my profile"
-      className={cn(button({ kind: "secondary" }), "[@media(scripting:none)]:hidden")}
+      // (Just the icon on a phone, so it sits beside Edit profile on the narrowest.)
+      className={cn(button({ kind: "secondary" }), "max-sm:w-11 max-sm:px-0 [@media(scripting:none)]:hidden")}
     >
       <Share2 aria-hidden size={16} />
-      Share
+      <span className="max-sm:sr-only">Share</span>
     </button>
   );
 }
@@ -293,7 +294,7 @@ export function CardMenu({
         {comment?.kind === "comment" ? (
           // Focus starts on Cancel: a second Enter shouldn't delete for good.
           <div role="group" aria-labelledby={`${id}-ask`} className="flex flex-col gap-3 pb-1">
-            <h3 id={`${id}-ask`} className="text-[17px] font-semibold">
+            <h3 id={`${id}-ask`} className="text-lead font-semibold">
               Delete your comment?
             </h3>
             <p
@@ -424,6 +425,8 @@ export function CardMenu({
 
 // Follow, or Following (tap again to stop): what they like then comes to your
 // feed first. Signed out, it's the way to sign in, back to the same page.
+// `small`: one of many, in a list of people: just the word (no icon), and
+// Following a quiet grey pill, as on Instagram, still a fingertip tall.
 export function FollowButton({
   personId,
   name,
@@ -449,11 +452,15 @@ export function FollowButton({
     setOn(following);
   }
   const [pending, startTransition] = useTransition();
-  const look = cn(button({ kind: on ? "secondary" : "primary" }), small && "min-h-11 px-4 text-sm", "shrink-0");
+  const look = cn(
+    small && on ? cn(pill(), "bg-stone-100 text-ink hover:bg-stone-200") : button({ kind: on ? "secondary" : "primary" }),
+    "shrink-0",
+  );
+  const icon = small ? null : on ? <UserCheck aria-hidden size={16} /> : <UserPlus aria-hidden size={16} />;
   if (signIn) {
     return (
       <Link href={signIn} className={look}>
-        <UserPlus aria-hidden size={16} /> Follow<span className="sr-only"> {name}</span>
+        {icon}Follow<span className="sr-only"> {name}</span>
       </Link>
     );
   }
@@ -476,7 +483,7 @@ export function FollowButton({
       }}
       className={look}
     >
-      {on ? <UserCheck aria-hidden size={16} /> : <UserPlus aria-hidden size={16} />}
+      {icon}
       {on ? "Following" : "Follow"}
       <span className="sr-only"> {name}</span>
     </button>

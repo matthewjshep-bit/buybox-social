@@ -1,14 +1,16 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { CaughtUp } from "@/components/home/caught-up";
 import { FeedGate } from "@/components/home/feed-gate";
+import { FeedOrder } from "@/components/home/feed-order";
 import { FollowingCard, StripCard } from "@/components/home/following-card";
 import { PostCard } from "@/components/home/post-card";
 import { Seen } from "@/components/home/seen";
 import { cn } from "@/lib/format";
-import type { FeedCounts, FeedItem, HomeFeedEntry } from "@/lib/home-feed";
+import { FEED_ORDER, feedKeys, feedOrderValue, type FeedCounts, type FeedItem, type HomeFeedEntry } from "@/lib/home-feed";
 import type { PostEntry } from "@/lib/posts";
 import type { ReactionState } from "@/lib/reactions";
-import { card } from "@/lib/ui";
+import { card, link } from "@/lib/ui";
 
 // The Following stream, on anyone's home: one card per home per day from the
 // people they follow (a big photo, a bar with its likes and comments, which
@@ -56,6 +58,7 @@ export function FollowingFeed({
   among = null,
   empty,
   me = null,
+  owner,
 }: {
   entries: FeedItem[];
   // Their own take on each home, by key, for the hearts.
@@ -75,6 +78,8 @@ export function FollowingFeed({
   // Who's looking (by name, for the sign-up gate: someone signed in with a
   // name is simply in), or nobody.
   me?: { name: string; photo: string | null; agent?: boolean } | null;
+  // Whose feed it is (their page's id): its order is noted for the pop-out.
+  owner?: string;
 }) {
   if (entries.length === 0) {
     return <div className={cn(card, "px-5 py-6 text-center text-body text-stone-700")}>{empty}</div>;
@@ -111,7 +116,18 @@ export function FollowingFeed({
         {list(freshItems.slice(0, AMONG_AFTER))}
         {among}
         {list(freshItems.slice(AMONG_AFTER))}
-        <CaughtUp />
+        {/* The true end: somewhere to go from it, in words rather than more buttons. */}
+        <CaughtUp>
+          See what&apos;s{" "}
+          <Link href="/popular" className={cn(link, "hit-44")}>
+            popular
+          </Link>
+          , or{" "}
+          <Link href="/search" className={cn(link, "hit-44")}>
+            search for homes
+          </Link>
+          .
+        </CaughtUp>
       </div>
     ) : freshItems.length === 0 ? (
       <div className="flex flex-col gap-4">
@@ -131,6 +147,7 @@ export function FollowingFeed({
   // in front of them is noted, for next time.)
   return (
     <FeedGate myName={me?.name || null}>
+      {owner && <FeedOrder name={FEED_ORDER.name} value={feedOrderValue(owner, feedKeys(entries))} maxAge={FEED_ORDER.maxAge} />}
       <Seen>{body}</Seen>
     </FeedGate>
   );

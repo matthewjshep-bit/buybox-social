@@ -1,29 +1,34 @@
 "use client";
 
-import { Bookmark, BriefcaseBusiness, Building2, ChevronDown, House, ListChecks, LogOut, Send, Shield, UserRound, UserRoundSearch } from "lucide-react";
-import Link from "next/link";
+import { Bookmark, BriefcaseBusiness, Building2, ChevronDown, House, ListChecks, LogOut, Send, Shield, UserRoundSearch } from "lucide-react";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from "react";
 import { signOut } from "@/app/login/actions";
 import { PorchcardLogo, PorchcardMark } from "@/components/porchcard-logo";
 import { Avatar } from "@/components/ui";
 import { cn } from "@/lib/format";
+import { menuRow, popover } from "@/lib/ui";
 
 // Which page a link is: the one you're on, or the part of the site it's in
 // (a client's page is in the dashboard).
-function useCurrent(href: string, section: boolean, except?: string) {
+function useCurrent(href: string, section: boolean, except?: string, also?: string) {
   const pathname = usePathname();
   if (pathname === href) return "page" as const;
   // (`except`: a part of it that is a place of its own, with its own link.)
   if (except && (pathname === except || pathname.startsWith(`${except}/`))) return undefined;
   if (section && pathname.startsWith(`${href}/`)) return "true" as const;
+  // (`also`: a place elsewhere that belongs to it, as a link's page is one of
+  // Messages' conversations.)
+  if (also && (pathname === also || pathname.startsWith(`${also}/`))) return "true" as const;
   return undefined;
 }
 
 // Porchcard's logo, which always goes home: navy on the white header, white
 // over the feed (with a soft shadow, for a bright photo). On a narrow phone,
-// just the card.
-export function SiteLogo({ overlay = false }: { overlay?: boolean }) {
+// just the card. `compact`: just the card on a tablet too (768 to 1023px),
+// where the places in the middle of the bar would otherwise crowd the name.
+export function SiteLogo({ overlay = false, compact = false }: { overlay?: boolean; compact?: boolean }) {
   return (
     <Link
       href="/"
@@ -32,8 +37,8 @@ export function SiteLogo({ overlay = false }: { overlay?: boolean }) {
         overlay ? "text-white drop-shadow-[0_1px_2px_rgb(0_0_0/0.45)]" : "text-[#062B4C]",
       )}
     >
-      <PorchcardLogo className="h-6 w-auto max-[420px]:hidden" />
-      <PorchcardMark className="hidden h-7 w-auto max-[420px]:block" />
+      <PorchcardLogo className={cn("h-6 w-auto max-[420px]:hidden", compact && "md:max-lg:hidden")} />
+      <PorchcardMark className={cn("hidden h-7 w-auto max-[420px]:block", compact && "md:max-lg:block")} />
       <span className="sr-only">Porchcard</span>
     </Link>
   );
@@ -52,24 +57,46 @@ export function SignInLink({ className }: { className?: string }) {
   );
 }
 
-// A link in the header that says when it's where you are.
+// A link in the header that says when it's where you are. `pending`: once
+// tapped, while the page it goes to is on its way, a faint line comes up
+// under it where the line under the place you're on goes (the link must be
+// `relative`), so a tap is answered at once however slow the page.
 export function NavLink({
   href,
   section = false,
   except,
+  also,
+  pending = false,
   className,
   children,
 }: {
   href: string;
   section?: boolean;
   except?: string;
+  also?: string;
+  pending?: boolean;
   className?: string;
   children: ReactNode;
 }) {
   return (
-    <Link href={href} aria-current={useCurrent(href, section, except)} className={className}>
+    <Link href={href} aria-current={useCurrent(href, section, except, also)} className={className}>
+      {/* (First, so the place's word stays the last thing in it.) */}
+      {pending && <PendingLine />}
       {children}
     </Link>
+  );
+}
+
+// The faint line under a place on its way. It waits a moment before it
+// shows, so a quick page never flickers it.
+function PendingLine() {
+  const { pending } = useLinkStatus();
+  return (
+    <span
+      aria-hidden
+      data-pending={pending || undefined}
+      className="pointer-events-none absolute inset-x-1.5 bottom-0 h-0.5 rounded-full bg-current opacity-0 transition-opacity data-pending:opacity-40 data-pending:delay-100"
+    />
   );
 }
 
@@ -221,12 +248,12 @@ export function AccountMenu({
         className={cn(
           // (Your face is a little taller than the others' icons, so it sits
           // closer to its word: the words then run in one line across the bar.)
-          "relative flex h-14 min-w-11 shrink-0 flex-col items-center justify-center px-1.5 text-[12px] font-medium leading-none [anchor-name:--account-menu] md:min-w-[4.25rem]",
+          "relative flex h-14 min-w-11 shrink-0 flex-col items-center justify-center rounded-xl px-1.5 text-[12px] font-medium leading-none transition-colors [anchor-name:--account-menu] focus-visible:outline-offset-[-4px] md:min-w-[4.25rem]",
           // The same line under it as the bar's other places, when you're there.
           "after:absolute after:inset-x-1.5 after:bottom-0 after:h-0.5 after:rounded-full",
           overlay
             ? "text-white/85 hover:text-white [text-shadow:0_1px_3px_rgb(0_0_0/0.5)] [&[aria-current]]:text-white [&[aria-current]]:after:bg-white"
-            : "text-stone-600 hover:text-ink [&[aria-current]]:text-ink [&[aria-current]]:after:bg-ink",
+            : "text-muted hover:text-ink [&[aria-current]]:text-ink [&[aria-current]]:after:bg-ink",
         )}
       >
         {/* The face you have everywhere: a buyer's in the brand's colour, an
@@ -253,21 +280,31 @@ export function AccountMenu({
         onBlur={leave}
         onKeyDown={arrows}
         className={cn(
-          "m-0 w-64 max-w-[calc(100vw-1.5rem)] rounded-2xl border-0 bg-white p-1.5 text-ink shadow-[0_12px_40px_rgb(0_0_0/0.22)] ring-1 ring-black/5 [text-shadow:none]",
+          popover,
+          "m-0 w-64 max-w-[calc(100vw-1.5rem)] border-0 [text-shadow:none]",
           // Just under the initial, its right edge in line with it.
           "inset-auto mt-1.5 [position-anchor:--account-menu] top-[anchor(bottom)] right-[anchor(right)]",
           // A browser that can't place it there: under the header, at the right.
-          "not-supports-[anchor-name:--a]:top-[calc(3.5rem+env(safe-area-inset-top))] not-supports-[anchor-name:--a]:right-3",
+          "not-supports-[anchor-name:--a]:top-(--header) not-supports-[anchor-name:--a]:right-3",
         )}
       >
-        <div className="px-3 pb-2 pt-2.5">
-          {name && <p className="truncate text-body font-semibold">{name}</p>}
-          <p className={cn("truncate", name ? "text-meta text-muted" : "text-body font-semibold")}>{email}</p>
-        </div>
-        <ul className="border-t border-stone-100 pt-1.5">
-          <MenuLink href={profile} icon={<UserRound aria-hidden size={18} />} onGo={close}>
-            Your profile
-          </MenuLink>
+        {/* Who you are, at its top, is the way to your own page (as a
+            face and a name are everywhere else). */}
+        <Link
+          href={profile}
+          aria-label="Your profile"
+          aria-current={here === "page" ? "page" : undefined}
+          onClick={close}
+          className={cn(menuRow(), "py-2")}
+        >
+          <Avatar name={initial} tone={agent ? "agent" : "person"} photo={photo} size={10} />
+          <span className="min-w-0 flex-1 leading-snug">
+            <span className="block truncate font-semibold">{name || email}</span>
+            {name && <span className="block truncate text-meta font-normal text-muted">{email}</span>}
+            <span className="block text-meta font-semibold text-brand">Your profile</span>
+          </span>
+        </Link>
+        <ul className="mt-1.5 border-t border-stone-100 pt-1.5">
           {/* An agent's own listings: theirs to add to and change, like
               their profile, so here with it and not among their clients. */}
           {agent && (
@@ -314,8 +351,8 @@ export function AccountMenu({
           )}
         </ul>
         <form action={signOut} className="mt-1.5 border-t border-stone-100 pt-1.5">
-          <button type="submit" className={menuItem}>
-            <LogOut aria-hidden size={18} className="text-muted" />
+          <button type="submit" className={menuRow()}>
+            <LogOut aria-hidden size={18} />
             Sign out
           </button>
         </form>
@@ -328,9 +365,6 @@ export function AccountMenu({
 function within(menu: HTMLElement | null, trigger: HTMLElement | null, node: EventTarget | null) {
   return node instanceof Node && Boolean(menu?.contains(node) || trigger?.contains(node));
 }
-
-const menuItem =
-  "flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-body font-medium hover:bg-stone-100 [&[aria-current]]:bg-stone-100 [&[aria-current]]:font-semibold";
 
 function MenuLink({
   href,
@@ -347,8 +381,8 @@ function MenuLink({
 }) {
   return (
     <li>
-      <Link href={href} aria-current={useCurrent(href, section)} onClick={onGo} className={menuItem}>
-        <span className="text-muted">{icon}</span>
+      <Link href={href} aria-current={useCurrent(href, section)} onClick={onGo} className={menuRow()}>
+        {icon}
         <span>{children}</span>
       </Link>
     </li>

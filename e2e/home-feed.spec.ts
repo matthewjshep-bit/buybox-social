@@ -42,13 +42,18 @@ test("an agent's home is everyone's home, a feed with nothing of their clients o
   await expect(agent.getByRole("region", { name: "Your clients" })).toHaveCount(0);
   await expect(agent.getByRole("group", { name: "Show" })).toHaveCount(0);
   await expect(agent.getByText("Send your first homes")).toHaveCount(0);
-  // Beside the feed, what her clients are doing (only she sees it): Jo
-  // opened the link and liked a home. People to follow are for everyone else.
+  // Beside the feed: Top, the head of Popular (People to follow are for
+  // everyone else). What her clients do isn't on Home: it's in her
+  // Notifications (only she sees it) and on Messages. Jo opened the link and
+  // liked a home.
   await expect(agent.getByRole("region", { name: "People to follow" })).toHaveCount(0);
-  const activity = agent.getByRole("region", { name: /^Client activity/ });
-  await expect(activity).toContainText("Only you see this");
-  await expect(activity.getByRole("link", { name: /Jo liked 1204 Quillan St SE/ })).toBeVisible();
-  await expect(activity.getByRole("link", { name: /Jo opened your link/ })).toBeVisible();
+  await expect(agent.getByRole("region", { name: /^Client activity/ })).toHaveCount(0);
+  await expect(agent.getByRole("main")).not.toContainText("Jo liked 1204 Quillan St SE");
+  await agent.goto("/activity");
+  const lines = agent.getByRole("main").getByRole("listitem");
+  await expect(lines.filter({ hasText: "Jo liked 1204 Quillan St SE" })).toContainText("Your client");
+  await expect(lines.filter({ hasText: "Jo opened the 2 homes you sent" })).toContainText("Your client");
+  await agent.goto("/");
 
   // Jo asks something.
   const chat = await openComments(jo, quillan);
@@ -56,19 +61,19 @@ test("an agent's home is everyone's home, a feed with nothing of their clients o
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByLabel("Add a comment")).toHaveValue("");
 
-  // [P] What she said on her link is in Client activity, never in the feed;
-  // a tap there goes to what she did: her conversation on Messages, at that home.
+  // [P] What she said on her link is in her agent's Notifications, never in
+  // the feed.
   await agent.reload();
   const stream = agent.getByRole("region", { name: "Your feed" });
   // (No home's card in the feed has it: a card's link says "address: why".)
   const homeCards = stream.getByRole("listitem").filter({ has: agent.getByRole("link", { name: /^[^:]+: / }) });
   await expect(homeCards.filter({ hasText: "Is the basement finished?" })).toHaveCount(0);
-  const said = activity.getByRole("link", { name: /Jo commented on 1204 Quillan St SE/ });
+  await agent.goto("/activity");
+  const said = agent
+    .getByRole("main")
+    .getByRole("listitem")
+    .filter({ hasText: "Jo liked and commented on 1204 Quillan St SE" });
   await expect(said).toContainText("Is the basement finished?");
-  await expect(said).toHaveAttribute("href", /^\/messages\/acct%3A[\w-]+#home-SAMPLE-\d+$/);
-  await expect(activity.getByRole("link", { name: "All messages" })).toHaveAttribute("href", "/messages");
-  await said.click();
-  await agent.waitForURL(/\/messages\/acct%3A[\w-]+#home-SAMPLE-\d+$/);
 
   // Her conversation on Messages: the home she spoke about as a card, what
   // she said as a message of its own under it quoting the home, and Reply
@@ -153,7 +158,7 @@ test("an agent's home is everyone's home, a feed with nothing of their clients o
   await toProfile.click();
   await agent.waitForURL((u) => u.pathname === joPage);
   await expect(agent.getByText("Your client", { exact: true })).toBeVisible();
-  await agent.getByRole("link", { name: "Client page", exact: true }).click();
+  await agent.getByRole("link", { name: "Message Jo", exact: true }).click();
   await agent.waitForURL((u) => u.pathname === joClientPage);
 
   // Jo's own home: the homes Fern sent her first, the one she hasn't rated

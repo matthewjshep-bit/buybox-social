@@ -63,7 +63,9 @@ export function PostCard({
             <strong className="font-semibold">{isMe ? "You" : who.name}</strong>
           )}{" "}
           {sentence}
-          {" "}
+          {/* Held to the last word (a space that doesn't break), so the time
+              never starts a line on its own. */}
+          {"\u00a0"}
           <span className="whitespace-nowrap text-meta text-muted">
             {"· "}
             <time dateTime={entry.at} suppressHydrationWarning>
@@ -81,8 +83,9 @@ export function PostCard({
           href={reel(home.key, home.photo?.index)}
           label={home.address}
           sizes="(min-width: 1024px) 600px, 100vw"
+          // At its own shape at every width, never taller than 32rem.
           style={{ "--shape": String(shapeOf(home.photos[0])) } as CSSProperties}
-          className="aspect-(--shape) w-full bg-stone-100 sm:aspect-auto sm:h-[28rem]"
+          className="aspect-(--shape) max-h-[32rem] w-full bg-stone-100"
         />
       )}
       {homes.length > 1 && (
@@ -91,7 +94,7 @@ export function PostCard({
           label={`${who.name}'s post`}
           sizes="(min-width: 1024px) 600px, 100vw"
           onShown={setShown}
-          className="aspect-[4/3] w-full sm:aspect-auto sm:h-[28rem]"
+          className="aspect-[4/3] max-h-[32rem] w-full"
         />
       )}
       {home && (

@@ -4,6 +4,7 @@ import { Heart, SlidersHorizontal, ThumbsDown } from "lucide-react";
 import { useId, useState, useTransition } from "react";
 import { showPasses, showTasteChip } from "@/app/people/[id]/actions";
 import { Sheet } from "@/components/sheet";
+import { Switch } from "@/components/ui";
 import { cn } from "@/lib/format";
 import type { TasteChip } from "@/lib/taste-story";
 
@@ -194,29 +195,7 @@ function SwitchRow({
           </p>
         )}
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={on}
-        aria-label={label}
-        aria-describedby={hint ? hintId : undefined}
-        disabled={disabled}
-        onClick={() => onChange(!on)}
-        className="flex size-11 shrink-0 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {/* Off is a track dark enough to see against the sheet, with the knob on the left. */}
-        <span
-          aria-hidden
-          className={cn("relative h-7 w-11 rounded-full transition-colors", on ? "bg-brand" : "bg-stone-500")}
-        >
-          <span
-            className={cn(
-              "absolute left-0.5 top-0.5 size-6 rounded-full bg-white shadow-[0_1px_3px_rgb(0_0_0/0.3)] transition-transform",
-              on && "translate-x-4",
-            )}
-          />
-        </span>
-      </button>
+      <Switch on={on} onChange={onChange} label={label} describedBy={hint ? hintId : undefined} disabled={disabled} />
     </div>
   );
 }

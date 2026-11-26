@@ -1,6 +1,5 @@
 import { requireAgent } from "@/lib/auth";
 import { pageColumn } from "@/lib/ui";
-import { DashboardNav } from "./nav";
 
 // What the bar calls this place. (A client's page, a link's and Send homes
 // say their own.)
@@ -20,8 +19,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {/* The column every one-column page has. (Its foot is the short one:
           sending homes is under here, and ends in a bar held to the screen's.) */}
       <div className={pageColumn({ tray: true })}>
-        {/* On its two main pages (Clients and Links) only, the tabs between them. */}
-        <DashboardNav />
         <main className="pt-5">{children}</main>
       </div>
     </div>

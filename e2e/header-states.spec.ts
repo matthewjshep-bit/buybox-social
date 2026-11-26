@@ -129,7 +129,8 @@ test("signed in, you're one button: your places and Sign out are behind your ini
   const inMenu = page.locator("#account-menu");
   // The first of them is their own page. The bell isn't repeated in here:
   // it's in the bar, by name.
-  await expect(inMenu.getByRole("link").first()).toHaveText("Your profile");
+  // (Your face and name at its top are that link.)
+  await expect(inMenu.getByRole("link").first()).toHaveAccessibleName("Your profile");
   await expect(inMenu.getByRole("link", { name: /Notifications/ })).toHaveCount(0);
   await expect(header.getByRole("link", { name: /^Notifications/ })).toHaveCount(1);
   await expect(header.getByRole("link", { name: /^Notifications/ })).toHaveAttribute("href", "/activity");
@@ -290,12 +291,13 @@ test("an agent's own pages are in their colour, and the header is Home, Messages
   await expect(me).not.toHaveAttribute("aria-current");
   await me.click();
   const inMenu = agent.locator("#account-menu");
-  await expect(inMenu.getByRole("link").first()).toHaveText("Your profile");
+  // (Your face and name at its top are that link.)
+  await expect(inMenu.getByRole("link").first()).toHaveAccessibleName("Your profile");
   await expect(inMenu.getByRole("link", { name: "Messages" })).toHaveCount(0);
   await expect(inMenu.getByRole("link", { name: "Clients" })).toHaveCount(0);
   await expect(inMenu.getByRole("link", { name: /Notifications/ })).toHaveCount(0);
   await expect(inMenu.getByRole("link", { name: "I'm an agent" })).toHaveCount(0);
-  await expect(inMenu.getByRole("link")).toHaveText(["Your profile", "Listings", "Saved homes", "Find people"]);
+  await expect(inMenu.getByRole("link")).toHaveText([/Your profile$/, "Listings", "Saved homes", "Find people"]);
   await expect(inMenu.getByRole("link", { name: "Listings" })).toHaveAttribute("href", "/dashboard/listings");
   await expect(header.getByRole("link", { name: "Messages", exact: true })).toHaveCount(1);
   await agent.keyboard.press("Escape");

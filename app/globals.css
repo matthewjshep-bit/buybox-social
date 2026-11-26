@@ -17,6 +17,8 @@
   --text-body: 15px;
   --text-meta: 13px;
   --text-tiny: 11px;
+  /* A step above body: the one line an empty state or a card leads with. */
+  --text-lead: 17px;
 }
 
 /* Nothing moves on its own for long: a loading shape breathes twice, then
@@ -78,6 +80,10 @@
 
 :root {
   color-scheme: light;
+  /* How far the site's bar reaches down the screen (it stays at the top as
+     the page scrolls): what sticks under it sits at `top-(--header)`, and a
+     page sized to the window under it takes this off. */
+  --header: calc(3.5rem + env(safe-area-inset-top));
   /* Porchcard blue: the logo's navy (#062B4C, hue 208°) lifted to a shade that
      shows on the dark feed as well as on white (4:1 against the dark, 4.9:1
      for white words on it), and kept clear of the rose of a like, the amber
@@ -86,6 +92,19 @@
   --brand: #2473bc;
   --surface: #f6f4ef;
   --ink: #1c1917;
+}
+
+/* A place on the page scrolled to (a home linked to, a field with focus)
+   comes to rest just under the bar, not behind it. */
+html {
+  scroll-padding-top: var(--header);
+}
+
+/* While a sheet or a pop-out is open over the page, the page under it stays
+   put: a drag on what's behind it doesn't scroll it. (A sheet docked beside
+   the photo isn't modal, so it leaves the page free.) */
+html:has(dialog:modal) {
+  overflow: hidden;
 }
 
 body {
@@ -115,7 +134,8 @@ a {
 [data-dark-ground] {
   --ring: white;
 }
-[data-dark-ground] :focus-visible:not([data-dark-ground] :is(dialog, [data-light], .bg-white) *) {
+/* (Not the comment box: the rounded pill around it shows its focus.) */
+[data-dark-ground] :focus-visible:not([data-composer], [data-dark-ground] :is(dialog, [data-light], .bg-white) *) {
   box-shadow: 0 0 0 4px rgb(0 0 0 / 0.55);
 }
 [data-dark-ground] :is(dialog, [data-light], .bg-white) :focus-visible {

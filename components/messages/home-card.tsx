@@ -2,9 +2,9 @@
 
 import { DoorOpen, Eye, Heart, X } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { Avatar, HomeThumb } from "@/components/ui";
-import { cn, formatPrice, timeAgo, whenWords } from "@/lib/format";
+import { cn, formatPrice, namesList, timeAgo, whenWords } from "@/lib/format";
 import type { CommentItem, HomesItem, MessageItem, ThreadHome, ThreadPerson } from "@/lib/messages";
 
 // One send, as a message in the conversation: who sent it and when, their
@@ -90,8 +90,9 @@ function HomeCard({
 }) {
   const likes = home.takes.filter((take) => take.verdict === "like");
   const passes = home.takes.filter((take) => take.verdict === "pass");
+  // "Nina", "You and Ben", "Nina, Ben and Owen": the viewer first, as "You".
   const who = (takes: typeof home.takes) =>
-    takes.length === 1 && takes[0].mine ? "You" : takes.map((take) => (take.mine ? "you" : take.name)).join(", ");
+    namesList([...takes.filter((take) => take.mine).map(() => "You"), ...takes.filter((take) => !take.mine).map((take) => take.name)]);
   const chip = "inline-flex min-h-7 items-center gap-1 rounded-full px-2 text-meta font-semibold";
   return (
     <div className={cn("overflow-hidden rounded-2xl ring-1", mine ? "bg-brand/[0.07] ring-brand/20" : "bg-stone-100 ring-stone-200")}>
@@ -103,41 +104,44 @@ function HomeCard({
           <span className="block truncate text-meta text-muted">{home.city}</span>
         </span>
       </Link>
-      {/* What's happened to it, in one line of chips, and Reply beside them. */}
+      {/* What's happened to it, in chips (wrapping among themselves), and
+          Reply beside them, always at the end of their first line. */}
       {(sender || likes.length > 0 || passes.length > 0 || home.asked.length > 0 || onReply) && (
-        <div className="flex flex-wrap items-center gap-1 px-2.5 pb-1.5">
-          {sender &&
-            (home.opened ? (
-              <span className={cn(chip, "bg-white/70 text-emerald-800")}>
-                <Eye aria-hidden size={13} />
-                Opened{home.seconds > 0 && ` · ${duration(home.seconds)}`}
+        <div className="flex items-start gap-1 px-2.5 pb-1.5">
+          <div className="flex min-w-0 flex-1 flex-wrap gap-1 py-2">
+            {sender &&
+              (home.opened ? (
+                <span className={cn(chip, "bg-white/70 text-emerald-800")}>
+                  <Eye aria-hidden size={13} />
+                  Opened{home.seconds > 0 && ` · ${duration(home.seconds)}`}
+                </span>
+              ) : (
+                <span className={cn(chip, "bg-white/70 text-stone-600")}>Not opened yet</span>
+              ))}
+            {likes.length > 0 && (
+              <span className={cn(chip, "bg-rose-50 text-rose-900 ring-1 ring-rose-200")}>
+                <Heart aria-hidden size={13} className="fill-current" />
+                {who(likes)} liked it
               </span>
-            ) : (
-              <span className={cn(chip, "bg-white/70 text-stone-600")}>Not opened yet</span>
+            )}
+            {passes.length > 0 && (
+              <span className={cn(chip, "bg-amber-50 text-amber-900 ring-1 ring-amber-200")}>
+                <X aria-hidden size={13} strokeWidth={2.5} />
+                {who(passes)} passed
+              </span>
+            )}
+            {home.asked.map((ask) => (
+              <span key={ask.at} suppressHydrationWarning className={cn(chip, "bg-amber-100 text-amber-900")}>
+                <DoorOpen aria-hidden size={13} />
+                {ask.mine ? "You asked" : `${ask.name} asked`} to see it · {whenWords(new Date(ask.at))}
+              </span>
             ))}
-          {likes.length > 0 && (
-            <span className={cn(chip, "bg-rose-50 text-rose-900 ring-1 ring-rose-200")}>
-              <Heart aria-hidden size={13} className="fill-current" />
-              {who(likes)} liked it
-            </span>
-          )}
-          {passes.length > 0 && (
-            <span className={cn(chip, "bg-amber-50 text-amber-900 ring-1 ring-amber-200")}>
-              <X aria-hidden size={13} strokeWidth={2.5} />
-              {who(passes)} passed
-            </span>
-          )}
-          {home.asked.map((ask) => (
-            <span key={ask.at} suppressHydrationWarning className={cn(chip, "bg-amber-100 text-amber-900")}>
-              <DoorOpen aria-hidden size={13} />
-              {ask.mine ? "You asked" : `${ask.name} asked`} to see it · {whenWords(new Date(ask.at))}
-            </span>
-          ))}
+          </div>
           {onReply && (
             <button
               type="button"
               onClick={onReply}
-              className="ml-auto flex min-h-11 min-w-11 items-center justify-center px-2.5 text-meta font-semibold text-brand hover:underline"
+              className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-2.5 text-meta font-semibold text-brand hover:underline"
             >
               Reply<span className="sr-only"> about {home.address}</span>
             </button>
@@ -150,9 +154,10 @@ function HomeCard({
 
 // A message about no home in particular: a bubble, the viewer's own on the
 // right in the site's blue, anyone else's on the left, their face beside it.
-export function MessageBubble({ item }: { item: MessageItem }) {
+export function MessageBubble({ item, named = false }: { item: MessageItem; named?: boolean }) {
   return (
     <li id={`message-${item.id}`} className={cn("flex flex-col", item.mine ? "items-end" : "items-start")}>
+      {named && <Speaker name={item.by.name} />}
       <Bubble mine={item.mine} by={item.by} at={item.at}>
         {item.body}
       </Bubble>
@@ -163,14 +168,17 @@ export function MessageBubble({ item }: { item: MessageItem }) {
 // A word about one of the homes: the same bubble, with the home it's about
 // quoted above it (its photo and street, a tap to the home's card), as a
 // reply to a story is on a phone. `quote`: off when the word before it was
-// about the same home, from the same side (said once over the run).
-export function CommentMessage({ item, quote = true }: { item: CommentItem; quote?: boolean }) {
+// about the same home, from the same side (said once over the run). `named`:
+// the first of a run from someone in a conversation with several people.
+export function CommentMessage({ item, quote = true, named = false }: { item: CommentItem; quote?: boolean; named?: boolean }) {
   const street = item.about.address.split(",")[0];
   return (
     <li id={`comment-${item.id}`} className={cn("flex flex-col", item.mine ? "items-end" : "items-start")}>
+      {named && <Speaker name={item.by.name} />}
       {quote && (
         <a
           href={`#${item.about.anchor}`}
+          onClick={(event) => toCard(event, item.about.anchor)}
           className={cn(
             "mb-1 flex min-h-11 max-w-[85%] items-center gap-2 border-stone-300 px-2 text-body text-stone-600 hover:text-ink",
             item.mine ? "mr-0 border-r-2 text-right" : "ml-8 border-l-2",
@@ -192,6 +200,41 @@ export function CommentMessage({ item, quote = true }: { item: CommentItem; quot
         {item.body}
       </Bubble>
     </li>
+  );
+}
+
+// Who's talking, over the first of their messages in a row, in a
+// conversation with several people (as a group on a phone has it). Their
+// name is read with the time under the bubble, so a screen reader hears it once.
+function Speaker({ name }: { name: string }) {
+  return (
+    <span aria-hidden className="ml-8 px-1 pb-0.5 text-meta text-muted">
+      {name}
+    </span>
+  );
+}
+
+// A quote's home, found: its card glides to the middle of the conversation
+// (at once, with reduced motion) and glows a moment, the keyboard landing on
+// it, and the address keeps no #. Without scripts, or opening it elsewhere,
+// the link does as a link does.
+function toCard(event: MouseEvent<HTMLAnchorElement>, anchor: string) {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+  const card = document.getElementById(anchor);
+  if (!card) return;
+  event.preventDefault();
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  card.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" });
+  card.querySelector<HTMLElement>("a[href]")?.focus({ preventScroll: true });
+  const face = card.firstElementChild;
+  const brand = getComputedStyle(card).getPropertyValue("--brand").trim() || "#2473bc";
+  face?.animate(
+    [
+      { boxShadow: `0 0 0 3px color-mix(in srgb, ${brand} 55%, transparent)` },
+      { boxShadow: `0 0 0 3px color-mix(in srgb, ${brand} 55%, transparent)`, offset: 0.4 },
+      { boxShadow: "0 0 0 3px transparent" },
+    ],
+    { duration: still ? 1200 : 1800, delay: still ? 0 : 250, easing: "ease-out" },
   );
 }
 

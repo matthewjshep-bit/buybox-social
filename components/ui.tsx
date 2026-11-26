@@ -1,4 +1,4 @@
-import { User, type LucideIcon } from "lucide-react";
+import { Check, User, type LucideIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -236,9 +236,94 @@ export function EmptyState({
   return (
     <div className={cn(card, "px-6 py-8 text-center", className)}>
       {Icon && <Icon aria-hidden size={28} className="mx-auto mb-2 text-stone-500" />}
-      <p className="text-balance text-[17px] font-semibold text-ink">{title}</p>
+      <p className="text-balance text-lead font-semibold text-ink">{title}</p>
       {children && <div className="mt-1 text-balance text-body text-stone-700">{children}</div>}
       {action && <div className="mt-4 flex flex-wrap justify-center gap-3">{action}</div>}
     </div>
+  );
+}
+
+// How many new things there are, on an icon's corner (the bar's Messages
+// and bell): rose, white numbers, "9+" past nine. Says nothing to a screen
+// reader: the link's own name says how many. `ring`: a white edge, so it
+// stands off the icon under it on the white bar; none on the dark or a photo.
+// Its place on the icon (`absolute -right-2.5 -top-1.5`) is the caller's.
+export function CountBadge({
+  count,
+  ring = "white",
+  className,
+}: {
+  count: number;
+  ring?: "white" | "none";
+  className?: string;
+}) {
+  if (count <= 0) return null;
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "absolute flex min-w-[18px] items-center justify-center rounded-full bg-rose-600 px-1 text-tiny font-bold leading-[18px] text-white tabular-nums [text-shadow:none]",
+        ring === "white" && "ring-2 ring-white",
+        className,
+      )}
+    >
+      {count > 9 ? "9+" : count}
+    </span>
+  );
+}
+
+// On or off, as a phone's settings are: a track with a knob, brand-coloured
+// on, dark enough to see off. A 44px button around it. Its name (`label`) is
+// what it turns on; `describedBy`, the line under that. Lay it out at the
+// end of a row with its words (`SwitchRow`-style), the words its own.
+export function Switch({
+  on,
+  onChange,
+  label,
+  describedBy,
+  disabled = false,
+  className,
+}: {
+  on: boolean;
+  onChange: (on: boolean) => void;
+  label: string;
+  describedBy?: string;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      aria-describedby={describedBy}
+      disabled={disabled}
+      onClick={() => onChange(!on)}
+      className={cn(
+        "flex size-11 shrink-0 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-60",
+        className,
+      )}
+    >
+      <span aria-hidden className={cn("relative h-7 w-11 rounded-full transition-colors", on ? "bg-brand" : "bg-stone-500")}>
+        <span
+          className={cn(
+            "absolute left-0.5 top-0.5 size-6 rounded-full bg-white shadow-[0_1px_3px_rgb(0_0_0/0.3)] transition-transform motion-reduce:transition-none",
+            on && "translate-x-4",
+          )}
+        />
+      </span>
+    </button>
+  );
+}
+
+// "Saved", beside a Save button once what was in it has been kept: a tick
+// and the word, green, said once to a screen reader. Shown only after a
+// save, gone when there's something new to save.
+export function SavedNote({ className }: { className?: string }) {
+  return (
+    <p role="status" className={cn("flex items-center gap-1 text-meta font-semibold text-emerald-700", className)}>
+      <Check aria-hidden size={14} /> Saved
+    </p>
   );
 }

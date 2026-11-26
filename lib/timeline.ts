@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { sql } from "./db";
 import { agentFirstName } from "./format";
 import type { Listing } from "./listings/types";
+import { photoUrl } from "./person-photo";
 import { likeId, mediaKeyOf, tagNameIn, type PhotoLikes } from "./photos";
 import { NO_REACTION, publicSideOf, type ReactionState } from "./reactions";
 
@@ -36,6 +37,9 @@ export type TimelineComment = {
   // On an agent's link: the agent hearted it. Their first name, for "Liked by
   // Jordan". Never on public pages.
   likedBy?: string;
+  // On the agent's own page of a link: the photo of the person who said it,
+  // if they've added one. Never on public pages.
+  photo?: string;
 };
 
 export type TimelineReaction = {
@@ -289,7 +293,14 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
 
 // An agent's link: everyone on it by name, the agent included, and nothing
 // from outside it.
-export async function getShareTimelines(shareId: string, listings: Listing[], participantId: string | null) {
+// `faces`: with each person's photo on their comments (the agent's page of
+// the link, where the thread shows everyone's face).
+export async function getShareTimelines(
+  shareId: string,
+  listings: Listing[],
+  participantId: string | null,
+  { faces = false }: { faces?: boolean } = {},
+) {
   // (The agent's own likes, from their first pass, are a line of their own.)
   const timelines = new Map<string, TimelineItem[]>();
   if (listings.length === 0) return timelines;
@@ -313,10 +324,15 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
         liked_by: string | null;
         parent_id: string | null;
         reply_to_participant: string | null;
+        profile: string | null;
+        photo_v: string | null;
       }[]
     >`
       select c.id, c.listing_key, c.participant_id, p.first_name, a.full_name as agent_name,
         c.body, c.created_at, c.shared_publicly, c.media_key, c.spot, c.parent_id, c.reply_to_participant,
+        -- Their photo, where they've signed up and added one (only when asked for its faces).
+        ${faces ? sql`pv.id` : sql`null::uuid`} as profile,
+        ${faces ? sql`left(md5(pa.photo_data_url), 10)` : sql`null::text`} as photo_v,
         -- The link's agent, when they've hearted it.
         (select coalesce(la.full_name, '') from share_comment_likes l
           join shares s on s.id = c.share_id
@@ -325,6 +341,8 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
       from comments c
       left join participants p on p.id = c.participant_id
       left join accounts a on a.id = c.agent_id
+      left join visitors pv on pv.account_id = p.account_id
+      left join accounts pa on pa.id = p.account_id
       where c.share_id = ${shareId}`,
     sql<ReactionRow[]>`
       select r.listing_key, 'p:' || r.participant_id as who, p.first_name as name,
@@ -380,6 +398,7 @@ export async function getShareTimelines(shareId: string, listings: Listing[], pa
             sharedPublicly: c.shared_publicly,
             personKey: personKey(c.participant_id ? `p:${c.participant_id}` : AGENT),
             ...(c.liked_by !== null && { likedBy: agentFirstName(c.liked_by) }),
+            ...(faces && c.participant_id && c.profile && c.photo_v && { photo: photoUrl(c.profile, c.photo_v)! }),
             ...spotOf(c),
           }),
         ),

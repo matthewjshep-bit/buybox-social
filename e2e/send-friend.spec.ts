@@ -49,7 +49,7 @@ test("someone who isn't an agent sends a home from the box on Home, and hears ba
   await maya.goto("/send/sent");
   await maya.waitForURL(/\/messages$/);
   await expect(maya.getByRole("heading", { level: 1 })).toHaveText("Messages");
-  await expect(maya.getByText("No messages yet")).toBeVisible();
+  await expect(maya.getByText("No messages yet").filter({ visible: true })).toBeVisible();
   await maya.getByRole("link", { name: "Send homes" }).last().click();
   await maya.waitForURL(/\/send\?aud=someone$/);
   await expect(maya.getByRole("heading", { level: 1 })).toHaveText("Send homes");
@@ -186,8 +186,9 @@ test("someone who isn't an agent sends a home from the box on Home, and hears ba
   const agent = await signInAgent(browser, `ag.sends.${Date.now()}@example.com`, "Ag Sends");
   await agent.goto("/send");
   await expect(agent.locator("form[data-compose]")).toBeVisible();
-  // (On its own, the box opens to everyone; Someone is a tap away.)
-  await expect(agent.getByRole("heading", { level: 1 })).toHaveText(/^(Post or send|Send) homes$/);
+  // (On its own, an agent's box opens to someone, as on their Home.)
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send homes");
+  await expect(agent.getByRole("radio", { name: "Someone" })).toHaveAttribute("aria-checked", "true");
   await toWho(agent);
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send homes");
   await expect(agent.getByRole("combobox", { name: "Who's it for?" })).toHaveAttribute("placeholder", "A client, or a first name");

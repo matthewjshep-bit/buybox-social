@@ -3,8 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { chooseKind } from "@/app/welcome/actions";
-import { cn } from "@/lib/format";
 import type { ProKind } from "@/lib/kinds";
+import { choice as choiceClass } from "@/lib/ui";
 
 const CHOICES: { kind: ProKind; label: string }[] = [
   { kind: "agent", label: "Agent" },
@@ -42,10 +42,8 @@ export function KindPicker({ kind }: { kind: ProKind }) {
                 router.refresh();
               })
             }
-            className={cn(
-              "flex min-h-11 items-center rounded-full px-4 text-sm font-semibold ring-1 transition-colors",
-              chosen === choice.kind ? "bg-ink text-white ring-ink" : "bg-surface text-ink ring-stone-300 hover:ring-stone-500",
-            )}
+            // (A choice, in the brand's colour: black pills are for filters.)
+            className={choiceClass(chosen === choice.kind)}
           >
             {choice.label}
           </button>

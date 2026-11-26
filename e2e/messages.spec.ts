@@ -53,6 +53,12 @@ test("an agent's Messages: one thread per person and one per group link, the hom
   await jo.keyboard.press("Escape");
   await homeIn(jo, SALTMARSH).getByRole("button", { name: "Pass on this home" }).click();
   await expect(homeIn(jo, SALTMARSH).getByRole("button", { name: "Pass on this home" })).toHaveAttribute("aria-pressed", "true");
+  // Signed in on her link, Contact has a way into that conversation (Lena shows no phone or email).
+  await jo.getByRole("banner").getByRole("button", { name: "Contact" }).click();
+  const contact = jo.getByRole("dialog", { name: "Contact Lena Messages" });
+  await expect(contact.getByRole("link", { name: "Message Lena" })).toHaveAttribute("href", /^\/messages\/acct%3A/);
+  await jo.keyboard.press("Escape");
+  await expect(contact).toBeHidden();
 
   // The bar: Messages for everyone, with how many conversations have something new.
   await agent.setViewportSize({ width: 390, height: 844 });
@@ -223,12 +229,12 @@ test("an agent's Messages: one thread per person and one per group link, the hom
   await agent.waitForURL(/\/messages$/);
   await expect(list.getByRole("link", { name: /^Link for 5902 Lakeview/ })).toHaveCount(0);
 
-  // Someone with nothing sent or received: what this is for, in the list,
-  // and (wide) where a conversation would be.
+  // Someone with nothing sent or received: what this is for, said once (wide:
+  // where a conversation would be; the list's own copy is a phone's).
   const ned = await signUpBuyer(browser, "ned.messages@example.com", "Ned Messages");
   await ned.setViewportSize({ width: 1280, height: 900 });
   await ned.goto("/messages");
-  await expect(ned.getByText("No messages yet")).toBeVisible();
+  await expect(ned.getByText("No messages yet").filter({ visible: true })).toHaveCount(1);
   await expect(ned.getByRole("region", { name: "Conversation", exact: true })).toContainText("Homes you send, and homes sent to you, show up here.");
   await expect(ned.getByRole("link", { name: "Send homes" }).first()).toHaveAttribute("href", "/send?aud=someone");
 });

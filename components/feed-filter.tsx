@@ -4,6 +4,7 @@ import { Check, ChevronDown, Lock } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/format";
+import { menuRow, popover } from "@/lib/ui";
 
 // What a feed shows: one word and a caret, on the first day's line. A plain
 // <details> of links, so it works without scripts; with them, a tap anywhere
@@ -56,7 +57,7 @@ export function FeedFilter({ options, current }: { options: FeedFilterOption[]; 
       </summary>
       <nav
         aria-label="Show"
-        className="absolute right-0 top-full z-40 mt-1 w-44 rounded-2xl bg-white p-1 shadow-lg ring-1 ring-stone-200"
+        className={cn(popover, "absolute right-0 top-full z-40 mt-1 w-48")}
       >
         <ul>
           {options.map((option) => (
@@ -66,7 +67,7 @@ export function FeedFilter({ options, current }: { options: FeedFilterOption[]; 
                 scroll={false}
                 onClick={chosen}
                 aria-current={option === on ? "page" : undefined}
-                className="flex min-h-11 items-center gap-2 rounded-xl px-3 text-body font-semibold text-ink hover:bg-stone-50"
+                className={menuRow()}
               >
                 <Check aria-hidden size={16} className={cn("shrink-0", option !== on && "invisible")} />
                 {option.label}

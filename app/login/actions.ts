@@ -50,6 +50,10 @@ export async function sendCode(input: {
   next?: string;
   asAgent?: boolean;
 }): Promise<CodeState> {
+  // (Checked in the form's order, top to bottom, so the first thing said is
+  // about the first box that needs it: name, email, then the phone.)
+  const name = input.firstName === undefined ? null : String(input.firstName).replace(/\s+/g, " ").trim();
+  if (name !== null && (!name || name.length > 40)) return { error: "Please add your first name.", field: "firstName" };
   const email = emailSchema.safeParse(String(input.email ?? "").trim().toLowerCase());
   if (!email.success) return { error: "Please enter a valid email address.", field: "email" };
   const phone = String(input.phone ?? "").trim();
@@ -57,9 +61,7 @@ export async function sendCode(input: {
   if (phone && (phone.length > 30 || digits.length < 10 || digits.length > 15)) {
     return { error: "Please add the phone number with its area code, or leave it empty.", field: "phone" };
   }
-  if (input.firstName !== undefined) {
-    const name = String(input.firstName).replace(/\s+/g, " ").trim();
-    if (!name || name.length > 40) return { error: "Please add your first name.", field: "firstName" };
+  if (name !== null) {
     await sql`
       insert into signups (email, full_name, phone) values (${email.data}, ${name}, ${phone})
       on conflict (email) do update set
@@ -108,7 +110,7 @@ export async function verifyCode(input: { email: string; code: string; asAgent?:
   // (A code works once, and only the newest: the email's link is the same
   // code, so opening it uses the code up.)
   const wrong: CodeState = {
-    error: "That code didn't work. Use the newest email's code (opening its link uses the code up), or send a new code.",
+    error: "That code didn't work. Use the code in your newest email, or send a new code.",
     field: "code",
   };
 

@@ -50,7 +50,10 @@ export function Composer({
           key={about ? `${about.shareId}:${about.listingKey}` : "all"}
           me={me}
           agent={me.agent}
-          placeholder={about ? `Reply about ${about.address.split(",")[0]}…` : "Message…"}
+          // (A conversation's own box: your face beside it says nothing.)
+          face={false}
+          // (What it answers is said just above, once.)
+          placeholder="Message…"
           label={about ? `Reply about ${about.address}` : "Message"}
           sendLabel={["Send", "Sending"]}
           autoFocus={Boolean(about)}

@@ -93,12 +93,13 @@ test("on a desktop, the photo and the words are one centred column, as on a phon
   const home = homeIn(page, BRACKENFIELD);
   await expect(home).toBeInViewport({ ratio: 0.9 });
 
-  // One layout at every width: the whole photo in a column 44rem wide,
-  // centred in the window, under the head; no panel beside it.
+  // One layout at every width: the whole photo in a column centred in the
+  // window (44rem at most; as wide as the photo's space, never under 30rem),
+  // under the head; no panel beside it.
   const photo = home.getByRole("img", { name: "Brick-front home with a wide lawn" });
   await expect.poll(async () => (await photo.boundingBox())!.width).toBeLessThanOrEqual(704 + 1);
   const box = (await photo.boundingBox())!;
-  expect(box.width).toBeGreaterThan(600);
+  expect(box.width).toBeGreaterThanOrEqual(480 - 1);
   expect(Math.abs(box.x + box.width / 2 - 1440 / 2)).toBeLessThanOrEqual(2);
   const head = (await home.locator("[data-home-head]").boundingBox())!;
   expect(box.y).toBeGreaterThanOrEqual(head.y + head.height - 1);
@@ -107,7 +108,9 @@ test("on a desktop, the photo and the words are one centred column, as on a phon
   // first the row of things to do, then the comments, then the comment bar.
   const words = (await home.locator("[data-words]").boundingBox())!;
   expect(words.y).toBeGreaterThanOrEqual(box.y + box.height - 1);
-  expect(Math.abs(words.width - 704)).toBeLessThanOrEqual(1);
+  // (The same column as the photo: their edges line up, as on a phone.)
+  expect(Math.abs(words.width - box.width)).toBeLessThanOrEqual(2);
+  expect(Math.abs(words.x - box.x)).toBeLessThanOrEqual(2);
   expect(Math.abs(words.x + words.width / 2 - 1440 / 2)).toBeLessThanOrEqual(2);
   const actions = (await home.locator("[data-actions]").boundingBox())!;
   expect(actions.y).toBeGreaterThanOrEqual(box.y + box.height - 1);

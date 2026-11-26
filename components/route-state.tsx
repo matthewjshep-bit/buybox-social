@@ -26,18 +26,18 @@ export function RouteState({
         <Icon size={26} />
       </span>
       <h1 className="mt-5 text-balance font-display text-3xl">{title}</h1>
-      <p className="mt-2 text-balance text-[17px] text-stone-700">{children}</p>
+      <p className="mt-2 text-balance text-lead text-stone-700">{children}</p>
       <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:justify-center">{actions}</div>
     </main>
   );
 }
 
 // The header at its plainest, just the logo, where the whole header can't be
-// drawn (a page that broke on a feed route).
+// drawn (a page that broke on a feed route). Its logo where the bar's own is.
 export function LogoHeader() {
   return (
     <header className="border-b border-stone-200 bg-white pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)]">
-      <nav aria-label="Main" className="mx-auto flex h-14 max-w-6xl items-center px-3 sm:px-6">
+      <nav aria-label="Main" className="flex h-14 items-center px-3 sm:px-6">
         <SiteLogo />
       </nav>
     </header>

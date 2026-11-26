@@ -110,6 +110,10 @@ test("someone shopping for a home says so and their first name, and has no chip;
   await page.getByRole("button", { name: "Continue" }).click();
   await enterCode(page);
   await page.waitForURL("**/welcome**");
+  // Not from For agents: shopping comes first.
+  await expect(page.getByRole("group", { name: "What brings you to Porchcard?" }).getByRole("button").first()).toHaveText(
+    /^I'm shopping for a home/,
+  );
   await page.getByRole("button", { name: /^I'm shopping for a home/ }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("What's your first name?");
   await expect(page.getByText("Step 2 of 3")).toBeVisible();

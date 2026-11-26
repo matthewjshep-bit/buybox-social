@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/format";
 import { sectionTitle } from "@/lib/ui";
+import { CopyButton } from "./copy-button";
 
 // The few pieces the API's page (app/developers/page.tsx) is made of: a
 // section, an endpoint, the fields a request takes, and a block of code.
-// Nothing here runs in the browser: it's a page to read, and to copy from.
+// Nothing here runs in the browser but a code block's Copy button
+// (copy-button.tsx): it's a page to read, and to copy from.
 
 // A part of the page, with its own address (/developers#links) and its
 // heading clear of the top of the screen when it's jumped to.
@@ -102,17 +104,21 @@ export function Fields({ title = "Body", fields }: { title?: string; fields: Fie
 
 // A block of code to copy: on the dark ground, in the code type, its long
 // lines scrolling sideways inside the block only (the page never does), and
-// reachable by the keyboard so that scroll is too.
+// reachable by the keyboard so that scroll is too. A Copy button in its top
+// corner, its first line kept clear of it.
 export function Code({ label, children }: { label?: string; children: string }) {
   return (
     <div className="min-w-0">
       {label && <p className="mb-1.5 text-meta font-semibold uppercase tracking-wide text-muted">{label}</p>}
-      <pre
-        tabIndex={0}
-        className="max-w-full overflow-x-auto rounded-xl bg-stone-900 p-4 font-mono text-[13px] leading-relaxed text-stone-100"
-      >
-        <code>{children}</code>
-      </pre>
+      <div className="relative">
+        <pre
+          tabIndex={0}
+          className="max-w-full overflow-x-auto rounded-xl bg-stone-900 py-4 pl-4 pr-14 font-mono text-[13px] leading-relaxed text-stone-100"
+        >
+          <code>{children}</code>
+        </pre>
+        <CopyButton text={children} name={label ? `Copy ${label}` : "Copy"} />
+      </div>
     </div>
   );
 }

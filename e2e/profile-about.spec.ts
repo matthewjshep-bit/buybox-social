@@ -42,18 +42,22 @@ test("an agent's page leads with what's between them and their client, and says 
   await expect(form.getByRole("link", { name: "Cancel" })).toHaveCount(0);
   await expect(form.getByRole("button", { name: "Cancel" })).toHaveCount(0);
   await expect(company).toHaveValue("Tara Homes");
-  // Both buttons say what they save, in the one colour (the site's blue),
-  // whatever colour she picked for her brand.
+  // Both buttons say what they save, never in the colour she picked for her
+  // brand: quiet (white) with nothing to save (about, just saved), the site's
+  // blue while there is (her details: the company, not saved yet).
   const saveHers = detailsForm(agent).getByRole("button", { name: "Save details", exact: true });
   const blue = "rgb(36, 115, 188)";
+  const white = "rgb(255, 255, 255)";
   // (The pointer is still on the one just pressed, which lightens it.)
   await agent.mouse.move(0, 0);
-  await expect(saveAbout).toHaveCSS("background-color", blue);
+  await expect(saveAbout).toHaveCSS("background-color", white);
   await expect(saveHers).toHaveCSS("background-color", blue);
   await saveDetails(agent);
-  // Changed again, it no longer says it's saved.
-  await form.getByRole("textbox", { name: "About you", exact: true }).pressSequentially(" ");
+  // Changed again, it no longer says it's saved, and its button is blue.
+  // (Only a real change: spaces at either end aren't one.)
+  await form.getByRole("textbox", { name: "About you", exact: true }).pressSequentially(" Hi");
   await expect(form.getByRole("status")).toHaveCount(0);
+  await expect(saveAbout).toHaveCSS("background-color", blue);
   // Back to her page, which says all of it.
   await agent.getByRole("link", { name: "Your profile" }).click();
   await agent.waitForURL(new RegExp(`${taraPage}$`));
@@ -96,7 +100,9 @@ test("an agent's page leads with what's between them and their client, and says 
   await agent.goto(new URL(juno.url()).pathname);
   const back = agent.getByRole("region", { name: /^Between you and / });
   await expect(back).toContainText(/You sent \w+ 1 home/);
-  await expect(back.getByRole("link")).toHaveAttribute("href", new URL(dashboardUrl).pathname);
+  await expect(back.getByRole("link", { name: /^You sent / })).toHaveAttribute("href", new URL(dashboardUrl).pathname);
+  // (And, at its foot, all of their homes.)
+  await expect(back.getByRole("link", { name: /^See all of \w+'s homes$/ })).toBeVisible();
 
   // Someone with nothing between them sees no such thing.
   const stranger = await signUpBuyer(browser, "stan.about@example.com", "Stan About");

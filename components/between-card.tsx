@@ -1,10 +1,10 @@
-import { ChevronRight, Lock, MessageCircle } from "lucide-react";
+import { ChevronRight, Images, Lock, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import { street } from "@/components/client-status";
 import { HomeThumb } from "@/components/ui";
 import type { BetweenLink } from "@/lib/between";
 import { cn, whenWords } from "@/lib/format";
-import { card } from "@/lib/ui";
+import { card, link as linkClass } from "@/lib/ui";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -31,22 +31,26 @@ function metaOf(link: BetweenLink, first: string) {
 // At the top of someone's page, for whoever shares links with them: what's
 // between the two of you, each link opening right where it's yours, with the
 // last thing they said there. Only the one looking sees it, on this page.
+// `homes`: an agent's own client, every home sent them in one reel, at its foot.
 export function BetweenCard({
   id,
   links,
   name,
+  homes,
   className,
 }: {
   // The page shows it in one of two places, by screen width: each its own heading id.
   id: string;
   links: BetweenLink[];
   name: string;
+  homes?: string | null;
   className?: string;
 }) {
   const first = name.split(" ")[0] || name;
   return (
     <section aria-labelledby={id} className={cn(card, "p-4", className)}>
-      <div className="flex items-baseline justify-between gap-3">
+      {/* (On a narrow phone "Only you see this" goes under the heading, rather than breaking it.) */}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
         <h2 id={id} className="text-lg font-semibold">
           Between you and {first}
         </h2>
@@ -58,9 +62,15 @@ export function BetweenCard({
         {links.map((link) => (
           <li key={link.shareId} className="border-t border-stone-200 first:border-t-0">
             <Link href={link.href} className="group -mx-2 flex items-start gap-3 rounded-xl px-2 py-3 hover:bg-stone-50">
-              <span aria-hidden className="flex shrink-0 -space-x-4 pt-0.5">
+              {/* A fan of its first homes; one on a phone, so the words beside it have room. */}
+              <span aria-hidden className="flex shrink-0 pt-0.5 sm:-space-x-4">
                 {link.photos.map((photo, i) => (
-                  <HomeThumb key={i} src={photo} sizes="56px" className="size-14 rounded-xl ring-2 ring-white" />
+                  <HomeThumb
+                    key={i}
+                    src={photo}
+                    sizes="56px"
+                    className={cn("size-14 rounded-xl ring-2 ring-white", i > 0 && "max-sm:hidden")}
+                  />
                 ))}
               </span>
               <span className="min-w-0 flex-1">
@@ -84,6 +94,14 @@ export function BetweenCard({
           </li>
         ))}
       </ul>
+      {homes && (
+        <Link
+          href={homes}
+          className={cn(linkClass, "-mb-2 inline-flex min-h-11 items-center gap-1.5 text-sm")}
+        >
+          <Images aria-hidden size={16} /> See all of {first}&apos;s homes
+        </Link>
+      )}
     </section>
   );
 }

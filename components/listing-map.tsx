@@ -59,7 +59,7 @@ function arrange(
   view: { width: number; height: number },
 ): Record<string, Offset> {
   // The zoom buttons sit in the top right corner.
-  const blocked: Box[] = [{ left: view.width - 48, top: 0, right: view.width, bottom: 80 }];
+  const blocked: Box[] = [{ left: view.width - 64, top: 0, right: view.width, bottom: 108 }];
   const inView = (box: Box) => box.left >= 4 && box.top >= 4 && box.right <= view.width - 4 && box.bottom <= view.height - 4;
   const placed: Box[] = [];
   const offsets: Record<string, Offset> = {};
@@ -101,8 +101,20 @@ function arrange(
   return offsets;
 }
 
+// The map's own zoom buttons in the app's shape: round-ended, a fingertip
+// tall, lifted by the same soft shadow. (The map's styles come unlayered, so
+// these need to be marked important to win.)
+const CONTROLS = cn(
+  "size-full",
+  "[&_.maplibregl-ctrl-group]:overflow-hidden! [&_.maplibregl-ctrl-group]:rounded-full! [&_.maplibregl-ctrl-group]:shadow-md! [&_.maplibregl-ctrl-group]:ring-1 [&_.maplibregl-ctrl-group]:ring-black/5",
+  "[&_.maplibregl-ctrl-group_button]:size-11! [&_.maplibregl-ctrl-group_button]:transition-colors [&_.maplibregl-ctrl-group_button:hover]:bg-stone-100!",
+  "[&_.maplibregl-ctrl-group_button+button]:border-stone-200!",
+  "[&_.maplibregl-ctrl-group_button:focus-visible]:shadow-[inset_0_0_0_2px_var(--brand)]!",
+);
+
 // Every home in the search as a pin. The one showing beside the map is
-// highlighted, and the map follows it when it's out of view.
+// highlighted (and a home pointed at in the list, more quietly), and the
+// map follows the one showing when it's out of view.
 export default function ListingMap({
   homes,
   activeKey,
@@ -162,92 +174,127 @@ export default function ListingMap({
     setOffsets((was) => (JSON.stringify(was) === JSON.stringify(next) ? was : next));
   }, [homes, rested]);
 
+  // On a small map the credit to the map's makers starts as its (i), so
+  // nothing floating over the map's foot sits on its words; a tap opens it.
+  const foldCredit = (container: HTMLElement) => {
+    if (container.clientWidth > 640) return;
+    container.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");
+  };
+
   return (
-    <Map
-      ref={map}
-      initialViewState={{ bounds, fitBoundsOptions: { padding: 60, maxZoom: 13 } }}
-      mapStyle={MAP_STYLE}
-      style={{ width: "100%", height: "100%" }}
-      attributionControl={{ compact: true }}
-      cooperativeGestures={cooperative}
-      onZoom={(event) => setZoom(event.viewState.zoom)}
-      onLoad={(event) => {
-        setZoom(event.target.getZoom());
-        setRested((n) => n + 1);
-      }}
-      onMoveEnd={() => setRested((n) => n + 1)}
-      onResize={() => setRested((n) => n + 1)}
-    >
-      <NavigationControl position="top-right" showCompass={false} />
-      {homes.map((home) => {
-        const showing = home.key === activeKey;
-        const lit = showing || home.key === hoveredKey;
-        const far = zoom < CLOSE_ZOOM;
-        const offset = offsets[home.key];
-        return (
-          <Marker
-            key={home.key}
-            longitude={home.longitude}
-            latitude={home.latitude}
-            anchor="center"
-            style={{ zIndex: showing ? 3 : lit ? 2 : 1 }}
-          >
-            <div className="relative size-0">
-              {/* A chip moved to make room keeps a line to its home. */}
-              {offset?.moved && (
-                <>
-                  <svg aria-hidden className="pointer-events-none absolute left-0 top-0 overflow-visible" width="1" height="1">
-                    <line
-                      x1="0"
-                      y1="0"
-                      x2={offset.x}
-                      y2={offset.y}
-                      strokeWidth="1.5"
-                      className={lit ? "stroke-brand" : "stroke-stone-500"}
-                    />
-                  </svg>
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white",
-                      lit ? "bg-brand" : "bg-stone-700",
-                    )}
+    <div className={CONTROLS}>
+      <Map
+        ref={map}
+        initialViewState={{ bounds, fitBoundsOptions: { padding: 60, maxZoom: 13 } }}
+        mapStyle={MAP_STYLE}
+        style={{ width: "100%", height: "100%" }}
+        attributionControl={{ compact: true }}
+        cooperativeGestures={cooperative}
+        onZoom={(event) => setZoom(event.viewState.zoom)}
+        onLoad={(event) => {
+          setZoom(event.target.getZoom());
+          setRested((n) => n + 1);
+          // (Once its credits are in: they come with the map's first tiles.)
+          const container = event.target.getContainer();
+          foldCredit(container);
+          event.target.once("idle", () => foldCredit(container));
+        }}
+        onMoveEnd={() => setRested((n) => n + 1)}
+        onResize={() => setRested((n) => n + 1)}
+      >
+        {/* (On every device: zooming out with one finger, or one pointer, needs them.) */}
+        <NavigationControl position="top-right" showCompass={false} />
+        {/* The lines from moved chips back to their homes, all under every
+            chip, so no line crosses a price. */}
+        {homes.map((home) => {
+          const offset = offsets[home.key];
+          if (!offset?.moved) return null;
+          const showing = home.key === activeKey;
+          const hovered = !showing && home.key === hoveredKey;
+          return (
+            <Marker
+              key={`line-${home.key}`}
+              longitude={home.longitude}
+              latitude={home.latitude}
+              anchor="center"
+              style={{ zIndex: 0, pointerEvents: "none" }}
+            >
+              <div aria-hidden className="relative size-0">
+                <svg className="absolute left-0 top-0 overflow-visible" width="1" height="1">
+                  <line
+                    x1="0"
+                    y1="0"
+                    x2={offset.x}
+                    y2={offset.y}
+                    strokeWidth="1.5"
+                    className={showing ? "stroke-brand" : hovered ? "stroke-ink" : "stroke-stone-500"}
                   />
-                </>
-              )}
-              {/* Every home shows its price, as on the big listing sites. Its
-                  name starts with the price it shows, then the full one. */}
-              <button
-                ref={(chip) => {
-                  if (chip) chips.current.set(home.key, chip);
-                  else chips.current.delete(home.key);
-                }}
-                type="button"
-                aria-label={`${shortPrice(home.price)}, ${home.address}, ${formatPrice(home.price)}`}
-                aria-pressed={showing}
-                onMouseEnter={() => onHover(home.key)}
-                onMouseLeave={() => onHover(null)}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSelect(home.key);
-                }}
-                style={offset ? { left: offset.x, top: offset.y } : { left: 0, top: 0 }}
-                className={cn(
-                  // Prices are in the display type, here as everywhere.
-                  "absolute flex min-h-6 -translate-x-1/2 items-center whitespace-nowrap rounded-full font-display font-semibold tabular-nums shadow-md ring-1 transition-[scale,left,top] duration-200",
-                  // Before it's laid out: right above its home.
-                  !offset && "-translate-y-full",
-                  offset && "-translate-y-1/2",
-                  far ? "px-2 text-tiny" : "px-2.5 py-1 text-xs",
-                  lit ? "scale-110 bg-brand text-white ring-white" : "bg-white text-ink ring-stone-300 hover:scale-110",
-                )}
-              >
-                {shortPrice(home.price)}
-              </button>
-            </div>
-          </Marker>
-        );
-      })}
-    </Map>
+                </svg>
+                <span
+                  className={cn(
+                    "absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white",
+                    showing ? "bg-brand" : hovered ? "bg-ink" : "bg-stone-700",
+                  )}
+                />
+              </div>
+            </Marker>
+          );
+        })}
+        {homes.map((home) => {
+          // The home showing beside the map: brand blue, a size up. The one
+          // pointed at in the list (or on the map): ink, so the two never look
+          // alike.
+          const showing = home.key === activeKey;
+          const hovered = !showing && home.key === hoveredKey;
+          const far = zoom < CLOSE_ZOOM;
+          const offset = offsets[home.key];
+          return (
+            <Marker
+              key={home.key}
+              longitude={home.longitude}
+              latitude={home.latitude}
+              anchor="center"
+              style={{ zIndex: showing ? 3 : hovered ? 2 : 1 }}
+            >
+              <div className="relative size-0">
+                {/* Every home shows its price, as on the big listing sites. Its
+                    name starts with the price it shows, then the full one. */}
+                <button
+                  ref={(chip) => {
+                    if (chip) chips.current.set(home.key, chip);
+                    else chips.current.delete(home.key);
+                  }}
+                  type="button"
+                  aria-label={`${shortPrice(home.price)}, ${home.address}, ${formatPrice(home.price)}`}
+                  aria-pressed={showing}
+                  onMouseEnter={() => onHover(home.key)}
+                  onMouseLeave={() => onHover(null)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSelect(home.key);
+                  }}
+                  style={offset ? { left: offset.x, top: offset.y } : { left: 0, top: 0 }}
+                  className={cn(
+                    // Prices are in the display type, here as everywhere.
+                    "absolute flex min-h-6 -translate-x-1/2 items-center whitespace-nowrap rounded-full font-display font-semibold tabular-nums shadow-md ring-1 transition-[scale,left,top,background-color,color] duration-200 motion-reduce:transition-none",
+                    // Before it's laid out: right above its home.
+                    !offset && "-translate-y-full",
+                    offset && "-translate-y-1/2",
+                    far ? "px-2 text-tiny" : "px-2.5 py-1 text-xs",
+                    showing
+                      ? "scale-110 bg-brand text-white ring-white"
+                      : hovered
+                        ? "bg-ink text-white ring-white"
+                        : "bg-white text-ink ring-stone-300",
+                  )}
+                >
+                  {shortPrice(home.price)}
+                </button>
+              </div>
+            </Marker>
+          );
+        })}
+      </Map>
+    </div>
   );
 }

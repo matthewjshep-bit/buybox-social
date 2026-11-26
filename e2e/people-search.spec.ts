@@ -104,8 +104,8 @@ test("people in Search: a buyer by first name only, an agent by name or company,
   await wren.goto("/search/people");
   await expect(wren.getByRole("heading", { level: 1 })).toHaveText("Find people");
   await expect(wren.getByRole("main").getByRole("link", { name: /^Quillon\b/ })).toHaveCount(0);
-  // The box is a fingertip tall, and nothing runs off the side of a phone.
-  expect((await wren.getByLabel("Name", { exact: true }).boundingBox())!.height).toBeGreaterThanOrEqual(48);
+  // The box (a round one, as for homes) is a fingertip tall, and nothing runs off the side of a phone.
+  expect((await wren.getByLabel("Name", { exact: true }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
   expect(await wren.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(wren.viewportSize()!.width);
 
   // Any case; but never his surname, in part or whole, nor a middle of his name.

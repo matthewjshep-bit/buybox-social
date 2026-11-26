@@ -11,6 +11,8 @@ import { cn } from "@/lib/format";
 // sent, and the box empties. `sent`: said under the box once it has, until
 // they type again. `ring`: ringed in amber, when something waits on them.
 // `autoFocus`: the box was asked for (a Reply button), so typing starts in it.
+// `face`: your face beside it (off where the box is already plainly yours,
+// at the foot of a conversation).
 export function InlineBox({
   me,
   agent = false,
@@ -20,6 +22,7 @@ export function InlineBox({
   sent,
   ring = false,
   autoFocus = false,
+  face = true,
   onSend,
   className,
 }: {
@@ -31,6 +34,7 @@ export function InlineBox({
   sent?: string;
   ring?: boolean;
   autoFocus?: boolean;
+  face?: boolean;
   onSend: (text: string) => Promise<string | null>;
   className?: string;
 }) {
@@ -62,7 +66,7 @@ export function InlineBox({
         send();
       }}
     >
-      <Avatar name={me.name} tone={agent ? "agent" : "person"} size={8} photo={me.photo} className="mt-1.5" />
+      {face && <Avatar name={me.name} tone={agent ? "agent" : "person"} size={8} photo={me.photo} className="mt-1.5" />}
       <div className="min-w-0 flex-1">
         <div className="relative">
           <textarea
@@ -85,7 +89,7 @@ export function InlineBox({
               }
             }}
             className={cn(
-              "block max-h-40 min-h-11 w-full resize-none rounded-[22px] bg-stone-100 py-2.5 pl-4 pr-12 text-body leading-6 text-ink [field-sizing:content] placeholder:text-stone-500 focus:bg-white focus:outline-2 focus:outline-brand",
+              "block max-h-40 min-h-11 w-full resize-none rounded-[22px] bg-stone-100 py-2.5 pl-4 pr-12 text-base leading-6 sm:text-body text-ink [field-sizing:content] placeholder:text-stone-500 focus:bg-white focus:outline-2 focus:outline-brand",
               ring && "ring-2 ring-amber-300",
             )}
           />
@@ -93,7 +97,7 @@ export function InlineBox({
             type="submit"
             disabled={pending || !body.trim()}
             aria-label={sendLabel[pending ? 1 : 0]}
-            className="absolute bottom-0.5 right-0.5 grid size-10 place-items-center rounded-full text-brand hover:bg-brand/10 disabled:text-stone-400 disabled:hover:bg-transparent"
+            className="absolute bottom-0 right-0 grid size-11 place-items-center rounded-full text-brand hover:bg-brand/10 disabled:text-stone-400 disabled:hover:bg-transparent"
           >
             <SendHorizontal aria-hidden size={20} />
           </button>

@@ -242,7 +242,10 @@ export default async function ProfilePage({ params, searchParams }: Props) {
         ]
       : [],
   );
-  const taste = showTaste && tab === "activity";
+  // (Saved is its own list: just the homes, in the page's one column.)
+  const taste = showTaste && tab === "activity" && !savedView;
+  // An agent's own client: all the homes they've sent them, in one reel.
+  const clientHomes = client ? `/reel?from=client:${client.participantId}` : null;
 
   // Their listings, in the order picked over them: as they chose (when they
   // feature one), newest first, or the most liked and talked about first.
@@ -284,8 +287,9 @@ export default async function ProfilePage({ params, searchParams }: Props) {
         client={
           client
             ? {
-                homes: `/reel?from=client:${client.participantId}`,
-                // (Signed up, or they'd have no page: so their client page is their account's.)
+                // (On "Between you and them" when that's there; else under their name.)
+                homes: between.length > 0 ? undefined : (clientHomes ?? undefined),
+                // (Signed up, or they'd have no page: so their conversation is their account's.)
                 page: person.accountId
                   ? `/messages/${encodeURIComponent(`acct:${person.accountId}`)}`
                   : `/messages/${encodeURIComponent(`link:${client.shareId}`)}`,
@@ -310,7 +314,9 @@ export default async function ProfilePage({ params, searchParams }: Props) {
           )
         }
       />
-      {between.length > 0 && <BetweenCard id="between" links={between} name={name} className="mt-3" />}
+      {between.length > 0 && (
+        <BetweenCard id="between" links={between} name={name} homes={clientHomes} className="mt-3" />
+      )}
       {tabs && (
         <div className="mt-3 flex items-end border-b border-stone-200">
           <nav aria-label="Sections" className="-mb-px flex gap-1">
@@ -342,14 +348,21 @@ export default async function ProfilePage({ params, searchParams }: Props) {
       <div
         className={cn(
           "mt-4",
+          // One 600px column for what they've done, whatever's in it (on a tablet too, the
+          // taste card lined up over it); on a wide screen the taste card is beside it.
+          // Nothing yet at all: that's said as wide as the header over it.
           tab === "activity" &&
-            (taste ? "lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start lg:gap-6" : "mx-auto max-w-[600px]"),
+            (taste
+              ? "mx-auto max-w-[600px] lg:grid lg:max-w-none lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start lg:gap-6"
+              : nothingYet && !savedView
+                ? ""
+                : "mx-auto max-w-[600px]"),
         )}
       >
         {/* Their taste goes with what they've done: beside it on a wide screen (staying put
             as the feed scrolls), above it on a phone. With their listings, it's out of the way. */}
         {taste && (
-          <div className="mb-3 lg:sticky lg:top-2 lg:mb-0">
+          <div className="mb-3 lg:sticky lg:top-[calc(var(--header)+0.5rem)] lg:mb-0">
             <TasteStoryCard
               name={name}
               isMe={isMe}
@@ -368,12 +381,15 @@ export default async function ProfilePage({ params, searchParams }: Props) {
           </div>
         )}
         <div className="min-w-0">
-        {isMe && tab === "activity" && show === "all" && !about && !before && (
-          <Compose
-            mode="inline"
-            me={{ name: face || name, photo: person.photo, agent: person.isAgent }}
-            peer={!person.isAgent}
-          />
+        {isMe && tab === "activity" && show === "all" && !savedView && !about && !before && (
+          // (In the 600px column even when "nothing yet" is said wider round it.)
+          <div className={cn(nothingYet && !taste && "mx-auto max-w-[600px]")}>
+            <Compose
+              mode="inline"
+              me={{ name: face || name, photo: person.photo, agent: person.isAgent }}
+              peer={!person.isAgent}
+            />
+          </div>
         )}
         {tab === "listings" ? (
           <>
@@ -421,11 +437,12 @@ export default async function ProfilePage({ params, searchParams }: Props) {
           </>
         ) : savedView ? (
           <section aria-labelledby="saved-title">
-            <div className="flex items-center justify-between gap-3 px-1">
-              <h2 id="saved-title" className="flex items-center gap-1.5 text-body font-semibold text-muted">
-                Saved
-                <Lock aria-hidden size={13} />
-                <span className="sr-only">Only you see this</span>
+            {/* "Saved" said once, by the filter beside it; the heading says whose eyes it's for. */}
+            <div className="flex items-center justify-between gap-3">
+              <h2 id="saved-title" className="flex items-center gap-1.5 text-meta font-semibold text-muted">
+                <span className="sr-only">Saved, </span>
+                <Lock aria-hidden size={13} className="shrink-0" />
+                Only you see this
               </h2>
               {control}
             </div>
@@ -439,8 +456,16 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                   counts={await getListingCounts(saved.map((listing) => listing.ListingKey))}
                 />
               ) : (
-                <EmptyState icon={Bookmark} title="Nothing saved yet">
-                  Save a home to find it here.
+                <EmptyState
+                  icon={Bookmark}
+                  title="Nothing saved yet"
+                  action={
+                    <Link href="/search" data-empty-action className={button({ kind: "secondary" })}>
+                      Search homes
+                    </Link>
+                  }
+                >
+                  Tap the bookmark on any home to keep it here.
                 </EmptyState>
               )}
             </div>
@@ -473,7 +498,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
             {about && label && (
               <nav
                 aria-label="Showing"
-                className="sticky top-0 z-30 -mx-4 flex flex-wrap gap-2 bg-surface px-4 py-3 shadow-[0_1px_0_var(--color-stone-200)] lg:-mx-2 lg:-mt-3 lg:px-2"
+                className="sticky top-(--header) z-30 -mx-4 flex flex-wrap gap-2 bg-surface px-4 py-3 shadow-[0_1px_0_var(--color-stone-200)] lg:-mx-2 lg:-mt-3 lg:px-2"
               >
                 <Link
                   href={href({ about: null })}

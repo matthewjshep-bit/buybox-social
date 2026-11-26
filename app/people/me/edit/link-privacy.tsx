@@ -2,7 +2,7 @@
 
 import { useId, useState, useTransition } from "react";
 import { showLinkActivity } from "@/app/people/[id]/actions";
-import { cn } from "@/lib/format";
+import { Switch } from "@/components/ui";
 
 // One switch: whether what you like, pass on and say about the homes someone
 // sends you shows on your profile. On to start with. Switched off, none of it
@@ -33,19 +33,7 @@ export function LinkPrivacy({ shown }: { shown: boolean }) {
             Your likes, passes and comments on homes an agent sends you show on your profile.
           </p>
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={on}
-          aria-label="Show what I do on homes I'm sent"
-          aria-describedby={hint}
-          onClick={toggle}
-          className="flex size-11 shrink-0 items-center justify-center rounded-full"
-        >
-          <span aria-hidden className={cn("flex h-7 w-12 items-center rounded-full px-0.5 transition-colors", on ? "bg-brand" : "bg-stone-400")}>
-            <span className={cn("size-6 rounded-full bg-white shadow transition-transform", on && "translate-x-5")} />
-          </span>
-        </button>
+        <Switch on={on} onChange={toggle} label="Show what I do on homes I'm sent" describedBy={hint} />
       </div>
       {error && (
         <p role="alert" className="mt-1 text-meta font-semibold text-amber-800">

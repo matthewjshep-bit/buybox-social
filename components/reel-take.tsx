@@ -2,7 +2,7 @@
 
 import { ChevronDown, Heart, House, Lock, MessageCircle, Send, Sparkles, ThumbsDown } from "lucide-react";
 import Link from "next/link";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { SpotRef } from "@/components/listing-thread";
 import { avatarColor } from "@/components/ui";
 import { cn, timeAgo } from "@/lib/format";
@@ -36,6 +36,8 @@ export function TakeCard({
   look,
   beside = null,
   hidden = false,
+  open: openProp,
+  onOpenChange,
   onSpot,
   onComment,
   onAll,
@@ -55,15 +57,69 @@ export function TakeCard({
   beside?: string | null;
   // The photo's held, shown alone, or a sheet is over the home.
   hidden?: boolean;
+  // ("head") Open or not, when the home keeps it (one dropdown at a time
+  // under the head: this, or About this home).
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onSpot: (spot: SpotRef) => void;
   onComment: (commentId: string) => void;
   onAll: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [own, setOwn] = useState(false);
+  const open = openProp ?? own;
+  const setOpen = onOpenChange ?? setOwn;
   const bodyId = useId();
+  const section = useRef<HTMLElement>(null);
+  const row = useRef<HTMLButtonElement>(null);
   const takes = home?.takes.slice(0, TAKES_SHOWN) ?? [];
   const forYou = home?.forYou?.length ? home.forYou : null;
   const something = takes.length > 0 || Boolean(forYou);
+  // Opened, would it say more than the row does? One take that's only a
+  // sentence (no spots, no words, nothing private), or only one reason it was
+  // picked: the row is all of it, so it's plain words, nothing to open.
+  // (Several reasons can run past a phone's width: those open, to read whole.)
+  const lone = takes.length === 1 ? takes[0] : null;
+  const deep =
+    takes.length > 1 ||
+    (lone
+      ? Boolean(forYou) ||
+        lone.spots.length > 0 ||
+        lone.facts.length > 0 ||
+        lone.comments.length > 0 ||
+        Boolean(lone.moreComments) ||
+        lone.private
+      : (forYou?.length ?? 0) > 1);
+  // Open over the photo (the head's): Escape, or a tap anywhere else, puts
+  // it away (a tap on the dimmed photo is the home's to close it with). A
+  // key pressed in a dialog over the home is that dialog's; the pop-out the
+  // home itself is in isn't one of those.
+  const close = useRef(setOpen);
+  useEffect(() => {
+    close.current = setOpen;
+  });
+  useEffect(() => {
+    if (look !== "head" || !open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const dialog = (event.target as Element | null)?.closest?.("dialog[open]");
+      if (dialog && !dialog.contains(section.current)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      close.current(false);
+      row.current?.focus({ preventScroll: true });
+    };
+    const onDown = (event: PointerEvent) => {
+      const at = event.target as Element | null;
+      if (!at || section.current?.contains(at) || at.closest?.("[data-scrim]")) return;
+      close.current(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    document.addEventListener("pointerdown", onDown);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("pointerdown", onDown);
+    };
+  }, [look, open]);
   const body = something ? <TakeBody takes={takes} forYou={forYou} onSpot={onSpot} onComment={onComment} onAll={onAll} /> : null;
 
   if (look === "panel") {
@@ -84,7 +140,17 @@ export function TakeCard({
     const lead = takes[0];
     const line = lead ? (
       <>
-        <strong className="font-semibold text-white">{lead.who.name}</strong>
+        {/* (Plain words, nothing to open: their name is the way to their page.) */}
+        {!deep && lead.who.profileId ? (
+          <Link
+            href={`/people/${lead.who.profileId}`}
+            className="font-semibold text-white underline-offset-2 hover:underline"
+          >
+            {lead.who.name}
+          </Link>
+        ) : (
+          <strong className="font-semibold text-white">{lead.who.name}</strong>
+        )}
         {afterName(lead)}
       </>
     ) : forYou ? (
@@ -110,15 +176,16 @@ export function TakeCard({
         {face}
         <span className="min-w-0 flex-1">
           {where && (
-            <span className="block truncate text-[11px] font-semibold uppercase leading-4 tracking-wide text-white/60">{where}</span>
+            <span className="block truncate text-tiny font-semibold uppercase leading-4 tracking-wide text-white/60">{where}</span>
           )}
           {line && <span className="block truncate text-body leading-5 text-white/90">{line}</span>}
         </span>
       </>
     );
-    const row = "flex h-14 w-full items-center gap-2.5 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] text-left";
+    const rowClass = "flex h-14 w-full items-center gap-2.5 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] text-left";
     return (
       <section
+        ref={section}
         aria-label="Why it's here"
         data-take
         className={cn(
@@ -126,28 +193,31 @@ export function TakeCard({
           hidden && "invisible opacity-0",
         )}
       >
-        {something ? (
+        {deep ? (
           <button
+            ref={row}
             type="button"
             aria-expanded={open}
             aria-controls={bodyId}
             onClick={() => setOpen(!open)}
-            className={cn(row, "transition-colors hover:bg-white/[0.04]")}
+            className={cn(rowClass, "transition-colors hover:bg-white/[0.04]")}
           >
             {words}
+            {/* (The same chevron as the facts' under it, in the same place.) */}
             <ChevronDown
               aria-hidden
-              size={18}
+              size={20}
               className={cn("shrink-0 text-white/70 transition-transform motion-reduce:transition-none", open && "rotate-180")}
             />
           </button>
         ) : (
-          <p className={row}>{words}</p>
+          <p className={rowClass}>{words}</p>
         )}
         {/* The whole take, opened from the row: over the photo, under the head. */}
-        {something && (
+        {deep && (
           <div
             id={bodyId}
+            data-dropdown
             hidden={!open}
             className="absolute inset-x-0 top-(--head-h) z-[35] max-h-[50cqh] overflow-y-auto overscroll-contain rounded-b-2xl bg-night/95 px-4 pb-4 pt-3 shadow-[0_16px_40px_rgb(0_0_0/0.45)] backdrop-blur-md animate-[nudge-in_200ms_ease-out_both] motion-reduce:animate-none"
           >
@@ -183,7 +253,7 @@ export function TakeCard({
         >
           <span className="min-w-0 flex-1">
             {where && (
-              <span className="block truncate text-[11px] font-semibold uppercase leading-4 tracking-wide text-white/70">
+              <span className="block truncate text-tiny font-semibold uppercase leading-4 tracking-wide text-white/70">
                 {where}
               </span>
             )}
@@ -207,7 +277,7 @@ export function TakeCard({
           />
         </button>
       ) : (
-        <p className="flex h-11 items-center px-3 text-[11px] font-semibold uppercase leading-4 tracking-wide text-white/70">
+        <p className="flex h-11 items-center px-3 text-tiny font-semibold uppercase leading-4 tracking-wide text-white/70">
           <span className="min-w-0 truncate">{where}</span>
         </p>
       )}

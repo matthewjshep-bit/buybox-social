@@ -15,12 +15,15 @@ export function MessagesShell({ list, children }: { list: ReactNode; children: R
   return (
     <main
       data-messages
-      className="mx-auto flex h-[calc(100dvh-3.5rem-1px)] max-w-[1140px] flex-col lg:grid lg:grid-cols-[min(24rem,36%)_minmax(0,1fr)]"
+      // (Sized to the window under the bar, and holding its own: anything
+      // positioned inside, like a screen reader's hidden words, stays in a
+      // pane rather than stretching the page, so the window never scrolls.)
+      className="relative mx-auto flex h-[calc(100dvh-var(--header)-1px)] max-w-[1140px] flex-col overflow-hidden lg:grid lg:grid-cols-[min(24rem,36%)_minmax(0,1fr)] lg:border-x lg:border-stone-200"
     >
       <section
         aria-label="Conversations"
         className={cn(
-          "min-h-0 flex-1 overflow-y-auto overscroll-contain bg-white lg:flex-none lg:border-r lg:border-stone-200",
+          "relative min-h-0 flex-1 overflow-y-auto overscroll-contain bg-white lg:flex-none lg:border-r lg:border-stone-200",
           inThread && "max-lg:hidden",
         )}
       >
@@ -28,7 +31,7 @@ export function MessagesShell({ list, children }: { list: ReactNode; children: R
       </section>
       <section
         aria-label="Conversation"
-        className={cn("flex min-h-0 flex-1 flex-col bg-white lg:flex-none", !inThread && "max-lg:hidden")}
+        className={cn("relative flex min-h-0 flex-1 flex-col bg-white lg:flex-none", !inThread && "max-lg:hidden")}
       >
         {children}
       </section>

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { earlierTakeHomes, takeCount } from "@/lib/agent-take";
 import { notFound } from "next/navigation";
 import { homeFacts } from "@/app/homes/[key]/preview";
 import type { LinkAccount } from "@/components/agent-card";
@@ -9,6 +8,7 @@ import { getCurrentUser, getViewAs, isAdmin, type Account } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { agentFirstName } from "@/lib/format";
 import { readDevice } from "@/lib/engagement";
+import { threadHref } from "@/lib/messages";
 import { getMyLinks, hasRated } from "@/lib/my-links";
 import { isSampleListing } from "@/lib/listings/types";
 import { photoUrl, photoVersion } from "@/lib/person-photo";
@@ -28,7 +28,7 @@ import { eventsFromTimeline } from "@/lib/ticker";
 import { getSharePhotoLikes, getShareTimelines, type TimelineReaction } from "@/lib/timeline";
 import { addComment, askToSee, joinThread, likePhotoInShare, setCommentSharing, setReaction } from "./actions";
 import { Backdrop } from "@/components/join";
-import { ShareEnd, ShareReel, ShareWelcome, ThoughtsIntro } from "./client";
+import { ShareEnd, ShareReel, ShareWelcome } from "./client";
 import { leaveLink } from "./leave";
 
 type Props = {
@@ -44,7 +44,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function linkAccount(
   viewer: Account,
   device: string | undefined,
-): Promise<{ visitorId: string | null; menu: LinkAccount }> {
+  shareId: string,
+): Promise<{ visitorId: string | null; menu: LinkAccount; message: string | null }> {
   const { visitor } = await getPublicIdentity(viewer, device);
   const [unread, admin, links] = await Promise.all([
     visitor ? countUnreadActivity(visitor.id) : 0,
@@ -65,7 +66,12 @@ async function linkAccount(
     // site's header has them.
     rated: hasRated(links),
   };
-  return { visitorId: visitor?.id ?? null, menu };
+  // This link, if it's one they were sent: its conversation in Messages, keyed
+  // as Messages keys it (lib/messages.ts), the sender's for a link to them
+  // alone, the link's own for one with others on it.
+  const sent = links.find((link) => link.shareId === shareId);
+  const message = sent ? threadHref(sent.people > 1 ? `link:${sent.shareId}` : `acct:${sent.agent.accountId}`) : null;
+  return { visitorId: visitor?.id ?? null, menu, message };
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -111,17 +117,7 @@ export default async function SharePage({ params, searchParams }: Props) {
   // Where its owner goes from it: an agent's link has a page on their
   // dashboard; anyone else's, the one page with their link to copy.
   const ownPage = agent.is_agent ? `/dashboard/shares/${share.id}` : `/send/${share.id}`;
-  const readyPage = agent.is_agent ? `${ownPage}/sent` : ownPage;
   const preview = agentViewing ? `Viewing as ${client}` : undefined;
-  // The agent, just having made the link: the last step of sending homes is
-  // here, on the homes themselves, liking and saying what they think. Then
-  // Done goes to the link, ready to copy.
-  const adding = agentViewing && query.step === "thoughts";
-  // Whether they've said anything on it yet (Skip, until they have), and
-  // whether they said it before, on an earlier link, to bring over.
-  const [saidSoFar, earlierHomes] = adding
-    ? await Promise.all([takeCount(share.id), earlierTakeHomes(share.agent_id, share.id)])
-    : [0, 0];
   // Someone's own link is them; otherwise whoever's signed in, by their place
   // on it, or whoever this browser joined as before signing in. (The agent is
   // never anyone on it, even on someone's own link.)
@@ -147,7 +143,7 @@ export default async function SharePage({ params, searchParams }: Props) {
   const [timelines, photoLikes, account, agentProfile, viewing, mine, quickInvitee] = await Promise.all([
     getShareTimelines(share.id, listings, me?.id ?? null),
     getSharePhotoLikes(share.id, keys, me?.id ?? null, { agent: agentViewing }),
-    signedIn ? linkAccount(signedIn, device) : null,
+    signedIn ? linkAccount(signedIn, device, share.id) : null,
     // The agent is a person on Porchcard too, once they have a page; and
     // whether whoever's signed in follows them.
     sql<{ id: string; following: boolean }[]>`
@@ -264,18 +260,10 @@ export default async function SharePage({ params, searchParams }: Props) {
               ? { personId: agentProfile.id, following: agentProfile.following }
               : null,
           leave: canLeave ? leaveLink.bind(null, token) : null,
+          message: account?.message ?? null,
         }}
         preview={preview}
-        notes={
-          agentViewing
-            ? {
-                for: client,
-                done: adding ? readyPage : ownPage,
-                step: adding,
-                ...(adding && { added: saidSoFar > 0, earlier: saidSoFar > 0 ? 0 : earlierHomes }),
-              }
-            : undefined
-        }
+        notes={agentViewing ? { for: client, done: ownPage } : undefined}
         // (No name: the feed says "your agent".)
         agentName={agent.full_name || undefined}
         // A personal link opens as its owner, so it isn't one to pass around.
@@ -298,8 +286,7 @@ export default async function SharePage({ params, searchParams }: Props) {
         // Every link starts with a word from the agent over the first home's
         // photo, then the homes below it.
         intro={
-          // (Straight to the homes for the agent adding their thoughts: the welcome is their client's.)
-          count > 0 && !adding ? (
+          count > 0 ? (
             <ShareWelcome
               key="welcome"
               agent={agent}
@@ -323,17 +310,6 @@ export default async function SharePage({ params, searchParams }: Props) {
                     ]
                   : [],
               )}
-            />
-          ) : count > 0 && saidSoFar === 0 ? (
-            // The agent, with nothing said yet: what this step is, and that it can be skipped.
-            <ThoughtsIntro
-              key="thoughts"
-              token={token}
-              photo={listings[0].Media[0]}
-              count={count}
-              client={client}
-              done={readyPage}
-              earlier={earlierHomes}
             />
           ) : undefined
         }

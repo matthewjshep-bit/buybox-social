@@ -15,7 +15,7 @@ import { searchPeople } from "@/app/dashboard/actions";
 import { Avatar } from "@/components/ui";
 import { cn, namesList } from "@/lib/format";
 import { NOT_AN_EMAIL, type PersonOption, type PersonPick } from "@/lib/people-picker";
-import { button, card, field } from "@/lib/ui";
+import { button, card, field, fieldLabel } from "@/lib/ui";
 
 // Who a link is for, in one place wherever homes are sent: the new-link
 // builder, the sheets after Send, and "Add a person" on a link. Type a first
@@ -58,6 +58,7 @@ const fromOption = (option: PersonOption): Chosen => ({
 
 export function PeoplePicker({
   label,
+  hideLabel = false,
   hint,
   chosen,
   onChange,
@@ -74,6 +75,9 @@ export function PeoplePicker({
 }: {
   // The field's name, as it's read out and shown.
   label: string;
+  // Read out but not shown: where the question is already asked just above
+  // the field (a sheet's title, a form's own legend).
+  hideLabel?: boolean;
   hint?: string;
   // Not an agent: the people they've sent homes to before aren't "clients".
   peer?: boolean;
@@ -378,6 +382,14 @@ export function PeoplePicker({
   const sameName = query
     ? suggestions.find((o) => o.group === "client" && "visitorId" in o.pick && o.name.toLowerCase() === query.toLowerCase())
     : undefined;
+  // The start of one client's name ("Ni", with Nina in the list): Enter still
+  // adds what's typed, so the list's own row says so, and this says who they
+  // may have meant. (Never picked for them: "Ben" may be someone new, not
+  // Benjamin.)
+  const startsOne = query && !sameName
+    ? suggestions.filter((o) => o.group === "client" && o.name.toLowerCase().startsWith(lower) && o.name.toLowerCase() !== lower)
+    : [];
+  const meant = startsOne.length === 1 ? startsOne[0] : undefined;
   // Picked from Porchcard, so we'll tell them.
   const told = notify ? chosen.filter((c) => "visitorId" in c.pick).map((c) => c.name) : [];
   const picked = single ? chosen[0] : undefined;
@@ -388,7 +400,7 @@ export function PeoplePicker({
 
   return (
     <div>
-      <label htmlFor={`${id}-input`} className="text-sm font-medium">
+      <label htmlFor={`${id}-input`} className={hideLabel ? "sr-only" : fieldLabel}>
         {label}
       </label>
       {hint && (
@@ -468,6 +480,12 @@ export function PeoplePicker({
         {beside}
       </div>
 
+      {/* (Straight under what they typed, where it's read before Enter.) */}
+      {meant && shown && (
+        <p className="mt-1.5 text-meta text-stone-700">
+          {peer ? `Looking for ${meant.name}?` : `Looking for ${meant.name}, your client?`} Pick them from the list.
+        </p>
+      )}
       {/* Always in the page, so its list can appear and go without moving focus. */}
       <ul
         id={listId}
@@ -520,7 +538,8 @@ export function PeoplePicker({
             role="option"
             aria-selected={activeIndex === flat.length - 1}
             onClick={() => choose(flat.length - 1)}
-            className={row}
+            // With nothing arrowed to, this is what Enter does: shaded, so it shows.
+            className={cn(row, activeIndex < 0 && "bg-stone-50")}
           >
             <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-stone-100 text-stone-700">
               <Plus size={16} />

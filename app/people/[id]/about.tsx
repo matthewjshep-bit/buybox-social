@@ -1,12 +1,14 @@
 "use client";
 
-import { Check, Pencil, Plus, X } from "lucide-react";
+import { Pencil, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
+import { SavedNote } from "@/components/ui";
 import { cn } from "@/lib/format";
+import { linkUrl } from "@/lib/link-url";
 import type { ProfileLink } from "@/lib/profile";
-import { button, field } from "@/lib/ui";
+import { button, field, fieldLabel } from "@/lib/ui";
 import { saveAbout } from "./actions";
 
 const BIO_MOST = 300;
@@ -77,6 +79,14 @@ export function EditAbout({
   };
   const setRow = (i: number, next: Partial<ProfileLink>) =>
     changeRows((now) => now.map((row, j) => (j === i ? { ...row, ...next } : row)));
+  // Anything here that isn't what's on their profile, as saving would keep it:
+  // rows with an address, each address as the server writes it ("site.com" is
+  // "https://site.com/"). A row with no address is nothing.
+  const kept = (list: ProfileLink[]) =>
+    list
+      .filter((row) => row.url.trim())
+      .map(({ label, url }) => [label.trim(), linkUrl(url.trim()) ?? url.trim()]);
+  const changed = text.trim() !== bio.trim() || JSON.stringify(kept(rows)) !== JSON.stringify(kept(links));
 
   return (
     <form
@@ -88,7 +98,9 @@ export function EditAbout({
       }}
     >
       <div>
-        <label htmlFor={`${id}-bio`} className="text-sm font-semibold">
+        {/* (On Edit profile a buyer's card is called "About you" already; an agent's label
+            tells their words from their links.) */}
+        <label htmlFor={`${id}-bio`} className={cn(fieldLabel, stay && !agent && "sr-only")}>
           About you
         </label>
         <textarea
@@ -108,13 +120,16 @@ export function EditAbout({
           }
           className={cn(field({ lines: true }), "mt-1")}
         />
-        <p className="mt-1 text-right text-[12px] text-muted tabular-nums">
-          {text.length}/{BIO_MOST}
+        <p className="mt-1 flex justify-between gap-3 text-[12px] text-muted">
+          <span>{stay ? "Shows on your profile." : ""}</span>
+          <span className="tabular-nums">
+            {text.length}/{BIO_MOST}
+          </span>
         </p>
       </div>
       {agent && (
         <fieldset className="flex flex-col gap-2">
-          <legend className="text-sm font-semibold">Links</legend>
+          <legend className={fieldLabel}>Links</legend>
 
           {rows.map((row, i) => (
             <div key={i} className="flex items-center gap-2">
@@ -134,7 +149,7 @@ export function EditAbout({
                   value={row.url}
                   maxLength={300}
                   inputMode="url"
-                  placeholder="harborandpine.com"
+                  placeholder="yoursite.com"
                   onChange={(event) => setRow(i, { url: event.target.value })}
                   className={field()}
                 />
@@ -166,20 +181,17 @@ export function EditAbout({
         </p>
       )}
       {stay ? (
-        // As "Save details" above it: the button, then that it's saved.
+        // As every card's Save on Edit profile: the button (blue once there's something
+        // to save), then that it's saved.
         <div className="flex items-center gap-3">
           <button
             type="submit"
             aria-disabled={pending}
-            className={cn(button({ kind: "primary", size: "lg" }), pending && "opacity-60")}
+            className={cn(button({ kind: changed && !saved ? "primary" : "secondary" }), pending && "opacity-60")}
           >
             {pending ? "Saving…" : "Save about"}
           </button>
-          {saved && !pending && (
-            <p role="status" className="flex items-center gap-1 text-meta font-semibold text-emerald-700">
-              <Check aria-hidden size={14} /> Saved
-            </p>
-          )}
+          {saved && !pending && <SavedNote />}
         </div>
       ) : (
         <div className="flex justify-end gap-2">

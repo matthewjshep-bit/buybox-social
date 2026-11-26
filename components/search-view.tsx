@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Home, Map as MapIcon, Maximize2, Search } from "lucide-react";
+import { ArrowLeft, ChevronDown, Home, Map as MapIcon, Maximize2, SearchX } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -20,12 +20,12 @@ import type { MapHome } from "@/components/listing-map";
 import { QuickSendReel, SendPill, sendHomeFrom, useQuickSend } from "@/components/quick-send";
 import { ReelFeed } from "@/components/reel";
 import { SearchFilterBar } from "@/components/search-filters";
-import { SearchSwitch } from "@/components/search-switch";
-import { HomeThumb } from "@/components/ui";
+import { SearchField, SearchSwitch } from "@/components/search-switch";
+import { EmptyState, HomeThumb } from "@/components/ui";
 import type { FeedPost } from "@/lib/feed";
 import { cn, formatPrice } from "@/lib/format";
 import { filtersQuery, SORTS, type SearchFilters } from "@/lib/search-options";
-import { button, field } from "@/lib/ui";
+import { button } from "@/lib/ui";
 
 // The map draws with WebGL in the browser, so it never renders on the server.
 // A wide screen, where the home sits between the list and the map with room
@@ -225,35 +225,42 @@ export function SearchView({
   };
 
   const count = `${total} ${total === 1 ? "home" : "homes"}`;
+  // The home in the pane (none past the last one).
+  const showing = posts.find((post) => post.listing.ListingKey === activeKey)?.listing;
   // Only a home that's still for sale.
-  const sendable = sender
-    ? posts.find((post) => post.listing.ListingKey === activeKey && post.listing.StandardStatus === "Active")
-    : undefined;
-  const sending = sendable ? sendHomeFrom(sendable.listing) : null;
+  const sendable = sender && showing?.StandardStatus === "Active" ? showing : undefined;
+  const sending = sendable ? sendHomeFrom(sendable) : null;
 
   // Nothing found: what was looked for, said back when it was only words in
-  // the box ("No homes match “Dana”."), and the way out. A name is the
-  // likeliest thing to find no homes, so signed in (and with no number in
-  // it, which an address or a ZIP would have), people are one tap away.
+  // the box ("No homes match “Dana”."), and the way out: clearing just those
+  // words, or just the filters (keeping the words). A name is the likeliest
+  // thing to find no homes, so signed in (and with no number in it, which an
+  // address or a ZIP would have), people are one tap away. Said once, where
+  // the home would be, at every width.
   const { q } = filters;
   const onlyWords =
     Boolean(q) && !filters.minPrice && !filters.maxPrice && !filters.beds && !filters.baths && !filters.type && !filters.liked && !filters.sold && !filters.by && !filters.minSqft;
-  // (Each way out a fingertip tall; `side`: lined up left beside the map, or centred in the pane.)
-  const none = (side: "items-start" | "items-center") => (
-    <div className={cn("flex flex-col", side)}>
-      <p className="font-semibold">{onlyWords ? `No homes match “${q}”.` : "No homes match those filters."}</p>
-      <Link href="/search" className="flex min-h-11 items-center font-semibold text-brand underline">
-        Clear all filters
-      </Link>
-      {people && q && !/\d/.test(q) && (
-        <Link
-          href={`/search/people?q=${encodeURIComponent(q)}`}
-          className="flex min-h-11 items-center font-semibold text-brand underline"
-        >
-          Search people for “{q}”
-        </Link>
-      )}
-    </div>
+  const none = (
+    <EmptyState
+      icon={SearchX}
+      title={onlyWords ? `No homes match “${q}”.` : "No homes match those filters."}
+      className="w-full max-w-sm"
+      action={
+        <>
+          <Link
+            href={onlyWords || !q ? "/search" : `/search?q=${encodeURIComponent(q)}`}
+            className={button({ kind: "secondary" })}
+          >
+            {onlyWords ? "Clear search" : "Clear filters"}
+          </Link>
+          {people && q && !/\d/.test(q) && (
+            <Link href={`/search/people?q=${encodeURIComponent(q)}`} className={cn(button({ kind: "ghost" }), "text-brand")}>
+              Search people for “{q}”
+            </Link>
+          )}
+        </>
+      }
+    />
   );
 
   return (
@@ -265,7 +272,7 @@ export function SearchView({
     // home sits in the middle of the page; on a very wide screen the list
     // stops growing and the map takes the rest.)
     // Signed in, Homes | People is the first row of the filters, at every width.
-    <div className="flex h-[calc(100dvh-3.5rem-1px)] flex-col lg:grid lg:grid-cols-[min(46rem,50%)_minmax(0,1fr)] lg:grid-rows-[auto_auto_minmax(0,1fr)] xl:grid-cols-[clamp(20rem,28%,26rem)_min(44rem,44%)_minmax(0,1fr)] xl:grid-rows-[auto_minmax(0,1fr)]">
+    <div className="flex h-[calc(100dvh-var(--header)-1px)] flex-col lg:grid lg:grid-cols-[min(46rem,50%)_minmax(0,1fr)] lg:grid-rows-[auto_auto_minmax(0,1fr)] xl:grid-cols-[clamp(20rem,28%,26rem)_min(44rem,44%)_minmax(0,1fr)] xl:grid-rows-[auto_minmax(0,1fr)]">
       <form
         role="search"
         aria-label="Filter homes"
@@ -281,29 +288,20 @@ export function SearchView({
       >
         {/* Homes or people: a row of its own, edge to edge, above the field. */}
         {people && <SearchSwitch on="homes" className="-mx-4 w-[calc(100%+2rem)] px-4" />}
-        <div className="relative w-full sm:w-72">
-          <label htmlFor="search-q" className="sr-only">
-            City, ZIP, address or MLS number
-          </label>
-          <input
-            id="search-q"
-            name="q"
-            type="search"
-            defaultValue={filters.q}
-            placeholder="City, ZIP, address or MLS #"
-            className={cn(field({ pill: true }), "w-full pr-11")}
-          />
-          <button
-            type="submit"
-            aria-label="Search"
-            className="absolute right-0 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full text-stone-700"
-          >
-            <Search aria-hidden size={18} />
-          </button>
-        </div>
+        <SearchField
+          // (Afresh whenever the words in the address change, e.g. "Clear search".)
+          key={filters.q}
+          id="search-q"
+          name="q"
+          label="City, ZIP, address or MLS number"
+          defaultValue={filters.q}
+          placeholder="City, ZIP, address or MLS #"
+          enterKeyHint="search"
+          className="w-full sm:w-72"
+        />
         {/* One swipeable row on phones; wraps on wider screens. */}
         <FilterRow>
-          <SearchFilterBar shown={shown} update={update} />
+          <SearchFilterBar shown={shown} update={update} count={total} pending={pending} />
         </FilterRow>
       </form>
 
@@ -320,19 +318,29 @@ export function SearchView({
           <p className="shrink-0 text-sm font-semibold text-ink lg:font-normal lg:text-muted" aria-live="polite">
             {count}
           </p>
-          <label className={cn("flex min-w-0 items-center gap-1.5 text-sm lg:ml-auto xl:ml-0", posts.length === 0 && "invisible")}>
+          {/* The order picked, its chevron right after it: the words are
+              drawn, and the real list lies over them (unseen), so tapping
+              anywhere on them opens the phone's or the browser's own. */}
+          <label className={cn("flex min-w-0 items-center gap-1 text-sm lg:ml-auto xl:ml-0", posts.length === 0 && "invisible")}>
             <span className="shrink-0 text-stone-700">Sort:</span>
-            <select
-              value={shown.sort}
-              onChange={(event) => update({ sort: event.target.value })}
-              className="min-h-11 min-w-0 rounded-full bg-transparent px-1 font-semibold text-brand"
-            >
-              {Object.entries(SORTS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
+            <span className="relative flex min-h-11 min-w-0 items-center gap-0.5 rounded-full px-1 font-semibold text-brand has-[select:focus-visible]:outline-2 has-[select:focus-visible]:outline-offset-[-2px] has-[select:focus-visible]:outline-brand">
+              <span aria-hidden className="truncate">
+                {SORTS[shown.sort]}
+              </span>
+              <ChevronDown aria-hidden size={14} className="shrink-0" />
+              <select
+                value={shown.sort}
+                onChange={(event) => update({ sort: event.target.value })}
+                // (16px, so a phone doesn't zoom in on it.)
+                className="absolute inset-0 size-full cursor-pointer appearance-none text-base opacity-0"
+              >
+                {Object.entries(SORTS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </span>
           </label>
         </div>
         {posts.length > 0 ? (
@@ -384,10 +392,7 @@ export function SearchView({
               );
             })}
           </ol>
-        ) : (
-          // Beside the map, the way out is right under the count.
-          <div className="hidden border-t border-stone-200 px-4 py-6 xl:block">{none("items-start")}</div>
-        )}
+        ) : null}
       </div>
 
       <section
@@ -423,10 +428,7 @@ export function SearchView({
           </button>
         )}
         {posts.length === 0 ? (
-          // Said once: beside the map on the widest screens, here otherwise.
-          <div className="flex h-full flex-col items-center justify-center bg-surface p-8 text-center">
-            <div className="xl:hidden">{none("items-center")}</div>
-          </div>
+          <div className="flex h-full flex-col items-center justify-center bg-surface p-4 sm:p-8">{none}</div>
         ) : (
           <ReelFeed
             // A new search is a new set of homes.
@@ -477,14 +479,33 @@ export function SearchView({
         />
       </div>
 
-      {/* Phones: along the bottom, in the space the home's words leave for
-          these buttons, so they never cover the words on a short screen. */}
+      {/* Phones: the one row of buttons, along the bottom, in the room the
+          home's words leave for it, so it never covers them. For the home
+          showing: Send (agents), and the way to it full screen (in words,
+          unless Send is beside it: then the round button the wide pane has);
+          then Map. */}
       <div className="pointer-events-none fixed inset-x-0 bottom-5 z-40 flex justify-center gap-2 px-4 lg:hidden">
-        {sending && !mobileMap && <SendPill home={sending} quick={quick} className="pointer-events-auto" />}
+        {sending && !mobileMap && <SendPill home={sending} quick={quick} short className="pointer-events-auto" />}
+        {showing && !mobileMap && (
+          <button
+            type="button"
+            onClick={() => openFull(showing.ListingKey)}
+            // (Which home, for a screen reader: the words start the same.)
+            aria-label={`Open full screen: ${showing.UnparsedAddress}`}
+            title={sending ? "Open full screen" : undefined}
+            className={cn(
+              button({ kind: "light", size: "lg", icon: Boolean(sending) }),
+              "pointer-events-auto shrink-0 shadow-lg ring-1 ring-stone-200",
+            )}
+          >
+            <Maximize2 aria-hidden size={18} />
+            {!sending && "Open full screen"}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setMobileMap((v) => !v)}
-          className={cn(button({ kind: "light", size: "lg" }), "pointer-events-auto shadow-lg ring-1 ring-stone-200")}
+          className={cn(button({ kind: "light", size: "lg" }), "pointer-events-auto shrink-0 shadow-lg ring-1 ring-stone-200")}
         >
           {mobileMap ? <Home aria-hidden size={18} /> : <MapIcon aria-hidden size={18} />}
           {mobileMap ? "Homes" : "Map"}

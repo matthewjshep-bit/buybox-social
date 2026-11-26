@@ -1,5 +1,8 @@
+import { Search } from "lucide-react";
 import Link from "next/link";
+import type { ComponentProps } from "react";
 import { cn } from "@/lib/format";
+import { field } from "@/lib/ui";
 
 // Search looks for two things, a tap apart: homes (the map) and people. Two
 // underline tabs, each a fingertip tall, the one you're on marked. The same
@@ -25,6 +28,32 @@ export function SearchSwitch({ on, className }: { on: "homes" | "people"; classN
           {tab.label}
         </Link>
       ))}
+    </div>
+  );
+}
+
+// Search's box, the same on both sides: one round-ended field, a fingertip
+// tall, its name said rather than shown, and the magnifier inside its end
+// to search with (Enter does too). `className`: its width and place.
+export function SearchField({
+  id,
+  label,
+  className,
+  ...input
+}: { id: string; label: string; className?: string } & Omit<ComponentProps<"input">, "id" | "type" | "className">) {
+  return (
+    <div className={cn("relative", className)}>
+      <label htmlFor={id} className="sr-only">
+        {label}
+      </label>
+      <input id={id} type="search" {...input} className={cn(field({ pill: true }), "w-full pr-11")} />
+      <button
+        type="submit"
+        aria-label="Search"
+        className="absolute right-0 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full text-stone-700 transition-colors hover:text-ink"
+      >
+        <Search aria-hidden size={18} />
+      </button>
     </div>
   );
 }

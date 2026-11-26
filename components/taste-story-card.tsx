@@ -58,7 +58,8 @@ export function TasteStoryCard({
   );
 }
 
-// "Loves Covered porch 3 · Kitchen 5", each one showing just those cards. On
+// "Loves Covered porch 3 · Kitchen 5" (on a wide screen, "Loves" over its
+// chips), each one showing just those cards. On
 // their own page, a chip they've switched off is marked as only theirs.
 export function TasteRow({
   side,
@@ -81,7 +82,11 @@ export function TasteRow({
     <div role="group" aria-label={title} className="mt-3 flex flex-wrap items-center gap-1.5">
       <span
         aria-hidden
-        className={cn("mr-1 flex items-center gap-1 text-meta font-semibold", like ? "text-rose-800" : "text-amber-800")}
+        // (In a wide screen's narrow rail, on a line of its own over the chips, so they wrap evenly.)
+        className={cn(
+          "mr-1 flex items-center gap-1 text-meta font-semibold lg:basis-full",
+          like ? "text-rose-800" : "text-amber-800",
+        )}
       >
         <Icon size={14} className={like ? "fill-current" : undefined} />
         {title}

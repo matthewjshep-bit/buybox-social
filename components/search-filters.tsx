@@ -1,11 +1,12 @@
 "use client";
 
-// Search's filters as a row of buttons, each opening its choices: For sale
-// or Sold, Price, Beds & baths, Home type, and the rest under Filters. A
-// button says what's chosen ("$400K–$1M", "3+ bd, 2+ ba") and is tinted
-// while it's narrowing the homes. Choices take effect as they're made; Done
-// (or Escape, or a tap away) puts the choices away. On a wide screen they
-// drop down under their button; on a phone they rise from the bottom.
+// Search's filters as a row of buttons, each opening its choices: Filters
+// (the rest, with a count of those on) first, then For sale or Sold, Price,
+// Beds & baths and Home type. A button says what's chosen ("$400K–$1M",
+// "3+ bd, 2+ ba") and is tinted while it's narrowing the homes. Choices take
+// effect as they're made; Done ("Show 12 homes" on a phone), Escape or a tap
+// away puts the choices away. On a wide screen they drop down under their
+// button; on a phone they rise from the bottom.
 import { ChevronDown, SlidersHorizontal } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -35,13 +36,85 @@ type MenuId = "status" | "price" | "rooms" | "type" | "more";
 // Below this, the choices rise from the bottom (as Tailwind's `sm`).
 const PHONE = "(max-width: 39.99rem)";
 
-export function SearchFilterBar({ shown, update }: { shown: SearchFilters; update: FilterUpdate }) {
+export function SearchFilterBar({
+  shown,
+  update,
+  count,
+  pending,
+}: {
+  shown: SearchFilters;
+  update: FilterUpdate;
+  // How many homes the filters find, and whether a change is still loading.
+  count: number;
+  pending: boolean;
+}) {
   const [open, setOpen] = useState<MenuId | null>(null);
   const more = moreFiltersOn(shown);
-  const menu = (id: MenuId) => ({ id, open: open === id, onOpen: () => setOpen(open === id ? null : id), onClose: () => setOpen(null) });
+  const menu = (id: MenuId) => ({
+    id,
+    open: open === id,
+    onOpen: () => setOpen(open === id ? null : id),
+    onClose: () => setOpen(null),
+    found: pending ? null : count,
+  });
 
   return (
     <>
+      {/* First, so what's on under it (its count) is in view on a phone too. */}
+      <FilterMenu
+        {...menu("more")}
+        label="Filters"
+        icon={<SlidersHorizontal aria-hidden size={16} />}
+        badge={more || null}
+        title="More filters"
+        on={more > 0}
+        wide
+        footer={
+          more > 0 ? (
+            <button
+              type="button"
+              onClick={() => update({ by: null, minSqft: null, liked: false })}
+              className="flex min-h-11 shrink-0 items-center px-1 font-semibold text-brand underline"
+            >
+              Reset
+            </button>
+          ) : null
+        }
+      >
+        <Choices
+          name="Listed by"
+          heading
+          value={shown.by ?? ""}
+          options={[["", "Anyone"], ...Object.entries(LISTED_BY)]}
+          onChange={(value) => update({ by: value || null })}
+        />
+        <label className="mt-4 block text-sm font-semibold">
+          Square feet
+          <select
+            aria-label="Square feet"
+            value={shown.minSqft ?? ""}
+            onChange={(event) => update({ minSqft: event.target.value || null })}
+            className={cn(field(), "mt-1 font-normal")}
+          >
+            <option value="">Any size</option>
+            {MIN_SQFT.map((n) => (
+              <option key={n} value={n}>
+                {n.toLocaleString("en-US")}+ sq ft
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="mt-4 flex min-h-11 cursor-pointer items-center gap-3 text-body">
+          <input
+            type="checkbox"
+            checked={shown.liked}
+            onChange={(event) => update({ liked: event.target.checked })}
+            className="size-5 accent-brand"
+          />
+          Only homes people liked
+        </label>
+      </FilterMenu>
+
       <FilterMenu {...menu("status")} label={shown.sold ? "Sold" : "For sale"} title="For sale or sold" on={shown.sold}>
         <Choices
           name="For sale or sold"
@@ -114,59 +187,6 @@ export function SearchFilterBar({ shown, update }: { shown: SearchFilters; updat
         />
       </FilterMenu>
 
-      <FilterMenu
-        {...menu("more")}
-        label="Filters"
-        icon={<SlidersHorizontal aria-hidden size={16} />}
-        badge={more || null}
-        title="More filters"
-        on={more > 0}
-        wide
-        footer={
-          more > 0 ? (
-            <button
-              type="button"
-              onClick={() => update({ by: null, minSqft: null, liked: false })}
-              className="flex min-h-11 shrink-0 items-center px-1 font-semibold text-brand underline"
-            >
-              Reset
-            </button>
-          ) : null
-        }
-      >
-        <Choices
-          name="Listed by"
-          heading
-          value={shown.by ?? ""}
-          options={[["", "Anyone"], ...Object.entries(LISTED_BY)]}
-          onChange={(value) => update({ by: value || null })}
-        />
-        <label className="mt-4 block text-sm font-semibold">
-          Square feet
-          <select
-            aria-label="Square feet"
-            value={shown.minSqft ?? ""}
-            onChange={(event) => update({ minSqft: event.target.value || null })}
-            className={cn(field(), "mt-1 font-normal")}
-          >
-            <option value="">Any size</option>
-            {MIN_SQFT.map((n) => (
-              <option key={n} value={n}>
-                {n.toLocaleString("en-US")}+ sq ft
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="mt-4 flex min-h-11 cursor-pointer items-center gap-3 text-body">
-          <input
-            type="checkbox"
-            checked={shown.liked}
-            onChange={(event) => update({ liked: event.target.checked })}
-            className="size-5 accent-brand"
-          />
-          Only homes people liked
-        </label>
-      </FilterMenu>
     </>
   );
 }
@@ -184,6 +204,7 @@ function FilterMenu({
   badge,
   wide = false,
   footer,
+  found,
   children,
 }: {
   id: MenuId;
@@ -198,6 +219,8 @@ function FilterMenu({
   badge?: number | null;
   wide?: boolean;
   footer?: ReactNode;
+  // How many homes the choices find (null while that's loading).
+  found: number | null;
   children: ReactNode;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
@@ -285,7 +308,11 @@ function FilterMenu({
             <span className="sr-only"> on</span>
           </span>
         ) : null}
-        <ChevronDown aria-hidden size={16} className={cn("transition-transform", open && "rotate-180")} />
+        <ChevronDown
+          aria-hidden
+          size={16}
+          className={cn("transition-transform motion-reduce:transition-none", open && "rotate-180")}
+        />
       </button>
       {open &&
         createPortal(
@@ -308,10 +335,20 @@ function FilterMenu({
                 {title}
               </h2>
               <div className="min-h-0 overflow-y-auto overscroll-contain p-4">{children}</div>
+              {/* A phone's sheet covers the homes, so its button says what the
+                  choices found ("Show 12 homes"); a wide screen's panel leaves
+                  them in view, and its Done sits quietly at its end. */}
               <div className="flex shrink-0 items-center gap-3 px-4 pb-4">
                 {footer}
-                <button type="button" data-done onClick={done} className={button({ kind: "primary", block: true })}>
-                  Done
+                <button
+                  type="button"
+                  data-done
+                  onClick={done}
+                  className={
+                    phone ? button({ kind: "primary", size: "lg", block: true }) : cn(button({ kind: "neutral" }), "ml-auto")
+                  }
+                >
+                  {!phone ? "Done" : found === null ? "Updating…" : `Show ${found} ${found === 1 ? "home" : "homes"}`}
                 </button>
               </div>
             </div>

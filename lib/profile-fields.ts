@@ -2,6 +2,9 @@ import { z } from "zod";
 import { listedAgentNames, MLS_ID, sameAgent } from "./agent-listings";
 import { isContactPhone, phoneDigits } from "./contact";
 import { BRAND_COLORS } from "./format";
+import { linkUrl } from "./link-url";
+
+export { linkUrl };
 
 // What a profile may say, and how each part of it is checked: shared by the
 // pages where people change their own (app/dashboard/actions.ts saveProfile,
@@ -47,18 +50,6 @@ export const aboutLink = z.object({
   label: z.string().trim().max(40),
   url: z.string().trim().min(1).max(300),
 });
-
-export function linkUrl(raw: string): string | null {
-  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
-  try {
-    const url = new URL(withScheme);
-    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-    if (!url.hostname.includes(".")) return null;
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
 
 // What's wrong with an MLS ID for an agent of this name, or null when it's
 // fine: empty, or letters, numbers and dashes. An MLS ID is public, so it's

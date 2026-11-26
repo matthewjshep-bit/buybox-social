@@ -43,12 +43,13 @@ export async function ThreadPane({
       {/* Keyed by the conversation: were a newer one to take its place (the
           list refreshes on its own), the box starts over rather than keep a
           half-written word for the wrong person. */}
-      <MarkThreadSeen key={thread.key} threadKey={thread.key} unread={thread.unread} whenWide={byDefault} />
+      <MarkThreadSeen key={`seen:${thread.key}`} threadKey={thread.key} unread={thread.unread} whenWide={byDefault} />
       <ThreadHeader thread={thread} details={details} level={byDefault ? 2 : 1} />
       <ThreadBody
-        key={thread.key}
+        key={`body:${thread.key}`}
         threadKey={thread.key}
         items={items}
+        group={thread.group}
         me={{
           name: (agent ? me.full_name.trim() : firstName(me)) || me.email,
           photo: visitor ? photoUrl(visitor.id, photoVersion(me.photo_data_url)) : me.photo_data_url,

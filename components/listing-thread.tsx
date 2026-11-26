@@ -199,7 +199,7 @@ export function NameGate({
                 withName
                 suggestedName={suggestedName}
                 nameHint={nameHint ? `${id}-hint` : undefined}
-                note="Free. No password. Signed up before? Same email."
+                note="Free. No password. Signed up before? The same email works."
                 onDone={async ({ firstName }) => {
                   // Now on this page's conversation too, as themselves.
                   const result = await actions.join(firstName ?? "").catch(() => ({ ok: false as const, error: "" }));

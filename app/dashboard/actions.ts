@@ -29,7 +29,7 @@ import {
   type PersonOption,
   type PersonPick,
 } from "@/lib/people-picker";
-import { addHomesToLink, letThemKnow, ownShareOf as ownShare, replyToClient, sendHomes } from "@/lib/sending";
+import { addHomesToLink, letThemKnow, ownShareOf as ownShare, replyToClient } from "@/lib/sending";
 import {
   confidantOf,
   ensureAgentProfile,
@@ -128,22 +128,6 @@ export async function saveProfile(_: ProfileState, form: FormData): Promise<Prof
 // Never while an admin is looking at the site as the agent: nobody is emailed
 // on their behalf.
 const mayNotify = async () => ({ notify: !(await getViewAs()) });
-
-// A new link: its homes, a note, and the people it's for, each with their
-// own link (lib/sending.ts, the same as the API sends them).
-export async function createShare(input: {
-  listingKeys: string[];
-  people: PersonPick[];
-  note: string;
-}): Promise<FormState> {
-  // (Anyone signed in can send homes; an agent's go to their clients.)
-  const agent = await requireUser();
-  const made = await sendHomes(agent, input, await mayNotify());
-  if ("error" in made) return { error: made.error };
-  // On to the link as their client will see it, to like and say what they
-  // think (the last step), and from there to the link, ready to copy.
-  redirect(`/s/${made.token}?step=thoughts`);
-}
 
 const uuid = z.uuid();
 

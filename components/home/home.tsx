@@ -2,13 +2,12 @@ import { Bookmark, Building2, House, ListChecks, UserRoundSearch } from "lucide-
 import Image from "next/image";
 import Link from "next/link";
 import { HomeShell, ProfileRail, type RailLink } from "@/components/home/home-shell";
-import { ClientActivity } from "@/components/home/client-activity";
 import { PeopleCard } from "@/components/home/people-card";
+import { TopCard } from "@/components/home/top-card";
 import { FollowingFeed } from "@/components/home-feed";
 import { Compose } from "@/components/compose/compose";
 import { Avatar } from "@/components/ui";
 import type { BannerChoice } from "@/lib/banner";
-import type { ClientEvent } from "@/lib/client-activity";
 import type { ClientBook } from "@/lib/clients";
 import type { FollowCounts } from "@/lib/follows";
 import { cn } from "@/lib/format";
@@ -16,6 +15,7 @@ import type { FeedCounts, FeedItem } from "@/lib/home-feed";
 import { hasRated, waitingLinks, type MyLink } from "@/lib/my-links";
 import type { FoundPerson } from "@/lib/people";
 import type { ReactionState } from "@/lib/reactions";
+import type { Top } from "@/lib/top";
 import { button } from "@/lib/ui";
 
 // Home, one page for everyone. Down the left, them: their card and the places
@@ -26,12 +26,9 @@ import { button } from "@/lib/ui";
 // follow did, woven with what's popular, new, near them and picked for them,
 // until "You're all caught up". People to follow: down the right
 // on a wide screen; on a narrower one, in the middle, in the feed.
-// An agent's is the same page with their clients besides. Straight under the
-// box to send homes: "Your clients", whoever is waiting first (ClientsRail).
-// And two ways to look at the feed: Following (what the people they follow
-// did in public, a client among them marked "Your client") or Clients
-// (everything their clients did on the homes they were sent, theirs alone to
-// see).
+// An agent's is the same page with Top (the head of Popular) beside the feed
+// instead of people to follow; a client of theirs in the feed is marked
+// "Your client". What their clients do is in Notifications and Messages.
 
 // "3 of 9 rated", then "Bellevue · Kirkland": the count first, so a narrow
 // phone cuts the cities, never how far along they are.
@@ -130,9 +127,10 @@ export function Home({
   mine: Record<string, ReactionState>;
   // How many liked each home in the feed and how many comments it has, by key.
   counts: Record<string, FeedCounts>;
-  // An agent, and so their clients too (and what those clients did on the
-  // homes they were sent): everything else is anyone's home.
-  agent?: { book: ClientBook; brokerage: string; brandColor: string; listings?: string; activity: ClientEvent[] };
+  // An agent: their client book (the count on their card), brokerage and
+  // colour, and Top (the head of Popular) beside the feed. What their clients
+  // do is in Notifications and Messages. Everything else is anyone's home.
+  agent?: { book: ClientBook; brokerage: string; brandColor: string; listings?: string; top: Top };
 }) {
   const agentName = links[0] && (links[0].agent.firstName || links[0].agent.name);
   // The card at the top: only the links with homes still waiting.
@@ -156,10 +154,10 @@ export function Home({
   // tablet): the same card, in the middle. In a feed with cards in it, after
   // the caught-up line (or the third card), so a long feed doesn't bury it;
   // with no feed yet, once, under it.
-  // (A pro's is what their clients are doing instead.)
+  // (A pro's is Top instead: what their clients do is in Notifications and Messages.)
   const peopleInline = (where: string) =>
     agent ? (
-      <ClientActivity events={agent.activity} id={`activity-${where}`} className="lg:hidden" live={false} />
+      <TopCard top={agent.top} id={`top-${where}`} className="lg:hidden" />
     ) : (
       <PeopleCard people={suggestions} id={`people-${where}`} className="lg:hidden" />
     );
@@ -173,6 +171,7 @@ export function Home({
       mine={mine}
       counts={counts}
       me={{ name: me.name, photo: me.photo, agent: Boolean(agent) }}
+      owner={me.id}
       seenAt={null}
       among={peopleInline("following")}
       empty={
@@ -212,8 +211,9 @@ export function Home({
           href={profileHref}
           stats={
             agent
-              ? // (Who follows them is on their public profile: this number is their clients.)
-                [{ label: "Clients", value: agent.book.clients.length, href: "/dashboard" }]
+              ? // (Who follows them is on their public profile: this number is their
+                // clients, whose conversations are in Messages.)
+                [{ label: "Clients", value: agent.book.clients.length, href: "/messages" }]
               : [
                   { label: "Following", value: follows.following, href: listOf("following") },
                   { label: "Followers", value: follows.followers, href: listOf("followers") },
@@ -222,11 +222,12 @@ export function Home({
           links={places}
         />
       }
-      // Beside the feed: a pro's clients, as they act on what was sent them;
-      // for anyone else, people to follow.
+      // Beside the feed: for a pro, Top (the head of Popular: homes, people
+      // and agents, turning from one to the next); for anyone else, people to
+      // follow. (What a pro's clients do is in Notifications and Messages.)
       right={
         agent ? (
-          <ClientActivity events={agent.activity} id="activity-rail" />
+          <TopCard top={agent.top} id="top-rail" />
         ) : (
           <PeopleCard people={suggestions} id="people-rail" />
         )
@@ -239,7 +240,7 @@ export function Home({
         peer={!agent}
         audience={agent ? "someone" : "everyone"}
       />
-      {/* (An agent's clients, and what they did, are on Clients.) */}
+      {/* (What an agent's clients do is in Notifications and Messages.) */}
       {waiting.length > 0 && <FromYourAgent links={waiting} />}
       <section aria-labelledby="stream-title">
         <h2 id="stream-title" className="sr-only">

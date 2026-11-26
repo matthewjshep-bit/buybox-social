@@ -342,10 +342,14 @@ export function ReelPhotos({
   const room = [shown?.ImageOf, media.length > 1 ? `${index + 1} of ${media.length}` : null].filter(Boolean).join(" · ");
   // On a phone on its side the middle of the photo is under the words, so
   // the arrows only show while the keyboard is on them (a swipe turns photos).
+  // With a mouse, they come up while it's over the photo (or the keyboard is
+  // on them); a touch screen always has them.
   const arrow = cn(
     "absolute z-10 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-md transition-[opacity,visibility] duration-300 disabled:hidden",
     "short:pointer-events-none short:opacity-0 short:focus-visible:pointer-events-auto short:focus-visible:opacity-100",
-    !chrome && "invisible opacity-0",
+    chrome
+      ? "pointer-fine:opacity-0 pointer-fine:group-hover/carousel:opacity-100 pointer-fine:focus-visible:opacity-100"
+      : "invisible opacity-0",
   );
 
   return (

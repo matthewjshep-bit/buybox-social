@@ -197,7 +197,7 @@ export function PhotoSwipe({
                     className={cn(
                       glass,
                       "rounded-full font-semibold",
-                      compact ? "px-2 py-0.5 text-[11px]" : "px-4 py-2 text-body",
+                      compact ? "px-2 py-0.5 text-tiny" : "px-4 py-2 text-body",
                     )}
                   >
                     {compact ? "See all" : `See all ${total} photos`}
@@ -216,7 +216,7 @@ export function PhotoSwipe({
             className={cn(
               glass,
               "pointer-events-none absolute rounded-full font-semibold tabular-nums",
-              compact ? "bottom-1 right-1 px-1.5 py-px text-[11px]" : "bottom-3 right-3 px-2.5 py-1 text-meta",
+              compact ? "bottom-1 right-1 px-1.5 py-px text-tiny" : "bottom-3 right-3 px-2.5 py-1 text-meta",
             )}
           >
             {shown + 1} of {total}

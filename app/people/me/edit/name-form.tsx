@@ -1,11 +1,11 @@
 "use client";
 
-import { Check } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
 import { setMyName } from "@/app/people/[id]/actions";
+import { SavedNote } from "@/components/ui";
 import { cn } from "@/lib/format";
-import { button, field } from "@/lib/ui";
+import { button, field, fieldLabel } from "@/lib/ui";
 
 // A buyer's own name, on Edit profile: one field, and it says what everyone
 // else sees of it (the first name, never the rest). Saving stays on the page
@@ -40,7 +40,7 @@ export function NameForm({ name }: { name: string }) {
       }}
     >
       <div>
-        <label htmlFor={`${id}-name`} className="text-sm font-medium">
+        <label htmlFor={`${id}-name`} className={fieldLabel}>
           Name
         </label>
         <input
@@ -67,15 +67,16 @@ export function NameForm({ name }: { name: string }) {
           People see your first name only.
         </p>
       </div>
+      {/* As every card's Save here: blue once there's something to save. */}
       <div className="flex items-center gap-3">
-        <button type="submit" disabled={pending} className={button({ kind: "primary", size: "lg" })}>
+        <button
+          type="submit"
+          disabled={pending}
+          className={button({ kind: value.trim() !== name.trim() && !saved ? "primary" : "secondary" })}
+        >
           {pending ? "Saving…" : "Save name"}
         </button>
-        {saved && !pending && (
-          <p role="status" className="flex items-center gap-1 text-meta font-semibold text-emerald-700">
-            <Check aria-hidden size={14} /> Saved
-          </p>
-        )}
+        {saved && !pending && <SavedNote />}
       </div>
     </form>
   );

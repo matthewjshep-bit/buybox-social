@@ -63,13 +63,13 @@ test("whoever wants a showing is waiting on Messages, with Reply under the home,
   await expect(rows).toHaveCount(3);
   await expect(rows.first()).toContainText("Jo");
   const row = threadRow(fern, "Jo");
-  await expect(row).toContainText(/Wants to see 1204 Quillan St SE\s*·\s*today/);
+  await expect(row).toContainText(/Wants to see 1204 Quillan St SE\s*·\s*(just now|\d+[mh])/);
   await expect(row.getByText("Waiting", { exact: true })).toBeVisible();
   await expect(row.getByText("New", { exact: true })).toBeVisible();
-  await expect(threadRow(fern, "Max")).toContainText(/Not opened yet\s*·\s*today/);
+  await expect(threadRow(fern, "Max")).toContainText(/Not opened yet\s*·\s*(just now|\d+[mh])/);
   await expect(threadRow(fern, "Max").getByText("Waiting", { exact: true })).toHaveCount(0);
   await expect(threadRow(fern, "Max").getByText("New", { exact: true })).toHaveCount(0);
-  await expect(threadRow(fern, "Link for 96 Fernhollow Ln")).toContainText(/Not opened yet\s*·\s*today/);
+  await expect(threadRow(fern, "Link for 96 Fernhollow Ln")).toContainText(/Not opened yet\s*·\s*(just now|\d+[mh])/);
   await expect(fern.getByText("Unnamed client")).toHaveCount(0);
   // [P] First names only: her email is nowhere on the page.
   expect(await fern.content()).not.toContain(joEmail);

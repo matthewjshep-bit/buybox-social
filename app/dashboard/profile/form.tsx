@@ -3,10 +3,11 @@
 import { Camera, Check } from "lucide-react";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
+import { SavedNote } from "@/components/ui";
 import { formatPhone, isContactPhone, phoneDigits } from "@/lib/contact";
 import { BRAND_COLORS, cn } from "@/lib/format";
 import { resizePhoto } from "@/lib/resize-photo";
-import { button, field } from "@/lib/ui";
+import { button, field, fieldLabel } from "@/lib/ui";
 import { saveProfile, type ContactField, type ProfileState } from "../actions";
 
 const inputClass = cn(field(), "mt-1");
@@ -39,6 +40,11 @@ export function ProfileForm(props: {
   const [fullName, setFullName] = useState(props.fullName);
   const [phone, setPhone] = useState(formatPhone(props.contactPhone));
   const [photoError, setPhotoError] = useState<string | null>(null);
+  // On Edit profile, the button is blue while there's something to save, as
+  // the other Saves there are: changed since the last answer (the answer it
+  // was changed under), or that answer was a problem to fix.
+  const [editedUnder, setEditedUnder] = useState<ProfileState | null>(null);
+  const changed = editedUnder === state || Boolean(state.error);
   const suggested = phoneDigits(props.suggestedPhone);
   const suggestion = !phone && isContactPhone(suggested) ? formatPhone(suggested) : null;
   const phoneField = useRef<HTMLInputElement>(null);
@@ -57,7 +63,13 @@ export function ProfileForm(props: {
       : { "aria-describedby": "contact-hint" };
 
   return (
-    <form ref={form} action={action} aria-label="Your details" className={cn("flex flex-col gap-5", !embedded && "mt-6")}>
+    <form
+      ref={form}
+      action={action}
+      aria-label="Your details"
+      onChange={() => setEditedUnder(state)}
+      className={cn("flex flex-col gap-5", !embedded && "mt-6")}
+    >
       {/* (With no photo sent, the one they have is kept.) */}
       {embedded ? <input type="hidden" name="stay" value="1" /> : <input type="hidden" name="photo" value={photo ?? ""} />}
       <input type="hidden" name="brandColor" value={color} />
@@ -66,7 +78,7 @@ export function ProfileForm(props: {
         <div className="flex items-center gap-4 rounded-2xl p-4 text-white" style={{ background: color }}>
           <AgentAvatar agent={{ full_name: fullName, photo_data_url: photo }} size={64} className="ring-2 ring-white/70" />
           <div className="min-w-0 flex-1">
-            <label htmlFor="photo-file" className="block text-sm font-semibold">
+            <label htmlFor="photo-file" className={fieldLabel}>
               Your photo
             </label>
             {/* The browser's own file box says "Choose File" and "No file
@@ -104,7 +116,7 @@ export function ProfileForm(props: {
       )}
 
       <div>
-        <label htmlFor="fullName" className="text-sm font-medium">
+        <label htmlFor="fullName" className={fieldLabel}>
           Full name
         </label>
         <input
@@ -120,7 +132,7 @@ export function ProfileForm(props: {
       </div>
 
       <div>
-        <label htmlFor="brokerage" className="text-sm font-medium">
+        <label htmlFor="brokerage" className={fieldLabel}>
           Company (optional)
         </label>
         <input
@@ -143,7 +155,7 @@ export function ProfileForm(props: {
       ) : (
         <>
           <div>
-            <label htmlFor="contactPhone" className="text-sm font-medium">
+            <label htmlFor="contactPhone" className={fieldLabel}>
               Phone for clients (optional)
             </label>
             <input
@@ -164,6 +176,7 @@ export function ProfileForm(props: {
                 type="button"
                 onClick={() => {
                   setPhone(suggestion);
+                  setEditedUnder(state);
                   // The button goes once it's used; the cursor carries on in the field.
                   phoneField.current?.focus();
                 }}
@@ -180,7 +193,7 @@ export function ProfileForm(props: {
           </div>
 
           <div>
-            <label htmlFor="contactEmail" className="text-sm font-medium">
+            <label htmlFor="contactEmail" className={fieldLabel}>
               Email for clients (optional)
             </label>
             <input
@@ -204,7 +217,7 @@ export function ProfileForm(props: {
           </div>
 
           <div>
-            <label htmlFor="mlsAgentId" className="text-sm font-medium">
+            <label htmlFor="mlsAgentId" className={fieldLabel}>
               MLS ID (optional)
             </label>
             <input
@@ -232,7 +245,7 @@ export function ProfileForm(props: {
       )}
 
       <fieldset>
-        <legend className="text-sm font-medium">Brand color</legend>
+        <legend className={fieldLabel}>Brand color</legend>
         <div className="mt-2 flex flex-wrap gap-3">
           {BRAND_COLORS.map((option) => (
             <button
@@ -240,7 +253,10 @@ export function ProfileForm(props: {
               type="button"
               aria-label={option.name}
               aria-pressed={color === option.value}
-              onClick={() => setColor(option.value)}
+              onClick={() => {
+                setColor(option.value);
+                setEditedUnder(state);
+              }}
               style={{ background: option.value }}
               className={cn(
                 "flex size-11 items-center justify-center rounded-full text-white",
@@ -266,15 +282,11 @@ export function ProfileForm(props: {
           // profile it's the site's own, like the other Save there (the
           // swatches above already show the colour picked).
           style={embedded ? undefined : { background: color }}
-          className={button({ kind: "primary", size: "lg" })}
+          className={embedded ? button({ kind: changed ? "primary" : "secondary" }) : button({ kind: "primary", size: "lg" })}
         >
           {pending ? "Saving…" : embedded ? "Save details" : "Save"}
         </button>
-        {state.saved && !pending && (
-          <p role="status" className="flex items-center gap-1 text-meta font-semibold text-emerald-700">
-            <Check aria-hidden size={14} /> Saved
-          </p>
-        )}
+        {state.saved && !pending && !changed && <SavedNote />}
       </div>
     </form>
   );

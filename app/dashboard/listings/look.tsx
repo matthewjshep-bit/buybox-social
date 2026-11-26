@@ -1,9 +1,11 @@
 "use client";
 
-import { Check, Grid2x2, Grid3x3, LayoutPanelTop, List, Star } from "lucide-react";
+import { Grid2x2, Grid3x3, LayoutPanelTop, List, Star } from "lucide-react";
 import { useState, useTransition } from "react";
+import { SavedNote } from "@/components/ui";
 import { cn } from "@/lib/format";
 import type { ListingLayout } from "@/lib/own-listings";
+import { choice } from "@/lib/ui";
 import { featureListing, setListingsLayout } from "./actions";
 
 const LAYOUTS: { key: ListingLayout; label: string; icon: typeof List }[] = [
@@ -41,20 +43,13 @@ export function LayoutPicker({ layout }: { layout: ListingLayout }) {
             aria-checked={now === key}
             disabled={pending}
             onClick={() => choose(key)}
-            className={cn(
-              "flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-semibold",
-              now === key ? "border-brand bg-brand text-white" : "border-stone-300 bg-white text-stone-700 hover:border-stone-500",
-            )}
+            className={choice(now === key)}
           >
             <Icon aria-hidden size={16} /> {label}
           </button>
         ))}
       </div>
-      {saved && !pending && (
-        <p role="status" className="flex items-center gap-1 text-meta font-semibold text-emerald-700">
-          <Check aria-hidden size={14} /> Saved
-        </p>
-      )}
+      {saved && !pending && <SavedNote />}
     </div>
   );
 }

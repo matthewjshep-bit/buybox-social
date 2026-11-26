@@ -10,7 +10,7 @@ import { ReelFeed } from "@/components/reel";
 import { avatarColor } from "@/components/ui";
 import { cn } from "@/lib/format";
 import { placeIn, type ContextWho, type ReelContext } from "@/lib/reel-context";
-import { button, glass } from "@/lib/ui";
+import { button, focusOnDark, glass, pill } from "@/lib/ui";
 
 // The homes of a feed (yours, someone's page, an agent's client or link)
 // full screen, in the feed's order: opened on the one tapped, those before it
@@ -116,9 +116,13 @@ export function OrderedReel({
           {chip && <div className={cn(glass, "hidden min-h-11 min-w-0 items-center rounded-full pl-1.5 pr-4 split:flex")}>{chip}</div>}
           <Link
             href={back.href}
+            // (A round button of its own: on the dark ground, a faint disc
+            // with an edge. One colour each: cn doesn't let a second win.)
             className={cn(
-              button({ kind: "glass" }),
-              "size-11 shrink-0 bg-white/10 px-0 ring-1 ring-white/15 split:size-auto split:bg-black/60 split:px-4 split:ring-0",
+              pill("md", { icon: true }),
+              "shrink-0 bg-white/10 text-white ring-1 ring-white/15 hover:bg-white/15",
+              focusOnDark,
+              "split:size-auto split:bg-black/60 split:px-4 split:ring-0",
             )}
           >
             <ArrowLeft aria-hidden size={18} /> <span className="sr-only split:not-sr-only">{back.label}</span>

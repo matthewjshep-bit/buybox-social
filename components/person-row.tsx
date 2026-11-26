@@ -19,6 +19,7 @@ export function PersonRow({
   line,
   action,
   rank,
+  chip = true,
 }: {
   // Their page.
   href: string;
@@ -34,6 +35,8 @@ export function PersonRow({
   action?: ReactNode;
   // Their place in a ranked list (Popular), before their face.
   rank?: number;
+  // The chip beside an agent's name; not in a list that's all agents.
+  chip?: boolean;
 }) {
   return (
     <li className="flex items-center gap-3 p-3">
@@ -48,9 +51,10 @@ export function PersonRow({
       <Link href={href} className="group flex min-h-11 min-w-0 flex-1 flex-col justify-center">
         <span className="flex min-w-0 items-center gap-1.5">
           <span className="truncate font-semibold underline-offset-2 group-hover:underline">{name}</span>
-          <RoleChip role={agent ? (kind && kind !== "buyer" ? kind : "agent") : null} small />
+          {chip && <RoleChip role={agent ? (kind && kind !== "buyer" ? kind : "agent") : null} small />}
         </span>
-        {line && <span className="block truncate text-sm text-muted">{line}</span>}
+        {/* (Two lines at most, so a count at its end isn't cut off mid-word.) */}
+        {line && <span className="line-clamp-2 break-words text-sm text-muted">{line}</span>}
       </Link>
       {action}
     </li>

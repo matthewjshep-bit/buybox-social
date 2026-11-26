@@ -234,7 +234,9 @@ test("a home found by its address is added with one tap, says who listed it, and
   await find.getByRole("button", { name: "Add 1204 Quillan St SE" }).click();
   await agent.waitForURL(/\/dashboard\/listings$/);
   const row = agent.getByRole("list", { name: "Your listings" }).getByRole("listitem").filter({ hasText: "1204 Quillan St SE" });
-  await expect(row).toContainText("On your profile");
+  // On her profile (a found home always is, so the row doesn't say it): it can take the star.
+  await expect(row.getByRole("button", { name: "Feature 1204 Quillan St SE" })).toBeVisible();
+  await expect(row).not.toContainText(/Hidden|Add a photo/);
   // It can be sent from here: the way to a link, with this home picked.
   await expect(row.getByRole("link", { name: "Send 1204 Quillan St SE" })).toHaveAttribute("href", "/send?home=SAMPLE-1009");
   // On a small phone (360px) Send, Remove and the star share one line under the words.
@@ -335,10 +337,11 @@ test("an MLS listing of theirs is changed through their own copy, which takes it
   await expect(agent.getByRole("navigation", { name: "Clients" })).toHaveCount(0);
   const fromMls = agent.getByRole("list", { name: "Listings from the MLS" });
   await expect(fromMls.getByRole("listitem")).toHaveCount(2);
-  // Each can be sent as it is, and what the star does is said once above them.
+  // Each can be sent as it is, and what the star does is said once above them
+  // (none has it yet, so it says how to give it).
   await expect(fromMls.getByRole("link", { name: /^Send / })).toHaveCount(2);
   await expect(fromMls.getByRole("link", { name: "Send 96 Fernhollow Ln" })).toHaveAttribute("href", "/send?home=SAMPLE-1004");
-  await expect(agent.getByRole("main")).toContainText("The starred listing shows first on your profile.");
+  await expect(agent.getByRole("main")).toContainText("Tap the star on a listing to show it first on your profile.");
   await fromMls.getByRole("button", { name: "Edit 96 Fernhollow Ln" }).click();
   await agent.waitForURL(/\/dashboard\/listings\/OWN-[\w-]+$/);
   const editUrl = new URL(agent.url()).pathname;
@@ -599,8 +602,13 @@ test("on a phone a listing's address and price are never cut short, and Send sta
   await expectOneLine(row, controls);
   expect(await whole(address)).toBe(true);
   expect(await agent.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  // What the star does is said once, above the rows.
+  // What the star does is said once, above the rows; once one has it, that it leads.
+  await expect(agent.getByRole("main")).toContainText("Tap the star on a listing to show it first on your profile.");
+  await row.getByRole("button", { name: `Feature ${LONG}` }).click();
+  await expect(row.getByRole("button", { name: `${LONG} is featured` })).toBeVisible();
   await expect(agent.getByRole("main")).toContainText("The starred listing shows first on your profile.");
+  await row.getByRole("button", { name: `${LONG} is featured` }).click();
+  await expect(row.getByRole("button", { name: `Feature ${LONG}` })).toBeVisible();
 
   // Send: on to Send homes, with this listing already picked.
   await agent.setViewportSize({ width: 390, height: 780 });

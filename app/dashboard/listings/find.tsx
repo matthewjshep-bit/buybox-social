@@ -34,7 +34,11 @@ export function FindListing({ have }: { have: string[] }) {
       clearTimeout(wait);
     };
   }, [query]);
-  const found = results && results.query === query.trim() ? results.homes : null;
+  const text = query.trim();
+  // What the last search found, kept (faded) while the next one is on its
+  // way, so the list doesn't blink out at every letter.
+  const found = text.length >= 2 && results ? results.homes : null;
+  const searching = text.length >= 2 && results?.query !== text;
 
   const add = (key: string) => {
     setAdding(key);
@@ -59,11 +63,32 @@ export function FindListing({ have }: { have: string[] }) {
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Address, city, ZIP or MLS #"
           autoComplete="off"
-          className="h-12 w-full rounded-full bg-stone-100 pl-11 pr-4 text-body text-ink placeholder:text-stone-500 focus:bg-white focus:outline-2 focus:outline-brand"
+          // The text box's pill (field({ pill: true })), a fingertip and a bit
+          // tall, with room for the glass; 16px, so a phone doesn't zoom in on
+          // it; no browser-drawn clear X.
+          className="h-12 w-full rounded-full border border-stone-300 bg-white pl-11 pr-4 text-base text-ink outline-hidden! placeholder:text-stone-500 focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand [&::-webkit-search-cancel-button]:appearance-none"
         />
       </label>
-      {found && (
-        <ul aria-label="Homes found" className="mt-2 flex flex-col">
+      {/* How the search is going, read out as it changes. On screen only where
+          there's no list to show instead (the list fades while it looks). */}
+      <p
+        role="status"
+        className={cn(found?.length || !(searching || found) ? "sr-only" : "px-2 pt-3 text-body text-muted")}
+      >
+        {searching
+          ? "Searching…"
+          : found?.length === 0
+            ? "Not found. Enter it yourself below."
+            : found
+              ? `${found.length} ${found.length === 1 ? "home" : "homes"} found`
+              : ""}
+      </p>
+      {found && found.length > 0 && (
+        <ul
+          aria-label="Homes found"
+          aria-busy={searching}
+          className={cn("mt-1 flex flex-col transition-opacity motion-reduce:transition-none", searching && "opacity-50")}
+        >
           {found.map((home) => {
             const mine = have.includes(home.key);
             return (
@@ -72,7 +97,7 @@ export function FindListing({ have }: { have: string[] }) {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-body font-semibold">{home.address}</span>
                   <span className="block truncate text-meta text-muted">
-                    {formatPrice(home.price)} · {home.city}
+                    <span className="font-display">{formatPrice(home.price)}</span> · {home.city}
                   </span>
                 </span>
                 {mine ? (
@@ -93,7 +118,6 @@ export function FindListing({ have }: { have: string[] }) {
               </li>
             );
           })}
-          {found.length === 0 && <li className="px-2 py-3 text-body text-muted">Not found. Enter it yourself below.</li>}
         </ul>
       )}
       {error && (
@@ -116,7 +140,7 @@ export function RemoveFound({ listingKey, address }: { listingKey: string; addre
       disabled={pending}
       aria-label={`Remove ${address}`}
       onClick={() => startTransition(async () => void (await unpinListing(listingKey)))}
-      className={cn(button({ kind: "secondary", size: "lg" }), "shrink-0")}
+      className={cn(button({ kind: "secondary" }), "shrink-0")}
     >
       {pending ? "Removing…" : "Remove"}
     </button>

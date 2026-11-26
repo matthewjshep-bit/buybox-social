@@ -3,7 +3,6 @@
 import { refresh } from "next/cache";
 import { after } from "next/server";
 import { firstName as accountFirstName, getCurrentUser } from "@/lib/auth";
-import { copyEarlierTake } from "@/lib/agent-take";
 import { emitLinkEvent } from "@/lib/api/webhooks";
 import { sql } from "@/lib/db";
 import {
@@ -597,18 +596,6 @@ export async function likePhotoInShare(
         on conflict do nothing`;
     }
   });
-  refresh();
-  return { ok: true };
-}
-
-// The agent's take on these homes from an earlier link of theirs, brought
-// onto this one (their likes, dislikes and notes, as theirs here): asked for
-// with one tap, so they needn't say it all again. Only ever the link's own agent.
-export async function reuseTake(token: string): Promise<ActionResult> {
-  const found = await getShareByToken(token);
-  const viewer = await getCurrentUser();
-  if (!found || viewer?.id !== found.share.agent_id) return { ok: false, error: "We couldn't find that link." };
-  await copyEarlierTake(found.share.agent_id, found.share.id);
   refresh();
   return { ok: true };
 }

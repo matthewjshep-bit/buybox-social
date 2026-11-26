@@ -26,13 +26,10 @@ export function Modal({ label, children }: { label: string; children: ReactNode 
     if (!opener.current && now instanceof HTMLElement && now !== document.body && !dialog.current?.contains(now)) {
       opener.current = now;
     }
+    // (While it's open, the page under it stays put: globals.css.)
     const box = dialog.current;
     if (!box?.open) box?.showModal();
-    const root = document.documentElement;
-    const previous = root.style.overflow;
-    root.style.overflow = "hidden";
     return () => {
-      root.style.overflow = previous;
       // This runs while the dialog is still on the page (a layout effect's
       // cleanup comes before React takes it off), and while it's open as a
       // modal, everything behind it is inert and can't take focus: closed

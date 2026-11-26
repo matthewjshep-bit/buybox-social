@@ -1,4 +1,4 @@
-import { Bell, DoorOpen, Heart, Lock, MessageCircle, Reply, Send, UserPlus } from "lucide-react";
+import { Bell, DoorOpen, Eye, Heart, Lock, MessageCircle, Reply, Send, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Fragment, type ReactNode } from "react";
@@ -37,6 +37,7 @@ const BADGE: Record<ActivityKind, ReactNode> = {
   link: <Send size={11} strokeWidth={2.5} className="text-brand" />,
   agent_reply: <Reply size={12} strokeWidth={2.5} className="text-brand" />,
   agent_note: <MessageCircle size={11} strokeWidth={2.5} className="text-brand" />,
+  client_open: <Eye size={11} strokeWidth={2.5} className="text-brand" />,
   client_comment: <MessageCircle size={11} strokeWidth={2.5} className="text-brand" />,
   client_like: <Heart size={11} strokeWidth={2.5} className="fill-rose-600 text-rose-600" />,
   client_ask: <DoorOpen size={11} strokeWidth={2.5} className="text-amber-700" />,
@@ -96,28 +97,47 @@ export default async function ActivityPage() {
       {/* Looking as someone else leaves what's new to them as it was. */}
       {visitor && !viewAs && <MarkSeen />}
       {rows.length === 0 ? (
-        <EmptyState
-          icon={Bell}
-          title="Nothing yet"
-          className="mt-6"
-          action={
-            <Link href="/search" className={button({ kind: "primary" })}>
-              Search homes
-            </Link>
-          }
-        >
-          Replies and likes show up here.
-        </EmptyState>
+        // An agent's lines are what their clients do on homes they send, so
+        // the way on is sending some; anyone else's, replies and likes on
+        // homes they find.
+        account?.role === "agent" ? (
+          <EmptyState
+            icon={Bell}
+            title="Nothing yet"
+            className="mt-6"
+            action={
+              <Link href="/send?aud=someone" className={button({ kind: "primary" })}>
+                Send homes
+              </Link>
+            }
+          >
+            When clients open, like or comment on homes you send, you&apos;ll see it here.
+          </EmptyState>
+        ) : (
+          <EmptyState
+            icon={Bell}
+            title="Nothing yet"
+            className="mt-6"
+            action={
+              <Link href="/search" className={button({ kind: "primary" })}>
+                Search homes
+              </Link>
+            }
+          >
+            Replies and likes show up here.
+          </EmptyState>
+        )
       ) : (
-        <div className="mt-2 flex flex-col gap-6">
+        <div className="mt-4 flex flex-col gap-6">
           {sections.map((section) => {
             const id = sectionId(section.title);
             return (
               <section key={section.title} aria-labelledby={id}>
-                <h2 id={id} className={cn(groupLabel, "pt-2")}>
+                <h2 id={id} className={groupLabel}>
                   {section.title}
                 </h2>
-                <ul className="mt-2 flex flex-col gap-2">
+                {/* One card a group, its lines divided by a hairline. */}
+                <ul className={cn(card, "mt-2 divide-y divide-stone-100 overflow-hidden")}>
                   {section.rows.map((row) => (
                     <Row key={row.id} row={row} relation={relationFor(row)} />
                   ))}
@@ -148,17 +168,18 @@ function Row({ row, relation }: { row: ActivityRow; relation: string | null }) {
   return (
     <li
       data-unread={row.unread ? "" : undefined}
-      // New: edged in the brand's colour. Seen: it sits back a little.
+      // New: a tint of the brand's colour (and its time in it, after a dot).
       className={cn(
-        card,
-        "relative flex items-center gap-3 p-3 transition-colors data-unread:ring-brand/40 not-data-unread:bg-white/60 hover:bg-white",
+        "relative flex items-start gap-3 px-3 py-3 transition-colors sm:px-4",
+        row.unread ? "bg-brand/[0.06] hover:bg-brand/10" : "hover:bg-stone-50",
       )}
     >
+      {/* (Its focus ring inside the line, so the card's edge doesn't cut it.) */}
       <Link
         href={row.href}
         scroll={OVER_THE_PAGE.has(row.kind) ? false : undefined}
         aria-label={said}
-        className="absolute inset-0 z-10 rounded-2xl"
+        className="absolute inset-0 z-10 focus-visible:outline-offset-[-2px]"
       />
       {/* The newest of them, with what they did. */}
       <Avatar
@@ -204,14 +225,17 @@ function Row({ row, relation }: { row: ActivityRow; relation: string | null }) {
           )}{" "}
           {describeActivity(row)}
           {row.unread && <span className="sr-only"> (new)</span>}
+          {/* When, at the end of the line, as a post's time is. */}
+          <span className="whitespace-nowrap text-meta text-muted">
+            {" "}
+            <span aria-hidden>·</span>{" "}
+            {row.unread && <span aria-hidden className="mb-px mr-1 inline-block size-2 rounded-full bg-brand align-middle" />}
+            <time dateTime={row.at} className={cn(row.unread && "font-semibold text-brand")}>
+              {timeAgo(row.at)}
+            </time>
+          </span>
         </span>
         {quote && <span className="mt-0.5 block truncate text-sm text-stone-700">{quote}</span>}
-        <span className="mt-0.5 flex items-center gap-1.5 text-meta text-muted">
-          {row.unread && <span aria-hidden className="size-2 shrink-0 rounded-full bg-brand" />}
-          <time dateTime={row.at} className={cn(row.unread && "font-semibold text-brand")}>
-            {timeAgo(row.at)}
-          </time>
-        </span>
       </span>
       {followBack ? (
         <FollowBack personId={followBack} name={first.name} />

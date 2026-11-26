@@ -127,7 +127,7 @@ export function WelcomeEditor({
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className={cn(button({ kind: "ghost" }), "-my-2 -mr-2 text-stone-700")}
+            className={cn(button({ kind: "ghost" }), "-my-2 -mr-2 ml-auto text-stone-700")}
           >
             <Pencil aria-hidden size={15} />
             Edit<span className="sr-only"> what it opens on</span>
@@ -205,6 +205,7 @@ export function SendLink({
   who,
   status,
   bare = false,
+  told = false,
 }: {
   url: string;
   clientName: string;
@@ -220,6 +221,9 @@ export function SendLink({
   status?: ReactNode;
   // Inside a card of its own (a person's, with their name), not one of its own.
   bare?: boolean;
+  // They're on Porchcard and were told there: texting it is one way among
+  // the others, not the thing to do (no navy bar).
+  told?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const id = useId();
@@ -248,10 +252,16 @@ export function SendLink({
       />
       {/* Without the phone's share sheet, three in a row once there's room for
           their words; on a narrower phone Text gets a line of its own. */}
-      <div className={cn("mt-3 grid gap-2", share ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 min-[412px]:grid-cols-3")}>
+      <div
+        className={cn(
+          "grid gap-2",
+          bare ? "mt-2" : "mt-3",
+          share ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 min-[412px]:grid-cols-3",
+        )}
+      >
         <a
           href={`sms:?&body=${encodeURIComponent(message)}`}
-          className={cn(button({ kind: "primary" }), !share && "col-span-2 min-[412px]:col-span-1")}
+          className={cn(button({ kind: told ? "secondary" : "primary" }), !share && "col-span-2 min-[412px]:col-span-1")}
         >
           <MessageSquare aria-hidden size={16} /> Text{who && whose(who)}
         </a>
@@ -742,7 +752,7 @@ export function CommentMenu({ commentId, name }: { commentId: string; name: stri
           aria-labelledby={`${id}-ask`}
           // A tap on its words keeps focus inside it, so it stays open.
           tabIndex={-1}
-          className={cn(card, "absolute right-0 top-full z-20 mt-1 w-64 p-3 text-sm shadow-lg outline-none")}
+          className={cn(card, "absolute right-0 top-full z-20 mt-1 w-64 p-3 text-sm shadow-[0_12px_40px_rgb(0_0_0/0.22)] outline-none")}
         >
           <p id={`${id}-ask`}>
             <span className="font-semibold">Remove this comment?</span> Your client won&apos;t see it.

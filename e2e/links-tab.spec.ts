@@ -97,13 +97,13 @@ test("every link sent is a conversation, newest first: who it's for, how it's go
   // Jo's: that she's waiting, and that it's new; Kit's is new too; Max's,
   // with nothing done on it, is neither.
   const joRow = threadRow(lina, "Jo");
-  await expect(joRow).toContainText(/“Is the roof new\?”\s*·\s*today/);
+  await expect(joRow).toContainText(/“Is the roof new\?”\s*·\s*(just now|\d+[mh])/);
   await expect(joRow.getByText("Waiting", { exact: true })).toBeVisible();
   await expect(joRow.getByText("New", { exact: true })).toBeVisible();
-  await expect(threadRow(lina, "Kit")).toContainText(/Liked 1 of 1 home\s*·\s*today/);
+  await expect(threadRow(lina, "Kit")).toContainText(/Liked 1 of 1 home\s*·\s*(just now|\d+[mh])/);
   await expect(threadRow(lina, "Kit").getByText("New", { exact: true })).toBeVisible();
   await expect(threadRow(lina, "Kit").getByText("Waiting", { exact: true })).toHaveCount(0);
-  await expect(threadRow(lina, "Max")).toContainText(/Not opened yet\s*·\s*today/);
+  await expect(threadRow(lina, "Max")).toContainText(/Not opened yet\s*·\s*(just now|\d+[mh])/);
   await expect(threadRow(lina, "Max").getByText("New", { exact: true })).toHaveCount(0);
   await expect(threadRow(lina, "Max").getByRole("button")).toHaveCount(0);
 
@@ -163,7 +163,7 @@ test("every link sent is a conversation, newest first: who it's for, how it's go
   const nameless = rows(lina).filter({ hasText: "Link for 96 Fernhollow Ln" });
   await expect(nameless).toHaveCount(2);
   for (const row of await nameless.all()) {
-    await expect(row).toContainText(/Not opened yet\s*·\s*today/);
+    await expect(row).toContainText(/Not opened yet\s*·\s*(just now|\d+[mh])/);
     await expect(row.getByText("New", { exact: true })).toHaveCount(0);
   }
   await expect(nameless.nth(0).getByRole("link")).toHaveAttribute("href", `/messages/link%3A${idOf(newer.dashboardUrl)}`);
@@ -176,7 +176,7 @@ test("every link sent is a conversation, newest first: who it's for, how it's go
   await Promise.all([actionAnswered(visitor), visitor.goto(older.url)]);
   await expect(homeIn(visitor, "96 Fernhollow Ln")).toBeVisible();
   await lina.reload();
-  const opened = nameless.filter({ hasText: /Opened\s*·\s*today/ });
+  const opened = nameless.filter({ hasText: /Opened\s*·\s*(just now|\d+[mh])/ });
   await expect(opened).toHaveCount(1);
   await expect(nameless.filter({ hasText: "Not opened yet" })).toHaveCount(1);
 
@@ -207,7 +207,7 @@ test("with nine conversations, Messages lists them all, newest first, whoever is
   await expect(rows(nora).getByText("Waiting", { exact: true })).toHaveCount(0);
   await expect(rows(nora).getByText("New", { exact: true })).toHaveCount(0);
   for (const row of await rows(nora).all()) {
-    await expect(row).toContainText(/Not opened yet\s*·\s*today/);
+    await expect(row).toContainText(/Not opened yet\s*·\s*(just now|\d+[mh])/);
   }
 
   // A ninth, and she says something on it.

@@ -1,6 +1,19 @@
 "use client";
 
-import { ArrowDown, Bell, CalendarCheck, Check, Mail, MessageSquare, Phone, Send, type LucideIcon } from "lucide-react";
+import {
+  ArrowDown,
+  Bell,
+  CalendarCheck,
+  Check,
+  Contact as ContactCard,
+  Mail,
+  MessageCircle,
+  MessageSquare,
+  Phone,
+  Send,
+  type LucideIcon,
+  type LucideProps,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId, useMemo, useRef, useState, useTransition, type ComponentProps } from "react";
 import { FollowButton } from "@/app/people/[id]/client";
@@ -12,6 +25,7 @@ import { AccountMenu } from "@/components/header-nav";
 import { PorchcardMark } from "@/components/porchcard-logo";
 import { useThread } from "@/components/listing-thread";
 import { Sheet } from "@/components/sheet";
+import { CountBadge } from "@/components/ui";
 import { looksLikeEmail, phoneDigits } from "@/lib/contact";
 import { agentFirstName, cn } from "@/lib/format";
 import type { ShareAgent } from "@/lib/shares";
@@ -40,7 +54,22 @@ export type ContactExtras = {
   follow?: { personId: string; following: boolean } | null;
   // Taking themselves off their own link.
   leave?: (() => Promise<LeaveResult>) | null;
+  // Their conversation with the agent in Messages, on a link they were sent
+  // (signed in only): the way to reach an agent who shows no phone or email.
+  message?: string | null;
 };
+
+// What Contact shows on its button: the phone where the agent shows one (a
+// call or a text away), else the email, else a contact card (never a phone
+// that can't ring).
+export function ContactIcon({
+  agent,
+  ...icon
+}: { agent: Pick<ShareAgent, "contact_phone" | "contact_email"> } & LucideProps) {
+  if (phoneDigits(agent.contact_phone)) return <Phone {...icon} />;
+  if (looksLikeEmail(agent.contact_email)) return <Mail {...icon} />;
+  return <ContactCard {...icon} />;
+}
 
 // The home on screen, for "About 4127 Larkmoor Ave NE" and asking to see it.
 type HomeInView = { listingKey: string; address: string };
@@ -89,8 +118,6 @@ export function ShareHeader({
   // The agent looking at their own link: "Viewing as Dana".
   preview?: string;
   // And writing their notes on it: who for, and the way back once done.
-  // `step`: it's the last step of sending homes, and the header says so
-  // (Skip until they've `added` something; their `earlier` take to bring over).
   notes?: LinkAgent["notes"];
   // Someone signed in (never the agent previewing): their menu and the bell.
   account?: LinkAccount | null;
@@ -124,29 +151,18 @@ export function ShareHeader({
       >
         {/* Side by side, edge to edge, as the site's header is: the logo over
             the photo's left edge, Contact over the white panel's right edge. */}
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-3 sm:px-6 split:max-w-none split:px-6">
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:px-6 split:max-w-none split:px-6">
           {/* Every agent colour is dark: over the photo, focus is white with a dark edge. */}
           <Link href="/" className={cn("flex h-11 min-w-11 shrink-0 items-center justify-center rounded-xl", focusOnDark)}>
             {/* Porchcard's card, in white over the photo; the agent is beside it. */}
             <PorchcardMark className="h-7 w-auto text-white drop-shadow-[0_1px_2px_rgb(0_0_0/0.45)]" />
             <span className="sr-only">Porchcard</span>
           </Link>
-          {/* (Their own face needn't take the room the step's words want.) */}
-          {!notes?.step && <AgentAvatar agent={agent} size={36} decorative className="text-sm ring-1 ring-white/60" />}
+          <AgentAvatar agent={agent} size={36} decorative className="text-sm ring-1 ring-white/60" />
           <div className="min-w-0 flex-1 leading-tight [text-shadow:0_1px_3px_rgb(0_0_0/0.5)]">
-            {notes?.step ? (
-              // The last step of sending homes: what to do here, in a line.
-              <>
-                <p className="truncate text-meta font-semibold">Step 3 of 3</p>
-                <p className="truncate text-body font-semibold">Add your feedback</p>
-              </>
-            ) : (
-              <>
-                <p className="truncate text-body font-semibold">{agent.full_name}</p>
-                {/* Full white: over a bright photo, anything fainter falls short of easy reading. */}
-                {agent.brokerage && <p className="truncate text-meta">{agent.brokerage}</p>}
-              </>
-            )}
+            <p className="truncate text-body font-semibold">{agent.full_name}</p>
+            {/* Full white: over a bright photo, anything fainter falls short of easy reading. */}
+            {agent.brokerage && <p className="truncate text-meta">{agent.brokerage}</p>}
             {/* The agent on their own link sees it just as the client does;
                 that it's their preview is said for a screen reader only. */}
             {preview && (
@@ -164,15 +180,8 @@ export function ShareHeader({
                 focusOnDark,
               )}
             >
-              {notes.step && !notes.added ? (
-                // Nothing said yet: it's theirs to skip.
-                "Skip"
-              ) : (
-                <>
-                  <Check aria-hidden size={16} />
-                  Done
-                </>
-              )}
+              <Check aria-hidden size={16} />
+              Done
             </Link>
           ) : (
             <button
@@ -180,15 +189,23 @@ export function ShareHeader({
               aria-haspopup="dialog"
               onClick={() => onOpenChange(true)}
               className={cn(
-                "flex min-h-11 shrink-0 items-center gap-1.5 rounded-full bg-white/15 px-4 text-sm font-semibold backdrop-blur-md hover:bg-white/25",
-                // Beside the bell and their own face, on a phone just the
-                // icon (its name stays for screen readers), so the agent's
-                // name still has room.
-                account && "max-sm:w-11 max-sm:justify-center max-sm:px-0",
+                "flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-4 text-sm font-semibold",
+                account
+                  ? // Beside the bell and their own face, on a phone just the
+                    // icon (its name stays for screen readers), so the agent's
+                    // name still has room; and drawn as the bell is, a bare
+                    // icon, so the row reads as one set of buttons.
+                    "max-sm:w-11 max-sm:justify-center max-sm:px-0 hover:bg-white/15 sm:bg-white/15 sm:backdrop-blur-md sm:hover:bg-white/25"
+                  : "bg-white/15 backdrop-blur-md hover:bg-white/25",
                 focusOnDark,
               )}
             >
-              <Phone aria-hidden size={16} />
+              <ContactIcon
+                agent={agent}
+                aria-hidden
+                size={16}
+                className={cn(account && "drop-shadow-[0_1px_2px_rgb(0_0_0/0.45)] max-sm:size-[18px] sm:drop-shadow-none")}
+              />
               <span className={cn(account && "max-sm:sr-only")}>Contact</span>
             </button>
           )}
@@ -242,14 +259,7 @@ function LinkMenu({ unread, ...menu }: LinkAccount) {
         <span className="sr-only">
           Notifications{unread > 0 && `, ${unread} new`}
         </span>
-        {unread > 0 && (
-          <span
-            aria-hidden
-            className="absolute right-1 top-1.5 flex min-w-[18px] items-center justify-center rounded-full bg-rose-600 px-1 text-tiny font-bold leading-[18px] text-white tabular-nums [text-shadow:none]"
-          >
-            {unread > 9 ? "9+" : unread}
-          </span>
-        )}
+        <CountBadge count={unread} ring="none" className="right-1 top-1.5" />
       </Link>
       {/* (No bar here to hold an agent's Dashboard, so their menu does.) */}
       <AccountMenu {...menu} dashboard overlay />
@@ -272,6 +282,7 @@ function AgentContact({
   profile = null,
   follow = null,
   leave = null,
+  message = null,
 }: {
   agent: ShareAgent;
   home: HomeInView | null;
@@ -302,6 +313,10 @@ function AgentContact({
     const subject = about ? `?subject=${encodeURIComponent(about)}` : "";
     ways.push({ href: `mailto:${email}${subject}`, Icon: Mail, label: `Email ${first}` });
   }
+  // In Messages, on Porchcard itself: first where the agent shows no other way.
+  const inApp = message ? { href: message, label: `Message ${first}` } : null;
+  // Whether a way to reach them leads, so whatever follows is the quieter kind.
+  const reachable = ways.length > 0 || Boolean(inApp);
   const canAsk = Boolean(home && onAsk);
   // Before any home is on screen there's none to ask about: the way to them instead.
   const seeHomes = !home && homesCount > 1 ? onSeeHomes : undefined;
@@ -332,7 +347,7 @@ function AgentContact({
           <Link href={profile} className="-m-1 flex min-w-0 items-center gap-4 rounded-2xl p-1 hover:bg-stone-50">
             <AgentAvatar agent={agent} size={64} decorative light className="text-xl" />
             <span className="min-w-0">
-              <span className="block text-[17px] font-semibold leading-snug">{agent.full_name}</span>
+              <span className="block text-lead font-semibold leading-snug">{agent.full_name}</span>
               {agent.brokerage && <span className="block text-body text-muted">{agent.brokerage}</span>}
             </span>
           </Link>
@@ -340,7 +355,7 @@ function AgentContact({
           <>
             <AgentAvatar agent={agent} size={64} decorative light className="text-xl" />
             <div className="min-w-0">
-              <p className="text-[17px] font-semibold leading-snug">{agent.full_name}</p>
+              <p className="text-lead font-semibold leading-snug">{agent.full_name}</p>
               {agent.brokerage && <p className="text-body text-muted">{agent.brokerage}</p>}
             </div>
           </>
@@ -352,12 +367,24 @@ function AgentContact({
         </div>
       )}
       <div className="mt-4 flex flex-col gap-2.5">
+        {inApp && ways.length === 0 && (
+          <Link href={inApp.href} className={way(true)}>
+            <MessageCircle aria-hidden size={18} />
+            {inApp.label}
+          </Link>
+        )}
         {ways.map(({ href, Icon, label }, i) => (
           <a key={label} href={href} className={way(i === 0)}>
             <Icon aria-hidden size={18} />
             {label}
           </a>
         ))}
+        {inApp && ways.length > 0 && (
+          <Link href={inApp.href} className={way(false)}>
+            <MessageCircle aria-hidden size={18} />
+            {inApp.label}
+          </Link>
+        )}
         {canAsk && (
           <button
             type="button"
@@ -366,7 +393,7 @@ function AgentContact({
             className={
               asked
                 ? cn(pill("lg", { block: true }), "cursor-default bg-stone-100 text-stone-700")
-                : cn(way(ways.length === 0), pending && "opacity-60")
+                : cn(way(!reachable), pending && "opacity-60")
             }
           >
             {asked ? <Check aria-hidden size={18} /> : <CalendarCheck aria-hidden size={18} />}
@@ -374,7 +401,7 @@ function AgentContact({
           </button>
         )}
         {seeHomes && (
-          <button type="button" onClick={seeHomes} className={way(ways.length === 0)}>
+          <button type="button" onClick={seeHomes} className={way(!reachable)}>
             <ArrowDown aria-hidden size={18} />
             {`See the ${homesCount} homes`}
           </button>
@@ -476,7 +503,7 @@ export function LeaveLink({
         className="m-auto w-[min(24rem,calc(100vw-2rem))] max-w-none rounded-2xl bg-white p-0 text-left text-ink shadow-[0_12px_40px_rgb(0_0_0/0.3)] backdrop:bg-black/50"
       >
         <div className="p-5">
-          <h2 id={`${id}-title`} className="text-[17px] font-semibold leading-snug">
+          <h2 id={`${id}-title`} className="text-lead font-semibold leading-snug">
             Leave this link?
           </h2>
           <p id={`${id}-said`} className="mt-1 text-body text-muted">

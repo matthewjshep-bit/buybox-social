@@ -18,7 +18,7 @@ import { cn } from "@/lib/format";
 import { getListingsLook } from "@/lib/own-listings";
 import { getProfilePerson } from "@/lib/profile";
 import { ensureAccountVisitor } from "@/lib/public";
-import { backLink, button, card, pageColumn, pageTitle } from "@/lib/ui";
+import { backLink, button, card, fieldLabel, pageColumn, pageTitle } from "@/lib/ui";
 import { isProKind, listingWords } from "@/lib/kinds";
 import { KindPicker } from "./kind-picker";
 import { PlaceForm } from "./place-form";
@@ -84,7 +84,7 @@ export default async function EditProfilePage() {
             Your details
           </h2>
           {/* What they are: the chip beside their name, and an investor's "Deals". */}
-          <p className="mb-2 text-sm font-medium">You are</p>
+          <p className={cn(fieldLabel, "mb-2")}>You are</p>
           <div className="mb-5">
             <KindPicker kind={isProKind(account.kind) ? account.kind : "agent"} />
           </div>
@@ -158,8 +158,8 @@ export default async function EditProfilePage() {
         <h2 id="about-title" className="text-lg font-semibold">
           {person.isAgent ? "About and links" : "About you"}
         </h2>
-        <p className="mt-1 text-body text-muted">Public.</p>
-        <div className="mt-4">
+        {/* (That it's public is said under the box: "Shows on your profile.") */}
+        <div className="mt-3">
           <EditAbout bio={person.bio} links={person.links} agent={person.isAgent} done={back} stay />
         </div>
       </section>

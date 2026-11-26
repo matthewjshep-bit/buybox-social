@@ -1,11 +1,11 @@
 "use client";
 
-import { ImagePlus, Play, Star, Trash2, Upload } from "lucide-react";
+import { ArrowUpToLine, ImagePlus, Play, Trash2, Upload } from "lucide-react";
 import Image from "next/image";
-import { useId, useState, useTransition } from "react";
+import { useEffect, useId, useState, useTransition } from "react";
 import { cn } from "@/lib/format";
 import { listingPhoto } from "@/lib/resize-photo";
-import { button, field } from "@/lib/ui";
+import { button, field, fieldLabel } from "@/lib/ui";
 import {
   addListingPhoto,
   addListingVideoLink,
@@ -75,7 +75,7 @@ export function ListingPhotos({ listingKey, photos, most }: { listingKey: string
                     onClick={() => act(() => leadWithListingPhoto(listingKey, photo.key))}
                     className="inline-flex min-h-11 items-center gap-1 rounded-full px-2 text-sm font-semibold text-stone-700 hover:bg-black/5"
                   >
-                    <Star aria-hidden size={15} /> Make first
+                    <ArrowUpToLine aria-hidden size={15} /> Make first
                   </button>
                 ) : (
                   <span />
@@ -132,16 +132,27 @@ export function ListingPhotos({ listingKey, photos, most }: { listingKey: string
   );
 }
 
-// Taking the whole listing away, asked twice: a second tap on the same button.
+// Taking the whole listing away, asked twice: a second tap on the same button,
+// which turns red to ask it. Asked, it waits a few seconds, then stands down
+// (and at once on Escape, or on a click anywhere else).
 export function DeleteListing({ listingKey }: { listingKey: string }) {
   const [sure, setSure] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!sure || pending) return;
+    const wait = setTimeout(() => setSure(false), 5000);
+    return () => clearTimeout(wait);
+  }, [sure, pending]);
   return (
     <div>
       <button
         type="button"
         disabled={pending}
+        onBlur={() => !pending && setSure(false)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setSure(false);
+        }}
         onClick={() => {
           if (!sure) return setSure(true);
           startTransition(async () => {
@@ -150,7 +161,7 @@ export function DeleteListing({ listingKey }: { listingKey: string }) {
             setSure(false);
           });
         }}
-        className={cn(button({ kind: "ghost" }), "text-red-700")}
+        className={sure ? button({ kind: "danger" }) : cn(button({ kind: "ghost" }), "text-red-700")}
       >
         <Trash2 aria-hidden size={16} /> {pending ? "Deleting…" : sure ? "Tap again to delete it" : "Delete this listing"}
       </button>
@@ -262,7 +273,7 @@ export function ListingVideos({
             }}
           >
             <div className="min-w-0 flex-1">
-              <label htmlFor={linkId} className="block text-sm font-semibold">
+              <label htmlFor={linkId} className={fieldLabel}>
                 Video link
               </label>
               <input
@@ -274,7 +285,7 @@ export function ListingVideos({
                 placeholder="YouTube, Vimeo or Loom"
                 autoComplete="off"
                 maxLength={300}
-                className={cn(field({ small: true }), "mt-1")}
+                className={cn(field(), "mt-1")}
               />
             </div>
             <button type="submit" disabled={pending || !link.trim()} className={cn(button({ kind: "secondary", size: "lg" }), "shrink-0")}>

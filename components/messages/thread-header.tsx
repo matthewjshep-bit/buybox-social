@@ -1,12 +1,14 @@
 import { ArrowLeft, Info } from "lucide-react";
 import Link from "next/link";
-import { Avatar, RoleChip } from "@/components/ui";
+import { ThreadFace } from "@/components/messages/thread-face";
+import { RoleChip } from "@/components/ui";
 import type { Thread } from "@/lib/messages";
 
 // Across the top of a conversation: the way back to the list (a phone),
-// their face and name (to their page, when they have one), "Agent" beside an
-// agent's, a word on who's in it when it's several people, and (the
-// sender's) the page about the link itself.
+// their face (two for several people, as the list has them) and name (to
+// their page, when they have one), "Agent" beside an agent's, a word on
+// who's in it when it's several people, and (the sender's) the page about
+// the link itself.
 export function ThreadHeader({ thread, details, level = 1 }: { thread: Thread; details?: string | null; level?: 1 | 2 }) {
   const [first] = thread.people;
   const names = thread.people.map((person) => person.name).filter(Boolean);
@@ -18,16 +20,11 @@ export function ThreadHeader({ thread, details, level = 1 }: { thread: Thread; d
       <Link
         href="/messages"
         aria-label="Back to messages"
-        className="flex size-11 shrink-0 items-center justify-center rounded-full text-ink hover:bg-stone-100 lg:hidden"
+        className="flex size-11 shrink-0 items-center justify-center rounded-full text-ink transition-colors hover:bg-stone-100 active:bg-stone-200 motion-reduce:transition-none lg:hidden"
       >
         <ArrowLeft aria-hidden size={22} />
       </Link>
-      <Avatar
-        name={first?.name ?? null}
-        photo={first?.photo}
-        tone={first?.agent ? "agent" : "person"}
-        size={9}
-      />
+      <ThreadFace thread={thread} size="header" />
       <div className="min-w-0 flex-1">
         <Title className="flex min-w-0 items-center gap-1.5 text-body font-semibold leading-5">
           {first?.profileId && !thread.group ? (
@@ -50,7 +47,7 @@ export function ThreadHeader({ thread, details, level = 1 }: { thread: Thread; d
           href={details}
           aria-label="Link details"
           title="Link details"
-          className="flex size-11 shrink-0 items-center justify-center rounded-full text-ink hover:bg-stone-100"
+          className="flex size-11 shrink-0 items-center justify-center rounded-full text-ink transition-colors hover:bg-stone-100 active:bg-stone-200 motion-reduce:transition-none"
         >
           <Info aria-hidden size={22} />
         </Link>

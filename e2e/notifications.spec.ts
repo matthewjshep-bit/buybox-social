@@ -65,18 +65,25 @@ test("a link's people and its agent hear about each other, and each line opens t
   // Nothing about what she did herself, or about anyone's clients.
   await expect(jo.getByText(/Jo (liked|commented)|Your client|your clients/)).toHaveCount(0);
 
-  // Fern's bell has one thing new, as her page will show it: Jo's like and
-  // her question are one line, by first name, with her words and a way
-  // straight to them on Fern's page about the link.
+  // Fern's bell has two things new, as her page will show them: Jo opened
+  // the link; and Jo's like and her question are one line, by first name,
+  // with her words and a way straight to them on Fern's page about the link.
   await expect(async () => {
     await fern.goto("/dashboard");
-    await expect(fern.getByRole("link", { name: "Notifications, 1 new" })).toBeVisible({ timeout: 1000 });
+    await expect(fern.getByRole("link", { name: "Notifications, 2 new" })).toBeVisible({ timeout: 1000 });
   }).toPass({ timeout: 20_000 });
   await fern.goto("/activity");
+  const opened = lineOf(fern, "Jo opened the 2 homes you sent");
+  await expect(opened).toBeVisible();
+  await expect(opened).toContainText("Your client");
+  await expect(opened.getByRole("link", { name: /^Jo opened the 2 homes you sent/ })).toHaveAttribute(
+    "href",
+    `/dashboard/shares/${shareId}`,
+  );
   const asked = lineOf(fern, `Jo liked and commented on ${QUILLAN}`);
   await expect(asked).toBeVisible();
   await expect(lineOf(fern, QUILLAN)).toHaveCount(1);
-  await expect(fern.getByText("(new)")).toHaveCount(1);
+  await expect(fern.getByText("(new)")).toHaveCount(2);
   await expect(asked).toContainText(QUESTION);
   // Her client's, with a lock; that only she sees it is said once, under the
   // heading, and on the line only for a screen reader.

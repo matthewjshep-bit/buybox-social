@@ -18,7 +18,7 @@ import { PeoplePicker, typed, type Chosen } from "@/components/people-picker";
 import type { SendHome } from "@/components/reel";
 import { cn, formatPrice, timeAgo } from "@/lib/format";
 import { linkTitle, peopleTitle } from "@/lib/people-picker";
-import { button, field } from "@/lib/ui";
+import { button, field, fieldLabel } from "@/lib/ui";
 import { claim, FAILED, type Sent } from "./quick-send";
 
 // What follows a Send: who it was for, a change of mind, or the slower way.
@@ -54,7 +54,11 @@ function WhoFields({
   onPicked,
   note,
   onNote,
+  asked = false,
 }: {
+  // The sheet's own title already asks "Who's it for?": the field doesn't
+  // show it again (it's still its name, read out).
+  asked?: boolean;
   people: Chosen[];
   onPeople: (people: Chosen[]) => void;
   onTyping: (text: string) => void;
@@ -69,7 +73,8 @@ function WhoFields({
     <div className="flex flex-col gap-3">
       <PeoplePicker
         label="Who's it for? (optional)"
-        hint="The link greets them by name."
+        hideLabel={asked}
+        hint={asked ? "Optional. The link greets them by name." : "The link greets them by name."}
         chosen={people}
         onChange={onPeople}
         onTextChange={onTyping}
@@ -78,7 +83,7 @@ function WhoFields({
       />
       {noting ? (
         <div>
-          <label htmlFor={`${id}-note`} className="text-sm font-medium">
+          <label htmlFor={`${id}-note`} className={fieldLabel}>
             Add a note (optional)
           </label>
           <textarea
@@ -243,7 +248,7 @@ export function SentBody({
   };
 
   const recent = (others ?? []).filter((share) => share.id !== shareId).slice(0, 5);
-  const dashboardLink = "mx-auto flex min-h-11 items-center gap-1 px-3 text-sm font-semibold";
+  const dashboardLink = "-ml-3 flex min-h-11 items-center gap-1 px-3 text-sm font-semibold";
 
   return (
     <div className="pb-2">
@@ -266,6 +271,7 @@ export function SentBody({
         onPicked={picked}
         note={note}
         onNote={setNote}
+        asked
       />
       {theirs && (
         <div role="group" aria-label={`${theirs.person.name}'s other link`} className="mt-3 rounded-2xl bg-stone-50 p-3 text-sm">
@@ -299,29 +305,17 @@ export function SentBody({
           {error}
         </p>
       )}
+      {/* One button to finish: "Done" with nothing named or noted (it only
+          closes, as the X does), "Save" once there's something to keep. */}
       <div className="mt-4 flex flex-col gap-2.5">
         <button type="button" onClick={() => save()} aria-disabled={pending} className={cn(primary, busy(pending))}>
-          Save
+          {withTyped(people, typing).length > 0 || note.trim() ? "Save" : "Done"}
         </button>
         {/* What they'll read first when they open it: a note or a like from
             the agent on the price, a room, anything. */}
         <button type="button" onClick={() => save(true)} aria-disabled={pending || !shareId} className={cn(secondary, busy(pending))}>
           <PenLine aria-hidden size={16} /> Add your feedback
         </button>
-        <button type="button" onClick={() => onDone()} className={secondary}>
-          Skip
-        </button>
-        {/* There from the start, so nothing under the thumb moves when the link
-            is made (on a slow connection that can take a moment). */}
-        {shareId ? (
-          <Link href={`/dashboard/shares/${shareId}`} className={cn(dashboardLink, "text-brand")}>
-            Link details <ChevronRight aria-hidden size={16} />
-          </Link>
-        ) : (
-          <span role="link" aria-disabled="true" className={cn(dashboardLink, "text-stone-400")}>
-            Link details <ChevronRight aria-hidden size={16} />
-          </span>
-        )}
       </div>
 
       <div className="mt-2 border-t border-stone-100 pt-1">
@@ -329,7 +323,7 @@ export function SentBody({
           type="button"
           aria-expanded={showOthers}
           onClick={openOthers}
-          className="flex min-h-11 w-full items-center justify-between gap-2 py-1 text-left text-sm font-semibold"
+          className="flex min-h-11 w-full items-center justify-between gap-2 py-1 text-left text-sm font-semibold text-stone-700 hover:text-ink"
         >
           Meant for someone you&apos;ve already sent homes to?
           <ChevronDown
@@ -379,17 +373,31 @@ export function SentBody({
         )}
       </div>
 
+      {/* The quiet ways out, on one line: the link's own page, and Undo. */}
       <div className="border-t border-stone-100 pt-2 text-center">
-        {undo === null && (
-          <button
-            type="button"
-            autoFocus={kept}
-            onClick={() => setUndo("ask")}
-            className={cn(button({ kind: "ghost" }), "text-stone-700")}
-          >
-            <Undo2 aria-hidden size={16} /> Undo send
-          </button>
-        )}
+        <div className="flex min-h-11 items-center justify-between gap-2">
+          {/* There from the start, so nothing under the thumb moves when the
+              link is made (on a slow connection that can take a moment). */}
+          {shareId ? (
+            <Link href={`/dashboard/shares/${shareId}`} className={cn(dashboardLink, "text-brand")}>
+              Link details <ChevronRight aria-hidden size={16} />
+            </Link>
+          ) : (
+            <span role="link" aria-disabled="true" className={cn(dashboardLink, "text-stone-400")}>
+              Link details <ChevronRight aria-hidden size={16} />
+            </span>
+          )}
+          {undo === null && (
+            <button
+              type="button"
+              autoFocus={kept}
+              onClick={() => setUndo("ask")}
+              className={cn(button({ kind: "ghost" }), "-mr-3 text-stone-700")}
+            >
+              <Undo2 aria-hidden size={16} /> Undo send
+            </button>
+          )}
+        </div>
         {undo === "ask" && (
           <>
             <p className="pt-1 text-sm text-stone-700">The link will stop working.</p>
@@ -420,7 +428,7 @@ export function SentBody({
         {undo && undo !== "ask" && (
           // The buttons are gone, so the cursor comes to the answer.
           <p ref={focusOnMount} tabIndex={-1} className="py-2 text-sm text-stone-700 outline-none">
-            {undo === "opened" ? "Opened, so it can't be undone." : "Too late to undo."} Remove the home on the link, in Clients.
+            {undo === "opened" ? "Opened, so it can't be undone." : "Too late to undo."} Remove the home on the link, under Link details.
           </p>
         )}
       </div>
@@ -485,7 +493,7 @@ export function DraftBody({ home, onNextToken }: { home: SendHome; onNextToken: 
       </div>
       {link ? (
         <div className="mt-4">
-          <label htmlFor={`${id}-link`} className="text-sm font-semibold">
+          <label htmlFor={`${id}-link`} className={fieldLabel}>
             Your link is ready
           </label>
           <input

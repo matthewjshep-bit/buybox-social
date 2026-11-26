@@ -1,16 +1,16 @@
-import { Search, Users } from "lucide-react";
+import { Users } from "lucide-react";
 import Form from "next/form";
 import { redirect } from "next/navigation";
 import { FollowButton } from "@/app/people/[id]/client";
 import { PersonRow } from "@/components/person-row";
-import { SearchSwitch } from "@/components/search-switch";
+import { SearchField, SearchSwitch } from "@/components/search-switch";
 import { EmptyState } from "@/components/ui";
 import { getCurrentUser } from "@/lib/auth";
 import { readDevice } from "@/lib/engagement";
 import { cn } from "@/lib/format";
 import { findPeople, FOUND_MOST, NAME_LONGEST, suggestPeopleFor, type PeopleViewer } from "@/lib/people";
 import { getPublicIdentity } from "@/lib/public";
-import { button, card, field, groupLabel, pageColumn, pageTitle } from "@/lib/ui";
+import { card, groupLabel, pageColumn } from "@/lib/ui";
 
 export const metadata = { title: "Find people · Porchcard" };
 
@@ -48,72 +48,70 @@ export default async function PeopleSearchPage({
   const heading = typed ? `People matching “${typed}”` : "People to follow";
 
   return (
-    <main className={pageColumn()}>
-      {/* (Up against the bar, as it is over the map, so it stays put between the two.) */}
-      <SearchSwitch on="people" className="-mt-4 lg:-mt-6" />
-      <h1 className={cn(pageTitle, "mt-5")}>Find people</h1>
-      <Form action="/search/people" role="search" aria-label="Find people" className="mt-3 flex items-end gap-2">
-        <div className="min-w-0 flex-1">
-          <label htmlFor="people-q" className="mb-1 block px-1 text-sm font-semibold">
-            Name
-          </label>
-          <input
+    <>
+      {/* The same row, on the same white, as over the map: switching between
+          the two, nothing under the pointer moves. */}
+      <div className="bg-white">
+        <SearchSwitch on="people" className="px-4" />
+      </div>
+      <main className={pageColumn()}>
+        <h1 className="sr-only">Find people</h1>
+        {/* One round box with the magnifier in it, as for homes. */}
+        <Form action="/search/people" role="search" aria-label="Find people">
+          <SearchField
             // (A new search, or none: the box says what the page is showing.)
             key={typed}
             id="people-q"
             name="q"
-            type="search"
+            label="Name"
             defaultValue={typed}
+            placeholder="Name or company"
             maxLength={NAME_LONGEST}
             autoComplete="off"
             autoCapitalize="words"
             enterKeyHint="search"
             aria-describedby="people-q-hint"
-            className={field()}
           />
-        </div>
-        <button type="submit" className={button({ kind: "primary", size: "lg" })}>
-          <Search aria-hidden size={18} /> Search
-        </button>
-      </Form>
-      <p id="people-q-hint" className="mt-2 px-1 text-sm text-muted">
-        A first name, or an agent&apos;s name or company.
-      </p>
+          <p id="people-q-hint" className="sr-only">
+            A first name, or an agent&apos;s name or company.
+          </p>
+        </Form>
 
-      {people.length > 0 ? (
-        <section aria-labelledby="people-found" className="mt-6">
-          <h2 id="people-found" className={groupLabel}>
-            {heading}
-          </h2>
-          <ul aria-label={heading} className={cn(card, "mt-2 divide-y divide-stone-100")}>
-            {people.map((person) => (
-              <PersonRow
-                key={person.profileId}
-                href={`/people/${person.profileId}`}
-                name={person.name}
-                face={person.face}
-                photo={person.photo}
-                agent={person.agent}
-                kind={person.kind}
-                line={[person.brokerage, person.reason].filter(Boolean).join(" · ") || undefined}
-                action={
-                  <FollowButton small stay personId={person.profileId} name={person.name} following={person.iFollow} />
-                }
-              />
-            ))}
-          </ul>
-          {/* As many as are ever shown: the rest are a letter or two away. */}
-          {typed && people.length >= FOUND_MOST && (
-            <p className="mt-3 px-1 text-sm text-muted">Showing the first {FOUND_MOST}. Type more of the name to see fewer.</p>
-          )}
-        </section>
-      ) : typed ? (
-        <EmptyState icon={Users} className="mt-6" title={nobody(typed)} />
-      ) : (
-        <EmptyState icon={Users} className="mt-6" title="No one to suggest yet">
-          Search for someone by name.
-        </EmptyState>
-      )}
-    </main>
+        {people.length > 0 ? (
+          <section aria-labelledby="people-found" className="mt-6">
+            <h2 id="people-found" className={groupLabel}>
+              {heading}
+            </h2>
+            <ul aria-label={heading} className={cn(card, "mt-2 divide-y divide-stone-100")}>
+              {people.map((person) => (
+                <PersonRow
+                  key={person.profileId}
+                  href={`/people/${person.profileId}`}
+                  name={person.name}
+                  face={person.face}
+                  photo={person.photo}
+                  agent={person.agent}
+                  kind={person.kind}
+                  line={[person.brokerage, person.reason].filter(Boolean).join(" · ") || undefined}
+                  action={
+                    <FollowButton small stay personId={person.profileId} name={person.name} following={person.iFollow} />
+                  }
+                />
+              ))}
+            </ul>
+            {/* As many as are ever shown: the rest are a letter or two away. */}
+            {typed && people.length >= FOUND_MOST && (
+              <p className="mt-3 text-sm text-muted">Showing the first {FOUND_MOST}. Type more of the name to see fewer.</p>
+            )}
+          </section>
+        ) : typed ? (
+          <EmptyState icon={Users} className="mt-6" title={nobody(typed)} />
+        ) : (
+          <EmptyState icon={Users} className="mt-6" title="No one to suggest yet">
+            Search for someone by name.
+          </EmptyState>
+        )}
+      </main>
+    </>
   );
 }

@@ -204,7 +204,7 @@ test("closing the share sheet unsent leaves no link behind, and a link that didn
   expect((await shared(agent))[0].url).toContain(`/s/${token}`);
   expect((await request.get(`/s/${token}`)).status()).toBe(404);
   await agent.goto("/messages");
-  await expect(agent.getByText("No messages yet")).toBeVisible();
+  await expect(agent.getByText("No messages yet").filter({ visible: true })).toBeVisible();
   await expect(agent.getByRole("link", { name: /96 Fernhollow/ })).toHaveCount(0);
 
   // The home sells between the tap and the link being made (the tests' sold
@@ -298,9 +298,9 @@ test("Undo send takes back an unopened link, and a home meant for an existing cl
   await sheet.getByRole("button", { name: "Undo send" }).click();
   await expect(sheet.getByText("The link will stop working.")).toBeVisible();
   await sheet.getByRole("button", { name: "Undo send" }).click();
-  await expect(sheet.getByText("Opened, so it can't be undone. Remove the home on the link, in Clients.")).toBeVisible();
+  await expect(sheet.getByText("Opened, so it can't be undone. Remove the home on the link, under Link details.")).toBeVisible();
   // The buttons went, so the cursor is on the answer rather than lost.
-  await expect(sheet.getByText("Opened, so it can't be undone. Remove the home on the link, in Clients.")).toBeFocused();
+  await expect(sheet.getByText("Opened, so it can't be undone. Remove the home on the link, under Link details.")).toBeFocused();
   expect((await request.get(kept)).status()).toBe(200);
 });
 
@@ -416,13 +416,21 @@ test("a buyer's Send goes on to the box with the home picked, and visitors still
   const [token] = seen.token;
   const homes = agent.getByRole("region", { name: "Homes", exact: true });
   const showing = (await homes.getByRole("article").first().getAttribute("aria-label"))!;
-  // On a phone it sits beside the Map button, below the home's words, and
-  // says which home it sends.
+  // On a phone it sits in one row with Open full screen and the Map button,
+  // below the home's photo, and says which home it sends.
   const pill = agent.getByRole("button", { name: /^Send this home/ });
   const address = showing.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   await expect(pill).toHaveAccessibleName(new RegExp(`^Send this home\\W+${address}$`));
-  const words = await homes.getByRole("button", { name: /^Open full screen/ }).first().boundingBox();
-  expect((await pill.boundingBox())!.y).toBeGreaterThanOrEqual(words!.y + words!.height);
+  const photo = (await homes.getByRole("article").first().getByRole("group", { name: /^Photos of/ }).getByRole("img").first().boundingBox())!;
+  const [pillBox, openBox, mapBox] = await Promise.all([
+    pill.boundingBox(),
+    agent.getByRole("button", { name: `Open full screen: ${showing}`, exact: true }).boundingBox(),
+    agent.getByRole("button", { name: "Map", exact: true }).boundingBox(),
+  ]);
+  expect(pillBox!.y).toBeGreaterThanOrEqual(photo.y + photo.height);
+  for (const box of [openBox!, mapBox!]) expect(Math.abs(box.y - pillBox!.y)).toBeLessThan(2);
+  expect(pillBox!.x + pillBox!.width).toBeLessThanOrEqual(openBox!.x);
+  expect(openBox!.width).toBeGreaterThanOrEqual(44);
   await pill.click();
   await expect(agent.getByRole("dialog", { name: "Sent. Who's it for?" })).toBeVisible();
   const [handed] = await shared(agent);

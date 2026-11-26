@@ -61,7 +61,7 @@ export function PicksMasonry({ picks }: { picks: FeedPost[] }) {
   const columns = [picks.filter((_, i) => i % 2 === 0), picks.filter((_, i) => i % 2 === 1)];
   return (
     <section aria-labelledby="homes-for-you-title" className="flex flex-col gap-3">
-      <h2 id="homes-for-you-title" className="px-1 text-[17px] font-semibold">
+      <h2 id="homes-for-you-title" className="text-lead font-semibold">
         Homes for you
       </h2>
       {picks.length > 0 && (

@@ -162,14 +162,47 @@ const sender = (link: MyLink): ThreadPerson => ({
   agent: link.agent.isAgent,
 });
 
+// Everyone on a link, in the order they were added: a first name, the
+// account they're on Porchcard with, and (to the link's sender only) their
+// page and face, as the sender's list has them.
+type OnLink = { id: string; share_id: string; name: string; account_id: string | null; profile: string | null; photo_v: string | null };
+
+// Someone on a link, as a conversation shows them. Their face only to the
+// one who sent it (as the rest of the sender's pages show it): someone else
+// on the link sees a first name and an initial, never another's page.
+const onLink = (row: OnLink, withFace: boolean): ThreadPerson => ({
+  name: row.name || ANONYMOUS_BUYER,
+  photo: withFace && row.profile ? photoUrl(row.profile, row.photo_v) : null,
+  profileId: withFace ? row.profile : null,
+  agent: false,
+});
+
+// The people on the viewer's links (sent or received), by link: once a
+// request, for the list and the conversation open beside it.
+const peopleOn = cache(async (accountId: string) => {
+  const rows = await sql<OnLink[]>`
+    select p.id, p.share_id, btrim(p.first_name) as name, p.account_id, v.id as profile,
+      left(md5(acc.photo_data_url), 10) as photo_v
+    from participants p
+    left join visitors v on v.account_id = p.account_id
+    left join accounts acc on acc.id = p.account_id
+    where p.share_id in (
+      select s.id from shares s where s.agent_id = ${accountId}
+      union select x.share_id from participants x where x.account_id = ${accountId})
+    order by p.invited_at nulls last, p.position nulls last, p.created_at, p.first_name`;
+  const byLink = new Map<string, OnLink[]>();
+  for (const row of rows) byLink.set(row.share_id, [...(byLink.get(row.share_id) ?? []), row]);
+  return byLink;
+});
+
 // A link the viewer sent to several people, or to nobody yet: a thread of its own.
-function groupThread(link: ClientLink): Thread {
+function groupThread(link: ClientLink, on: OnLink[]): Thread {
   const key = `link:${link.shareId}`;
   return {
     key,
     href: threadHref(key),
     title: link.title,
-    people: link.for.map((name) => ({ name, photo: null, profileId: null, agent: false })),
+    people: on.filter((row) => row.name).map((row) => onLink(row, true)),
     group: true,
     direction: "sent",
     shareIds: [link.shareId],
@@ -189,11 +222,12 @@ function groupThread(link: ClientLink): Thread {
 
 // Everyone's conversations with the viewer, the newest first.
 export const getThreads = cache(async (me: Account): Promise<Thread[]> => {
-  const [book, received, looked] = await Promise.all([
+  const [book, received, looked, people] = await Promise.all([
     getClientBook(me.id),
     getMyLinks(me.id),
     // When they last looked at each conversation they were sent homes in.
     sql<{ thread_key: string; seen_at: Date }[]>`select thread_key, seen_at from thread_seen where account_id = ${me.id}`,
+    peopleOn(me.id),
   ]);
   const seenAt = new Map(looked.map((row) => [row.thread_key, row.seen_at]));
   // Something from the sender since they last looked (or ever, never having looked).
@@ -206,7 +240,7 @@ export const getThreads = cache(async (me: Account): Promise<Thread[]> => {
   // Homes the viewer sent: one thread per person, their links sent to them
   // alone; links to several people (or nobody yet) stand on their own.
   for (const link of book.links) {
-    if (link.people !== 1) threads.set(`link:${link.shareId}`, groupThread(link));
+    if (link.people !== 1) threads.set(`link:${link.shareId}`, groupThread(link, people.get(link.shareId) ?? []));
   }
   for (const client of book.clients) {
     const own = client.links.filter((link) => link.people === 1);
@@ -239,11 +273,18 @@ export const getThreads = cache(async (me: Account): Promise<Thread[]> => {
     const line = link.latestAgentReply ? `“${link.latestAgentReply.body}”` : `Sent you ${homesWord(link.homes)}`;
     if (link.people > 1) {
       const key = `link:${link.shareId}`;
+      // Named for whoever else is in it, the sender first, never the viewer
+      // ("Jordan & Ben", to Nina), as a group on a phone is.
+      const others = (people.get(link.shareId) ?? []).filter((row) => row.name && row.account_id !== me.id);
       threads.set(key, {
         key,
         href: threadHref(key),
-        title: peopleTitle(link.names) || link.agent.name,
-        people: [sender(link), ...link.names.map((name) => ({ name, photo: null, profileId: null, agent: false }))],
+        // (A sender with no name yet isn't "your agent": they're left out of the title.)
+        title:
+          peopleTitle([link.agent.name ? link.agent.firstName : "", ...others.map((row) => row.name)]) ||
+          link.agent.name ||
+          ANONYMOUS_BUYER,
+        people: [sender(link), ...others.map((row) => onLink(row, false))],
         group: true,
         direction: "received",
         shareIds: [link.shareId],
@@ -341,7 +382,7 @@ export const getThread = cache(async (me: Account, key: string): Promise<ThreadV
   const thread = (await getThreads(me)).find((t) => t.key === key);
   if (!thread) return null;
   const ids = thread.shareIds;
-  const [shares, mine, asks, views, listings, threads, words] = await Promise.all([
+  const [shares, mine, asks, views, listings, threads, words, people] = await Promise.all([
     sql<ShareRow[]>`
       select s.id, s.token, s.agent_id, s.created_at, s.note, a.full_name, a.role,
         (select max(o.last_at) from share_opens o where o.share_id = s.id) as opened_at,
@@ -364,6 +405,7 @@ export const getThread = cache(async (me: Account, key: string): Promise<ThreadV
       from comments c left join participants p on p.id = c.participant_id
       where c.share_id in ${sql(ids)} and c.listing_key is null
       order by c.created_at`,
+    peopleOn(me.id),
   ]);
   const book = thread.direction === "received" ? null : await getClientBook(me.id);
   const shareOf = new Map(shares.map((share) => [share.id, share]));
@@ -375,6 +417,14 @@ export const getThread = cache(async (me: Account, key: string): Promise<ThreadV
     profileId: share.profile,
     agent: share.role === "agent",
   });
+  // Someone on one of these links, by their place on it: their face when
+  // the viewer sent it (as the list has it), else a first name and initial.
+  const placeOf = new Map([...people.values()].flat().map((row) => [row.id, row]));
+  const someone = (share: ShareRow, participantId: string | null, name: string | null | undefined): ThreadPerson => {
+    const row = participantId ? placeOf.get(participantId) : undefined;
+    if (row) return onLink(row, share.agent_id === me.id);
+    return { name: name?.trim() || ANONYMOUS_BUYER, photo: null, profileId: null, agent: false };
+  };
   // Everything said about a home, each a bubble of its own among the sends.
   const saidAboutHomes: CommentItem[] = [];
   // Homes seen so far, newest send first: the first card of a home keeps the
@@ -421,7 +471,7 @@ export const getThread = cache(async (me: Account, key: string): Promise<ThreadV
               ? sentByMe
                 ? { name: "You", photo: null, profileId: null, agent: me.role === "agent" }
                 : senderOf(share)
-              : { name: c.name.trim() || ANONYMOUS_BUYER, photo: null, profileId: null, agent: false },
+              : someone(share, c.participantId, c.name),
             mine: c.isAgent ? sentByMe : place?.id === c.participantId,
             body: c.body,
             about: home,
@@ -481,7 +531,7 @@ export const getThread = cache(async (me: Account, key: string): Promise<ThreadV
       id: word.id,
       at: word.created_at.toISOString(),
       shareId: word.share_id,
-      by: fromSender ? senderOf(share) : { name: word.first_name?.trim() || ANONYMOUS_BUYER, photo: null, profileId: null, agent: false },
+      by: fromSender ? senderOf(share) : someone(share, word.participant_id, word.first_name),
       mine,
       body: word.body,
     });

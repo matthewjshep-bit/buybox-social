@@ -1,6 +1,6 @@
 "use client";
 
-import { Send } from "lucide-react";
+import { LoaderCircle, Send } from "lucide-react";
 import Link from "next/link";
 import { lazy, Suspense, useEffect, useId, useRef, useState, type ComponentProps, type RefObject } from "react";
 import {
@@ -15,7 +15,7 @@ import { ReelFeed, type SendHome } from "@/components/reel";
 import { Sheet } from "@/components/sheet";
 import { cn } from "@/lib/format";
 import type { Listing } from "@/lib/listings/types";
-import { button } from "@/lib/ui";
+import { button, focusOnDark } from "@/lib/ui";
 
 // Send, for agents: on any home, one tap opens the phone's share sheet with a
 // link to just that home, made for one client, then asks who it was for.
@@ -289,6 +289,8 @@ export function useQuickSend({
         anchor={sheetAnchor}
       >
         <div className="pb-2 text-center">
+          {/* Why, before the ask. */}
+          <p className="mb-4 text-body text-stone-700">Clients see who sent each link, so add your name and photo first.</p>
           <Link href="/dashboard/profile" className={primary}>
             Add your name and photo
           </Link>
@@ -333,24 +335,49 @@ export function QuickSendReel({
 
 // Beside the map, where the homes have no buttons of their own: a pill that
 // sends the one showing. Its name says which home, for a screen reader.
-export function SendPill({ home, quick, className }: { home: SendHome; quick: QuickSend; className?: string }) {
+// `short`: in the phone's one row of buttons under the home, the word "Send"
+// alone (the rest of its name unseen), and while the next link comes, a
+// spinner in place of the plane rather than longer words, so the row never
+// changes width.
+export function SendPill({
+  home,
+  quick,
+  short = false,
+  className,
+}: {
+  home: SendHome;
+  quick: QuickSend;
+  short?: boolean;
+  className?: string;
+}) {
   return (
     <button
       type="button"
       // Stays where it is while the next link comes, so the cursor isn't lost.
       aria-disabled={quick.waiting}
+      aria-busy={short && quick.waiting ? true : undefined}
+      // (Short, its whole name: "Send" is only how it starts.)
+      aria-label={short ? (quick.waiting ? "Send this home, getting a new link…" : `Send this home: ${home.address}`) : undefined}
       onClick={() => {
         if (!quick.waiting) quick.send(home);
       }}
       className={cn(
-        "flex h-12 items-center gap-2 rounded-full bg-white px-5 font-semibold text-ink shadow-lg ring-1 ring-stone-200 hover:bg-stone-50",
+        "flex h-12 shrink-0 items-center gap-2 rounded-full bg-white font-semibold text-ink shadow-lg ring-1 ring-stone-200 transition-colors hover:bg-stone-50",
+        focusOnDark,
+        short ? "pl-4 pr-5" : "px-5",
         // Solid while it waits, so nothing behind it shows through the words.
         quick.waiting && "cursor-progress text-muted hover:bg-white",
         className,
       )}
     >
-      <Send aria-hidden size={18} className="shrink-0" />
-      {quick.waiting ? (
+      {short && quick.waiting ? (
+        <LoaderCircle aria-hidden size={18} className="shrink-0 animate-spin motion-reduce:animate-none" />
+      ) : (
+        <Send aria-hidden size={18} className="shrink-0" />
+      )}
+      {short ? (
+        "Send"
+      ) : quick.waiting ? (
         "Getting a new link…"
       ) : (
         <>

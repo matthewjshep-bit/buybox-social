@@ -120,7 +120,10 @@ test("a card on someone's page opens their highlights on a stage that takes the 
   await expect(popout.getByRole("link", { name: "Ines's highlights" })).toHaveCount(0);
   await expect(popout.locator("[data-stage-bar]")).toBeHidden();
   const lakeviewWhy = lakeview.getByRole("region", { name: "Why it's here" });
-  await expect(lakeviewWhy.getByRole("button", { expanded: false })).toContainText("Ines's highlights · 1 of 3Ines liked this");
+  // (A like and nothing more: the row says all of it, so it's plain words,
+  // with nothing to open.)
+  await expect(lakeviewWhy).toContainText("Ines's highlights · 1 of 3Ines liked this");
+  await expect(lakeviewWhy.getByRole("button")).toHaveCount(0);
   // (No second way to see the same thing: the pop-out is the one view.)
   await expect(popout.getByRole("link", { name: "Open full page" })).toHaveCount(0);
 
@@ -399,6 +402,10 @@ test("privacy: hidden passes stay out, only the owner sees what they didn't like
   // Her own: what she didn't like too.
   await expect(why.getByRole("button", { name: "Didn't like the cedar shingles: show it" })).toBeVisible();
   await expect(why).not.toContainText(OTTO_SAID);
+  // Escape puts away what's open first (her take), then the pop-out.
+  await ines.keyboard.press("Escape");
+  await expect(why.getByRole("button", { expanded: false })).toBeVisible();
+  await expect(popout).toHaveCount(1);
   await ines.keyboard.press("Escape");
   await expect(popout).toHaveCount(0);
 
@@ -431,15 +438,15 @@ test("a client's homes are their agent's alone: on their page the agent sees who
   await expect(heartOf(home)).toHaveAttribute("aria-pressed", "true");
 
   // Her agent, on her page: the name they gave her (she has none of her own
-  // yet), that she's theirs, and her homes and her client page a tap away.
+  // yet), that she's theirs, and her homes and her conversation a tap away.
   await agent.goto(jennyPage);
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Jenny");
   await expect(agent.getByText("Your client", { exact: true })).toBeVisible();
-  await expect(agent.getByRole("link", { name: "Client page" })).toHaveAttribute(
+  await expect(agent.getByRole("link", { name: "Message Jenny", exact: true })).toHaveAttribute(
     "href",
     /^\/messages\/acct%3A[0-9a-f-]{36}$/,
   );
-  const theirHomes = agent.getByRole("link", { name: "See their homes" });
+  const theirHomes = agent.getByRole("link", { name: "See all of Jenny's homes" });
   const href = (await theirHomes.getAttribute("href"))!;
   expect(href).toMatch(/^\/reel\?from=client:[0-9a-f-]{36}$/);
   await theirHomes.click();

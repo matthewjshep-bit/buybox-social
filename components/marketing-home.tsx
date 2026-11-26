@@ -2,7 +2,7 @@ import { DoorOpen, Heart, MessageCircle, Send, Users } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { SignUpForm } from "@/components/join";
+import { SignUpForm, SignUpJump } from "@/components/join";
 import { Avatar } from "@/components/ui";
 import { cn } from "@/lib/format";
 import { button, card, focusOnDark, glass, pill } from "@/lib/ui";
@@ -34,11 +34,16 @@ function Take({ who, what, className }: { who: string; what: string; className: 
   return (
     <span
       aria-hidden
-      className={cn(glass, "absolute flex items-center gap-1.5 rounded-full py-1 pl-1 pr-3 text-meta font-semibold shadow-lg", className)}
+      className={cn(
+        glass,
+        "absolute flex items-center gap-1.5 whitespace-nowrap rounded-full py-1 pl-1 pr-3 text-meta font-semibold shadow-lg",
+        className,
+      )}
     >
       <Avatar name={who} size={6} />
       <Heart size={12} className="shrink-0 fill-rose-400 text-rose-400" />
-      {what}
+      {/* One line, always: too long for its tile, it ends in "…". */}
+      <span className="min-w-0 truncate">{what}</span>
     </span>
   );
 }
@@ -61,7 +66,7 @@ function Said({ who, agent = false, text, className }: { who: string; agent?: bo
 // The idea in one picture: a home, what two people loved in it, and the talk about it.
 function HeroPicture() {
   return (
-    <div className="relative mx-auto w-full max-w-md pb-16 md:max-w-none md:pb-10">
+    <div className="relative mx-auto w-full max-w-md pb-16 md:max-w-none md:pb-20">
       <div className="relative aspect-[4/5] overflow-hidden rounded-[2rem] shadow-2xl">
         <Image
           src="/sample/tacoma-1.jpg"
@@ -71,9 +76,10 @@ function HeroPicture() {
           sizes="(min-width: 768px) 480px, 100vw"
           className="object-cover"
         />
-        <Spot className="left-[44%] top-[62%]" />
+        {/* The porch's chip sits high enough to clear the talk below it at every width. */}
+        <Spot className="left-[46%] top-[51%]" />
         <Spot className="left-[70%] top-[34%]" />
-        <Take who="Nina" what="the porch" className="left-[18%] top-[70%]" />
+        <Take who="Nina" what="the porch" className="left-[8%] top-[57%]" />
         <Take who="Ben" what="the dormer windows" className="right-4 top-[22%]" />
       </div>
       <div className="absolute inset-x-3 bottom-0 flex flex-col gap-2 sm:inset-x-auto sm:-left-6 sm:w-72 md:-left-10">
@@ -122,10 +128,14 @@ export function AgentFeatures() {
 export function AgentPicture() {
   return (
     <div aria-hidden className="relative mx-auto w-full max-w-md md:max-w-none">
-      <div className="relative aspect-[5/4] overflow-hidden rounded-[2rem] bg-stone-700 shadow-2xl">
+      <div className="relative aspect-[5/4] overflow-clip rounded-[2rem] bg-stone-700 shadow-2xl">
         <Image src="/sample/kirkland-1.jpg" alt="" fill sizes="(min-width: 768px) 520px, 100vw" className="scale-110 object-cover blur-md" />
         <div className="absolute inset-0 bg-linear-to-t from-black/70 via-black/35 to-black/10" />
-        <div className="absolute inset-x-0 top-0 p-6 text-white sm:p-8">
+        {/* In the flow, not laid over the photo: a headline that wraps to a
+            third line makes the picture taller (5:4 is its least; `clip`, not
+            `hidden`, lets it grow), and its button stays clear of the card
+            that overlaps the picture's foot (-mt-16). */}
+        <div className="relative p-6 pb-20 text-white sm:p-8 sm:pb-24">
           <p className="flex items-center gap-2 text-meta font-semibold">
             <Avatar name="Jordan" tone="agent" size={7} className="ring-2 ring-white/70" />
             Jordan Rivera · Harbor &amp; Pine Realty
@@ -166,8 +176,8 @@ function BuyerPicture() {
   const tiles = [
     { src: "/sample/ravenna-3.jpg", alt: "A white kitchen with a marble island", who: "Maya", what: "the island", tall: true },
     { src: "/sample/gigharbor-3.jpg", alt: "A bright living room with tall windows", who: "Sam", what: "the light", tall: false },
-    { src: "/sample/kirkland-4.jpg", alt: "A yellow armchair by a window", who: "Ava", what: "the reading nook", tall: false },
-    { src: "/sample/bellevue-1.jpg", alt: "A modern house with glass walls at dusk", who: "Leo", what: "the glass walls", tall: true },
+    { src: "/sample/kirkland-4.jpg", alt: "A yellow armchair by a window", who: "Ava", what: "the nook", tall: false },
+    { src: "/sample/bellevue-1.jpg", alt: "A modern house with glass walls at dusk", who: "Leo", what: "the glass", tall: true },
   ];
   return (
     <div className="mx-auto grid w-full max-w-md grid-cols-2 gap-3 md:max-w-none">
@@ -203,9 +213,7 @@ export function MarketingHome({ devMode }: { devMode: boolean }) {
           {/* Sign up goes to the form at the foot; See homes, to the homes
               themselves, for anyone who'd rather look first. */}
           <div className="mt-8 flex flex-wrap gap-3">
-            <a href="#start" className={button({ kind: "primary", size: "lg" })}>
-              Sign up
-            </a>
+            <SignUpJump className={button({ kind: "primary", size: "lg" })}>Sign up</SignUpJump>
             <Link href="/browse" className={button({ kind: "secondary", size: "lg" })}>
               See homes
             </Link>
@@ -264,18 +272,24 @@ export function MarketingHome({ devMode }: { devMode: boolean }) {
       <section id="start" aria-labelledby="start-title" className="scroll-mt-4 bg-brand px-5 py-20 text-white sm:px-8 lg:py-24">
         <div className="mx-auto grid max-w-5xl items-center gap-10 md:grid-cols-2 md:gap-16">
           <div>
-            <h2 id="start-title" className="text-balance font-display text-4xl leading-tight sm:text-5xl">
+            {/* (Where the hero's Sign up leaves focus on a touch screen.) */}
+            <h2 id="start-title" tabIndex={-1} className="text-balance font-display text-4xl leading-tight sm:text-5xl">
               Start free.
             </h2>
           </div>
-          <div className="w-full md:max-w-sm md:justify-self-end">
+          <div className="group/start w-full md:max-w-sm md:justify-self-end">
             <SignUpForm devMode={devMode} />
             {/* The form above makes a buyer's account; an agent's starts here:
                 a button as wide as the form, edged in white on the brand's
-                colour so the form stays the first thing. */}
+                colour so the form stays the first thing. Gone while the form
+                asks for the code: one thing to do then. */}
             <Link
               href="/login?as=agent"
-              className={cn(pill("lg", { block: true }), "mt-3 border-2 border-white text-white hover:bg-white/15", focusOnDark)}
+              className={cn(
+                pill("lg", { block: true }),
+                "mt-3 border-2 border-white text-white hover:bg-white/15 group-has-[[data-code-step]]/start:hidden",
+                focusOnDark,
+              )}
             >
               I&apos;m an agent
             </Link>

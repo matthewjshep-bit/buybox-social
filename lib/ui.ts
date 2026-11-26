@@ -93,7 +93,8 @@ export const button = ({
 // in it, in a row of round-ended filters (the map's search and its choices;
 // `small` type there). `big`: a title being renamed, in the heading's own
 // type. `quiet`: a link to copy, grey and edgeless, there to be selected
-// rather than typed in.
+// rather than typed in. Never under 16px on a phone (`small` and `quiet` are
+// 14px only from `sm` up): smaller, iPhone zooms the page in as you tap it.
 export const field = ({
   lines = false,
   pill = false,
@@ -105,7 +106,7 @@ export const field = ({
     // (Its own ring takes the place of the outline every other control gets on focus.)
     "border text-ink outline-hidden! placeholder:text-stone-500 focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-60 aria-invalid:border-red-600",
     quiet ? "border-transparent bg-stone-100" : "border-stone-300 bg-white",
-    big ? "font-display text-2xl" : quiet || small ? "text-sm" : "text-base",
+    big ? "font-display text-2xl" : quiet || small ? "text-base sm:text-sm" : "text-base",
     lines
       ? "min-h-24 w-full resize-y rounded-xl px-4 py-3"
       : pill
@@ -122,7 +123,7 @@ export const card = "rounded-2xl bg-white ring-1 ring-stone-200";
 // Which side of the app a page is on, said small at its top: "Agent
 // dashboard" on every dashboard page, "Your public profile" on your own
 // profile. One style, so the two read as a pair.
-export const pageLabel = "px-1 text-[12px] font-semibold uppercase leading-4 tracking-[0.08em] text-stone-600";
+export const pageLabel = "text-xs font-semibold uppercase leading-4 tracking-[0.08em] text-muted";
 
 // A page's column: the same width, the same left edge and the same room
 // under the bar on every page that's one column of things (Notifications,
@@ -145,7 +146,12 @@ export const pageTitle = "font-display text-3xl leading-tight break-words sm:tex
 export const sectionTitle = "text-2xl font-semibold";
 
 // A quiet label over a group in a list: a day ("This week"), "Your listings".
-export const groupLabel = "px-1 text-body font-semibold text-muted";
+// Its left edge is the column's, with the title and the cards.
+export const groupLabel = "text-body font-semibold text-muted";
+
+// A text box's name, over it (or a group of choices' legend): one weight in
+// every form. With `sr-only` beside it where the box says what it is.
+export const fieldLabel = "block text-sm font-semibold text-ink";
 
 // The way back, at the top of a page that's a step in from another: an arrow
 // (18px) and where it goes, a fingertip tall, its words lined up with the
@@ -161,7 +167,40 @@ export const backLink = "-ml-2 inline-flex min-h-11 w-fit items-center gap-2 rou
 export const tab = (active: boolean) =>
   cn(
     "flex min-h-12 shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 text-body font-semibold sm:px-4",
-    active ? "border-stone-900 text-ink" : "border-transparent text-stone-600 hover:text-ink",
+    active ? "border-stone-900 text-ink" : "border-transparent text-muted hover:text-ink",
+  );
+
+// One of a few choices drawn as pills, the one that's picked filled in the
+// brand's colour (what kind of account, a listing's look). For a radio or an
+// aria-pressed button; 44px tall like every button.
+export const choice = (active: boolean) =>
+  cn(
+    "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full border px-4 text-sm font-semibold transition-colors select-none disabled:cursor-not-allowed disabled:opacity-60 [&>svg]:shrink-0",
+    active ? "border-brand bg-brand text-white" : "border-stone-300 bg-white text-ink hover:border-stone-500",
+  );
+
+// Close (an X), on anything light: a sheet, a card, a box that can be put
+// away. Round, 44px, grey until the pointer is on it. Its icon is
+// `<X aria-hidden size={20} />`, and its name says what it does ("Close").
+// Its place (absolute, a negative margin to line up) is beside it. (On the
+// dark or a photo: `button({ kind: "glass", icon: true })`.)
+export const closeButton = cn(pill("md", { icon: true }), KIND.ghost, "text-muted hover:text-ink");
+
+// A menu or a small panel that opens from a button (the Me menu, a filter's
+// choices): white, rounded, lifted off the page by a soft shadow. Its rows
+// are `menuRow`. (A panel of words, not a list of choices, is a `card`.)
+export const popover = "rounded-2xl bg-white p-1.5 text-ink shadow-[0_12px_40px_rgb(0_0_0/0.22)] ring-1 ring-black/5";
+
+// A row in a menu or a sheet of actions (the Me menu, the More sheet): a
+// fingertip tall, an icon (grey) and its words, a fill under the pointer;
+// the page you're on (`aria-current`) filled and bold. One colour for every
+// row: the icon says what it is. `flush`: in a padded column (a sheet), its
+// icon lines up with the column's edge and its fill reaches past it, as a
+// `flush` button's does; otherwise as wide as the menu.
+export const menuRow = ({ flush = false }: { flush?: boolean } = {}) =>
+  cn(
+    "flex min-h-11 items-center gap-3 rounded-xl px-3 text-left text-body font-medium text-ink transition-colors hover:bg-stone-100 active:bg-stone-200 [&[aria-current]]:font-semibold [&>svg]:shrink-0 [&>svg]:text-muted",
+    flush ? "-mx-3 w-[calc(100%+1.5rem)]" : "w-full",
   );
 
 // Words that go somewhere, in a line of words or beside a heading ("Change

@@ -19,11 +19,7 @@ import type { TimelineComment, TimelineItem } from "@/lib/timeline";
 // way back to the dashboard once they're done.
 export type LinkAgent = {
   agent: Pick<ShareAgent, "full_name" | "photo_data_url"> & { is_agent?: boolean };
-  // (`step`: just having made the link, as the last step of sending homes.
-  // `added`: they've said something on it, so the way on is Done, not Skip.
-  // `earlier`: how many of its homes they gave a take on, on an earlier link,
-  // which they can bring over.)
-  notes: { for: string; done: string; step?: boolean; added?: boolean; earlier?: number } | null;
+  notes: { for: string; done: string } | null;
 };
 
 const LinkAgentContext = createContext<LinkAgent | null>(null);

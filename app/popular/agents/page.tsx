@@ -42,6 +42,8 @@ export default async function PopularAgentsPage() {
               face={agent.face}
               photo={agent.photo}
               agent
+              // (Every one an agent: no chip to say so.)
+              chip={false}
               line={[agent.brokerage, listings(agent.forSale, agent.closed)].filter(Boolean).join(" · ")}
               action={
                 // (Following is for someone signed in; and never yourself.)

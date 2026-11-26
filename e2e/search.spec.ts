@@ -327,19 +327,20 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
     "true",
   );
 
-  // No matches says so, once, right under the count beside the map, and
-  // offers a way out. (Once the map page has finished loading, so going on
-  // doesn't cut it off halfway.)
+  // No matches says so, once, where the home would be (between the count
+  // and the map), and offers a way out. (Once the map page has finished
+  // loading, so going on doesn't cut it off halfway.)
   await page.waitForLoadState("networkidle");
   await page.goto("/search?q=Spokane");
-  // (Only words in the box: it says them back.)
+  // (Only words in the box: it says them back, and clearing them is the way out.)
   const none = page.getByText("No homes match “Spokane”.").filter({ visible: true });
   await expect(none).toHaveCount(1);
+  await expect(page.getByText("0 homes", { exact: true })).toBeVisible();
+  await expect(page.locator('section[aria-label="Homes"]').getByText("No homes match “Spokane”.")).toBeVisible();
   const zero = (await page.getByText("0 homes", { exact: true }).boundingBox())!;
   const said = (await none.boundingBox())!;
-  expect(said.y).toBeGreaterThan(zero.y);
-  expect(Math.abs(said.x - zero.x)).toBeLessThan(2);
-  await expect(page.getByRole("link", { name: "Clear all filters" })).toHaveAttribute("href", "/search");
+  expect(said.x).toBeGreaterThan(zero.x + zero.width);
+  await expect(page.getByRole("link", { name: "Clear search", exact: true })).toHaveAttribute("href", "/search");
   // (Signed in since the like above: a word that finds no homes may be a
   // name, so people by it are a tap away.)
   await expect(page.getByRole("link", { name: "Search people for “Spokane”" }).filter({ visible: true })).toHaveAttribute(
@@ -351,6 +352,8 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   await page.goto("/search?q=Spokane&beds=3");
   await expect(page.getByText("No homes match those filters.").filter({ visible: true })).toHaveCount(1);
   await expect(page.getByText("No homes match “Spokane”.")).toHaveCount(0);
+  // (Clearing the filters keeps the words.)
+  await expect(page.getByRole("link", { name: "Clear filters", exact: true })).toHaveAttribute("href", "/search?q=Spokane");
 
   // A little narrower, the list makes way for the map: the map and one home
   // share the width, and what was found sits over the map on one line.
@@ -453,8 +456,9 @@ test("on a phone, homes and the map are a tap apart, and a pin opens its home", 
   await expect(page.locator(".maplibregl-canvas")).toBeHidden();
   await expect(homeIn(page, "4127 Larkmoor Ave NE")).toBeInViewport({ ratio: 0.9 });
   await expect(page.getByRole("button", { name: "Map", exact: true })).toBeVisible();
-  // A tap opens it full screen.
-  await homeIn(page, "4127 Larkmoor Ave NE").getByRole("button", { name: /^Open full screen/ }).click();
+  // A tap opens it full screen (the button in the row along the pane's foot,
+  // named for the home showing).
+  await page.getByRole("button", { name: "Open full screen: 4127 Larkmoor Ave NE", exact: true }).click();
   await expect(page).toHaveURL(/\/homes\?home=SAMPLE-1001$/);
   await expect(homeIn(page, "4127 Larkmoor Ave NE")).toBeInViewport({ ratio: 0.9 });
 });
@@ -466,7 +470,7 @@ test("signed in, Search is homes or people: the switch sits above the field on a
   const page = await signUpBuyer(browser, "sorrel.search@example.com", "Sorrel Mapper");
   // On a phone, and a small one: Homes | People in a row of its own above the
   // field, and under the filters the home still has "Open full screen" in
-  // view, with Map clear of it.
+  // view, in one row with Map along the pane's foot, clear of it.
   for (const size of [
     { width: 390, height: 780 },
     { width: 360, height: 640 },
@@ -480,10 +484,13 @@ test("signed in, Search is homes or people: the switch sits above the field on a
     const [tabs, field] = await Promise.all([which.boundingBox(), page.getByLabel("City, ZIP, address or MLS number").boundingBox()]);
     expect(tabs!.y + tabs!.height).toBeLessThanOrEqual(field!.y);
     expect((await which.getByRole("link", { name: "People", exact: true }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
-    const open = page.getByRole("article").first().getByRole("button", { name: /^Open full screen/ });
+    const showing = (await page.getByRole("article").first().getAttribute("aria-label"))!;
+    const open = page.getByRole("button", { name: `Open full screen: ${showing}`, exact: true });
     await expect(open).toBeInViewport({ ratio: 1 });
     const [button, map] = await Promise.all([open.boundingBox(), page.getByRole("button", { name: "Map", exact: true }).boundingBox()]);
-    expect(button!.y + button!.height, `${size.width}x${size.height}`).toBeLessThanOrEqual(map!.y);
+    expect(Math.abs(button!.y - map!.y), `${size.width}x${size.height}`).toBeLessThan(2);
+    expect(button!.x + button!.width, `${size.width}x${size.height}`).toBeLessThanOrEqual(map!.x);
+    expect(button!.height).toBeGreaterThanOrEqual(44);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
   }
 
@@ -493,7 +500,7 @@ test("signed in, Search is homes or people: the switch sits above the field on a
   await expect(page.getByText("No homes match “Zzyzx”.").filter({ visible: true })).toHaveCount(1);
   const people = page.getByRole("link", { name: "Search people for “Zzyzx”" }).filter({ visible: true });
   await expect(people).toHaveAttribute("href", "/search/people?q=Zzyzx");
-  for (const link of [people, page.getByRole("link", { name: "Clear all filters" }).filter({ visible: true })]) {
+  for (const link of [people, page.getByRole("link", { name: "Clear search", exact: true }).filter({ visible: true })]) {
     expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   }
   // A number in it is an address or a ZIP, not a person.

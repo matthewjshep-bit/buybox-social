@@ -1,7 +1,9 @@
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { Suspense } from "react";
+import { Placeholder } from "@/components/route-state";
 import { getAgentListings } from "@/lib/agent-listings";
-import { requireAgent } from "@/lib/auth";
+import { requireAgent, type Agent } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { cn } from "@/lib/format";
 import { backLink, card, pageTitle } from "@/lib/ui";
@@ -19,10 +21,6 @@ export const metadata = { title: "Add a listing · Porchcard" };
 export default async function NewListingPage({ searchParams }: { searchParams: Promise<{ manual?: string | string[] }> }) {
   const agent = await requireAgent();
   const { manual } = await searchParams;
-  const [{ mls_agent_id: mlsId }] = await sql<{ mls_agent_id: string }[]>`
-    select mls_agent_id from accounts where id = ${agent.id}`;
-  // What's already on their Listings, so a search says so.
-  const have = (await getAgentListings(mlsId.trim() || null, agent.full_name, agent.id)).map((listing) => listing.ListingKey);
   return (
     <>
       <Link href="/dashboard/listings" className={backLink}>
@@ -33,9 +31,21 @@ export default async function NewListingPage({ searchParams }: { searchParams: P
         <h2 id="find-title" className="mb-3 text-lg font-semibold">
           Find it
         </h2>
-        <FindListing have={have} />
+        {/* The card comes at once, with a placeholder; the search box follows
+            once what's already theirs is known (so a search can say so). */}
+        <Suspense fallback={<Placeholder className="h-12 w-full" />}>
+          <Find agent={agent} />
+        </Suspense>
       </section>
       <EnterItYourself open={manual === "1"} most={OWN_PHOTOS_MOST} noun={listingWords(agent.kind).one} />
     </>
   );
+}
+
+async function Find({ agent }: { agent: Agent }) {
+  const [{ mls_agent_id: mlsId }] = await sql<{ mls_agent_id: string }[]>`
+    select mls_agent_id from accounts where id = ${agent.id}`;
+  // What's already on their Listings, so a search says so.
+  const have = (await getAgentListings(mlsId.trim() || null, agent.full_name, agent.id)).map((listing) => listing.ListingKey);
+  return <FindListing have={have} />;
 }

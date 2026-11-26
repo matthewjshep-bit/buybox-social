@@ -4,7 +4,7 @@ import { MailCheck } from "lucide-react";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { sendCode, verifyCode, type CodeState } from "@/app/login/actions";
 import { cn } from "@/lib/format";
-import { button, field } from "@/lib/ui";
+import { button, field, fieldLabel } from "@/lib/ui";
 
 // Signing up or in, in two short steps on the page you're on: who you are (an
 // email, and a first name when you're new here), then the code we email you.
@@ -101,7 +101,11 @@ export function CodeSignIn({
         (): CodeState => ({ error: "That didn't go through. Please try again.", field: "code" }),
       );
       if (result.done) onDone({ ...result.done, ...(withName && firstName.trim() && { firstName: firstName.trim() }) });
-      else setState((now) => ({ ...now, error: result.error, field: result.field }));
+      else {
+        setState((now) => ({ ...now, error: result.error, field: result.field }));
+        // The wrong code selected, so typing the right one replaces it.
+        requestAnimationFrame(() => codeBox.current?.select());
+      }
     });
 
   const error = state.error && (
@@ -133,7 +137,7 @@ export function CodeSignIn({
             )}
           </span>
         </p>
-        <label htmlFor={`${id}-code`} className="mt-3 block text-sm font-medium">
+        <label htmlFor={`${id}-code`} className={cn(fieldLabel, "mt-3")}>
           Code
         </label>
         <input
@@ -148,8 +152,9 @@ export function CodeSignIn({
           required
           aria-invalid={state.field === "code" || undefined}
           aria-describedby={describedBy("code")}
-          placeholder="123456"
-          className={cn(field(), "mt-1 text-center text-xl tracking-[0.4em] tabular-nums placeholder:tracking-[0.4em]")}
+          // (No placeholder: grey digits in an empty box read as a code
+          // already typed in, beside a Continue that's still off.)
+          className={cn(field(), "mt-1 text-center text-xl tracking-[0.4em] tabular-nums")}
         />
         {error}
         <button
@@ -175,7 +180,8 @@ export function CodeSignIn({
             type="button"
             onClick={send}
             disabled={pending || wait > 0}
-            className={cn(button({ kind: "ghost", flush: true }), "text-brand disabled:text-stone-400")}
+            // (Its countdown's digits all one width: the words don't shuffle each second.)
+            className={cn(button({ kind: "ghost", flush: true }), "text-brand tabular-nums disabled:text-stone-400")}
           >
             {wait > 0 ? `Send a new code (${wait})` : "Send a new code"}
           </button>
@@ -192,11 +198,12 @@ export function CodeSignIn({
         send();
       }}
     >
-      {/* Shorter screens, tighter; a phone on its side, name and phone side by side. */}
+      {/* Shorter screens, tighter; a phone on its side, name and email side by
+          side. What's needed first, then the phone, which isn't. */}
       <div className="flex flex-col gap-2.5 compact:gap-2 short:grid short:grid-cols-2">
         {withName && (
           <div>
-            <label htmlFor={`${id}-name`} className="text-sm font-medium">
+            <label htmlFor={`${id}-name`} className={fieldLabel}>
               First name
             </label>
             <input
@@ -224,28 +231,8 @@ export function CodeSignIn({
             />
           </div>
         )}
-        {withPhone && (
-          <div>
-            <label htmlFor={`${id}-phone`} className="text-sm font-medium">
-              Phone <span className="font-normal text-muted">(optional)</span>
-            </label>
-            <input
-              id={`${id}-phone`}
-              name="phone"
-              type="tel"
-              inputMode="tel"
-              value={phone}
-              onChange={(event) => setPhone(event.target.value)}
-              maxLength={30}
-              autoComplete="tel"
-              aria-invalid={state.field === "phone" || undefined}
-              aria-describedby={describedBy("phone")}
-              className={cn(field(), "mt-1")}
-            />
-          </div>
-        )}
-        <div className="short:col-span-2">
-          <label htmlFor={`${id}-email`} className="text-sm font-medium">
+        <div className={cn(!withName && "short:col-span-2")}>
+          <label htmlFor={`${id}-email`} className={fieldLabel}>
             Email
           </label>
           <input
@@ -265,6 +252,26 @@ export function CodeSignIn({
             className={cn(field(), "mt-1")}
           />
         </div>
+        {withPhone && (
+          <div className="short:col-span-2">
+            <label htmlFor={`${id}-phone`} className={fieldLabel}>
+              Phone <span className="font-normal text-muted">(optional)</span>
+            </label>
+            <input
+              id={`${id}-phone`}
+              name="phone"
+              type="tel"
+              inputMode="tel"
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              maxLength={30}
+              autoComplete="tel"
+              aria-invalid={state.field === "phone" || undefined}
+              aria-describedby={describedBy("phone")}
+              className={cn(field(), "mt-1")}
+            />
+          </div>
+        )}
       </div>
       {error}
       <button

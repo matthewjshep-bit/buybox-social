@@ -41,7 +41,7 @@ export function timeAgo(iso: string, now = Date.now()) {
   if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d`;
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Los_Angeles" });
 }
 
 // "today", "yesterday", "4 days ago", "Nov 7": whole words, never "4d". By

@@ -1,4 +1,4 @@
-import { ExternalLink, Images, Lock, Mail, MapPin, Pencil, Phone, Users } from "lucide-react";
+import { ExternalLink, Images, Lock, Mail, MapPin, MessageCircle, Pencil, Phone } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AddFirstName, ShareMyPage } from "@/app/people/[id]/client";
@@ -8,7 +8,7 @@ import { NO_BANNER, type BannerChoice } from "@/lib/banner";
 import { formatPhone } from "@/lib/contact";
 import { cn } from "@/lib/format";
 import { sinceLabel, type ProfileLink } from "@/lib/profile";
-import { button, card } from "@/lib/ui";
+import { button, card, link as linkClass } from "@/lib/ui";
 import type { Kind } from "@/lib/kinds";
 
 // Under a pro's name, with no company given: what they do.
@@ -25,8 +25,10 @@ const PRO_LINE: Record<Kind, string> = {
 // links, to those lists, with Follow beside them. On your own page, a pencil
 // to edit it (your photo, your words, your links), on a page of its own. Your
 // own page with no name yet says "Your profile" and asks for one.
-// An agent on their own client's page sees that they are, with that client's
-// homes and their link a tap away.
+// An agent on their own client's page sees that they are (beside the name),
+// with Message beside Follow, as on Instagram: their conversation. All the
+// client's homes are a link on "Between you and them" below (or, with no such
+// card, a quiet link here).
 export function ProfileHeader({
   name,
   face = name,
@@ -77,9 +79,9 @@ export function ProfileHeader({
   follow?: ReactNode;
   // Their own photo, where they've added one.
   photo?: string | null;
-  // To an agent, their own client: every home sent them (`homes`), and
-  // their page among the agent's clients (`page`).
-  client?: { homes: string; page: string };
+  // To an agent, their own client: their conversation (`page`), and every
+  // home sent them (`homes`, only when the card below doesn't have it).
+  client?: { homes?: string; page: string };
   // What they say about themselves, an agent's links, and their brokerage.
   bio?: string;
   links?: ProfileLink[];
@@ -107,8 +109,9 @@ export function ProfileHeader({
         <Banner seed={personId} brand={brandColor} choice={banner} />
       </div>
       <div className="px-4 pb-5 sm:px-6">
-        {/* Their face over the banner's edge; beside it, the one or two things to do here. */}
-        <div className="flex items-end justify-between gap-3">
+        {/* Their face over the banner's edge; beside it, the one or two things to do here,
+            always clear of the banner (and, should they wrap, never pulling the face down). */}
+        <div className="flex items-start justify-between gap-3">
           <Avatar
             name={face}
             tone={agent ? "agent" : "person"}
@@ -116,7 +119,7 @@ export function ProfileHeader({
             photo={photo}
             className="relative -mt-10 ring-4 ring-white sm:-mt-14"
           />
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2 pt-3">
             {isMe ? (
               <>
                 <Link href="/people/me/edit" className={button({ kind: "secondary" })}>
@@ -125,7 +128,17 @@ export function ProfileHeader({
                 <ShareMyPage title={unnamed ? "My profile on Porchcard" : `${name} on Porchcard`} />
               </>
             ) : (
-              follow
+              <>
+                {follow}
+                {/* Their conversation: an icon on a phone (its name read out), a word above. */}
+                {client && (
+                  <Link href={client.page} className={cn(button({ kind: "secondary" }), "max-sm:w-11 max-sm:px-0")}>
+                    <MessageCircle aria-hidden size={16} />
+                    <span className="max-sm:sr-only">Message</span>
+                    <span className="sr-only"> {name}</span>
+                  </Link>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -135,9 +148,18 @@ export function ProfileHeader({
         <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1">
           {/* The keyboard comes here once you've said your name, as it changes. */}
           <h1 id="profile-name" tabIndex={-1} className="min-w-0 break-words font-display text-[30px] leading-tight outline-none sm:text-[34px]">
-            {isMe ? (unnamed ? "Your profile" : `${fullName || name} (you)`) : fullName || name}
+            {/* (Said above already, "Your public profile": "(you)" is for screen readers.) */}
+            {isMe && unnamed ? (
+              "Your profile"
+            ) : (
+              <>
+                {fullName || name}
+                {isMe && <span className="sr-only"> (you)</span>}
+              </>
+            )}
           </h1>
           <RoleChip role={agent ? (kind ?? "agent") : null} />
+          {client && <Badge tone="ink">Your client</Badge>}
         </div>
         {isMe && unnamed && <AddFirstName />}
         <p className="mt-1 flex flex-wrap items-center gap-x-2 text-body text-stone-700">
@@ -152,16 +174,13 @@ export function ProfileHeader({
             </span>
           )}
         </p>
-        {client && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Badge tone="ink">Your client</Badge>
-            <Link href={client.homes} className={button({ kind: "secondary" })}>
-              <Images aria-hidden size={16} /> See their homes
-            </Link>
-            <Link href={client.page} className={button({ kind: "ghost" })}>
-              <Users aria-hidden size={16} /> Client page
-            </Link>
-          </div>
+        {client?.homes && (
+          <Link
+            href={client.homes}
+            className={cn(linkClass, "mt-1 inline-flex min-h-11 items-center gap-1.5 text-body")}
+          >
+            <Images aria-hidden size={16} /> See all of {name.split(" ")[0] || name}&apos;s homes
+          </Link>
         )}
         {bio && (
           <p className="mt-3 max-w-2xl whitespace-pre-line break-words text-body leading-relaxed text-ink">{bio}</p>
@@ -204,7 +223,7 @@ export function ProfileHeader({
                   href={link.url}
                   target="_blank"
                   rel="noopener noreferrer nofollow ugc"
-                  className="inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-lg px-1 text-body font-semibold text-brand hover:underline"
+                  className="inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-lg px-1 text-body font-semibold text-brand hover:underline"
                 >
                   <ExternalLink aria-hidden size={14} className="shrink-0" />
                   <span className="truncate">{link.label || hostOf(link.url)}</span>
@@ -215,12 +234,13 @@ export function ProfileHeader({
         )}
         {people && (
           <p className="mt-3 text-body text-stone-700">
-            <Link href={`${people.href}/followers`} className="underline-offset-2 hover:underline">
+            {/* (Words in a line, each a fingertip's touch area without making the line taller.) */}
+            <Link href={`${people.href}/followers`} className="rounded-sm underline-offset-2 hit-44 hover:underline">
               <strong className="font-semibold text-ink tabular-nums">{people.followers}</strong>{" "}
               {people.followers === 1 ? "follower" : "followers"}
             </Link>
-            {" · "}
-            <Link href={`${people.href}/following`} className="underline-offset-2 hover:underline">
+            <span aria-hidden> · </span>
+            <Link href={`${people.href}/following`} className="rounded-sm underline-offset-2 hit-44 hover:underline">
               <strong className="font-semibold text-ink tabular-nums">{people.following}</strong> following
             </Link>
             {followsYou && (

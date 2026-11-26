@@ -195,11 +195,19 @@ export default async function ShareDetailPage({
   const everyone = people.map((p) => ({ id: p.id, name: p.first_name }));
   // Each person who has signed up, to their profile.
   const profiles = new Map(people.flatMap((p) => (p.profile ? [[p.id, `/people/${p.profile}`] as const] : [])));
+  // And their photo, where they've added one, beside what they say.
+  const faces = new Map(
+    people.flatMap((p) => {
+      const photo = p.profile ? photoUrl(p.profile, p.photo_v) : null;
+      return photo ? [[p.id, photo] as const] : [];
+    }),
+  );
   const comparison = comparePeople(everyone, thread, listings);
   const [{ suggestions, together }, timelines, photoLikes] = await Promise.all([
     suggestHomes(everyone, thread, listings),
     // Each home's Porchcard: the link's own conversation, as its people see it.
-    getShareTimelines(share.id, listings, null),
+    // (With each client's face on what they said, as Messages shows them.)
+    getShareTimelines(share.id, listings, null, { faces: true }),
     getSharePhotoLikes(share.id, listings.map((listing) => listing.ListingKey), null),
   ]);
   // The clients' comments the agent has hearted, as their thread shows them.
@@ -263,9 +271,27 @@ export default async function ShareDetailPage({
           <ArrowLeft aria-hidden size={18} /> {back.label}
         </Link>
 
-        {/* Who it's for, and the one thing to do next: send them more. */}
-        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-          <h1 className={cn(pageTitle, "mt-1 min-w-0")}>{clientName}</h1>
+        {/* Who it's for (and who's on it, under the name), and the one thing
+            to do next: send them more (beside them, or under them on a phone). */}
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+          <div className="min-w-0 flex-1 basis-64">
+            <h1 className={cn(pageTitle, "mt-1")}>{clientName}</h1>
+            {people.length > 0 && (
+              <p className="mt-1 text-sm text-stone-700">
+                On this link:{" "}
+                {people.map((person, i) => (
+                  <span key={person.id}>
+                    {i > 0 && " · "}
+                    <PersonName name={person.first_name} href={profiles.get(person.id)} />
+                  </span>
+                ))}{" "}
+                ·{" "}
+                <Link href={tabHref("people")} scroll={false} className={linkClass}>
+                  Edit<span className="sr-only"> who is on this link</span>
+                </Link>
+              </p>
+            )}
+          </div>
           <Link
             href={`/send?share=${share.id}`}
             className={cn(button({ kind: "primary", size: "lg" }), "mt-1 shrink-0 whitespace-nowrap")}
@@ -273,21 +299,6 @@ export default async function ShareDetailPage({
             <Plus aria-hidden size={20} /> Send more homes
           </Link>
         </div>
-        {people.length > 0 && (
-          <p className="mt-1 text-sm text-stone-700">
-            On this link:{" "}
-            {people.map((person, i) => (
-              <span key={person.id}>
-                {i > 0 && " · "}
-                <PersonName name={person.first_name} href={profiles.get(person.id)} />
-              </span>
-            ))}{" "}
-            ·{" "}
-            <Link href={tabHref("people")} scroll={false} className={linkClass}>
-              Edit<span className="sr-only"> who is on this link</span>
-            </Link>
-          </p>
-        )}
         {others.length > 0 && (
           <nav aria-label={`Other links to ${clientName}`} className="mt-2 flex flex-wrap items-center gap-2 text-sm">
             <span className="text-stone-700">Other links:</span>
@@ -368,6 +379,7 @@ export default async function ShareDetailPage({
                     liked={liked}
                     view={viewOf(listing.ListingKey)}
                     profiles={profiles}
+                    faces={faces}
                     agentPhoto={agentPhoto}
                   />
                 ))}
@@ -390,6 +402,7 @@ export default async function ShareDetailPage({
                       thread={thread}
                       liked={liked}
                       profiles={profiles}
+                      faces={faces}
                       agentPhoto={agentPhoto}
                     />
                   ))}
@@ -457,6 +470,7 @@ export default async function ShareDetailPage({
                       home={oneHome}
                       label={`${person.first_name}'s link`}
                       who={person.first_name}
+                      told={person.bound}
                     />
                   </li>
                 ))}
@@ -1162,6 +1176,7 @@ function HomePanel({
   liked,
   view,
   profiles,
+  faces,
   agentPhoto = null,
 }: {
   shareId: string;
@@ -1169,6 +1184,8 @@ function HomePanel({
   thread: Thread;
   // The agent's own photo, on their comments.
   agentPhoto?: string | null;
+  // Each person's photo, where they've added one, on theirs.
+  faces: Map<string, string>;
   // The comments the agent has hearted.
   liked: Set<string>;
   // Each person who has signed up, to their profile.
@@ -1306,7 +1323,7 @@ function HomePanel({
                     </>
                   }
                   face={comment.name}
-                  photo={comment.isAgent ? agentPhoto : undefined}
+                  photo={comment.isAgent ? agentPhoto : comment.participantId ? faces.get(comment.participantId) : undefined}
                   agent={comment.isAgent}
                   meta={
                     <>

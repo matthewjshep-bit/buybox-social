@@ -97,28 +97,38 @@ export function PopularHomes({ homes, period }: { homes: PopularHome[]; period: 
   return (
     <ol aria-label="Popular homes" className={cn(card, "mt-4 divide-y divide-stone-100 overflow-hidden")}>
       {homes.map((home, i) => {
-        const facts = [
-          home.price ? formatPrice(home.price) : null,
-          home.beds ? `${home.beds} bd` : null,
-          home.baths ? `${home.baths} ba` : null,
-        ].filter(Boolean);
+        // "2 bd · 2 ba · Seattle": the street has a line of its own.
+        const facts = [home.beds ? `${home.beds} bd` : null, home.baths ? `${home.baths} ba` : null, home.city || null].filter(
+          Boolean,
+        );
         return (
           <li key={home.key}>
             <Link
               href={`/reel?${new URLSearchParams({ from: `popular:${period}`, home: home.key })}`}
-              className="flex items-center gap-3 p-3 hover:bg-stone-50"
+              className="flex items-center gap-3 p-3 hover:bg-stone-50 focus-visible:outline-offset-[-2px]"
             >
               <Rank n={i + 1} />
               <HomeThumb src={home.photo} sizes="112px" className="h-20 w-24 sm:w-28" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-semibold">
-                  {home.address}
-                  {home.city && <span className="font-normal text-muted">, {home.city}</span>}
-                </span>
-                <span className="block truncate text-sm text-muted">{facts.join(" · ")}</span>
+              {/* The price first, as in Search's list; then what it is, where,
+                  and what was said about it, whose words first (as under a
+                  post), so a long one never cuts off the name. Without a
+                  price, the street leads. */}
+              <span className="min-w-0 flex-1 leading-snug">
+                {home.price ? (
+                  <>
+                    <span className="block font-display text-lg leading-tight text-ink">{formatPrice(home.price)}</span>
+                    {facts.length > 0 && <span className="block truncate text-meta text-muted">{facts.join(" · ")}</span>}
+                    <span className="block truncate text-meta text-stone-700">{home.address}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="block truncate font-semibold">{home.address}</span>
+                    {facts.length > 0 && <span className="block truncate text-meta text-muted">{facts.join(" · ")}</span>}
+                  </>
+                )}
                 {home.top && (
-                  <span className="block truncate text-sm">
-                    “{home.top.body}” <span className="text-muted">{home.top.name}</span>
+                  <span className="mt-0.5 line-clamp-2 text-sm text-stone-700">
+                    <span className="font-semibold text-ink">{home.top.name}</span> “{home.top.body}”
                   </span>
                 )}
                 <span className="mt-1 flex items-center gap-3 text-sm font-semibold tabular-nums">

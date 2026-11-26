@@ -13,8 +13,8 @@ import { daysBefore, dayOf, isVideo, PROFILE_TIME_ZONE } from "./profile";
 //   replies to their likes, new comments on homes they liked, new followers;
 // - as someone on an agent's link: the link reaching them, and what the agent
 //   said on it since they joined;
-// - as an agent: what their clients did on their links (comments, likes and
-//   requests to see a home; never passes, which stay on the dashboard).
+// - as an agent: what their clients did on their links (opened one, comments,
+//   likes and requests to see a home; never passes, which stay in Messages).
 export type ActivityKind =
   | "reply"
   | "comment_like"
@@ -24,6 +24,7 @@ export type ActivityKind =
   | "link"
   | "agent_reply"
   | "agent_note"
+  | "client_open"
   | "client_comment"
   | "client_like"
   | "client_ask";
@@ -192,8 +193,27 @@ const eventsOf = (visitorId: string) => sql`
   left join share_listings sl on sl.share_id = c.share_id and sl.listing_key = c.listing_key and sl.removed_at is null
   where s.agent_id <> self.account_id and (c.listing_key is null or sl.listing_key is not null)
   union all
-  -- An agent's clients, on the agent's own links, by first name: what they
-  -- said (but not the words an ask posts, which are the ask)...
+  -- An agent's clients, on the agent's own links, by first name: opening one,
+  -- the first time on any device (with the link's first home for its picture)...
+  select 'client-open:' || o.share_id || ':' || o.participant_id, 'client_open', p.first_name,
+    coalesce(pv.id::text, 'participant:' || p.id), pv.id::text, '', s.id::text, first.listing_key, null, null,
+    case when (select x.role from accounts x where x.id = s.agent_id) = 'agent'
+      then '/dashboard/shares/' || s.id else '/send/' || s.id end,
+    (select count(*)::int from share_listings sl where sl.share_id = s.id and sl.removed_at is null), min(o.first_at)
+  from self
+  join shares s on s.agent_id = self.account_id
+  join share_opens o on o.share_id = s.id
+  join participants p on p.id = o.participant_id
+  left join visitors pv on pv.account_id = p.account_id
+  cross join lateral (
+    select sl.listing_key from share_listings sl
+    where sl.share_id = s.id and sl.removed_at is null
+    order by sl.position limit 1
+  ) first
+  where p.account_id is null or p.account_id <> self.account_id
+  group by o.share_id, o.participant_id, p.id, p.first_name, pv.id, s.id, s.agent_id, first.listing_key
+  union all
+  -- ...what they said (but not the words an ask posts, which are the ask)...
   select 'client-comment:' || c.id, 'client_comment', p.first_name, coalesce(pv.id::text, 'participant:' || p.id),
     pv.id::text, c.body, p.id || ':' || coalesce(c.listing_key, ''), c.listing_key, c.media_key, c.id::text,
     case when (select o.role from accounts o where o.id = s.agent_id) = 'agent'
@@ -266,7 +286,7 @@ const rowKey = (item: { kind: string; about: string; at: Date | string }) =>
   `${item.kind === "client_like" || item.kind === "client_comment" ? "client" : item.kind}|${item.about}|${dayOf(item.at)}`;
 
 const PUBLIC_KINDS = new Set<ActivityKind>(["reply", "comment_like", "comment", "like_reply"]);
-const CLIENT_KINDS = new Set<ActivityKind>(["client_comment", "client_like", "client_ask"]);
+const CLIENT_KINDS = new Set<ActivityKind>(["client_open", "client_comment", "client_like", "client_ask"]);
 const AGENT_KINDS = new Set<ActivityKind>(["link", "agent_reply", "agent_note"]);
 
 // Who it's from, for a line only the reader sees: their client, or their
@@ -288,8 +308,9 @@ function hrefOf(row: EventRow, photoIndex: number | null) {
     return `/homes/${key}${search ? `?${search}` : ""}`;
   }
   if (CLIENT_KINDS.has(row.kind) && row.target) {
-    // (A message about no home: the page of the link, not a home on it.)
-    if (!key) return row.target;
+    // (Opening the link, or a message about no home: the page of the link,
+    // not a home on it.)
+    if (!key || row.kind === "client_open") return row.target;
     const spot = row.comment_id ? `#comment-${row.comment_id}` : `#home-${key}`;
     return `${row.target}?tab=homes${spot}`;
   }
@@ -444,6 +465,8 @@ export function describeActivity(
     case "agent_note":
       // (About no home: a message in the conversation itself.)
       return row.address ? `left a note on ${address}` : "sent you a message";
+    case "client_open":
+      return `opened ${row.homes === 1 ? "the home" : row.homes ? `the ${row.homes} homes` : "the homes"} you sent`;
     case "client_comment":
       return row.address ? `${row.likedToo ? "liked and commented" : "commented"} on ${address}` : "sent you a message";
     case "client_like":

@@ -14,7 +14,9 @@ export function SkipLink() {
         event.preventDefault();
         homes.focus({ preventScroll: true });
       }}
-      className="sr-only z-50 rounded-full bg-ink px-5 py-3 font-semibold text-white focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
+      // (Its padding comes with focus: shown, it's a button, not a strip of
+      // words. A plain padding would lose to not-sr-only's.)
+      className="sr-only z-50 rounded-full bg-ink font-semibold text-white focus:not-sr-only focus:fixed focus:left-3 focus:top-[calc(env(safe-area-inset-top)+0.5rem)] focus:px-5 focus:py-3 focus:shadow-lg"
     >
       Skip to main content
     </a>

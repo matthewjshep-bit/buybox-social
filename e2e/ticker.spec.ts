@@ -34,7 +34,7 @@ const rowOf = (home: Locator, words: string) => latestOf(home).getByRole("listit
 // The bold "N likes" line at its top, if anyone has liked the home.
 const likesLineOf = (home: Locator) => latestOf(home).locator("p").filter({ hasText: /^\d+ likes?$|^Liked by / });
 // The pin on a comment left on a spot, and the lock on one shared from a private chat.
-const pinIn = (row: Locator) => row.locator('p > svg:has(circle[r="3"])');
+const pinIn = (row: Locator) => row.locator('p svg:has(circle[r="3"])');
 const lockIn = (row: Locator) => row.locator("p > svg:has(rect)");
 // What used to go round at the photo's foot, and what came with it: none of it, anywhere.
 const nothingGoesRound = async (home: Locator) => {
@@ -202,11 +202,13 @@ test("a comment left on a spot shows whichever photo is on screen, with a pin; i
   await settled(home);
   await expect(home.getByText("Photo 1 of 3")).toBeAttached();
   // On the first photo already: the comments are the home's, not the photo's.
-  // A pin says it's about a spot; which spot waits for the comments.
+  // A pin and the spot's name say it's about a spot (just words in the row;
+  // showing it waits for the comments).
   const row = rowOf(home, CY_SAID);
-  await expect(row).toContainText(`Cy ${CY_SAID}`);
+  await expect(row).toContainText(/Cy\s*About the natural light:\s*/);
+  await expect(row).toContainText(CY_SAID);
   await expect(pinIn(row)).toHaveCount(1);
-  await expect(row).not.toContainText(/natural light/i);
+  await expect(row.locator("[data-spot-tag]")).toHaveCount(0);
   await expect(home.locator("[data-spot-highlight]")).toHaveCount(0);
   const words = await latestOf(home).textContent();
   await home.getByRole("button", { name: "Next photo" }).click();
@@ -266,7 +268,9 @@ test("on a wide screen, the comments are under the photo in its centred column, 
     await box(home.locator("[data-actions]")),
     await box(home),
   ];
-  expect(Math.abs(words.width - 704)).toBeLessThanOrEqual(1);
+  // (44rem at most: as wide as the photo's space, never under 30rem.)
+  expect(words.width).toBeLessThanOrEqual(704 + 1);
+  expect(words.width).toBeGreaterThanOrEqual(480 - 1);
   expect(Math.abs(words.x + words.width / 2 - (frame.x + frame.width / 2))).toBeLessThanOrEqual(2);
   expect(Math.abs(photo.x + photo.width / 2 - (frame.x + frame.width / 2))).toBeLessThanOrEqual(2);
   expect(photo.x + photo.width).toBeLessThan(words.x + words.width + 1);
@@ -368,7 +372,8 @@ test("beside the map: on a phone, the comments under the photo and Open full scr
   await expect(small).toBeVisible();
   await expect(latestOf(small)).toContainText(`Bo ${BO_SAID}`);
   await nothingGoesRound(small);
-  const open = small.getByRole("button", { name: /^Open full screen/ });
+  // (In the row along the pane's foot, named for the home showing.)
+  const open = phone.getByRole("button", { name: `Open full screen: ${WEXFORD}`, exact: true });
   await expect(open).toBeVisible();
   const [list, photo, button] = [await box(latestOf(small)), await box(photoOf(small)), await box(open)];
   expect(list.y).toBeGreaterThanOrEqual(photo.y + photo.height - 1);

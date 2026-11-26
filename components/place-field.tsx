@@ -2,7 +2,7 @@
 
 import { useId } from "react";
 import { cn } from "@/lib/format";
-import { field } from "@/lib/ui";
+import { field, fieldLabel } from "@/lib/ui";
 
 // Where someone is, typed as "City, ST", with the cities homes here are in
 // offered as they type (`places`), and any other city fine too.
@@ -24,7 +24,7 @@ export function PlaceField({
   const id = useId();
   return (
     <>
-      <label htmlFor={`${id}-place`} className="text-sm font-medium">
+      <label htmlFor={`${id}-place`} className={fieldLabel}>
         City and state
       </label>
       <input

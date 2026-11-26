@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useId, useState, useTransition } from "react";
 import { setMyBanner } from "@/app/people/[id]/actions";
 import { Banner } from "@/components/banner";
-import { BRAND_SCENES, WARM_SCENES } from "@/components/banner-art";
+import { BRAND_SCENES, defaultScene, WARM_SCENES } from "@/components/banner-art";
+import { SavedNote } from "@/components/ui";
 import type { BannerChoice } from "@/lib/banner";
 import { cn } from "@/lib/format";
 import { BANNER_FRAME, bannerSource, renderBanner, type BannerFrame } from "@/lib/resize-photo";
@@ -76,17 +77,14 @@ export function BannerPicker({
         >
           {open ? "Done" : "Change banner"}
         </button>
-        {saved && !pending && !error && (
-          <p role="status" className="flex items-center gap-1 text-meta font-semibold text-emerald-700">
-            <Check aria-hidden size={14} /> Saved
-          </p>
-        )}
+        {saved && !pending && !error && <SavedNote />}
       </div>
       {open && (
         <div id={listId}>
           <ul className="mt-3 grid grid-cols-4 gap-1.5 sm:grid-cols-5">
             {options.map((option) => {
-              const on = choice.style === option.style;
+              // (Never chosen: the scene they were given is the one that's on.)
+              const on = (choice.style || defaultScene(seed, brand)) === option.style;
               return (
                 <li key={option.style}>
                   <button

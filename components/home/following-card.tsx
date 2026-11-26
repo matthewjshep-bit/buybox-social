@@ -5,9 +5,8 @@ import { FeedBar } from "@/components/home/feed-bar";
 import { PhotoSwipe } from "@/components/photo-swipe";
 import { SaidLine } from "@/components/said-line";
 import { Avatar, Badge, HomeThumb } from "@/components/ui";
-import { cn, formatPrice, namesOrOthers } from "@/lib/format";
+import { cn, formatPrice, namesOrOthers, timeAgo } from "@/lib/format";
 import type { FeedCounts, FeedWho, HomeFeedEntry } from "@/lib/home-feed";
-import { cardTime } from "@/lib/profile";
 import type { ReactionState } from "@/lib/reactions";
 import { card } from "@/lib/ui";
 
@@ -65,9 +64,9 @@ function Names({ who }: { who: FeedWho[] }) {
 // Beside a name, in an agent's own feed: this one is their client.
 function YourClient() {
   return (
-    <span className="ml-1.5 inline-flex rounded-full bg-ink px-1.5 py-px align-[1px] text-[10px] font-bold uppercase tracking-wide text-white">
+    <Badge tone="ink" small className="ml-1.5 align-[1px]">
       Your client
-    </span>
+    </Badge>
   );
 }
 
@@ -127,7 +126,9 @@ export function FollowingCard({
   // are the post, under the line, above the photo.
   const post = !reason && why.who.length === 1 && /^posted\b/.test(why.sentence) ? entry.said[0] : undefined;
   const href = feedReel(home.key, home.photo?.index);
-  const time = cardTime(entry.at);
+  // How long ago, as on a post ("11h", "3d", "Nov 15"): the feed isn't in
+  // the order things happened and has no days to head it, so never a clock.
+  const time = timeAgo(entry.at);
   return (
     <li data-item={`home:${home.key}`} className={cn(card, "relative overflow-hidden")}>
       <Link
@@ -146,7 +147,7 @@ export function FollowingCard({
             {reason.text}
             {rated && (
               <>
-                {" "}
+                {"\u00a0"}
                 <span className="whitespace-nowrap font-normal text-meta text-muted">
                   {"· "}
                   <time dateTime={entry.at}>{time}</time>
@@ -166,8 +167,9 @@ export function FollowingCard({
             ) : (
               why.sentence
             )}
-            {/* Held to the last word, so the time never starts a line on its own. */}
-            {" "}
+            {/* Held to the last word (a space that doesn't break), so the time
+                never starts a line on its own. */}
+            {"\u00a0"}
             <span className="whitespace-nowrap text-meta text-muted">
               {"· "}
               <time dateTime={entry.at}>{time}</time>
@@ -183,10 +185,11 @@ export function FollowingCard({
           href={href}
           label={home.address}
           sizes="(min-width: 1024px) 600px, 100vw"
-          // On a phone, the first photo whole, at its own shape (between a
-          // little taller than wide and three by two); wider, a fixed height.
+          // The first photo whole, at its own shape (between a little taller
+          // than wide and three by two), at every width; never taller than
+          // 32rem, so a tall one doesn't fill a wide screen.
           style={{ "--shape": String(shapeOf(home.photos[0])) } as CSSProperties}
-          className="aspect-(--shape) w-full bg-stone-100 sm:aspect-auto sm:h-[28rem]"
+          className="aspect-(--shape) max-h-[32rem] w-full bg-stone-100"
         />
       )}
       {/* The facts, in a line: the price large, the rest after it. */}
@@ -239,7 +242,7 @@ export function StripCard({ entries }: { entries: HomeFeedEntry[] }) {
           liked {entries.length} homes{where}
           <span className="whitespace-nowrap text-meta text-muted">
             {" · "}
-            <time dateTime={entries[0].at}>{cardTime(entries[0].at)}</time>
+            <time dateTime={entries[0].at}>{timeAgo(entries[0].at)}</time>
           </span>
         </p>
       </div>

@@ -2,11 +2,11 @@
 
 import { ArrowLeft, Briefcase, Camera, Check, Home, Landmark, TrendingUp } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useId, useRef, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from "react";
 import { BRAND_COLORS, cn } from "@/lib/format";
 import { isProKind, type Kind } from "@/lib/kinds";
 import { resizePhoto } from "@/lib/resize-photo";
-import { button, field } from "@/lib/ui";
+import { button, field, fieldLabel } from "@/lib/ui";
 import { PlaceField } from "@/components/place-field";
 import { chooseKind, saveColor, saveCompany, saveMlsId, saveName, savePhoto, savePlace, type StepResult } from "./actions";
 
@@ -77,7 +77,17 @@ export function Onboarding(props: {
   const [color, setColor] = useState(props.color);
   const [place, setPlace] = useState(props.place);
   const fileInput = useRef<HTMLInputElement>(null);
+  const title = useRef<HTMLHeadingElement>(null);
+  // The tile tapped, ringed at once while it saves (and let go if it doesn't).
+  const [choosing, setChoosing] = useState<Kind | null>(null);
   const pro = isProKind(kind);
+
+  // A step with no box to type in (the photo, the color) starts at its
+  // question, so a screen reader hears it, rather than on a button the last
+  // step left focus on. (The rest focus their box, which the question names.)
+  useEffect(() => {
+    if (step === "photo" || step === "color") title.current?.focus();
+  }, [step]);
 
   // Where they were going, once there's nothing more to ask: or Home, pros
   // too (their Clients is a tap away in the bar).
@@ -98,21 +108,28 @@ export function Onboarding(props: {
       forward();
     });
 
-  const pick = (chosen: Kind) =>
+  const pick = (chosen: Kind) => {
+    setChoosing(chosen);
     start(async () => {
       const result = await chooseKind(chosen).catch((): StepResult => ({ ok: false, error: "That didn't save. Please try again." }));
-      if (!result.ok) return setError(result.error);
+      if (!result.ok) {
+        setChoosing(null);
+        return setError(result.error);
+      }
       setError(null);
       setKind(chosen);
       // (Shopping, with their name given already: nothing more to ask.)
       if (stepsFor(chosen, { name: hadName, place: hadPlace }, askKind).length <= 1) return finish();
       setAt(1);
     });
+  };
 
   const total = steps.length;
-  const choices = props.pro
-    ? [...KIND_CHOICES.filter((c) => c.kind !== "buyer"), ...KIND_CHOICES.filter((c) => c.kind === "buyer")]
-    : KIND_CHOICES;
+  // From "For agents", the pros first; from anywhere else, shopping first.
+  const buyer = KIND_CHOICES.filter((c) => c.kind === "buyer");
+  const pros = KIND_CHOICES.filter((c) => c.kind !== "buyer");
+  const choices = props.pro ? [...pros, ...buyer] : [...buyer, ...pros];
+  const picked = choosing ?? kind;
 
   const heading: Record<Step, string> = {
     kind: "What brings you to Porchcard?",
@@ -135,10 +152,18 @@ export function Onboarding(props: {
 
   if (!step) return null;
   const optional = step === "place" || step === "company" || step === "mls" || step === "photo" || (step === "name" && !pro);
+  // Nothing given on this step: for one that may wait, the one button is Skip.
+  const empty =
+    (step === "name" && !name.trim()) ||
+    (step === "place" && !place.trim()) ||
+    (step === "company" && !company.trim()) ||
+    (step === "mls" && !mlsId.trim()) ||
+    (step === "photo" && !photo);
+  const skipping = optional && empty;
   const errorId = `${id}-error`;
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div>
       <div className="flex min-h-11 items-center justify-between">
         {at > 0 ? (
           <button
@@ -168,7 +193,9 @@ export function Onboarding(props: {
         </ol>
       )}
 
-      <h1 className="mt-8 font-display text-3xl text-balance">{heading[step]}</h1>
+      <h1 ref={title} tabIndex={-1} className="mt-8 font-display text-3xl text-balance">
+        {heading[step]}
+      </h1>
       <p className="mt-2 text-body text-stone-700">{hint[step]}</p>
 
       {step === "kind" ? (
@@ -178,14 +205,18 @@ export function Onboarding(props: {
               key={choice.kind}
               type="button"
               disabled={pending}
-              aria-pressed={kind === choice.kind}
+              aria-pressed={picked === choice.kind}
               onClick={() => pick(choice.kind)}
+              // White cards on the sand (the `card` look; its ring branched
+              // here, never two rings fighting), the brand's tint on each
+              // icon as on the home page. The one tapped rings at once; the
+              // others dim while it saves.
               className={cn(
-                "flex min-h-16 items-center gap-4 rounded-2xl bg-surface p-4 text-left ring-1 ring-stone-200 transition hover:ring-stone-400",
-                kind === choice.kind && "ring-2 ring-brand",
+                "flex min-h-16 items-center gap-4 rounded-2xl bg-white p-4 text-left transition active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100",
+                picked === choice.kind ? "ring-2 ring-brand" : "ring-1 ring-stone-200 hover:ring-stone-400 disabled:opacity-60",
               )}
             >
-              <span className="grid size-11 shrink-0 place-items-center rounded-full bg-stone-100 text-ink">{choice.icon}</span>
+              <span className="grid size-11 shrink-0 place-items-center rounded-full bg-brand/10 text-brand">{choice.icon}</span>
               <span className="min-w-0 flex-1">
                 <span className="block text-lg font-semibold">{choice.title}</span>
                 <span className="block text-sm text-muted">{choice.says}</span>
@@ -201,9 +232,16 @@ export function Onboarding(props: {
       ) : (
         <form
           aria-label={heading[step]}
-          className="mt-6 flex flex-1 flex-col"
+          // (What's missing is said in words under the box, not a browser's bubble.)
+          noValidate
+          className="mt-6 flex flex-col"
           onSubmit={(event) => {
             event.preventDefault();
+            if (step === "name" && !name.trim()) {
+              // A pro's name is needed; someone shopping may say it later.
+              if (pro) return setError("Please add your full name.");
+              return forward();
+            }
             if (step === "name") save(() => saveName(name));
             else if (step === "place") save(() => savePlace(place));
             else if (step === "company") save(() => saveCompany(company));
@@ -214,14 +252,13 @@ export function Onboarding(props: {
         >
           {(step === "name" || step === "company" || step === "mls") && (
             <>
-              <label htmlFor={`${id}-${step}`} className="text-sm font-medium">
+              <label htmlFor={`${id}-${step}`} className={fieldLabel}>
                 {step === "name" ? (pro ? "Full name" : "First name") : step === "company" ? "Company" : "MLS ID"}
               </label>
               <input
                 key={step}
                 id={`${id}-${step}`}
                 autoFocus
-                required={step === "name"}
                 maxLength={step === "mls" ? 20 : 80}
                 autoComplete={step === "name" ? (pro ? "name" : "given-name") : step === "company" ? "organization" : "off"}
                 value={step === "name" ? name : step === "company" ? company : mlsId}
@@ -308,21 +345,17 @@ export function Onboarding(props: {
             </p>
           )}
 
-          <div className="mt-auto flex flex-col gap-2 pt-8">
-            <button type="submit" disabled={pending} className={button({ kind: "primary", size: "lg", block: true })}>
-              {pending ? "Saving…" : at + 1 === total ? "Finish" : "Continue"}
-            </button>
-            {optional && (
-              <button
-                type="button"
-                disabled={pending}
-                onClick={forward}
-                className={cn(button({ kind: "ghost", block: true }), "text-stone-700")}
-              >
-                Skip
-              </button>
-            )}
-          </div>
+          {/* Right under the question, one button: Skip while a step that
+              may wait is empty, Continue (or Finish) once it has an answer.
+              Skip still submits, so a box emptied of what it had is saved
+              empty. */}
+          <button
+            type="submit"
+            disabled={pending}
+            className={cn(button({ kind: skipping ? "secondary" : "primary", size: "lg", block: true }), "mt-8")}
+          >
+            {skipping ? "Skip" : pending ? "Saving…" : at + 1 === total ? "Finish" : "Continue"}
+          </button>
         </form>
       )}
     </div>

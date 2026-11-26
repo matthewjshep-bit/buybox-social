@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
 import { savePlace } from "@/app/welcome/actions";
 import { PlaceField } from "@/components/place-field";
+import { SavedNote } from "@/components/ui";
 import { button } from "@/lib/ui";
 
 // Where they are, on Edit profile: shown by their name, and what their feed
@@ -38,14 +39,15 @@ export function PlaceForm({ place, places }: { place: string; places: string[] }
         describedBy={state.error ? `${id}-error` : undefined}
       />
       <div className="mt-3 flex items-center gap-3">
-        <button type="submit" disabled={pending} className={button({ kind: "secondary" })}>
+        {/* As every card's Save here: blue once there's something to save. */}
+        <button
+          type="submit"
+          disabled={pending}
+          className={button({ kind: value.trim() !== place.trim() && !state.saved ? "primary" : "secondary" })}
+        >
           {pending ? "Saving…" : "Save location"}
         </button>
-        {state.saved && (
-          <p role="status" className="text-sm font-semibold text-emerald-700">
-            Saved
-          </p>
-        )}
+        {state.saved && !pending && <SavedNote />}
       </div>
       {state.error && (
         <p id={`${id}-error`} role="alert" className="mt-2 text-sm text-red-700">

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import type { ReactNode } from "react";
 import { CodeSignIn } from "@/components/code-sign-in";
 import { cn } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
@@ -81,7 +82,9 @@ export function SignUpForm({ devMode, className }: { devMode: boolean; className
         withPhone
         label="Sign up"
         submitLabel="Sign up free"
-        note={devMode ? "Local demo, no email sent." : "Free. No password."}
+        // (The same words as a link's sign-up sheet: someone back for more
+        // learns this form signs them in too.)
+        note={devMode ? "Local demo, no email sent." : "Free. No password. Signed up before? The same email works."}
         // Signed in where they are: the page becomes their feed. New here:
         // what they are first (a step at a time), then back here.
         onDone={({ welcome }) => {
@@ -93,3 +96,29 @@ export function SignUpForm({ devMode, className }: { devMode: boolean; className
   );
 }
 
+// The home page's "Sign up": down to the form at its foot (#start), gliding
+// unless motion is reduced, and focus goes along. With a mouse, into its first
+// box, ready to type; on a touch screen, to the form's heading (the next Tab,
+// or swipe, is the first box), so no keyboard springs up mid-scroll. Without
+// script it's the plain #start link.
+export function SignUpJump({ className, children }: { className?: string; children: ReactNode }) {
+  return (
+    <a
+      href="#start"
+      className={className}
+      onClick={(event) => {
+        const start = document.getElementById("start");
+        if (!start || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+        start.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+        history.replaceState(null, "", "#start");
+        const box = start.querySelector<HTMLInputElement>("form input");
+        const to = matchMedia("(pointer: fine)").matches && box ? box : start.querySelector<HTMLElement>("h2[tabindex]");
+        to?.focus({ preventScroll: true });
+      }}
+    >
+      {children}
+    </a>
+  );
+}

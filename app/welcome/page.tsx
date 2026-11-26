@@ -37,7 +37,9 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
   // Nothing left to ask: on their way.
   if (kind && row.full_name.trim()) redirect(next ?? "/");
   return (
-    <main className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-md flex-col px-5 pb-10 pt-6 sm:pt-12">
+    // (Sized to what's on it: each step's button sits right under its box,
+    // not at the foot of the window, nor under a phone's keyboard.)
+    <main className="mx-auto max-w-md px-5 pb-10 pt-6 sm:pt-12">
       <Onboarding
         kind={kind}
         name={row.full_name}

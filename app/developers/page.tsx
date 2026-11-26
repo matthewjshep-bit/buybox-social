@@ -161,10 +161,10 @@ export default function DevelopersPage() {
         <h2 id="contents-title" className="font-semibold">
           On this page
         </h2>
-        <ul className="mt-2 grid gap-x-6 sm:grid-cols-2">
+        <ul className="mt-2 grid grid-cols-2 gap-x-4 sm:gap-x-6">
           {CONTENTS.map(([id, title]) => (
             <li key={id}>
-              <a href={`#${id}`} className={cn(link, "flex min-h-11 items-center")}>
+              <a href={`#${id}`} className={cn(link, "flex min-h-11 items-center py-1 leading-snug")}>
                 {title}
               </a>
             </li>

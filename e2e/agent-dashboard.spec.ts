@@ -155,7 +155,7 @@ test("Messages leads with what's new, and says when each link was opened, never 
   await agent.goto("/dashboard");
   await agent.waitForURL(/\/messages$/);
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Messages");
-  await expect(row).toContainText(/Not opened yet\s*·\s*today/);
+  await expect(row).toContainText(/Not opened yet\s*·\s*(just now|\d+[mh])/);
   await expect(row).not.toContainText("Sent today");
   await expect(row.getByText("Waiting", { exact: true })).toHaveCount(0);
   await expect(row.getByText("New", { exact: true })).toHaveCount(0);
@@ -181,7 +181,7 @@ test("Messages leads with what's new, and says when each link was opened, never 
   const owen = await signedIn(browser);
   await Promise.all([actionAnswered(owen), owen.goto(url)]);
   await agent.reload();
-  await expect(row).toContainText(/Opened\s*·\s*today/);
+  await expect(row).toContainText(/Opened\s*·\s*(just now|\d+[mh])/);
   await expect(row).not.toContainText("Not opened yet");
   await expect.poll(() => emailsTo("olive-opens@example.com").length).toBe(1);
   expect(emailsTo("olive-opens@example.com")[0]).toContain("Owen opened your link to 2 homes");
@@ -286,7 +286,7 @@ test("the agent sees how much of a link was looked at, and the link never says s
     await expect(agent.locator("main")).toContainText(/Owen opened it .+ · saw 3 of 4 photos/, { timeout: 1000 });
   }).toPass({ timeout: 20_000 });
   await agent.goto("/messages");
-  await expect(threadRow(agent, "Owen")).toContainText(/Opened\s*·\s*today/);
+  await expect(threadRow(agent, "Owen")).toContainText(/Opened\s*·\s*(just now|\d+[mh])/);
   await openThread(agent, "Owen");
   const ownPage = agent.url();
   const card = threadHome(agent, "10421 Halvard Way NE");

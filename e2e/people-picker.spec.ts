@@ -329,7 +329,8 @@ async function openLink(page: Page, key: string, address: string) {
   const details = sheet.getByRole("link", { name: "Link details" });
   await expect(details).toHaveAttribute("href", /^\/dashboard\/shares\/[\w-]+$/);
   const dashboardUrl = (await details.getAttribute("href"))!;
-  await sheet.getByRole("button", { name: "Skip" }).click();
+  // (Nobody named: the one button just closes it.)
+  await sheet.getByRole("button", { name: "Done", exact: true }).click();
   await expect(sheet).toBeHidden();
   const url = await page.evaluate(() => (window as unknown as { shared: ShareData[] }).shared.at(-1)?.url ?? "");
   expect(url).toMatch(/\/s\/[\w-]{32}$/);

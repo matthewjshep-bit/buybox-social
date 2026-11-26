@@ -3,6 +3,7 @@
 import { Globe, Heart, Lock, MapPin, X } from "lucide-react";
 import Link from "next/link";
 import { createContext, useContext, useLayoutEffect, useRef, useState, useTransition, type ReactNode } from "react";
+import { useLinkAgent } from "@/components/agent-notes";
 import { useCommentLike, useThread, type ReplyTarget, type SpotRef } from "@/components/listing-thread";
 import { spotThread } from "@/components/photo-spots";
 import { Avatar, Badge } from "@/components/ui";
@@ -102,6 +103,11 @@ const LIGHT: Tone = {
 const ToneContext = createContext<Tone>(DARK);
 const useTone = () => useContext(ToneContext);
 
+// Faces we have photos for: the viewer's own (on what they said), and on an
+// agent's link, the agent's (on theirs), as their header shows them.
+type Faces = { mine?: string; agent?: string };
+const FacesContext = createContext<Faces>({});
+
 export function CommentThread({
   post,
   mode,
@@ -113,6 +119,7 @@ export function CommentThread({
   opened,
   look,
   canShare = false,
+  heartBeside = false,
   onOpen,
   onClose,
   onAllComments,
@@ -139,6 +146,8 @@ export function CommentThread({
   look: ThreadLook;
   // On a link, once they've liked the home: they may share a comment publicly.
   canShare?: boolean;
+  // The home's heart, with its count, is right above (the row of buttons).
+  heartBeside?: boolean;
   // Folded: a row opens the thread on that comment (none: at the top).
   onOpen: (commentId?: string) => void;
   onClose: () => void;
@@ -178,16 +187,33 @@ export function CommentThread({
   const rest = ranked.filter((comment) => !fresh.includes(comment));
   const shownTop = inline ? [...fresh, ...rest.slice(0, FEED_FIRST + more * FEED_MORE)] : ranked;
   const hidden = ranked.length - shownTop.length;
-  // (Under a card, the bar's heart already says how many liked it.)
+  // (Under a card, the bar's heart already says how many liked it.) A plain
+  // count, when there's no one to name, is the same number as the heart's
+  // right above it: folded, it gives way to a comment when there's room for
+  // one or the other ("plain"); who liked it, named, always stays, as does a
+  // count with no heart beside it (the pane beside the map).
+  const likedBy = likedLine(liked, mode === "share" ? post.likers : [], mineLiked);
   const likesLine = liked > 0 && !spot && look !== "inline" && (
-    <p className="py-1.5 text-body font-semibold leading-5">{likedLine(liked, mode === "share" ? post.likers : [], mineLiked)}</p>
+    <p
+      data-likes={heartBeside && !likedBy.startsWith("Liked by") ? "plain" : "named"}
+      className="py-1.5 text-body font-semibold leading-5"
+    >
+      {likedBy}
+    </p>
   );
   const spots = { name: (s: SpotRef) => spotName(post.listing, s), show: onGoToSpot };
+  const linkAgent = useLinkAgent();
+  const faces: Faces = {
+    mine: post.myFace,
+    agent: (linkAgent?.agent.is_agent !== false && linkAgent?.agent.photo_data_url) || undefined,
+  };
 
   if (!open) {
     return (
       <ToneContext.Provider value={t}>
-        <Latest post={post} all={all} top={top} likesLine={likesLine} spots={spots} onOpen={onOpen} className={className} />
+        <FacesContext.Provider value={faces}>
+          <Latest post={post} all={all} top={top} likesLine={likesLine} spots={spots} onOpen={onOpen} className={className} />
+        </FacesContext.Provider>
       </ToneContext.Provider>
     );
   }
@@ -271,15 +297,17 @@ export function CommentThread({
   if (look === "cover") {
     return (
       <ToneContext.Provider value={t}>
-        <div className={cn("flex min-h-0 flex-1 flex-col", t.fg, className)}>
-          <div className="px-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">{head}</div>
-          <div
-            data-thread-scroll
-            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[max(1rem,env(safe-area-inset-left))] pb-3 pr-[max(1rem,env(safe-area-inset-right))]"
-          >
-            {list}
+        <FacesContext.Provider value={faces}>
+          <div className={cn("flex min-h-0 flex-1 flex-col", t.fg, className)}>
+            <div className="px-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">{head}</div>
+            <div
+              data-thread-scroll
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[max(1rem,env(safe-area-inset-left))] pb-3 pr-[max(1rem,env(safe-area-inset-right))]"
+            >
+              {list}
+            </div>
           </div>
-        </div>
+        </FacesContext.Provider>
       </ToneContext.Provider>
     );
   }
@@ -288,26 +316,30 @@ export function CommentThread({
     // and folds it away). About one spot it still says so, with the way back.
     return (
       <ToneContext.Provider value={t}>
-        <div className={cn("flex flex-col", t.fg, className)}>
-          {spot && head}
-          {list}
-        </div>
+        <FacesContext.Provider value={faces}>
+          <div className={cn("flex flex-col", t.fg, className)}>
+            {spot && head}
+            {list}
+          </div>
+        </FacesContext.Provider>
       </ToneContext.Provider>
     );
   }
   return (
     <ToneContext.Provider value={t}>
-      <div className={cn("flex flex-col", t.fg, className)}>
-        {head}
-        {list}
-        <button
-          type="button"
-          onClick={onClose}
-          className={cn("mt-2 flex min-h-11 items-center text-body font-semibold transition-colors", t.soft, t.hoverFg)}
-        >
-          Hide comments
-        </button>
-      </div>
+      <FacesContext.Provider value={faces}>
+        <div className={cn("flex flex-col", t.fg, className)}>
+          {head}
+          {list}
+          <button
+            type="button"
+            onClick={onClose}
+            className={cn("mt-2 flex min-h-11 items-center text-body font-semibold transition-colors", t.soft, t.hoverFg)}
+          >
+            Hide comments
+          </button>
+        </div>
+      </FacesContext.Provider>
     </ToneContext.Provider>
   );
 }
@@ -338,30 +370,47 @@ function Latest({
   // Whole rows only: a row whose foot would run past the room (with "View
   // all" under it, when there'd be more to see) is left out, and "View all"
   // counts it among the rest. Measured, so a smaller phone or the pane
-  // beside the map shows one or two.
+  // beside the map shows one or two. With no room for even one comment, a
+  // plain count of likes (the heart above says the same) makes way for it.
+  // And never half a line: the likes line or "View all" that would run past
+  // the foot isn't shown either (the home itself is still a tap away).
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
     const fit = () => {
       const rows = [...el.querySelectorAll<HTMLElement>("[data-row]")];
       const more = el.querySelector<HTMLElement>("[data-view-all]");
+      const likes = el.querySelector<HTMLElement>("[data-likes]");
       for (const row of rows) row.hidden = false;
       if (more) more.hidden = false;
+      if (likes) likes.hidden = false;
       const moreHeight = more?.offsetHeight ?? 0;
       const room = el.clientHeight;
       const top = el.getBoundingClientRect().top;
-      let fits = rows.length;
-      for (const [i, row] of rows.entries()) {
-        const reserve = count > i + 1 ? moreHeight : 0;
-        if (row.getBoundingClientRect().bottom - top > room - reserve + 0.5) {
-          fits = i;
-          break;
+      const past = (node: HTMLElement, reserve = 0) => node.getBoundingClientRect().bottom - top > room - reserve + 0.5;
+      const place = () => {
+        for (const row of rows) row.hidden = false;
+        let fits = rows.length;
+        for (const [i, row] of rows.entries()) {
+          if (past(row, count > i + 1 ? moreHeight : 0)) {
+            fits = i;
+            break;
+          }
         }
+        rows.forEach((row, i) => {
+          row.hidden = i >= fits;
+        });
+        return fits;
+      };
+      let fits = place();
+      if (fits === 0 && rows.length > 0 && likes?.dataset.likes === "plain") {
+        likes.hidden = true;
+        fits = place();
+        // (Still none: the count comes back, if it fits.)
+        if (fits === 0) likes.hidden = false;
       }
-      rows.forEach((row, i) => {
-        row.hidden = i >= fits;
-      });
-      if (more) more.hidden = count <= fits;
+      if (likes && !likes.hidden && past(likes)) likes.hidden = true;
+      if (more) more.hidden = count <= fits || past(more);
     };
     fit();
     const observer = new ResizeObserver(fit);
@@ -411,10 +460,13 @@ type SpotLinks = { name: (spot: SpotRef) => string; show: (spot: SpotRef) => voi
 
 function Face({ comment, reply = false }: { comment: TimelineComment; reply?: boolean }) {
   const t = useTone();
+  const faces = useContext(FacesContext);
+  const photo = comment.fromPrivateChat ? undefined : comment.mine ? faces.mine : comment.isAgent ? faces.agent : comment.photo;
   return (
     <Avatar
       name={comment.name}
       tone={comment.fromPrivateChat ? "anonymous" : comment.isAgent ? "agent" : "person"}
+      photo={photo}
       size={reply ? 6 : 7}
       className={cn("mt-0.5", comment.isAgent && cn("ring-1", t.faceRing))}
     />
@@ -503,7 +555,12 @@ function Said({
       {comment.spot && spots && (
         <>
           {clamp ? (
-            <MapPin aria-hidden size={12} className={cn("inline align-[-1px]", t.dim)} />
+            // (Folded, the row is one button: the spot's name, just words.)
+            <span className={cn("text-meta font-semibold", t.dim)}>
+              <MapPin aria-hidden size={12} className="inline align-[-1px]" />
+              <span className="sr-only">About</span> {spots.name(comment.spot)}
+              <span className="sr-only">:</span>
+            </span>
           ) : (
             <button
               type="button"
@@ -588,7 +645,9 @@ function Row({
             </span>
           </p>
         )}
-        <div className={cn("flex flex-wrap items-center gap-x-4 text-meta font-semibold", t.dim)}>
+        {/* Words that act in a line of words: the line's height, a
+            fingertip's touch (hit-44), so the thread reads close together. */}
+        <div className={cn("mt-0.5 flex min-h-6 flex-wrap items-center gap-x-4 text-meta font-semibold", t.dim)}>
           {replyable && (
             <button
               type="button"
@@ -599,24 +658,24 @@ function Row({
                     : { id: comment.id, name: comment.name, mine: comment.mine },
                 )
               }
-              className={cn("flex min-h-11 items-center transition-colors", t.hoverFg)}
+              className={cn("flex h-6 items-center transition-colors hit-44", t.hoverFg)}
             >
               Reply
               <span className="sr-only"> to {label}</span>
             </button>
           )}
           {like.count > 0 && likeable && (
-            <span className="flex min-h-11 items-center">
+            <span className="flex h-6 items-center">
               {like.count} {like.count === 1 ? "like" : "likes"}
             </span>
           )}
           {comment.fromPrivateChat && (
-            <span className="inline-flex min-h-11 items-center gap-1 font-normal">
+            <span className="inline-flex min-h-6 items-center gap-1 font-normal">
               <Lock aria-hidden size={11} /> Shared from a private chat
             </span>
           )}
           {comment.sharedPublicly && (
-            <span className="inline-flex min-h-11 items-center gap-1 font-normal">
+            <span className="inline-flex min-h-6 items-center gap-1 font-normal">
               <Globe aria-hidden size={11} /> Shared anonymously on the public page
             </span>
           )}
@@ -629,7 +688,7 @@ function Row({
                   await actions.setSharing!(comment.id, !comment.sharedPublicly);
                 })
               }
-              className={cn("flex min-h-11 items-center underline-offset-2 hover:underline disabled:opacity-50", t.share)}
+              className={cn("flex h-6 items-center underline-offset-2 hit-44 hover:underline disabled:opacity-50", t.share)}
             >
               {comment.sharedPublicly ? "Make private" : "Share anonymously"}
             </button>
@@ -697,7 +756,8 @@ function Replies({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className={cn("flex min-h-11 items-center gap-2.5 text-meta font-semibold transition-colors", t.dim, t.hoverFg)}
+        // (Clear of the line above, so the two touch areas don't overlap.)
+        className={cn("mt-4 flex h-8 items-center gap-2.5 text-meta font-semibold transition-colors hit-44", t.dim, t.hoverFg)}
       >
         <span aria-hidden className={cn("h-px w-6", t.line)} />
         {open ? "Hide replies" : `View ${replies.length} ${replies.length === 1 ? "reply" : "replies"}`}

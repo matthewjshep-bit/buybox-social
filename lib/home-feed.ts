@@ -209,8 +209,6 @@ async function listingsOf(keys: string[]): Promise<Listing[]> {
   return keys.flatMap((key) => (byKey.has(key) ? [byKey.get(key)!] : []));
 }
 
-const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
-
 // What everyone's liking and talking about: this week's, and this month's
 // when the week is quiet. The best-liked thing said about each comes with it.
 async function popularEntries(): Promise<HomeFeedEntry[]> {
@@ -225,10 +223,11 @@ async function popularEntries(): Promise<HomeFeedEntry[]> {
   return hot.flatMap((home) => {
     const listing = listings.get(home.key);
     if (!listing) return [];
-    const counts = [home.likes > 0 && plural(home.likes, "like"), home.comments > 0 && plural(home.comments, "comment")].filter(Boolean);
     return [
       entryOf("popular", listing, now, {
-        reason: { kind: "popular", text: [`Popular ${home.when}`, ...counts].join(" · ") },
+        // (No counts in it: the bar under the card has how many liked it and
+        // how many comments it has, all told.)
+        reason: { kind: "popular", text: `Popular ${home.when}` },
         said: home.top
           ? [{ who: { name: home.top.name, face: home.top.name, profileId: null, agent: false, photo: null }, body: home.top.body }]
           : [],
@@ -402,6 +401,46 @@ export const getHomeFeed = cache(async (account: Account, visitorId: string | nu
 
 // The homes in a feed, in its order, each once: what opens full screen.
 export const feedKeys = (entries: FeedItem[]) => [...new Set(entries.flatMap((item) => homesOf(item).map((home) => home.key)))];
+
+// The order Home last showed someone their feed in. Their page writes it in
+// a cookie once it's in front of them (components/home/feed-order.tsx), for
+// half an hour (a visit); the pop-out's `from=feed` walks the homes in that
+// order. Ranked again, the feed would come out differently: the cards they
+// have just scrolled past count as seen by then and fall back, so the home
+// they tapped would no longer be where it was. (Whose it is, then the keys:
+// someone else's order on a shared device is never used.)
+export const FEED_ORDER = { name: "feed_order", maxAge: 30 * 60 };
+// (Kept well under a browser's 4KB for a cookie, encoded: any keys past it
+// keep their own order, after the ones it has: inFeedOrder.)
+const FEED_ORDER_BYTES = 3500;
+export function feedOrderValue(owner: string, keys: string[]) {
+  let value = `${owner}|`;
+  let size = encodeURIComponent(value).length;
+  for (const [i, key] of keys.entries()) {
+    const add = (i ? "," : "") + key;
+    const bytes = encodeURIComponent(add).length;
+    if (size + bytes > FEED_ORDER_BYTES) break;
+    value += add;
+    size += bytes;
+  }
+  return value;
+}
+
+// These homes in the order the feed was shown in, as far as it says (any it
+// didn't have keep their own order, after them).
+export function inFeedOrder(keys: string[], saved: string | undefined, owner: string): string[] {
+  if (!saved) return keys;
+  let value = saved;
+  try {
+    value = decodeURIComponent(saved);
+  } catch {}
+  const [who, list = ""] = value.split("|");
+  if (who !== owner) return keys;
+  const have = new Set(keys);
+  const first = [...new Set(list.split(","))].filter((key) => have.has(key));
+  const placed = new Set(first);
+  return [...first, ...keys.filter((key) => !placed.has(key))];
+}
 
 // Homes picked for someone by their taste, none of them already in their
 // feed: the masonry under it, and the reel's `from=picks`, in the same order.

@@ -134,14 +134,15 @@ test("signing up on the sign-in page with only an email asks a first name, once"
   await page.goto("/login");
   await emailAndCode(page, email);
 
-  // First what she is (shopping), then one thing on the page: the name,
-  // Finish, and a quiet way past it.
+  // First what she is (shopping), then one thing on the page: the name, and
+  // one button, Skip while it's empty (Continue once a name is typed).
   await page.getByRole("button", { name: /^I'm shopping for a home/ }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("What's your first name?");
   const step = page.getByRole("form", { name: "What's your first name?" });
   const name = step.getByLabel("First name");
   await expect(name).toBeFocused();
   await expect(step.getByRole("textbox")).toHaveCount(1);
+  await expect(step.getByRole("button")).toHaveCount(1);
   const skip = (await step.getByRole("button", { name: "Skip" }).boundingBox())!;
   expect(skip.height).toBeGreaterThanOrEqual(44);
   // [P] Never an email for a name.

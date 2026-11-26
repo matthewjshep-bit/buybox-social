@@ -31,7 +31,7 @@ import {
 } from "@/lib/photos";
 import type { TickerEvent } from "@/lib/ticker";
 import type { TimelineComment, TimelineItem } from "@/lib/timeline";
-import { pill } from "@/lib/ui";
+import { closeButton, pill } from "@/lib/ui";
 
 // Tap anywhere on a photo to like, dislike or comment on that spot: the front
 // door, the view from the deck. A ring marks where you tapped and a card opens
@@ -538,7 +538,7 @@ export function ReactCard({
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="-my-1.5 -mr-2 flex size-11 shrink-0 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-ink"
+          className={cn(closeButton, "-my-1.5 -mr-2 shrink-0")}
         >
           <X aria-hidden size={16} />
         </button>

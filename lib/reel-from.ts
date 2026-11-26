@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { z } from "zod";
 import { defaultListingSort, getAgentListings, isListingSort, sortListings } from "./agent-listings";
 import { getCurrentUser, type Account } from "./auth";
@@ -7,7 +8,7 @@ import { follows, getFollowedIds } from "./follows";
 import { namesOrOthers } from "./format";
 import { getListingCounts } from "./listing-counts";
 import { getListingsLook } from "./own-listings";
-import { feedKeys, getHomeFeed, getPicks, type FeedWho } from "./home-feed";
+import { FEED_ORDER, feedKeys, getHomeFeed, getPicks, inFeedOrder, type FeedWho } from "./home-feed";
 import type { Listing } from "./listings/types";
 import { photoUrl } from "./person-photo";
 import { isPeriod, popularKeys } from "./popular";
@@ -294,7 +295,10 @@ async function feedScope(viewer: Account, visitorId: string | null): Promise<Ree
         : [],
     };
   }
-  const keys = feedKeys(entries);
+  // In the order their Home showed it (so the home tapped is where it was,
+  // with the cards after it next), not as it would rank now.
+  const saved = (await cookies()).get(FEED_ORDER.name)?.value;
+  const keys = inFeedOrder(feedKeys(entries), saved, visitorId ?? viewer.id);
   return {
     keys,
     back: { href: "/", label: "Back to your feed" },

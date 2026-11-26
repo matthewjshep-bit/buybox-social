@@ -3,6 +3,7 @@
 import { X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import { cn } from "@/lib/format";
+import { closeButton } from "@/lib/ui";
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -384,6 +385,46 @@ export function Sheet({
     place(el);
   };
 
+  // With two heights, at medium: the first move to read on (a finger going
+  // up over what's in it, a wheel turning down) takes it to large, as a
+  // phone's own sheets do, rather than reading all of it through a slot.
+  // Only a gesture does it: what's in it may scroll itself as it opens.
+  const grow = useRef(() => {});
+  useLayoutEffect(() => {
+    grow.current = () => {
+      const el = dialog.current;
+      if (!el || detent.current !== "medium") return;
+      toDetent("large");
+      settleAt(el);
+    };
+  });
+  useEffect(() => {
+    const el = dialog.current;
+    if (!open || docked || minTop === undefined || oneHeight || !el) return;
+    let from: number | null = null;
+    const inBody = (event: Event) => Boolean((event.target as Element | null)?.closest?.("[data-sheet-body]"));
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY > 0 && inBody(event)) grow.current();
+    };
+    const onStart = (event: TouchEvent) => {
+      from = event.touches.length === 1 && inBody(event) ? event.touches[0].clientY : null;
+    };
+    const onMove = (event: TouchEvent) => {
+      const y = event.touches[0]?.clientY;
+      if (from === null || y === undefined || from - y < 8) return;
+      from = null;
+      grow.current();
+    };
+    el.addEventListener("wheel", onWheel, { passive: true });
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: true });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+    };
+  }, [open, docked, minTop, oneHeight]);
+
   return (
     <dialog
       ref={dialog}
@@ -430,7 +471,7 @@ export function Sheet({
             type="button"
             onClick={dismiss}
             aria-label="Close"
-            className="ml-auto flex size-11 shrink-0 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-ink"
+            className={cn(closeButton, "ml-auto shrink-0")}
           >
             <X aria-hidden size={20} />
           </button>
@@ -502,7 +543,7 @@ export function Sheet({
             type="button"
             onClick={dismiss}
             aria-label="Close"
-            className="absolute right-2 top-2.5 flex size-11 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-ink"
+            className={cn(closeButton, "absolute right-2 top-2.5")}
           >
             <X aria-hidden size={20} />
           </button>
@@ -534,6 +575,7 @@ export function Sheet({
       )}
       <div
         ref={bodyRef}
+        data-sheet-body
         className={cn(
           "min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 group-data-opening/sheet:pointer-events-none",
           // At the foot of the screen, with nothing under it: clear of a

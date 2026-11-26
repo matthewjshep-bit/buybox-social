@@ -1,4 +1,4 @@
-import { ArrowLeft, Heart, X } from "lucide-react";
+import { ArrowLeft, Heart, ListChecks, X } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { EmptyState, HomeThumb } from "@/components/ui";
@@ -32,7 +32,9 @@ export default async function RatedHomesPage() {
       <h1 className={cn(pageTitle, "mt-2")}>Rated homes</h1>
       {homes.length > 0 && <p className="mt-1 text-body text-muted">Tap a home to change your mind.</p>}
       {homes.length === 0 ? (
-        <EmptyState title="Homes you like or pass on show up here." className="mt-6" />
+        <EmptyState icon={ListChecks} title="No rated homes yet" className="mt-6">
+          Homes your agent sends show up here once you like or pass on them.
+        </EmptyState>
       ) : (
         <div className="mt-4 flex flex-col gap-6">
           {groups.map((group) => (

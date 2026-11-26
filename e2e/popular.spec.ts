@@ -219,3 +219,37 @@ test("Popular's agents: by the listings that are their own, for sale and closed;
   await expect(hers.getByRole("button")).toHaveCount(0);
   await guest.context().close();
 });
+
+test("Top, beside an agent's feed: the head of Popular, a tab apart, each line to its place and See all to its list", async ({
+  browser,
+}) => {
+  test.setTimeout(90_000);
+  const agent = await signInAgent(browser, "tara.top@example.com", "Tara Top");
+  await agent.setViewportSize({ width: 1440, height: 900 });
+  await agent.goto("/");
+  const rail = agent.getByRole("complementary", { name: "Beside your feed" });
+  const top = rail.getByRole("region", { name: "Top", exact: true });
+  await expect(top).toBeVisible();
+  // What her clients do is in Notifications and Messages, not here.
+  await expect(rail.getByRole("region", { name: /Client activity|People to follow/ })).toHaveCount(0);
+
+  // Homes: each opens full screen in Popular's order; See all is Popular.
+  const homesTab = top.getByRole("tab", { name: "Homes" });
+  await homesTab.click();
+  await expect(homesTab).toHaveAttribute("aria-selected", "true");
+  const homes = top.getByRole("list", { name: "Top homes" });
+  await expect(homes.getByRole("link").first()).toHaveAttribute("href", /^\/reel\?from=popular%3A(week|month|all)&home=/);
+  await expect(top.getByRole("link", { name: "See all top homes" })).toHaveAttribute(
+    "href",
+    /^\/popular\?period=(week|month|all)$/,
+  );
+  // Once picked it stays put: it no longer turns by itself.
+  await agent.waitForTimeout(9_000);
+  await expect(homesTab).toHaveAttribute("aria-selected", "true");
+  // Arrow keys go along the tabs, and See all follows.
+  await homesTab.focus();
+  await agent.keyboard.press("ArrowRight");
+  await expect(homesTab).toHaveAttribute("aria-selected", "false");
+  await expect(top.getByRole("link", { name: /^See all top (people|agents)$/ })).toBeVisible();
+  await agent.context().close();
+});

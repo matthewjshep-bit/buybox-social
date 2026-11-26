@@ -32,7 +32,9 @@ test("a home from a pasted Zillow link, found and picked in the box; named for s
   await expect(offered).toHaveCount(1);
   await expect(offered).toContainText(QUILLAN);
   // Each offered as a card: the price first, then the address, and "Pick".
-  await expect(offered.getByRole("button")).toHaveAccessibleName(/^\$[\d,]+ · 1204 Quillan St SE/);
+  // (The option is the row itself: no button inside it to Tab to.)
+  await expect(offered).toHaveAccessibleName(/^\$[\d,]+ · 1204 Quillan St SE/);
+  await expect(offered.getByRole("button")).toHaveCount(0);
   await expect(offered).toContainText("Pick");
   // A link with no address in it says so.
   await search.fill("https://www.zillow.com/homes/for_sale/");
@@ -225,7 +227,12 @@ test("a new agent with no listings still has homes to send in the box, near wher
 
   // One tap picks it, the same as a home found by typing: it leaves the
   // homes offered for the picked ones.
-  const address = (await first.innerText()).split("\n")[0].split(" · ").slice(1).join(" · ").trim();
+  // (The price on a line of its own, then " · " for a screen reader and the street.)
+  const [, street] = (await first.innerText())
+    .split("\n")
+    .map((line) => line.trim().replace(/^·\s*/, ""))
+    .filter(Boolean);
+  const address = street;
   expect(address).toBe(QUILLAN);
   await first.click();
   const picked = agent.getByRole("list", { name: "Picked homes" });

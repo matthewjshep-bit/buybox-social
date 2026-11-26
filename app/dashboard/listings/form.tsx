@@ -1,11 +1,12 @@
 "use client";
 
-import { Check, ImagePlus, X } from "lucide-react";
+import { ImagePlus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useId, useRef, useState, useTransition } from "react";
 import { cn } from "@/lib/format";
 import { listingPhoto } from "@/lib/resize-photo";
-import { button, card, field } from "@/lib/ui";
+import { SavedNote } from "@/components/ui";
+import { button, card, field, fieldLabel, focusOnDark, glass } from "@/lib/ui";
 import { addListingPhoto, createListing, saveListing, type ListingField, type ListingState } from "./actions";
 
 export type ListingValues = {
@@ -30,6 +31,9 @@ export type ListingValues = {
 };
 
 const inputClass = cn(field(), "mt-1");
+// A sum of money: a "$" at its start, the number after it. (pl is its own
+// property, so it takes over from field()'s px on the left.)
+const moneyClass = cn(field(), "pl-8");
 
 // What a listing is: where, how much, how big, a few words, and whether it's
 // on their profile. Shared by adding one and changing one. Something wrong
@@ -38,12 +42,16 @@ function Fields({ values, state }: { values: ListingValues; state: ListingState 
   const text = (
     name: Exclude<ListingField, "about">,
     label: string,
-    extra: { inputMode?: "numeric"; autoComplete?: string; maxLength?: number; className?: string; optional?: boolean } = {},
-  ) => (
-    <div className={extra.className}>
-      <label htmlFor={name} className="block text-sm font-semibold">
-        {label}
-      </label>
+    extra: {
+      inputMode?: "numeric";
+      autoComplete?: string;
+      maxLength?: number;
+      className?: string;
+      optional?: boolean;
+      money?: boolean;
+    } = {},
+  ) => {
+    const input = (
       <input
         id={name}
         name={name}
@@ -54,10 +62,27 @@ function Fields({ values, state }: { values: ListingValues; state: ListingState 
         maxLength={extra.maxLength ?? 120}
         aria-invalid={state.field === name ? true : undefined}
         aria-describedby={state.field === name ? "listing-error" : undefined}
-        className={inputClass}
+        className={extra.money ? moneyClass : inputClass}
       />
-    </div>
-  );
+    );
+    return (
+      <div className={extra.className}>
+        <label htmlFor={name} className={fieldLabel}>
+          {label}
+        </label>
+        {extra.money ? (
+          <div className="relative mt-1">
+            <span aria-hidden className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-base text-stone-500">
+              $
+            </span>
+            {input}
+          </div>
+        ) : (
+          input
+        )}
+      </div>
+    );
+  };
   return (
     <>
       {text("address", "Street address", { autoComplete: "street-address" })}
@@ -67,13 +92,13 @@ function Fields({ values, state }: { values: ListingValues; state: ListingState 
         {text("zip", "ZIP", { className: "col-span-4 sm:col-span-2", inputMode: "numeric", maxLength: 5 })}
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {text("price", "Price", { inputMode: "numeric", maxLength: 14 })}
+        {text("price", "Price", { inputMode: "numeric", maxLength: 14, money: true })}
         {text("beds", "Beds", { inputMode: "numeric", maxLength: 3 })}
         {text("baths", "Baths", { inputMode: "numeric", maxLength: 3 })}
         {text("sqft", "Sq ft", { inputMode: "numeric", maxLength: 8 })}
       </div>
       <div>
-        <label htmlFor="about" className="block text-sm font-semibold">
+        <label htmlFor="about" className={fieldLabel}>
           Description
         </label>
         <textarea
@@ -89,10 +114,10 @@ function Fields({ values, state }: { values: ListingValues; state: ListingState 
       {/* What else the listing says: each shows only when it's filled in, and
           the price per square foot only when it's ticked. */}
       <fieldset className="rounded-2xl bg-stone-50 p-4 ring-1 ring-stone-200">
-        <legend className="px-1 text-sm font-semibold">More to show (optional)</legend>
+        <legend className={cn(fieldLabel, "px-1")}>More to show (optional)</legend>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {text("arv", "After repair value", { inputMode: "numeric", maxLength: 14, optional: true })}
-          {text("rehab", "Estimated rehab", { inputMode: "numeric", maxLength: 14, optional: true })}
+          {text("arv", "After repair value", { inputMode: "numeric", maxLength: 14, optional: true, money: true })}
+          {text("rehab", "Estimated rehab", { inputMode: "numeric", maxLength: 14, optional: true, money: true })}
           {text("yearBuilt", "Year built", { inputMode: "numeric", maxLength: 4, optional: true })}
         </div>
         <label className="mt-3 flex min-h-11 items-center gap-3 text-body">
@@ -102,7 +127,7 @@ function Fields({ values, state }: { values: ListingValues; state: ListingState 
       </fieldset>
       {/* Whether it can still be had: a closed one stays on their profile, marked. */}
       <fieldset>
-        <legend className="text-sm font-semibold">Status</legend>
+        <legend className={fieldLabel}>Status</legend>
         <div className="mt-1 flex gap-2">
           {(
             [
@@ -144,21 +169,37 @@ function Fields({ values, state }: { values: ListingValues; state: ListingState 
 export function ListingForm({ listingKey, values: stored }: { listingKey: string; values: ListingValues }) {
   const [state, action, pending] = useActionState<ListingState, FormData>(saveListing.bind(null, listingKey), {});
   const form = useRef<HTMLFormElement>(null);
+  // Changed since it was last saved. (Photos and videos save as they're
+  // added; these wait for Save, so Save comes along, held to the foot of the
+  // screen, until they're saved.)
+  const [changed, setChanged] = useState(false);
+  // (What didn't save is still to be saved.)
+  const dirty = changed || Boolean(state.error);
   useEffect(() => {
     if (state.error && state.field) form.current?.querySelector<HTMLElement>(`#${state.field}`)?.focus();
   }, [state]);
   return (
-    <form ref={form} action={action} aria-label="Listing details" className="flex flex-col gap-4">
+    <form
+      ref={form}
+      action={action}
+      aria-label="Listing details"
+      className="flex flex-col gap-4"
+      onInput={() => setChanged(true)}
+      onSubmit={() => setChanged(false)}
+    >
       <Fields values={state.values ?? stored} state={state} />
-      <div className="flex items-center gap-3">
+      <div
+        className={cn(
+          "flex items-center gap-3",
+          dirty &&
+            "sticky bottom-0 z-10 -mx-5 border-t border-stone-200 bg-white/95 px-5 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur",
+        )}
+      >
         <button type="submit" disabled={pending} className={button({ kind: "primary", size: "lg" })}>
           {pending ? "Saving…" : "Save"}
         </button>
-        {state.saved && !pending && (
-          <p role="status" className="flex items-center gap-1 text-meta font-semibold text-emerald-700">
-            <Check aria-hidden size={14} /> Saved
-          </p>
-        )}
+        {dirty && !pending && <p className="text-meta text-muted">Unsaved changes</p>}
+        {state.saved && !pending && !dirty && <SavedNote />}
       </div>
     </form>
   );
@@ -230,7 +271,7 @@ export function NewListingForm({ most, noun = "listing" }: { most: number; noun?
       }}
     >
       <div>
-        <p className="text-sm font-semibold">Photos</p>
+        <p className={fieldLabel}>Photos</p>
         {photos.length > 0 && (
           <ul aria-label="Photos to add" className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
             {photos.map((photo, i) => (
@@ -242,6 +283,13 @@ export function NewListingForm({ most, noun = "listing" }: { most: number; noun?
                   alt={`Photo ${i + 1}`}
                   className={cn("aspect-[4/3] w-full rounded-xl bg-stone-200 object-cover", i === 0 && "ring-2 ring-brand")}
                 />
+                {/* The one that leads, marked as on the listing's own page (at its foot here, clear of the X on a small tile). */}
+                {i === 0 && (
+                  <span className="pointer-events-none absolute bottom-2 left-2 rounded-full bg-brand px-2 py-0.5 text-tiny font-semibold text-white">
+                    First
+                  </span>
+                )}
+                {/* A 32px circle on the photo, in a fingertip of its own. */}
                 <button
                   type="button"
                   disabled={pending}
@@ -250,9 +298,11 @@ export function NewListingForm({ most, noun = "listing" }: { most: number; noun?
                     URL.revokeObjectURL(photo.url);
                     setPhotos((now) => now.filter((other) => other !== photo));
                   }}
-                  className="absolute right-1 top-1 grid size-8 place-items-center rounded-full bg-black/60 text-white hover:bg-black/80"
+                  className={cn("group absolute right-0 top-0 grid size-11 place-items-center rounded-full", focusOnDark)}
                 >
-                  <X aria-hidden size={16} />
+                  <span className={cn(glass, "grid size-8 place-items-center rounded-full transition-colors group-hover:bg-black/75")}>
+                    <X aria-hidden size={16} />
+                  </span>
                 </button>
               </li>
             ))}

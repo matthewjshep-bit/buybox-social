@@ -43,6 +43,16 @@ test("signed out, the home page says what this is; See homes shows three homes s
   await main.getByRole("link", { name: "Sign up" }).click();
   const form = main.getByRole("form", { name: "Sign up" });
   await expect(form).toBeInViewport();
+  // Focus goes along (on a touch screen, to the form's heading: no keyboard
+  // mid-scroll). It glides there: measured once it's still.
+  await expect(main.getByRole("heading", { level: 2, name: "Start free." })).toBeFocused();
+  await expect
+    .poll(async () => {
+      const before = (await form.boundingBox())!.y;
+      await page.waitForTimeout(150);
+      return (await form.boundingBox())!.y - before;
+    })
+    .toBe(0);
   const formBox = (await form.boundingBox())!;
   const agentBox = (await main.getByRole("link", { name: "I'm an agent" }).boundingBox())!;
   expect(agentBox.y).toBeGreaterThan(formBox.y + formBox.height);

@@ -48,14 +48,14 @@ test("the feed: full-screen homes, a heart, comments in one thread under the pho
   await likeInPhoto(clientHome, "the evergreens");
   await evergreensSaved;
 
-  // The agent's Home names their own client, and says what they liked: the
-  // Client activity beside their feed, which only they see. (Each home below
-  // is opened by its own link, which opens the feed on it: where it falls on
-  // the home page depends on what every earlier spec liked.)
-  await agent.goto("/");
-  const activity = agent.getByRole("region", { name: /^Client activity/ });
-  await expect(activity).toContainText("Only you see this");
-  await expect(activity.getByRole("link", { name: /Toby liked 96 Fernhollow Ln/ })).toBeVisible();
+  // The agent's Notifications name their own client, and say what they
+  // liked, which only they see. (Each home below is opened by its own link,
+  // which opens the feed on it: where it falls on the home page depends on
+  // what every earlier spec liked.)
+  await agent.goto("/activity");
+  const liked = agent.getByRole("main").getByRole("listitem").filter({ hasText: "Toby liked 96 Fernhollow Ln" });
+  await expect(liked).toBeVisible();
+  await expect(liked).toContainText("Your client");
   // The home itself counts the like under its photo, where the comments go.
   // Nothing goes round over the photo any more.
   await agent.goto("/homes/SAMPLE-1004");

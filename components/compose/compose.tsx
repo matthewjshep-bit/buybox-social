@@ -10,7 +10,7 @@ import { Avatar, HomeThumb } from "@/components/ui";
 import { cn, formatPrice } from "@/lib/format";
 import type { HomeLite } from "@/lib/home-lite";
 import { addressFromLink, looksLikeLink } from "@/lib/listing-link";
-import { button, card, field, groupLabel } from "@/lib/ui";
+import { button, card, closeButton, field, groupLabel } from "@/lib/ui";
 
 // The one box for saying something and sending homes, as a post is written
 // on LinkedIn or Facebook: your words, the homes it's about (found by their
@@ -114,10 +114,18 @@ export function Compose({
     setTyping("");
     setError(null);
   };
+  // Nothing written, picked or named yet (beyond what it opened with).
+  const clean = !body.trim() && homes.length === start.length && people.length === 0 && !typing.trim();
   const cancel = () => {
-    reset();
-    if (mode === "inline") setOpen(false);
-    else router.back();
+    // In place, X only closes it: what's written, picked and named is kept
+    // for when they open it again (posting or saving clears it).
+    if (mode === "inline") {
+      if (clean) reset();
+      setOpen(false);
+    } else {
+      reset();
+      router.back();
+    }
   };
 
   const picked = (home: HomeLite) => homes.some((h) => h.key === home.key);
@@ -213,13 +221,19 @@ export function Compose({
             className="flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-full border border-stone-300 px-4 text-left text-body text-stone-600 hover:border-stone-400 hover:bg-stone-50"
           >
             <Send aria-hidden size={18} className="shrink-0 text-stone-500" />
-            <span className="truncate">{me.agent ? "Send homes to a client" : "Send homes to someone"}, or say something…</span>
+            {/* On a phone, the first half alone, whole, rather than cut mid-word. */}
+            <span className="truncate">
+              {me.agent ? "Send homes to a client" : "Send homes to someone"}
+              <span className="max-sm:hidden">, or say something</span>…
+            </span>
           </button>
         </div>
-        {done && (
+        {done ? (
           <p role="status" className="mt-2 flex items-center gap-1 px-1 text-meta font-semibold text-emerald-700">
             <Check aria-hidden size={14} /> {done}
           </p>
+        ) : (
+          !clean && <p className="mt-2 px-1 text-meta text-muted">Your draft is kept.</p>
         )}
       </div>
     );
@@ -237,7 +251,6 @@ export function Compose({
       }}
       onKeyDown={(event) => {
         // (Escape closes an untouched box; with something in it, it stays.)
-        const clean = !body.trim() && homes.length === start.length && people.length === 0 && !typing.trim();
         if (event.key === "Escape" && mode === "inline" && clean) {
           event.preventDefault();
           cancel();
@@ -254,7 +267,7 @@ export function Compose({
             type="button"
             onClick={cancel}
             aria-label="Cancel"
-            className="grid size-11 shrink-0 place-items-center rounded-full text-stone-600 hover:bg-stone-100"
+            className={cn(closeButton, "shrink-0")}
           >
             <X aria-hidden size={20} />
           </button>
@@ -269,7 +282,7 @@ export function Compose({
         placeholder="Say something…"
         aria-label="Say something"
         onChange={(event) => setBody(event.target.value)}
-        className="min-h-20 w-full resize-none rounded-2xl bg-stone-100 px-4 py-3 text-body leading-6 text-ink [field-sizing:content] placeholder:text-stone-500 focus:bg-white focus:outline-2 focus:outline-brand"
+        className="min-h-20 w-full resize-none rounded-2xl bg-stone-100 px-4 py-3 text-base leading-6 sm:text-body text-ink [field-sizing:content] placeholder:text-stone-500 focus:bg-white focus:outline-2 focus:outline-brand"
       />
 
       {homes.length > 0 && (
@@ -278,9 +291,9 @@ export function Compose({
             <li key={home.key} className="flex items-center gap-3 rounded-2xl bg-stone-50 p-2 ring-1 ring-stone-200">
               <HomeThumb src={home.photo} sizes="80px" className="h-14 w-[4.5rem] shrink-0 rounded-xl" />
               <div className="min-w-0 flex-1">
-                {/* (The price and the whole street, wrapping rather than cut short.) */}
-                <p className="line-clamp-2 break-words text-body font-semibold">
-                  <span className="font-display">{formatPrice(home.price)}</span> · {home.address}
+                {/* (The price, then the whole street, wrapping rather than cut short.) */}
+                <p className="text-body font-semibold">
+                  <PriceStreet home={home} />
                 </p>
                 <p className="truncate text-meta text-muted">
                   {[home.beds != null && `${home.beds} bd`, home.baths != null && `${home.baths} ba`, home.city].filter(Boolean).join(" · ")}
@@ -351,15 +364,25 @@ export function Compose({
             />
           </div>
           {linkNote && (
-            <p role="status" className="px-1 text-meta text-stone-700">
+            <p role="status" className="text-meta text-stone-700">
               {linkNote}
             </p>
           )}
           {listOpen && matches && matches.length > 0 && (
             <ul id={listId} role="listbox" aria-label="Homes that match" className="flex flex-col gap-0.5">
+              {/* (Each option is the row itself, not a button in it: the
+                  keyboard stays in the search, which moves through them.) */}
               {matches.map((home, i) => (
-                <li key={home.key} id={`${listId}-${i}`} role="option" aria-selected={i === active}>
-                  <HomeRow home={home} onClick={() => pick(home)} picked={false} active={i === active} />
+                <li
+                  key={home.key}
+                  id={`${listId}-${i}`}
+                  role="option"
+                  aria-selected={i === active}
+                  onClick={() => pick(home)}
+                  onMouseDown={(event) => event.preventDefault()}
+                  className={cn(rowClass, "cursor-pointer", i === active ? "bg-stone-100" : "hover:bg-stone-50")}
+                >
+                  <HomeRowBody home={home} picked={false} />
                 </li>
               ))}
             </ul>
@@ -372,7 +395,7 @@ export function Compose({
           {!listOpen && query.trim().length < 2 && (
             <>
               {offer === null && (
-                <p role="status" className="px-1 text-meta text-muted">
+                <p role="status" className="text-meta text-muted">
                   Finding homes to send…
                 </p>
               )}
@@ -394,7 +417,7 @@ export function Compose({
                       <button
                         type="button"
                         onClick={() => setShownAll({ ...shownAll, [group.title]: true })}
-                        className="flex min-h-11 items-center px-2 text-body font-semibold text-brand hover:underline"
+                        className="flex min-h-11 items-center self-start px-1.5 text-body font-semibold text-brand hover:underline"
                       >
                         Show {rows.length - OFFERED_FIRST} more
                       </button>
@@ -464,6 +487,8 @@ export function Compose({
         {toSomeone && !to && (
           <PeoplePicker
             label="Who's it for?"
+            // (Asked once, by the legend above: still its name when read out.)
+            hideLabel
             hint="Each person gets their own link."
             chosen={people}
             onChange={setPeople}
@@ -473,7 +498,7 @@ export function Compose({
             peer={peer}
           />
         )}
-        {!toSomeone && <p className="px-1 text-meta text-muted">On your page, in your followers&apos; feeds, and on each home.</p>}
+        {!toSomeone && <p className="text-meta text-muted">On your page, in your followers&apos; feeds, and on each home.</p>}
       </fieldset>
 
       {error && (
@@ -481,7 +506,10 @@ export function Compose({
           {error}
         </p>
       )}
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      {/* The buttons. On a phone they hold to the foot of the screen while the
+          box runs past it (a long list of homes to pick from), so Send is
+          always in reach; wider, they sit at the box's end. */}
+      <div className="flex flex-wrap items-center justify-end gap-2 max-md:sticky max-md:bottom-0 max-md:z-10 max-md:-mx-4 max-md:-mb-4 max-md:rounded-b-2xl max-md:border-t max-md:border-stone-200 max-md:bg-white/95 max-md:px-4 max-md:pt-3 max-md:pb-[max(0.75rem,env(safe-area-inset-bottom))] max-md:backdrop-blur">
         {why && !error && <p className="mr-auto text-meta text-muted">{why}</p>}
         {/* Homes picked and nothing said: they can be kept for you alone instead. */}
         {!toSomeone && homes.length > 0 && !body.trim() && (
@@ -497,26 +525,43 @@ export function Compose({
   );
 }
 
-// One home to pick: its photo, price and address, then the city.
-function HomeRow({ home, picked, active = false, onClick }: { home: HomeLite; picked: boolean; active?: boolean; onClick: () => void }) {
+// The price on a line of its own, the whole street under it (wrapping to a
+// second line rather than cut short, and never split from its house
+// number by the price). Read out, and found, as one: "$839,000 · 96
+// Fernhollow Ln".
+function PriceStreet({ home }: { home: HomeLite }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={picked}
-      className={cn(
-        "flex min-h-11 w-full items-center gap-3 rounded-xl p-1.5 text-left hover:bg-stone-50",
-        active && "bg-stone-100",
-      )}
-    >
+    <>
+      <span className="block font-display font-semibold">{formatPrice(home.price)}</span>
+      <span className="sr-only"> · </span>
+      <span className="line-clamp-2 break-words">{home.address}</span>
+    </>
+  );
+}
+
+const rowClass = "flex min-h-11 w-full items-center gap-3 rounded-xl p-1.5 text-left";
+
+// One home to pick: its photo, price and address, then the city.
+function HomeRowBody({ home, picked }: { home: HomeLite; picked: boolean }) {
+  return (
+    <>
       <HomeThumb src={home.photo} sizes="64px" className="h-12 w-16 shrink-0 rounded-lg" />
       <span className="min-w-0 flex-1">
-        <span className="line-clamp-2 break-words text-body">
-          <span className="font-display font-semibold">{formatPrice(home.price)}</span> · {home.address}
+        <span className="block text-body">
+          <PriceStreet home={home} />
         </span>
         <span className="block truncate text-meta text-muted">{home.city}</span>
       </span>
       <span className="shrink-0 rounded-full bg-stone-100 px-2.5 py-1 text-meta font-semibold text-stone-700">{picked ? "Picked" : "Pick"}</span>
+    </>
+  );
+}
+
+// The same, as a button of its own (the homes offered, not in a list box).
+function HomeRow({ home, picked, onClick }: { home: HomeLite; picked: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={picked} className={cn(rowClass, "hover:bg-stone-50")}>
+      <HomeRowBody home={home} picked={picked} />
     </button>
   );
 }

@@ -4,7 +4,6 @@ import { PEOPLE_SHOWN } from "@/components/home/people-card";
 import { MarketingHome } from "@/components/marketing-home";
 import { getBanner } from "@/lib/banner";
 import { devLoginEnabled, firstName, getCurrentUser, getViewAs } from "@/lib/auth";
-import { getClientActivity } from "@/lib/client-activity";
 import { getClientBook } from "@/lib/clients";
 import { readDevice } from "@/lib/engagement";
 import { getFollowCounts } from "@/lib/follows";
@@ -14,6 +13,7 @@ import { suggestPeopleFor } from "@/lib/people";
 import { photoUrl, photoVersion } from "@/lib/person-photo";
 import { ensureAccountVisitor, getPublicIdentity } from "@/lib/public";
 import { kindOf, listingWords } from "@/lib/kinds";
+import { getTop } from "@/lib/top";
 
 // The home page. Signed out: what Porchcard is, for agents and for buyers,
 // and a way to start (MarketingHome). Signed in, it's one page for everyone
@@ -21,8 +21,9 @@ import { kindOf, listingWords } from "@/lib/kinds";
 // homes their agent sent that are still waiting, and their feed (the home
 // they just rated on their agent's link first, then what the people they
 // follow did, woven with what's popular, new, near them and picked for them:
-// lib/home-feed.ts); people to follow down the right. An agent's clients are
-// on Clients.
+// lib/home-feed.ts); people to follow down the right, or for an agent, Top
+// (the head of Popular). What an agent's clients do is in Notifications and
+// Messages.
 export default async function HomePage() {
   await connection();
   const [user, device, viewAs] = await Promise.all([getCurrentUser(), readDevice(), getViewAs()]);
@@ -49,8 +50,10 @@ export default async function HomePage() {
     // Their page's id where they have one: what picks the scene at the top of their card.
     id: visitorId ?? user.id,
     // As their own page calls them: an agent by their whole name, anyone else
-    // by their first.
-    name: (agent ? user.full_name.trim() : firstName(user)) || user.email,
+    // by their first. Never by their email: with no name yet it's '' (their
+    // card asks for one, and a heart or a comment asks for it first, as it
+    // does for anyone new).
+    name: agent ? user.full_name.trim() : firstName(user),
     photo: visitorId ? photoUrl(visitorId, photoVersion(user.photo_data_url)) : user.photo_data_url,
   };
   const noFollows = { followers: 0, following: 0 };
@@ -79,12 +82,13 @@ export default async function HomePage() {
             },
       )
     : everyone;
-  const [publicTakes, counts, activity] = await Promise.all([
+  const [publicTakes, counts, top] = await Promise.all([
     myReactions(visitorId, feedKeys(feed)),
     // Under each card: how many liked it and how many comments it has.
     feedCounts(feedKeys(feed)),
-    // What their clients are doing on the links they sent, beside the feed.
-    book ? getClientActivity(user.id, book) : [],
+    // Beside an agent's feed: the head of Popular. (What their clients do is
+    // in Notifications and Messages.)
+    book ? getTop({ visitorId, accountId: user.id, agent }) : null,
   ]);
   // Their hearts start out as they are in public. (What they decided on their
   // agent's link is said on the home leading the feed, not shown as a public
@@ -102,13 +106,13 @@ export default async function HomePage() {
       mine={mine}
       counts={counts}
       agent={
-        book
+        book && top
           ? {
               book,
               brokerage: user.brokerage,
               brandColor: user.brand_color,
               listings: listingWords(kindOf(user)).Many,
-              activity,
+              top,
             }
           : undefined
       }

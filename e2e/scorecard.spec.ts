@@ -410,7 +410,10 @@ test("on a desktop the home reads as on a phone, in one column: the facts above 
     (await home.boundingBox())!,
   ];
   expect(headBox.y + headBox.height).toBeLessThanOrEqual(photoBox.y + 1);
-  expect(Math.abs(headBox.width - 44 * 16)).toBeLessThan(2);
+  // (One column: 44rem at most, as wide as the photo's space, never under 30rem.)
+  expect(headBox.width).toBeLessThanOrEqual(44 * 16 + 1);
+  expect(headBox.width).toBeGreaterThanOrEqual(30 * 16 - 1);
+  expect(photoBox.width).toBeLessThanOrEqual(headBox.width + 1);
   expect(Math.abs(headBox.x + headBox.width / 2 - (frame.x + frame.width / 2))).toBeLessThan(2);
   expect(Math.abs(photoBox.x + photoBox.width / 2 - (frame.x + frame.width / 2))).toBeLessThan(2);
   const about = home.getByRole("region", { name: "About this home" });

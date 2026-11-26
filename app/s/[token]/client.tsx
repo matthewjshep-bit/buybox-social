@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ChevronDown, Heart, Phone, X } from "lucide-react";
+import { ArrowDown, ChevronDown, Heart, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
@@ -13,12 +13,11 @@ import {
   useState,
   useSyncExternalStore,
   type ComponentProps,
-  useTransition,
 } from "react";
 import { Toast } from "@/app/people/[id]/client";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { LinkAgentProvider, type LinkAgent } from "@/components/agent-notes";
-import { looksLikeEmail, ShareHeader, type ContactExtras, type LinkAccount } from "@/components/agent-card";
+import { ContactIcon, looksLikeEmail, ShareHeader, type ContactExtras, type LinkAccount } from "@/components/agent-card";
 import { Backdrop } from "@/components/join";
 import type { MapHome } from "@/components/listing-map";
 import { useThread } from "@/components/listing-thread";
@@ -29,7 +28,7 @@ import { agentFirstName, cn, formatPrice } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
 import type { ShareAgent } from "@/lib/shares";
 import { button, focusOnDark } from "@/lib/ui";
-import { recordHomeTime, recordOpen, reuseTake, type AskResult } from "./actions";
+import { recordHomeTime, recordOpen, type AskResult } from "./actions";
 
 type ReelProps = ComponentProps<typeof ReelFeed>;
 
@@ -98,6 +97,9 @@ type LikedHome = { listingKey: string; address: string };
 type LinkTools = {
   open: () => void;
   first: string;
+  // How the agent can be reached, for Contact's icon: a phone only where
+  // there's one to ring.
+  reach: Pick<ShareAgent, "contact_phone" | "contact_email">;
   goToHome: (listingKey: string) => void;
   // Signed in to Porchcard (as the page last loaded).
   signedIn: boolean;
@@ -107,6 +109,7 @@ type LinkTools = {
 const ContactAgent = createContext<LinkTools>({
   open: () => {},
   first: "your agent",
+  reach: { contact_phone: "", contact_email: "" },
   goToHome: () => {},
   signedIn: false,
   preview: false,
@@ -182,6 +185,7 @@ export function ShareReel({
   const tools: LinkTools = {
     open: () => setContact(true),
     first,
+    reach: agent,
     goToHome: (listingKey) => {
       setFocus((now) => ({ key: listingKey, n: (now?.n ?? 0) + 1 }));
       // Once the feed has started on its way there.
@@ -362,7 +366,6 @@ export function ShareReel({
         // (Only when there's one to open on.)
         {...(initialComment && { initialComment })}
         tour={notes ? "notes" : "link"}
-        {...(notes?.step && { introLabel: "Add your feedback" })}
         onActiveChange={(key) => {
           // The time on the home that was on screen counts up to now.
           bankTime.current();
@@ -454,11 +457,19 @@ export function ShareWelcome({
   return (
     <div className="relative flex h-full flex-col">
       <Backdrop photo={photo} priority blurred tinted />
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pt-[calc(env(safe-area-inset-top)+4.5rem)] sm:px-10">
+      {/* Inset as the header is: 16px on a phone, 24px from a tablet up. Beside
+          the map, the box inside is padded instead, as the header's own box
+          is, so the words start under its logo at any width. */}
+      <div
+        className={cn(
+          "relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-[calc(env(safe-area-inset-top)+4.5rem)] sm:px-6",
+          mapped && "lg:px-0",
+        )}
+      >
         <div
           className={cn(
             "mx-auto my-auto w-full max-w-2xl py-6 [@media(max-height:44rem)]:py-4",
-            mapped && "lg:grid lg:max-w-6xl lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-center lg:gap-12",
+            mapped && "lg:grid lg:max-w-6xl lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-center lg:gap-12 lg:px-6",
           )}
         >
           <div className="min-w-0">
@@ -528,68 +539,6 @@ export function ShareWelcome({
   );
 }
 
-// The last step of sending homes, said plainly before the homes: add your
-// feedback (a like or a comment on each), or skip it. And where they've given
-// their feedback on these homes for someone else, one tap brings it here.
-export function ThoughtsIntro({
-  token,
-  photo,
-  count,
-  client,
-  done,
-  earlier,
-}: {
-  token: string;
-  photo?: ListingMedia;
-  count: number;
-  // Who the link is for ("" on one anyone can join).
-  client: string;
-  // Where Skip goes: the link, ready to copy.
-  done: string;
-  // How many of these homes they've given feedback on before, on another link.
-  earlier: number;
-}) {
-  const [pending, startTransition] = useTransition();
-  return (
-    <div className="relative flex h-full flex-col">
-      <Backdrop photo={photo} priority blurred tinted />
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pt-[calc(env(safe-area-inset-top)+4.5rem)] sm:px-10">
-        <div className="mx-auto my-auto flex w-full max-w-md flex-col items-center py-6 text-center">
-          <p className="text-meta font-semibold uppercase tracking-wider text-white/85">Step 3 of 3</p>
-          <h1 className="mt-2 text-balance font-display text-4xl leading-tight sm:text-5xl">Add your feedback</h1>
-          <p className="mt-3 text-pretty text-lg leading-relaxed text-white/90">
-            Like or comment on {count === 1 ? "the home" : "the homes"}
-            {client ? `, so ${client} sees what you think` : ""}. Or skip this step.
-          </p>
-          <button type="button" onClick={goToFirstHome} className={cn(button({ kind: "light", size: "lg" }), "mt-8 w-full max-w-xs shadow-lg")}>
-            Add feedback
-          </button>
-          <Link href={done} className={cn(button({ kind: "glass", size: "lg" }), "mt-3 w-full max-w-xs")}>
-            Skip this step
-          </Link>
-          {earlier > 0 && (
-            <div className="mt-8 w-full rounded-2xl bg-black/45 p-4 ring-1 ring-white/15 backdrop-blur-md">
-              <p className="text-pretty text-body leading-snug">
-                {count === 1
-                  ? "You've already given feedback on this home, on another link."
-                  : `You've already given feedback on ${earlier} of these homes, on other links.`}
-              </p>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => startTransition(async () => void (await reuseTake(token)))}
-                className={cn(button({ kind: "light" }), "mt-3 disabled:opacity-60")}
-              >
-                {pending ? "Adding…" : "Use the same feedback"}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // After the last home, one thing to do. While a home is still unrated: the
 // homes, small, each with its heart and X. Once every home is rated: who sees
 // what was said, and one way on. Signed out, that's signing up (to keep what
@@ -618,8 +567,10 @@ export function ShareEnd({
   // Still something they haven't said yes or no to: the screen asks.
   const asking = !tools.preview && homes.some((home) => !home.reaction);
   const signedOut = !canReact && !tools.signedIn;
-  // On a phone, three homes sit in one row so the whole screen fits without
-  // a scroll; the heart and the X draw in a little to keep clear of each other.
+  // Three homes on a phone: a third of the width is too small a photo to
+  // carry an X and a heart, so each home is a row there, a small photo, its
+  // price and address, then the X and the heart beside them (the same
+  // buttons, out from over the photo). From a tablet up, three across.
   const three = homes.length === 3;
   const signUp = async () => {
     if (joining) return;
@@ -632,8 +583,8 @@ export function ShareEnd({
   };
   return (
     <div className="flex w-full flex-col items-center">
-      <h2 className="text-balance font-display text-3xl">{asking ? "What did you think?" : "That's all"}</h2>
-      <p className="mt-2 max-w-sm text-balance text-white/85">
+      <h2 className="text-balance font-display text-3xl short:text-2xl">{asking ? "What did you think?" : "That's all"}</h2>
+      <p className="mt-2 max-w-sm text-balance text-white/85 short:max-w-xl">
         {tools.preview
           ? "Here they can like or pass on each home."
           : asking
@@ -649,29 +600,36 @@ export function ShareEnd({
         <ul
           aria-label="The homes"
           className={cn(
-            "mt-6 grid w-full gap-3 text-left",
+            "mt-6 grid w-full gap-3 text-left short:mt-3",
             homes.length === 1
               ? "max-w-xs grid-cols-1"
               : homes.length === 2
                 ? "max-w-xl grid-cols-2"
                 : three
-                  ? "max-w-3xl grid-cols-3"
-                  : "max-w-3xl grid-cols-2 sm:grid-cols-3",
+                  ? "max-w-3xl grid-cols-1 sm:grid-cols-3 short:max-w-md"
+                  : "max-w-3xl grid-cols-2 sm:grid-cols-3 short:max-w-md",
           )}
         >
           {homes.map((home) => (
-            <li key={home.key} className="min-w-0">
-              <div className="relative">
+            // A row on a phone (three homes): the photo box steps aside
+            // (`contents`), so its photo and buttons line up with the words,
+            // which sit between them.
+            <li key={home.key} className={cn("min-w-0", three && "max-sm:flex max-sm:items-center max-sm:gap-3")}>
+              <div className={cn("relative", three && "max-sm:contents")}>
                 <button
                   type="button"
                   onClick={() => tools.goToHome(home.key)}
                   aria-label={`See ${home.address}`}
-                  className={cn("block w-full rounded-2xl", focusOnDark)}
+                  className={cn(
+                    "block",
+                    three ? "w-20 shrink-0 rounded-xl sm:w-full sm:rounded-2xl" : "w-full rounded-2xl",
+                    focusOnDark,
+                  )}
                 >
                   <HomeThumb
                     src={home.photo}
-                    sizes={three ? "(min-width: 640px) 256px, 33vw" : "(min-width: 640px) 256px, 50vw"}
-                    className="aspect-[4/3] w-full rounded-2xl"
+                    sizes={three ? "(min-width: 640px) 256px, 80px" : "(min-width: 640px) 256px, 50vw"}
+                    className={cn("aspect-[4/3] w-full", three ? "rounded-xl sm:rounded-2xl" : "rounded-2xl")}
                   />
                 </button>
                 <button
@@ -680,8 +638,8 @@ export function ShareEnd({
                   aria-pressed={home.reaction === "dislike"}
                   onClick={() => end.choose(home.key, "dislike")}
                   className={cn(
-                    "absolute bottom-2 left-2 flex size-11 items-center justify-center rounded-full ring-1 ring-white/25 backdrop-blur-md transition-colors",
-                    three && "max-sm:bottom-1 max-sm:left-1",
+                    "flex size-11 shrink-0 items-center justify-center rounded-full ring-1 ring-white/25 backdrop-blur-md transition-colors",
+                    three ? "max-sm:order-2 sm:absolute sm:bottom-2 sm:left-2" : "absolute bottom-2 left-2",
                     home.reaction === "dislike" ? "bg-amber-600 text-white" : "bg-black/50 text-white hover:bg-black/70",
                     focusOnDark,
                   )}
@@ -694,8 +652,8 @@ export function ShareEnd({
                   aria-pressed={home.reaction === "like"}
                   onClick={() => end.choose(home.key, "like")}
                   className={cn(
-                    "absolute bottom-2 right-2 flex size-11 items-center justify-center rounded-full ring-1 ring-white/25 backdrop-blur-md transition-colors",
-                    three && "max-sm:bottom-1 max-sm:right-1",
+                    "flex size-11 shrink-0 items-center justify-center rounded-full ring-1 ring-white/25 backdrop-blur-md transition-colors",
+                    three ? "max-sm:order-2 sm:absolute sm:bottom-2 sm:right-2" : "absolute bottom-2 right-2",
                     home.reaction === "like" ? "bg-rose-600 text-white" : "bg-black/50 text-white hover:bg-black/70",
                     focusOnDark,
                   )}
@@ -703,8 +661,10 @@ export function ShareEnd({
                   <Heart aria-hidden size={22} strokeWidth={2.5} className={home.reaction === "like" ? "fill-white" : undefined} />
                 </button>
               </div>
-              <p className="mt-1.5 truncate font-display text-lg leading-tight">{formatPrice(home.price)}</p>
-              <p className="truncate text-sm text-white/80">{home.address}</p>
+              <div className={cn("min-w-0", three ? "max-sm:order-1 max-sm:flex-1 sm:mt-1.5" : "mt-1.5")}>
+                <p className="truncate font-display text-lg leading-tight">{formatPrice(home.price)}</p>
+                <p className="truncate text-sm text-white/80">{home.address}</p>
+              </div>
             </li>
           ))}
         </ul>
@@ -764,7 +724,7 @@ function EmptyLink() {
         onClick={contact.open}
         className={cn(button({ kind: "light", size: "lg" }), "mt-6")}
       >
-        <Phone aria-hidden size={18} />
+        <ContactIcon agent={contact.reach} aria-hidden size={18} />
         Contact {contact.first}
       </button>
     </div>
