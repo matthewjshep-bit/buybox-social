@@ -1004,7 +1004,7 @@ test("on a phone, picked homes stay in view whatever the search, and who it's fo
   for (const address of ["1204 Quillan", "719 Saltmarsh", "812 N Corbel", "96 Fernhollow"]) await pickHome(agent, address);
   await expect(tray.getByRole("listitem")).toHaveCount(4);
   expect(await pageWidth()).toBeLessThanOrEqual(393);
-  await expect(agent.getByRole("radio", { name: "Someone" })).toHaveAttribute("aria-checked", "true");
+  await expect(agent.getByRole("button", { name: "Who sees this: Private" })).toBeVisible();
   const name = agent.getByRole("combobox", { name: "Who's it for?" });
   await name.focus();
   await expect(name).toBeFocused();

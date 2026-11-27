@@ -14,9 +14,9 @@ test("a home from a pasted Zillow link, found and picked in the box; named for s
   test.setTimeout(90_000);
   const agent = await signInAgent(browser, "flo.funnel@example.com", "Flo Funnel");
   await agent.goto("/send?aud=someone");
-  await expect(agent).toHaveTitle("Send homes · Porchcard");
-  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send homes");
-  await expect(agent.getByRole("radio", { name: "Someone" })).toHaveAttribute("aria-checked", "true");
+  await expect(agent).toHaveTitle("Share homes · Porchcard");
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Share homes");
+  await expect(agent.getByRole("button", { name: "Who sees this: Private" })).toBeVisible();
   // Nothing picked: nowhere to go yet, and it says why.
   const send = agent.getByRole("button", { name: "Send", exact: true });
   await expect(send).toBeDisabled();
@@ -31,11 +31,10 @@ test("a home from a pasted Zillow link, found and picked in the box; named for s
   const offered = agent.getByRole("listbox", { name: "Homes that match" }).getByRole("option");
   await expect(offered).toHaveCount(1);
   await expect(offered).toContainText(QUILLAN);
-  // Each offered as a card: the price first, then the address, and "Pick".
+  // Each offered as a card: the price first, then the address, and a +.
   // (The option is the row itself: no button inside it to Tab to.)
   await expect(offered).toHaveAccessibleName(/^\$[\d,]+ · 1204 Quillan St SE/);
   await expect(offered.getByRole("button")).toHaveCount(0);
-  await expect(offered).toContainText("Pick");
   // A link with no address in it says so.
   await search.fill("https://www.zillow.com/homes/for_sale/");
   await expect(agent.getByRole("status").filter({ hasText: "couldn't read" })).toHaveText(
@@ -89,7 +88,6 @@ test("a home from a pasted Zillow link, found and picked in the box; named for s
   await expect(send).toBeDisabled();
   await expect(agent.getByText("Say who it's for.")).toBeVisible();
   const who = agent.getByRole("combobox", { name: "Who's it for?" });
-  await expect(agent.getByText("Each person gets their own link.")).toBeVisible();
   await who.fill("Jo");
   await who.press("Enter");
   await expect(agent.getByRole("list", { name: "Who it's for" }).getByText("Jo", { exact: true })).toBeVisible();
@@ -185,7 +183,7 @@ test("a new agent with no listings still has homes to send in the box, near wher
   await agent.goto("/people/me");
   await expect(agent.getByText("Olympia, WA")).toBeVisible();
   await agent.goto("/send?aud=someone");
-  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send homes");
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Share homes");
   // Add a home: before anything's typed, homes are offered.
   await agent.getByRole("button", { name: "Add a home" }).click();
   const more = agent.getByRole("region", { name: "Popular and near you" });
@@ -219,11 +217,9 @@ test("a new agent with no listings still has homes to send in the box, near wher
   const theirs = other.getByRole("region", { name: "Popular and near you" }).getByRole("button", { name: /^\$/ });
   await expect(theirs.first()).toContainText("Port Townsend");
   await other.context().close();
-  // Each one a big target: a photo, the price and the address, and "Pick".
+  // Each one a big target: a photo, the price and the address, and a +.
   const first = homes.first();
   expect((await first.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-  await expect(first).toContainText("Pick");
-  await expect(first).toHaveAttribute("aria-pressed", "false");
 
   // One tap picks it, the same as a home found by typing: it leaves the
   // homes offered for the picked ones.

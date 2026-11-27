@@ -614,13 +614,13 @@ test("on a phone a listing's address and price are never cut short, and Send sta
   await agent.setViewportSize({ width: 390, height: 780 });
   await row.getByRole("link", { name: `Send ${LONG}` }).click();
   await agent.waitForURL(/\/send\?home=OWN-[\w-]+$/);
-  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send homes");
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Share homes");
   const picked = agent.getByRole("list", { name: "Picked homes" }).getByRole("listitem");
   await expect(picked).toHaveCount(1);
   await expect(picked).toContainText(LONG);
   await expect(picked.getByRole("button", { name: `Remove ${LONG}` })).toBeVisible();
   // For someone, since a home's picked; all that's missing is who.
-  await expect(agent.getByRole("radio", { name: "Someone" })).toHaveAttribute("aria-checked", "true");
+  await expect(agent.getByRole("button", { name: "Who sees this: Private" })).toBeVisible();
   await expect(agent.getByText("Say who it's for.")).toBeVisible();
 
   // Closed, it stays on her profile (so it keeps its star), but a link takes only homes for sale: no Send.

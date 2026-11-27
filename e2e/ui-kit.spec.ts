@@ -115,7 +115,7 @@ test("the agent's pages: every button round-ended at 44 or 48px, text boxes ring
   await agent.goto("/send?aud=someone");
   await agent.getByRole("button", { name: "Add a home" }).click();
   const search = await expectFieldFocus(agent, "Address, MLS number, or a link to the home");
-  expect(search.height).toBe(48);
+  expect(search.height).toBe(44);
 
   const { dashboardUrl } = await createShare(agent, ["812 N Corbel"], ["Kit"]);
   // (The display type, as a page's title has it: the link's page, where sending ends up.)

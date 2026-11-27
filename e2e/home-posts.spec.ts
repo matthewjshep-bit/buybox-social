@@ -26,10 +26,10 @@ test("someone posts about a home from their page; a follower sees it in their fe
   // The closed box at the top of her page opens in place: the one box for
   // posting or sending homes. On her own page it goes to everyone unless
   // she says otherwise.
-  await pia.getByRole("button", { name: "Send homes to someone" }).click();
+  await pia.getByRole("button", { name: /^Share homes/ }).click();
   const form = pia.locator("form[data-compose]");
-  await expect(form.getByRole("heading", { level: 2, name: "Post or send homes" })).toBeVisible();
-  await expect(form.getByRole("radio", { name: "Everyone" })).toHaveAttribute("aria-checked", "true");
+  await expect(form.getByRole("heading", { level: 2, name: "Share homes" })).toBeVisible();
+  await expect(form.getByRole("button", { name: "Who sees this: Public" })).toBeVisible();
   // Pia finds the home by its street, from the homes that match.
   await pickHome(pia, LARKMOOR);
   // A home alone can go as a post, or be kept for her alone with Save
@@ -56,7 +56,7 @@ test("someone posts about a home from their page; a follower sees it in their fe
   await expect(hers).toContainText("Pia posted about this home");
   await expect(hers.locator("[data-card-link]")).toHaveAttribute("href", /^\/reel\?from=[\w-]+&home=SAMPLE-/);
   // Not someone else's page: no box to post on it.
-  await expect(ravi.getByRole("button", { name: "Send homes to someone" })).toHaveCount(0);
+  await expect(ravi.getByRole("button", { name: /^Share homes/ })).toHaveCount(0);
   await expect(ravi.locator("form[data-compose]")).toHaveCount(0);
 
   // Ravi's feed has it, with one small bar under it: the home's likes and

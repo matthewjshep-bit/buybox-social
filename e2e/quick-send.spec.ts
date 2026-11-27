@@ -365,7 +365,7 @@ test("a buyer's Send goes on to the box with the home picked, and visitors still
   // Send: nothing handed to the share sheet; on to Send homes, this home picked.
   await send.click();
   await buyer.waitForURL(/\/send\?home=SAMPLE-1004$/);
-  await expect(buyer.getByRole("heading", { level: 1 })).toHaveText("Send homes");
+  await expect(buyer.getByRole("heading", { level: 1 })).toHaveText("Share homes");
   await expect(buyer.getByRole("list", { name: "Picked homes" })).toContainText("96 Fernhollow Ln");
   expect(await shared(buyer)).toHaveLength(1);
   // A home that has sold isn't one to send: plain Share, as for anyone.
@@ -514,7 +514,7 @@ test("the longer way to send one home starts with it picked, and keeps it in vie
   // "Someone" chosen; nothing to send to yet, and the box says so.
   await agent.goto("/dashboard/new?home=SAMPLE-1004");
   await agent.waitForURL(/\/send\?home=SAMPLE-1004$/);
-  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send homes");
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Share homes");
   const tray = agent.getByRole("list", { name: "Picked homes" });
   await expect(tray.getByRole("listitem")).toHaveCount(1);
   await expect(tray).toContainText("96 Fernhollow Ln");
@@ -525,12 +525,12 @@ test("the longer way to send one home starts with it picked, and keeps it in vie
   expect(removeBox.height).toBeGreaterThanOrEqual(44);
   const search = agent.getByRole("combobox", { name: "Address, MLS number, or a link to the home" });
   await expect(search).toHaveCount(0);
-  await expect(agent.getByRole("radio", { name: "Someone" })).toHaveAttribute("aria-checked", "true");
+  await expect(agent.getByRole("button", { name: "Who sees this: Private" })).toBeVisible();
   await expect(agent.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
   await expect(agent.getByText("Say who it's for.")).toBeVisible();
 
   // Adding another opens the search; the first stays first.
-  await agent.getByRole("button", { name: "Add another home" }).click();
+  await agent.getByRole("button", { name: "Add a home" }).click();
   await expect(search).toBeFocused();
   await pickHome(agent, "4127 Larkmoor");
   await expect(tray.getByRole("listitem")).toHaveCount(2);
@@ -554,7 +554,7 @@ test("the longer way to send one home starts with it picked, and keeps it in vie
   // A home that isn't for sale: nothing picked, the usual way to start.
   await agent.goto("/dashboard/new?home=SAMPLE-SOLD");
   await agent.waitForURL(/\/send\?home=SAMPLE-SOLD$/);
-  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send homes");
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Share homes");
   await expect(tray).toHaveCount(0);
   await expect(agent.getByRole("button", { name: "Add a home" })).toBeVisible();
 });
@@ -631,7 +631,7 @@ test("every home has Send in the row of buttons under its photo, nothing on the 
   await buyer.goto("/homes/SAMPLE-1004");
   await homeIn(buyer, "96 Fernhollow Ln").getByRole("button", { name: "Send 96 Fernhollow Ln" }).click();
   await buyer.waitForURL(/\/send\?home=SAMPLE-1004/);
-  await expect(buyer.getByRole("heading", { level: 1 })).toHaveText("Send homes");
+  await expect(buyer.getByRole("heading", { level: 1 })).toHaveText("Share homes");
   await expect(buyer.getByRole("list", { name: "Picked homes" })).toContainText("96 Fernhollow Ln");
   await expect(buyer.getByRole("button", { name: "Remove 96 Fernhollow Ln" })).toBeVisible();
 });

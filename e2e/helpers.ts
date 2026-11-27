@@ -97,9 +97,13 @@ export async function enterListingYourself(page: Page) {
 // Sending homes goes a step at a time: the homes, who it's for, then (on the
 // link itself) what the agent thinks of them. From the homes (one picked), on
 // to who it's for.
-// On the box for sending homes (/send): Someone, and the picker for who.
+// On the box for sharing homes (/send): Private (under their name), and the
+// To line for who.
 export async function toWho(page: Page) {
-  await page.getByRole("radio", { name: "Someone" }).click();
+  const chip = page.getByRole("button", { name: /^Who sees this/ });
+  if ((await chip.textContent())?.includes("Private")) return;
+  await chip.click();
+  await page.getByRole("radio", { name: "Private" }).click();
   await expect(page.getByRole("combobox", { name: "Who's it for?" })).toBeVisible();
 }
 
@@ -170,7 +174,7 @@ export async function signUpBuyer(browser: Browser, email: string, name: string,
   await throughWelcome(page, "buyer");
   await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
   await expect(page.getByRole("form", { name: "Sign up" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Send homes to someone" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Share homes/ })).toBeVisible();
   await page.goto("/browse");
   await expect(page.getByRole("article").first()).toBeVisible();
   return page;

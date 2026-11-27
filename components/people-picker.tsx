@@ -72,6 +72,7 @@ export function PeoplePicker({
   notify = false,
   beside,
   peer = false,
+  inline,
 }: {
   // The field's name, as it's read out and shown.
   label: string;
@@ -99,6 +100,10 @@ export function PeoplePicker({
   notify?: boolean;
   // Beside the field, on its line: a form's own button.
   beside?: ReactNode;
+  // A "To" line, as in a message (the box for sharing homes): this word
+  // shown before it, the people picked and the field on one line that wraps,
+  // edgeless but for a rule under it. The label is still read out.
+  inline?: string;
 }) {
   const single = mode === "single";
   const id = useId();
@@ -398,9 +403,46 @@ export function PeoplePicker({
   const row =
     "flex min-h-13 cursor-pointer items-center gap-3 rounded-xl px-2.5 py-1.5 hover:bg-stone-50 aria-selected:bg-stone-100 aria-selected:ring-2 aria-selected:ring-inset aria-selected:ring-brand";
 
+  // The field itself (at least 16px, so a phone doesn't zoom in on it).
+  const inputOf = (className: string) => (
+    <input
+      ref={input}
+      id={`${id}-input`}
+      role="combobox"
+      aria-expanded={shown}
+      aria-controls={listId}
+      aria-autocomplete="list"
+      aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
+      aria-describedby={[hint && hintId, problem && `${id}-problem`].filter(Boolean).join(" ") || undefined}
+      aria-invalid={problem ? true : undefined}
+      value={text}
+      maxLength={60}
+      autoFocus={autoFocus}
+      autoComplete="off"
+      autoCorrect="off"
+      autoCapitalize="words"
+      spellCheck={false}
+      enterKeyHint={single ? "go" : "done"}
+      placeholder={full ? "Link is full" : peer ? "A first name" : "A client, or a first name"}
+      onChange={(event) => setText(event.target.value)}
+      onFocus={() => {
+        closeAfterPress.current = false;
+        setOpen(true);
+        if (!loaded) search(query, 0);
+      }}
+      onBlur={() => {
+        setActive(null);
+        if (pressing.current) closeAfterPress.current = true;
+        else setOpen(false);
+      }}
+      onKeyDown={onKeyDown}
+      className={className}
+    />
+  );
+
   return (
     <div>
-      <label htmlFor={`${id}-input`} className={hideLabel ? "sr-only" : fieldLabel}>
+      <label htmlFor={`${id}-input`} className={hideLabel || inline ? "sr-only" : fieldLabel}>
         {label}
       </label>
       {hint && (
@@ -409,7 +451,7 @@ export function PeoplePicker({
         </p>
       )}
 
-      {!single && chosen.length > 0 && (
+      {!single && chosen.length > 0 && !inline && (
         <ul aria-label="Who it's for" className="mt-2 flex flex-wrap gap-2">
           {chosen.map((person) => (
             <li
@@ -431,8 +473,40 @@ export function PeoplePicker({
         </ul>
       )}
 
-      {/* The field, and whatever goes on its line (a form's own button). */}
-      <div className="mt-2 flex items-start gap-2">
+      {/* The field, and whatever goes on its line (a form's own button). Inline:
+          a To line, the people picked and the field on it. */}
+      {inline ? (
+        <div
+          onClick={(event) => {
+            if (event.target === event.currentTarget) input.current?.focus();
+          }}
+          className="flex min-h-12 flex-wrap items-center gap-1.5 border-b border-stone-200 py-1 focus-within:border-brand"
+        >
+          <span aria-hidden className="pr-1 text-body text-muted">
+            {inline}
+          </span>
+          {chosen.length > 0 && (
+            <ul aria-label="Who it's for" className="flex flex-wrap gap-1.5">
+              {chosen.map((person) => (
+                <li key={person.key} className="flex min-w-0 max-w-full items-center gap-1 rounded-full bg-stone-100 py-0.5 pl-1">
+                  <Avatar name={person.name} photo={person.photo} size={6} />
+                  <span className="min-w-0 truncate text-sm font-semibold">{person.name}</span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${person.name}`}
+                    onClick={() => remove(person)}
+                    className="relative grid size-7 shrink-0 place-items-center rounded-full text-stone-600 before:absolute before:-inset-2 before:content-[''] hover:bg-black/5"
+                  >
+                    <X aria-hidden size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {inputOf("h-10 min-w-32 flex-1 bg-transparent text-base text-ink outline-hidden! placeholder:text-stone-500")}
+        </div>
+      ) : (
+        <div className="mt-2 flex items-start gap-2">
         <div className="relative min-w-0 flex-1">
           {picked && picked.group !== "new" && (
             <Avatar
@@ -442,43 +516,11 @@ export function PeoplePicker({
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2"
             />
           )}
-          <input
-            ref={input}
-            id={`${id}-input`}
-            role="combobox"
-            aria-expanded={shown}
-            aria-controls={listId}
-            aria-autocomplete="list"
-            aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
-            aria-describedby={[hint && hintId, problem && `${id}-problem`].filter(Boolean).join(" ") || undefined}
-            aria-invalid={problem ? true : undefined}
-            value={text}
-            maxLength={60}
-            autoFocus={autoFocus}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="words"
-            spellCheck={false}
-            enterKeyHint={single ? "go" : "done"}
-            placeholder={full ? "Link is full" : peer ? "A first name" : "A client, or a first name"}
-            onChange={(event) => setText(event.target.value)}
-            onFocus={() => {
-              closeAfterPress.current = false;
-              setOpen(true);
-              if (!loaded) search(query, 0);
-            }}
-            onBlur={() => {
-              setActive(null);
-              if (pressing.current) closeAfterPress.current = true;
-              else setOpen(false);
-            }}
-            onKeyDown={onKeyDown}
-            // At least 16px, so a phone doesn't zoom in on it.
-            className={cn(field(), picked && picked.group !== "new" && "pl-12")}
-          />
+          {inputOf(cn(field(), picked && picked.group !== "new" && "pl-12"))}
         </div>
-        {beside}
-      </div>
+          {beside}
+        </div>
+      )}
 
       {/* (Straight under what they typed, where it's read before Enter.) */}
       {meant && shown && (

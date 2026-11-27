@@ -25,10 +25,10 @@ test("words alone are a post: on your page and in a follower's feed, with no hom
   await expect(una.getByRole("button", { name: /^Following/ })).toBeVisible();
 
   // Tess says something, with no home, and posts it.
-  await tess.getByRole("button", { name: "Send homes to someone" }).click();
+  await tess.getByRole("button", { name: /^Share homes/ }).click();
   const form = tess.locator("form[data-compose]");
-  await expect(form.getByRole("heading", { level: 2, name: "Post or send homes" })).toBeVisible();
-  await expect(form.getByRole("radio", { name: "Everyone" })).toHaveAttribute("aria-checked", "true");
+  await expect(form.getByRole("heading", { level: 2, name: "Share homes" })).toBeVisible();
+  await expect(form.getByRole("button", { name: "Who sees this: Public" })).toBeVisible();
   await form.getByRole("textbox", { name: "Say something" }).fill(WORDS);
   await expect(form.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
   await form.getByRole("button", { name: "Post", exact: true }).click();
@@ -61,9 +61,9 @@ test("two homes in one post: a carousel named for the author, each home on its s
   await nadia.goto("/people/me");
   await nadia.waitForURL(/\/people\/[\w-]+$/);
 
-  await nadia.getByRole("button", { name: "Send homes to someone" }).click();
+  await nadia.getByRole("button", { name: /^Share homes/ }).click();
   const form = nadia.locator("form[data-compose]");
-  await expect(form.getByRole("heading", { level: 2, name: "Post or send homes" })).toBeVisible();
+  await expect(form.getByRole("heading", { level: 2, name: "Share homes" })).toBeVisible();
   await pickHome(nadia, CORBEL);
   await pickHome(nadia, FERNHOLLOW);
   await expect(form.getByRole("list", { name: "Picked homes" }).getByRole("listitem")).toHaveCount(2);

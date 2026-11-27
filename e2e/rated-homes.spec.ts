@@ -126,7 +126,7 @@ test("after rating every home on her link the card is gone from Home and they're
   await agent.goto(dashboardUrl);
   await agent.getByRole("link", { name: "Send more homes" }).click();
   await agent.waitForURL(/\/send\?share=/);
-  await expect(agent.getByRole("form", { name: "Send Ivy homes" })).toContainText("To Ivy");
+  await expect(agent.getByRole("form", { name: "Share homes with Ivy" })).toContainText("To Ivy");
   await pickHome(agent, "812 N Corbel");
   await agent.getByRole("button", { name: "Send", exact: true }).click();
   await agent.waitForURL((u) => /^\/messages\/.+/.test(u.pathname) && !u.searchParams.has("sent"));

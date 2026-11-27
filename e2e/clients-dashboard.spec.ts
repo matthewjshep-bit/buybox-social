@@ -126,11 +126,11 @@ test("whoever wants a showing is waiting on Messages, with Reply under the home,
   // She's on Porchcard, so she hears about the new home from us too.
   await fern.getByRole("link", { name: "Send homes" }).click();
   await fern.waitForURL(/\/send\?to=/);
-  await expect(fern.getByRole("heading", { level: 1 })).toHaveText("Send Jo homes");
-  await expect(fern).toHaveTitle("Send homes · Porchcard");
-  const forJo = fern.getByRole("form", { name: "Send Jo homes" });
+  await expect(fern.getByRole("heading", { level: 1 })).toHaveText("Share homes with Jo");
+  await expect(fern).toHaveTitle("Share homes · Porchcard");
+  const forJo = fern.getByRole("form", { name: "Share homes with Jo" });
   await expect(forJo).toContainText("To Jo");
-  await expect(forJo.getByRole("radiogroup", { name: "Who it's for" })).toHaveCount(0);
+  await expect(forJo.getByRole("button", { name: /^Who sees this/ })).toHaveCount(0);
   await pickHome(fern, "812 N Corbel");
   await fern.getByRole("button", { name: "Send", exact: true }).click();
   await fern.waitForURL((url) => url.pathname === joPage && !url.searchParams.has("sent"));

@@ -194,10 +194,10 @@ test("from the box on your own page, a home is saved with nothing said, and it's
   const cora = await signUpBuyer(browser, "cora.composer@example.com", "Cora Composer");
   const profile = await ownPage(cora);
   // The one box for posting or sending homes, opened in place at the top of her page.
-  await cora.getByRole("button", { name: "Send homes to someone" }).click();
+  await cora.getByRole("button", { name: /^Share homes/ }).click();
   const form = cora.locator("form[data-compose]");
-  await expect(form.getByRole("heading", { level: 2, name: "Post or send homes" })).toBeVisible();
-  await expect(form.getByRole("radio", { name: "Everyone" })).toHaveAttribute("aria-checked", "true");
+  await expect(form.getByRole("heading", { level: 2, name: "Share homes" })).toBeVisible();
+  await expect(form.getByRole("button", { name: "Who sees this: Public" })).toBeVisible();
   await pickHome(cora, SALTMARSH);
   // A home alone can go as a post; with nothing said, Save is there beside
   // it to keep the home for her alone instead.

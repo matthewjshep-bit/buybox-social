@@ -37,7 +37,7 @@ test("an agent's home is everyone's home, a feed with nothing of their clients o
   await expect(agent.getByRole("main")).not.toContainText("Agent dashboard");
   await expect(agent.getByRole("main")).not.toContainText("Hi Fern");
   // (The box to send homes, closed, at the top of the feed: a button, not a link away.)
-  await expect(agent.getByRole("button", { name: "Send homes to a client" })).toBeVisible();
+  await expect(agent.getByRole("button", { name: /^Share homes/ })).toBeVisible();
   await expect(agent.getByRole("link", { name: /^Send homes/ })).toHaveCount(0);
   await expect(agent.getByRole("region", { name: "Your clients" })).toHaveCount(0);
   await expect(agent.getByRole("group", { name: "Show" })).toHaveCount(0);

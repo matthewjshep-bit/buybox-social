@@ -13,9 +13,9 @@ import { photoUrl, photoVersion } from "@/lib/person-photo";
 import { ensureAccountVisitor } from "@/lib/public";
 import { backLink, card, pageColumn } from "@/lib/ui";
 
-export const metadata = { title: "Send homes · Porchcard" };
+export const metadata = { title: "Share homes · Porchcard" };
 
-// The box for saying something and sending homes, as a page of its own (from
+// The box for sharing homes and saying something, as a page of its own (from
 // Messages' pencil, the + in a conversation, Send on a home). With ?home=,
 // that home is already picked; with ?to= (a conversation) or ?share= (a link
 // sent in one), it goes to that person, onto the link they have.
@@ -87,20 +87,24 @@ function BackToMessages({ href }: { href: string }) {
   );
 }
 
-// While it's read: the way back, and the box's shape (a face and its title,
-// the box to say something in, a button).
+// While it's read: the way back, the title, and the box's shape (a face, who
+// sees it, the words, the bar).
 function SendSkeleton() {
   return (
     <div aria-busy>
       <BackToMessages href="/messages" />
-      <Loading what="Send homes" />
+      <Loading what="Share homes" />
+      <Placeholder className="mb-4 h-9 w-48" />
       <div aria-hidden className={cn(card, "flex flex-col gap-3 p-4")}>
         <div className="flex items-center gap-3">
           <Placeholder className="size-10 shrink-0" />
-          <Placeholder className="h-9 w-48" />
+          <div className="flex flex-col gap-1.5">
+            <Placeholder className="h-4 w-32" />
+            <Placeholder className="h-6 w-20" />
+          </div>
         </div>
-        <Placeholder className="h-20 rounded-2xl" />
-        <Placeholder className="h-11 w-36" />
+        <Placeholder className="h-14 rounded-xl" />
+        <Placeholder className="h-11 w-32" />
       </div>
     </div>
   );

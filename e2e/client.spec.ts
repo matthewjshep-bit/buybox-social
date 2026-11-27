@@ -92,8 +92,8 @@ test("an agent's link page: what they want, remove and restore, add homes; their
   // More homes can go on the same link, so Joe's history stays in one place.
   await agent.getByRole("link", { name: "Send more homes" }).click();
   await agent.waitForURL(/\/send\?share=/);
-  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Send Joe homes");
-  await expect(agent.getByRole("form", { name: "Send Joe homes" })).toContainText("To Joe");
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Share homes with Joe");
+  await expect(agent.getByRole("form", { name: "Share homes with Joe" })).toContainText("To Joe");
   await pickHome(agent, "812 N Corbel");
   await agent.getByRole("button", { name: "Send", exact: true }).click();
   // Then his conversation, the new home in it; the link's page has it too.
