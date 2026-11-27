@@ -317,7 +317,7 @@ export async function openMore(page: Page, home: Locator) {
 // profile: the one switch for it, in Edit profile, off. (It's on to start with.)
 export async function keepLinksPrivate(page: Page) {
   await page.goto("/people/me/edit");
-  const shown = page.getByRole("switch", { name: "Show what I do on homes I'm sent" });
+  const shown = page.getByRole("switch", { name: "Share my likes and comments on homes I'm sent" });
   await expect(shown).toHaveAttribute("aria-checked", "true");
   await shown.click();
   await expect(shown).toHaveAttribute("aria-checked", "false");

@@ -24,6 +24,7 @@ import {
   settle,
   signInAgent,
   passOn,
+  keepLinksPrivate,
 } from "./helpers";
 
 // The Porchcard: everything people think of a home in one place. On the
@@ -205,7 +206,12 @@ test("public and private: a link's people, passes and words stay on the link, an
   await heartOf(umaHome).click();
   await expect(heartOf(umaHome)).toHaveAttribute("aria-pressed", "true");
   await likeInPhoto(umaHome, "the front door");
+  // (She keeps what she does on links to them: Edit profile's switch, off.
+  // What's public there by default is lib/link-public's, not this test's.)
+  await keepLinksPrivate(uma);
+  await uma.goto(urls.Uma);
   const chat = await openComments(uma, umaHome);
+  await expect(chat.getByText("Only Sage Agent and people on this link see this.")).toBeVisible();
   await chat.getByLabel("Add a comment").fill(UMA_SAYS);
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByText(UMA_SAYS)).toBeVisible();

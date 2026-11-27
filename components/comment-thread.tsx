@@ -253,11 +253,6 @@ export function CommentThread({
           See {hidden.toLocaleString("en-US")} more {hidden === 1 ? "comment" : "comments"}
         </button>
       )}
-      {mode === "public" && !spot && (
-        <p className={cn("mt-4 text-center text-meta leading-5", t.faint)}>
-          Comments here are public. Buyers&apos; private chats with their agents stay private unless they choose to share.
-        </p>
-      )}
     </>
   );
   const head = (
@@ -619,8 +614,11 @@ function Row({
   const t = useTone();
   const { actions } = useThread();
   const [pending, startTransition] = useTransition();
-  // Taking a comment back is always allowed; sharing it needs a like.
-  const canToggle = comment.mine && actions.setSharing && (comment.sharedPublicly || canShare);
+  // Public by name (or, from before, without it), on the home's own page too.
+  const isPublic = Boolean(comment.publicCopy || comment.sharedPublicly);
+  // Making one private is always allowed; making it public, only what they
+  // said about a home they haven't passed on (never a reply on the link).
+  const canToggle = comment.mine && actions.setSharing && !reply && (isPublic || canShare);
   const likeable = Boolean(actions.likeComment) && !comment.fromPrivateChat;
   const like = useCommentLike(comment);
   // Anything named can be answered: a comment, in a thread of its own; a
@@ -674,10 +672,16 @@ function Row({
               <Lock aria-hidden size={11} /> Shared from a private chat
             </span>
           )}
-          {comment.sharedPublicly && (
+          {comment.publicCopy ? (
             <span className="inline-flex min-h-6 items-center gap-1 font-normal">
-              <Globe aria-hidden size={11} /> Shared anonymously on the public page
+              <Globe aria-hidden size={11} /> Public
             </span>
+          ) : (
+            comment.sharedPublicly && (
+              <span className="inline-flex min-h-6 items-center gap-1 font-normal">
+                <Globe aria-hidden size={11} /> Shared anonymously on the public page
+              </span>
+            )
           )}
           {canToggle && (
             <button
@@ -685,12 +689,12 @@ function Row({
               disabled={pending}
               onClick={() =>
                 startTransition(async () => {
-                  await actions.setSharing!(comment.id, !comment.sharedPublicly);
+                  await actions.setSharing!(comment.id, !isPublic);
                 })
               }
               className={cn("flex h-6 items-center underline-offset-2 hit-44 hover:underline disabled:opacity-50", t.share)}
             >
-              {comment.sharedPublicly ? "Make private" : "Share anonymously"}
+              {isPublic ? "Make private" : "Make public"}
             </button>
           )}
         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ChevronDown, Heart, X } from "lucide-react";
+import { ArrowDown, ChevronDown, Globe, Heart, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  useTransition,
   type ComponentProps,
 } from "react";
 import { Toast } from "@/app/people/[id]/client";
@@ -28,7 +29,7 @@ import { agentFirstName, cn, formatPrice } from "@/lib/format";
 import type { ListingMedia } from "@/lib/listings/types";
 import type { ShareAgent } from "@/lib/shares";
 import { button, focusOnDark } from "@/lib/ui";
-import { recordHomeTime, recordOpen, type AskResult } from "./actions";
+import { noteLinksNamed, recordHomeTime, recordOpen, type AskResult } from "./actions";
 
 type ReelProps = ComponentProps<typeof ReelFeed>;
 
@@ -416,6 +417,7 @@ export function ShareWelcome({
   photo,
   sample,
   whoCanSee,
+  tellNamed = false,
   profile = null,
   homes = [],
 }: {
@@ -426,6 +428,8 @@ export function ShareWelcome({
   photo?: ListingMedia;
   sample: boolean;
   whoCanSee: string;
+  // Here before likes and comments on links became public: told so, once.
+  tellNamed?: boolean;
   // The agent's own page, once they have one: their face and name go there.
   profile?: string | null;
   // The homes on the link that have a place on the map, in the link's order.
@@ -499,6 +503,7 @@ export function ShareWelcome({
             {sample && "Sample listings, not for sale. "}
             {whoCanSee}
           </p>
+          {tellNamed && <NamedNotice />}
           </div>
           {/* Where they are: each pin goes to that home. On a wide screen
               only, where it sits beside the words rather than in the way of
@@ -535,6 +540,45 @@ export function ShareWelcome({
 
         <ChevronDown size={26} strokeWidth={2.25} className="animate-[nudge-down_1.6s_ease-in-out_infinite]" />
       </button>
+    </div>
+  );
+}
+
+// Once, to someone here before likes and comments on links became public:
+// what's changed, and the one tap to keep theirs as it was. Either answer puts
+// it away for good; keeping it private says where to change that later.
+function NamedNotice() {
+  const [answer, setAnswer] = useState<"seen" | "private" | null>(null);
+  const [pending, startTransition] = useTransition();
+  const answered = (keepPrivate: boolean) =>
+    startTransition(async () => {
+      const result = await noteLinksNamed(keepPrivate);
+      if (result.ok) setAnswer(keepPrivate ? "private" : "seen");
+    });
+  if (answer === "seen") return null;
+  return (
+    <div role="status" className="mt-4 rounded-2xl bg-black/35 p-4 text-sm leading-relaxed text-white ring-1 ring-white/20 backdrop-blur-md">
+      {answer === "private" ? (
+        <p>Kept private. Change it any time in Edit profile.</p>
+      ) : (
+        <>
+          <p className="flex gap-2 text-pretty">
+            <Globe aria-hidden size={16} className="mt-0.5 shrink-0" />
+            <span>
+              <span className="font-semibold">New:</span> your likes and comments here show on the home and your profile,
+              with your first name, so others can reply. Passes stay off the home&apos;s page.
+            </span>
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2 pl-6">
+            <button type="button" disabled={pending} onClick={() => answered(false)} className={button({ kind: "light" })}>
+              Got it
+            </button>
+            <button type="button" disabled={pending} onClick={() => answered(true)} className={cn(button({ kind: "ghost" }), "text-white hover:bg-white/10", focusOnDark)}>
+              Keep mine private
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -589,7 +633,7 @@ export function ShareEnd({
           ? "Here they can like or pass on each home."
           : asking
             ? "Tap the heart or the X on each home."
-            : `${agentName} sees your likes and comments.${onProfile ? " They show on your profile too." : ""}`}
+            : `${agentName} sees your likes and comments.${onProfile ? " They're on the homes and your profile too." : ""}`}
       </p>
       {/* Every home on the link, small: a heart and an X on each, saying what
           they made of it already, a tap from saying it now (or changing their

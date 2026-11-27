@@ -259,7 +259,7 @@ test("the Porchcard is an agent's, going through a link's homes or a client's: n
   const jamie = await signedIn(browser);
   await jamie.goto(url);
   const onLink = homeIn(jamie, TAMSEN);
-  await rowUnder(onLink, ["Pass on this home", /^Like 1880 Tamsen Ridge Pl SE/, /^Comments/, "More options"], /what you think…$/);
+  await rowUnder(onLink, ["Pass on this home", /^Like 1880 Tamsen Ridge Pl SE/, /^Comments/, "More options"], /^Add a comment…$/);
   await expect(porchcardOf(jamie)).toHaveCount(0);
   await Promise.all([kept(jamie), heartOf(onLink).click()]);
   await expect(heartOf(onLink)).toHaveAttribute("aria-pressed", "true");

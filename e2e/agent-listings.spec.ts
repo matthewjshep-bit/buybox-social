@@ -290,6 +290,8 @@ test("privacy: what a client says on the agent's link never shows on the agent's
   const quillan = homeIn(toby, QUILLAN);
   await quillan.scrollIntoViewIfNeeded();
   const chat = await openComments(toby, quillan);
+  // (Kept to Daniel: what's public by default isn't the point here.)
+  await chat.getByRole("button", { name: "Keep it to Daniel Okafor" }).click();
   await chat.getByLabel("Add a comment").fill(SECRET);
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByLabel("Add a comment")).toHaveValue("");

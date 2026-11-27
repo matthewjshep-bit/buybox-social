@@ -4,6 +4,7 @@ import { refresh } from "next/cache";
 import { after } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { ownedInPublic } from "@/lib/link-public";
 import { placeWords } from "@/lib/format";
 import { noteImpressions } from "@/lib/feed-rank";
 import { importMissing, runImportsAndContinue } from "@/lib/listings/imports";
@@ -81,6 +82,8 @@ async function saveReaction(listingKey: string, input: ReactionState): Promise<A
   const visitor = await resolveVisitor(listingKey);
   if (typeof visitor === "string") return fail(visitor);
 
+  // (Theirs here from now on, even a like that began on a link.)
+  await ownedInPublic(visitor.id, listingKey);
   if (state.reaction === null) {
     await sql`
       delete from public_reactions

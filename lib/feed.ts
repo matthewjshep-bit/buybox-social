@@ -1,5 +1,6 @@
 import type { Account } from "./auth";
 import { sql } from "./db";
+import { linkWho } from "./link-public";
 import { getFollowedIds } from "./follows";
 import { photosFor } from "./person-photo";
 import { agentMarks, agentNotes } from "./profile";
@@ -182,7 +183,8 @@ export async function getReel(
           from reactions r
           join participants p on p.id = r.participant_id
           join shares s on s.id = r.share_id
-          where r.listing_key = l.listing_key
+          -- (What's public too shows as the public one, by name.)
+          where r.listing_key = l.listing_key and not r.public_copy
             and (s.agent_id = ${agentId}::uuid or r.reaction = 'like' or cardinality(r.liked) > 0)
           union all
           select 'comment', null, '{}'::text[], '{}'::text[],
@@ -191,7 +193,7 @@ export async function getReel(
           from comments c
           join participants p on p.id = c.participant_id
           join shares s on s.id = c.share_id
-          where c.listing_key = l.listing_key
+          where c.listing_key = l.listing_key and c.public_comment_id is null
           union all
           -- (A home sent on a link is news only to whoever sent it, agent
           -- or not: to anyone else the next newest thing leads.)
@@ -285,12 +287,13 @@ export async function getReel(
         select listing_key, 'v' || visitor_id as who from public_reactions
         where reaction = 'like' and listing_key in ${sql(keys)}
         union
-        select listing_key, 'p' || participant_id from reactions
-        where reaction = 'like' and listing_key in ${sql(keys)}
+        -- (Someone on a link by their account counts as their public self.)
+        select r.listing_key, ${linkWho("r")} from reactions r
+        where r.reaction = 'like' and r.listing_key in ${sql(keys)}
         union
         select listing_key, 'v' || visitor_id from public_photo_likes where listing_key in ${sql(keys)}
         union
-        select listing_key, 'p' || participant_id from photo_likes where listing_key in ${sql(keys)}) x
+        select pl.listing_key, ${linkWho("pl")} from photo_likes pl where pl.listing_key in ${sql(keys)}) x
       group by listing_key`,
     getPublicTimelines(listings, visitorId),
     getPublicPhotoLikes(keys, visitorId),
@@ -348,7 +351,9 @@ export async function getReel(
           from reactions r
           join participants p on p.id = r.participant_id
           join shares s on s.id = r.share_id
+          -- (What's public too shows as the public one, by name.)
           where r.listing_key in ${sql(keys)} and (r.reaction = 'like' or cardinality(r.liked) > 0)
+            and not r.public_copy
           union all
           select c.listing_key,
             case when s.agent_id = ${agentId}::uuid or c.shared_publicly or ${own} then 'comment' else 'private-comment' end,
@@ -366,7 +371,7 @@ export async function getReel(
           from comments c
           join participants p on p.id = c.participant_id
           join shares s on s.id = c.share_id
-          where c.listing_key in ${sql(keys)}
+          where c.listing_key in ${sql(keys)} and c.public_comment_id is null
           union all
           -- (Sent on a link: only ever to whoever sent it.)
           select sl.listing_key, 'sent', md5('s:' || sl.share_id || ':' || sl.listing_key), null,

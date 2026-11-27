@@ -69,15 +69,16 @@ const ranked = (period: PopularPeriod) => sql`
     select listing_key, 1 as likes, 0 as comments, updated_at as at from public_reactions
     where reaction = 'like' ${since(period, "updated_at")}
     union all
+    -- (A like on a link that's public too counts once, as the public one.)
     select listing_key, 1, 0, updated_at from reactions
-    where reaction = 'like' ${since(period, "updated_at")}
+    where reaction = 'like' and not public_copy ${since(period, "updated_at")}
     union all
     select listing_key, 0, 1, created_at from public_comments
     where true ${since(period, "created_at")}
     union all
     -- (On a link, only what the people it was sent to said: not the agent's answers.)
     select listing_key, 0, 1, created_at from comments
-    where participant_id is not null ${since(period, "created_at")}
+    where participant_id is not null and public_comment_id is null ${since(period, "created_at")}
   ) x
   -- (Homes for sale, and an agent's own deals they've closed and still show:
   -- people like and talk about those too.)

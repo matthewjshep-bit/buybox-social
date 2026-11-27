@@ -1,4 +1,5 @@
 import { sql } from "./db";
+import { linkWho } from "./link-public";
 import { OWN_PREFIX } from "./own-listings";
 
 export type ListingCounts = Map<string, { likes: number; comments: number }>;
@@ -28,12 +29,13 @@ export async function getListingCounts(keys: string[]): Promise<ListingCounts> {
         select c.tile, 'v' || r.visitor_id as who from public_reactions r join counted c using (listing_key)
         where r.reaction = 'like'
         union
-        select c.tile, 'p' || r.participant_id from reactions r join counted c using (listing_key)
+        -- (Someone on a link by their account counts as their public self.)
+        select c.tile, ${linkWho("r")} from reactions r join counted c using (listing_key)
         where r.reaction = 'like'
         union
         select c.tile, 'v' || l.visitor_id from public_photo_likes l join counted c using (listing_key)
         union
-        select c.tile, 'p' || l.participant_id from photo_likes l join counted c using (listing_key)) x
+        select c.tile, ${linkWho("l")} from photo_likes l join counted c using (listing_key)) x
       group by tile`,
     sql<{ tile: string; n: number }[]>`
       with counted as (${counted()})

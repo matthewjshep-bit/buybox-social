@@ -1336,7 +1336,7 @@ function HomePanel({
                       )}
                       {comment.sharedPublicly && (
                         <span className="inline-flex items-center gap-1">
-                          · <Globe aria-hidden size={11} /> Shared publicly
+                          · <Globe aria-hidden size={11} /> Public
                         </span>
                       )}
                     </>

@@ -33,7 +33,8 @@ export type ThreadActions = {
   comment: (
     listingKey: string,
     body: string,
-    sharePublicly: boolean,
+    // On a link: public too, by name (lib/link-public.ts), not only on the link.
+    toPublic: boolean,
     parentId?: string | null,
     // The spot in a photo it's about: tap the front door, say something about it.
     spot?: SpotRef | null,
@@ -54,7 +55,16 @@ export type SpotRef = { mediaKey: string; tag: string };
 // How a list of comments names a spot, and takes you to it on the photo.
 // Who sees what you write here, said under every comment box: "Everyone can
 // see your comment and first name." `private`: only some people (a lock).
-export type SeenBy = { text: string; private: boolean };
+export type SeenBy = {
+  text: string;
+  private: boolean;
+  // On an agent's link, someone on it: what they say about a home can be
+  // public, by name, or stay on the link (`text` says who reads it there).
+  // Which it starts on, and the words for keeping it on the link.
+  choice?: { publicByDefault: boolean; keepLabel: string };
+};
+
+const PUBLIC_LINE = "Public, with your first name.";
 
 // `canReact`: they can like and say things now (signed in, or just joined).
 // Anyone else is asked to sign up first, before anything else opens.
@@ -336,6 +346,7 @@ export function CommentComposer({
   onPosted,
   spot = null,
   placeholder,
+  keptPlaceholder,
   label,
   compact = false,
   autoFocus = false,
@@ -350,6 +361,9 @@ export function CommentComposer({
   // The spot in a photo the comment is about.
   spot?: SpotRef | null;
   placeholder?: string;
+  // On a link, what it says while what's written stays on the link ("Tell
+  // Lane what you think…"); public, it's the plain one.
+  keptPlaceholder?: string;
   // Its name, when the placeholder says something else ("Add a comment").
   label?: string;
   // Just the box: no emoji row, no sharing (the card on a photo).
@@ -365,7 +379,8 @@ export function CommentComposer({
   // Back to the box after posting: the Post button disables once the box is
   // empty, and a focused disabled button swallows keys (like Escape).
   const textBox = useRef<HTMLTextAreaElement>(null);
-  const [sharePublicly, setSharePublicly] = useState(false);
+  // Public or kept on the link, once they've picked (else as it starts).
+  const [picked, setPicked] = useState<boolean | null>(null);
   const [quick, setQuick] = useState(!quickOnFocus);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -389,12 +404,12 @@ export function CommentComposer({
     // (Only as it opens.)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const sharing = canShare && !compact && !replyTo;
-  // Ticked to share it on the public page too: said so, not "only you".
-  const seen: SeenBy | undefined =
-    sharing && sharePublicly
-      ? { text: "Also public, without your name.", private: false }
-      : seenBy;
+  // On a link: what they say about the home (not a reply there, not on a home
+  // they passed on) is public unless they keep it on the link.
+  const choosing = canShare && !compact && !replyTo && Boolean(seenBy?.choice);
+  const toPublic = choosing && (picked ?? seenBy!.choice!.publicByDefault);
+  const seen: SeenBy | undefined = toPublic ? { text: PUBLIC_LINE, private: false } : seenBy;
+  const hint = seenBy?.choice && !toPublic ? (keptPlaceholder ?? placeholder) : placeholder;
 
   const submit = async () => {
     if (!body.trim() || pending || !(await ensureName())) return;
@@ -403,14 +418,13 @@ export function CommentComposer({
       const result = await actions.comment(
         listingKey,
         body,
-        sharing && sharePublicly,
+        toPublic,
         replyTo?.id ?? null,
         replyTo ? null : spot,
       );
       if (result.ok) {
         setBody("");
         textBox.current?.focus();
-        setSharePublicly(false);
         onPosted?.();
       } else {
         setError(result.error);
@@ -470,7 +484,7 @@ export function CommentComposer({
         )}
       >
         <label htmlFor={inputId} className="sr-only">
-          {who ? `Reply to ${who}` : (label ?? placeholder?.replace(/…$/, "") ?? "Add a comment")}
+          {who ? `Reply to ${who}` : (label ?? hint?.replace(/…$/, "") ?? "Add a comment")}
         </label>
         <textarea
           ref={textBox}
@@ -489,7 +503,7 @@ export function CommentComposer({
           maxLength={1000}
           rows={1}
           enterKeyHint="send"
-          placeholder={who ? `Reply to ${who}…` : (placeholder ?? "Add a comment…")}
+          placeholder={who ? `Reply to ${who}…` : (hint ?? "Add a comment…")}
           className={cn(
             "max-h-29 min-h-11 min-w-0 flex-1 resize-none bg-transparent py-2.5 text-base leading-6 outline-none [field-sizing:content]",
             dark ? "text-white placeholder:text-white/60" : "placeholder:text-stone-500",
@@ -504,18 +518,6 @@ export function CommentComposer({
           <ArrowUp aria-hidden size={18} strokeWidth={2.5} className={cn(pending && "animate-pulse")} />
         </button>
       </div>
-      {sharing && (
-        <label className={cn("mt-1.5 flex min-h-9 cursor-pointer items-center gap-2.5 px-2 text-meta hit-44", dark ? "text-white/80" : "text-stone-700")}>
-          <input
-            type="checkbox"
-            checked={sharePublicly}
-            onChange={(event) => setSharePublicly(event.target.checked)}
-            // Above the line's touch area, so a tap on the box is on the box.
-            className="relative z-[1] size-4.5 shrink-0 accent-[var(--brand)]"
-          />
-          <span>Also share publicly, without my name</span>
-        </label>
-      )}
       {error && (
         <p role="alert" className={cn("mt-1 px-2 text-sm", dark ? "text-rose-300" : "text-red-700")}>
           {error}
@@ -529,7 +531,25 @@ export function CommentComposer({
             <Globe aria-hidden size={12} className="shrink-0" />
           )}
           {/* Evenly over two lines when it needs them (a card's narrow box). */}
-          <span className="text-balance">{seen.text}</span>
+          <span className="text-balance">
+            {seen.text}
+            {/* One tap the other way: keep this one on the link, or make it public. */}
+            {choosing && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={() => setPicked(!toPublic)}
+                  className={cn(
+                    "font-semibold underline-offset-2 hit-44 hover:underline",
+                    dark ? "text-white/90 hover:text-white" : "text-stone-700 hover:text-ink",
+                  )}
+                >
+                  {toPublic ? seenBy!.choice!.keepLabel : "Make public"}
+                </button>
+              </>
+            )}
+          </span>
         </p>
       )}
     </form>

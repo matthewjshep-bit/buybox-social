@@ -178,9 +178,13 @@ export default async function SharePage({ params, searchParams }: Props) {
   // switched that off. (Doing anything here means signing in, so it's said to
   // a visitor as well, before they do.) Never the agent on their own link.
   const [keeps] = signedIn
-    ? await sql<{ hide_links: boolean }[]>`select hide_links from visitors where account_id = ${signedIn.id}`
+    ? await sql<{ hide_links: boolean; unnoticed: boolean }[]>`
+        select hide_links, links_named_noticed_at is null as unnoticed from visitors where account_id = ${signedIn.id}`
     : [];
   const onProfile = !agentViewing && !keeps?.hide_links;
+  // Here before likes and comments on links became public (lib/link-public.ts):
+  // told so once, with the way to keep theirs private.
+  const tellNamed = Boolean(onProfile && keeps?.unnoticed && !viewing);
   const count = listings.length;
   // The welcome screen's headline: the agent's own words, or the standard line.
   const greeting =
@@ -279,7 +283,7 @@ export default async function SharePage({ params, searchParams }: Props) {
         }}
         // (The agent's own look is never asked a name: nothing there is saved.)
         myName={agentViewing ? agentFirstName(agent.full_name, "You") : (me?.first_name ?? null)}
-        prompt={`So ${agentName} knows who's talking.`}
+        prompt={`Your first name shows with your likes and comments. ${agentName} sees them all.`}
         // Their name already, on their own link (or on one sent to just them).
         suggestedName={person?.first_name ?? expected}
         nameHint={expected && `Not ${expected}? Type your name.`}
@@ -296,6 +300,7 @@ export default async function SharePage({ params, searchParams }: Props) {
               photo={listings[0].Media[0]}
               sample={listings.some(isSampleListing)}
               whoCanSee={whoCanSee}
+              tellNamed={tellNamed}
               profile={agentProfile ? `/people/${agentProfile.id}` : null}
               homes={listings.flatMap((listing) =>
                 listing.Latitude != null && listing.Longitude != null

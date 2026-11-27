@@ -397,9 +397,11 @@ const sentOn = (table: ReturnType<typeof sql>, alias: ReturnType<typeof sql>, ac
 
 // What they said about a home on such a link: their own words about it, not a
 // reply in the conversation there, and not the words an "ask to see it" posts.
+// Only what they kept on the link: what's public is in their public comments
+// (lib/link-public.ts). So only ever for their own eyes (`mine`).
 const sentSaid = (account: string) => sql`
   ${sentOn(sql`comments c`, sql`c`, account)}
-    and c.parent_id is null and c.reply_to_participant is null
+    and c.parent_id is null and c.reply_to_participant is null and c.public_comment_id is null
     and not exists (
       select 1 from share_asks k
       where k.participant_id = c.participant_id and k.listing_key = c.listing_key and k.asked_at = c.created_at)`;
@@ -536,9 +538,13 @@ const loadRows = cache(
                     union all
                     select pd.listing_key, pd.created_at, true ${sentOn(sql`photo_dislikes pd`, sql`pd`, sent.account)}
                       and pd.created_at >= ${sent.from} and pd.created_at >= ${until} and pd.created_at < ${end}
-                    union all
+                    ${
+                      mine
+                        ? sql`union all
                     select c.listing_key, c.created_at, false ${sentSaid(sent.account)}
                       and c.created_at >= ${sent.from} and c.created_at >= ${until} and c.created_at < ${end}`
+                        : sql``
+                    }`
                 : sql``
             }
             ${
@@ -597,14 +603,15 @@ const loadRows = cache(
     // What they said about a home there (not their replies in a conversation
     // with the agent, nor an "ask to see it"). Nothing of what the agent
     // answered: no reply count either.
+    // (What they kept on a link, for them alone: the rest is public.)
     onLinks(
-      ({ account: who, from }) => sql<CommentRow[]>`
+      ({ account: who, from }) => (mine ? sql<CommentRow[]>`
         select c.id, c.listing_key, c.body, c.created_at as at, c.media_key, c.spot,
           null::uuid as reply_to_id, null::text as reply_to_name, 0 as likes, 0 as replies, 0 as others_replies,
           true as link
         ${sentSaid(who)} and c.created_at >= ${from} ${until ? sql`and c.created_at < ${until}` : sql``}
         order by c.created_at desc
-        limit ${PROFILE_ROW_LIMIT}`,
+        limit ${PROFILE_ROW_LIMIT}` : Promise.resolve([] as CommentRow[])),
     ),
   ]);
   // On each home, their like or pass as it last stood, in public or on a link.

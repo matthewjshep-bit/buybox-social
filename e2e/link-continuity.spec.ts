@@ -331,6 +331,8 @@ test("privacy: what a client said on a link never shows to the next person signe
   await joinAs(page, "Ana");
   await expect(heartOf(larkmoor)).toHaveAttribute("aria-pressed", "true");
   const chat = await openComments(page, larkmoor);
+  // (Kept to Lena: what's public by default isn't the point here.)
+  await chat.getByRole("button", { name: "Keep it to Lena Marsh" }).click();
   await chat.getByLabel("Add a comment").fill(SECRET);
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByLabel("Add a comment")).toHaveValue("");

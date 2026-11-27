@@ -181,23 +181,24 @@ test("people in Search: a buyer by first name only, an agent by name or company,
   await expect(guest.getByRole("link", { name: /^Search people for/ })).toHaveCount(0);
 });
 
-test("an agent's client isn't found by anyone else until they like something in public; their agent finds them, as their client", async ({
+test("an agent's client isn't found by anyone else until they like something (in public, or on a link, which is public too); their agent finds them, as their client", async ({
   browser,
 }) => {
   test.setTimeout(150_000);
   // (Halvard, a home other specs like already: others must stay quiet for them.)
   const HALVARD = "10421 Halvard Way NE";
-  // Ysolde signs up right on the link Reva sent her, to like a home on it:
-  // all she has done is between her and Reva.
+  // Ysolde signs up right on the link Reva sent her, to pass on a home on it:
+  // a pass is between her and Reva. (A like there would be public, by name:
+  // lib/link-public.ts.)
   const reva = await signInAgent(browser, "reva.search@example.com", "Reva Ullswater");
   const { url } = await createShare(reva, ["1204 Quillan", "719 Saltmarsh"], ["Ysolde"]);
   const ysolde = await (await browser.newContext()).newPage();
   await ysolde.addInitScript(() => localStorage.setItem("buybox:nudges", JSON.stringify({ photos: true, next: true })));
   await ysolde.goto(url);
   const quillan = homeIn(ysolde, "1204 Quillan St SE");
-  await heartOf(quillan).click();
+  await quillan.getByRole("button", { name: "Pass on this home" }).click();
   await joinAs(ysolde, "Ysolde", "ysolde.search@example.com");
-  await expect(heartOf(quillan)).toHaveAttribute("aria-pressed", "true");
+  await expect(quillan.getByRole("button", { name: "Pass on this home" })).toHaveAttribute("aria-pressed", "true");
 
   // A stranger doesn't find her, and she's not offered to them to follow.
   const tamsin = await signUpBuyer(browser, "tamsin.search@example.com", "Tamsin Looker");

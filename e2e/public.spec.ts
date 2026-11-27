@@ -24,7 +24,7 @@ const SECRET = "We could go 50k over asking.";
 const SHARED = "That fenced yard is perfect for our dog.";
 const BRACKENFIELD = "2205 Brackenfield Ct NW";
 
-test("public pages show the latest comments, never private words, and private threads share only what buyers allow", async ({
+test("public pages show the latest comments, never private words; a link shares by name only what its client leaves public", async ({
   browser,
   page,
 }) => {
@@ -37,29 +37,33 @@ test("public pages show the latest comments, never private words, and private th
   const hers = await createShare(rival, ["2205 Brackenfield"], ["Sam"]);
   const porchcard = async () => openScorecard(rival, await linkHomes(rival, hers.dashboardUrl, "SAMPLE-1006", BRACKENFIELD));
 
-  // A private client thread: a private comment, a like with a photo like, and
-  // a comment the client chooses to share anonymously.
+  // A client on a link: a comment kept to the link, a like with a photo like
+  // (public, by name, as everything on a link is by default), and a comment
+  // she says in public.
   const agent = await signInAgent(browser, "pat@example.com", "Pat Agent");
   const { urls } = await createShare(agent, ["2205 Brackenfield"], ["Riley", "Quinn"]);
   const client = await signedIn(browser);
   await client.goto(urls.Riley);
   const clientHome = homeIn(client, BRACKENFIELD);
   let chat = await openComments(client, clientHome);
+  await chat.getByRole("button", { name: "Keep it to this link" }).click();
+  await expect(chat.getByText("Only Pat Agent and people on this link see this.")).toBeVisible();
   await chat.getByLabel("Add a comment").fill(SECRET);
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByText(SECRET)).toBeVisible();
-  // Sharing publicly is only offered once you like the home.
-  await expect(chat.getByLabel(/share publicly/)).toHaveCount(0);
   await client.keyboard.press("Escape");
 
   await heartOf(clientHome).click();
   await expect(heartOf(clientHome)).toHaveAttribute("aria-pressed", "true");
   await likeInPhoto(clientHome, "the brick front");
   chat = await openComments(client, clientHome);
-  await chat.getByLabel(/share publicly/).check();
+  // (The box's own choice, not the row's "Make public" on what she kept.)
+  const makePublic = chat.locator("form").getByRole("button", { name: "Make public" });
+  if (await makePublic.isVisible()) await makePublic.click();
+  await expect(chat.getByText("Public, with your first name.")).toBeVisible();
   await chat.getByLabel("Add a comment").fill(SHARED);
   await chat.getByRole("button", { name: "Post", exact: true }).click();
-  await expect(chat.getByText("Shared anonymously on the public page")).toBeVisible();
+  await expect(chat.locator("li[data-comment]").filter({ hasText: SHARED }).getByRole("button", { name: "Make private" })).toBeVisible();
   await client.keyboard.press("Escape");
 
   // A second person on the package passes on the yard, from their own link. That stays private.
@@ -71,19 +75,18 @@ test("public pages show the latest comments, never private words, and private th
   await expect(quinnWhy.getByRole("button", { name: "Yard" })).toHaveAttribute("aria-pressed", "true");
 
   // The home's public page reads like a post: under the photo, how many like
-  // it and the latest comments. The comment the client chose to share is
-  // there, as "A buyer", without her name. The private one isn't there at
-  // all: not its words, not even a row for it.
+  // it and the latest comments. The client's public comment is there, by
+  // her first name. The one she kept to the link isn't there at all: not its
+  // words, not even a row for it.
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto("/homes/SAMPLE-1006");
   const post = homeIn(page, BRACKENFIELD);
   const latest = post.getByRole("group", { name: "Latest comments" });
   await expect(latest).toContainText(/1 like|Liked by/);
-  await expect(latest).toContainText(`A buyer ${SHARED}`);
-  // (Other tests may have said things here too: hers is the one row of a
-  // buyer's, and the private one has no row at all.)
-  await expect(latest.getByRole("listitem").filter({ hasText: "A buyer" })).toHaveCount(1);
+  // (Other tests may have said things here too: hers is there, by name, and
+  // the one she kept to the link has no row at all.)
+  await expect(latest.getByRole("listitem").filter({ hasText: SHARED })).toContainText("Riley");
   await expect(latest).not.toContainText(SECRET);
   await expect(latest).not.toContainText(/privately/);
   await expect(post).not.toContainText(SECRET);
@@ -106,12 +109,12 @@ test("public pages show the latest comments, never private words, and private th
   await expect(sheet.getByText("People pass on")).toHaveCount(0);
   await expect(sheet).not.toContainText(/pass/i);
   // (Who liked it is a count, never a row: the one like so far is the private one.)
-  await expect(sheet.getByText(/^1 like$/)).toBeVisible();
+  await expect(sheet.getByText(/^1 like$|^Liked by Riley/)).toBeVisible();
   const thread = sheet.getByRole("list", { name: "Comments" });
-  await expect(thread).toContainText(SHARED);
-  await expect(thread).toContainText("Shared from a private chat");
+  await expect(commentIn(thread, "Riley", SHARED)).toBeVisible();
+  await expect(thread).not.toContainText("Shared from a private chat");
   await expect(page.getByText(SECRET)).toHaveCount(0);
-  await expect(page.getByText(/Riley|Quinn/)).toHaveCount(0);
+  await expect(page.getByText(/Quinn/)).toHaveCount(0);
   await page.keyboard.press("Escape");
   // (No Porchcard for a visitor: Save is where it was.)
   await expect(page.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
@@ -130,17 +133,17 @@ test("public pages show the latest comments, never private words, and private th
   await expect(buzz).toContainText("1 comment in private chats");
   await expect(buzz).not.toContainText("pass");
   await expect(card.getByText(SECRET)).toHaveCount(0);
-  await expect(card.getByText(/Riley|Quinn/)).toHaveCount(0);
+  await expect(card.getByText(/Quinn/)).toHaveCount(0);
   // Nor in the comments beside it, nor anywhere in her page as it's sent.
   await card.getByRole("button", { name: /^See the \d+ comments?$/ }).click();
   const rivalSheet = commentsOf(homeIn(rival, BRACKENFIELD));
   await expect(rivalSheet).toContainText(SHARED);
   await expect(rivalSheet).not.toContainText(/pass/i);
   await expect(rival.getByText(SECRET)).toHaveCount(0);
-  await expect(rival.getByText(/Riley|Quinn/)).toHaveCount(0);
+  await expect(rival.getByText(/Quinn/)).toHaveCount(0);
   const rivalHtml = await (await rival.request.get(rival.url())).text();
   expect(rivalHtml).not.toContain(SECRET);
-  expect(rivalHtml).not.toMatch(/Riley|Quinn/);
+  expect(rivalHtml).not.toMatch(/Quinn/);
 
   // Any visitor can react and comment in public.
   await heartOf(post).click();
@@ -153,11 +156,10 @@ test("public pages show the latest comments, never private words, and private th
   await sheet.getByLabel("Add a comment").fill("Love the quiet cul-de-sac.");
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(commentIn(thread, "Morgan", "Love the quiet cul-de-sac.")).toBeVisible();
-  // (Morgan's like counts with the buyer's: two, and still no one named.)
+  // (Morgan's like counts with the buyer's: two.)
   await expect(sheet.getByText(/^2 likes$/)).toBeVisible();
   await page.keyboard.press("Escape");
-  // Under the photo now too, by name, newest first; still nobody from the
-  // link, and a row is a fingertip to tap.
+  // Under the photo now too, by name, newest first, and a row is a fingertip to tap.
   await expect(latest).toContainText("2 likes");
   const morganRow = latest.getByRole("button", { name: /^Morgan .*Love the quiet cul-de-sac\./ });
   await expect(morganRow).toBeVisible();
@@ -165,8 +167,8 @@ test("public pages show the latest comments, never private words, and private th
   // (Morgan's, just said, leads; the shared one is still there; other tests'
   // words may be among them.)
   await expect(latest.getByRole("listitem").first()).toContainText("Morgan");
-  await expect(latest.getByRole("listitem").filter({ hasText: "A buyer" })).toHaveCount(1);
-  await expect(latest.getByText(/Riley|Quinn/)).toHaveCount(0);
+  await expect(latest.getByRole("listitem").filter({ hasText: SHARED })).toHaveCount(1);
+  await expect(latest.getByText(/Quinn/)).toHaveCount(0);
   card = await porchcard();
   await expect(card.getByText("Natural light 1")).toBeVisible();
   await expect(post.getByRole("button", { name: `Like ${BRACKENFIELD}, 2 likes` })).toBeVisible();
@@ -211,25 +213,25 @@ test("public pages show the latest comments, never private words, and private th
   await expect(card.getByText("Didn't like", { exact: true })).toBeVisible();
   await expect(card.getByRole("button", { name: /^Price 1 person/ })).toBeVisible();
   await expect(card.getByRole("button", { name: /^Yard/ })).toHaveCount(0);
-  await expect(card.getByText(/Riley|Quinn/)).toHaveCount(0);
+  await expect(card.getByText(/Quinn/)).toHaveCount(0);
 
-  // Private words and names are not in the public HTML at all.
+  // Private words, and the one who only passed, are not in the public HTML at all.
   for (const path of ["/", "/homes/SAMPLE-1006"]) {
     const html = await (await other.request.get(path)).text();
     expect(html).not.toContain(SECRET);
-    expect(html).not.toContain("Riley");
     expect(html).not.toContain("Quinn");
   }
 
-  // The client can take a shared comment back: it leaves the public page
-  // whole, the comments under the photo included.
+  // The client can make her public comment private: it leaves the public
+  // page whole, the comments under the photo included.
   chat = await openComments(client, clientHome);
-  await chat.getByRole("button", { name: "Make private" }).click();
-  await expect(chat.getByText("Shared anonymously on the public page")).toHaveCount(0);
+  const sharedRow = chat.locator("li[data-comment]").filter({ hasText: SHARED });
+  await sharedRow.getByRole("button", { name: "Make private" }).click();
+  await expect(sharedRow.getByRole("button", { name: "Make public" })).toBeVisible();
   await other.reload();
   const otherLatest = otherPost.getByRole("group", { name: "Latest comments" });
   await expect(otherLatest).toContainText("Morgan");
-  await expect(otherLatest).not.toContainText("A buyer");
+  await expect(otherLatest).not.toContainText(SHARED);
   otherSheet = await openComments(other, otherPost);
   await expect(otherSheet.getByText("Love the quiet cul-de-sac.")).toBeVisible();
   await expect(other.getByText(SHARED)).toHaveCount(0);

@@ -13,8 +13,7 @@ import { signedIn, enterCode,
   settle,
   signInAgent,
   signUpBuyer,
-  passOn,
-} from "./helpers";
+  passOn, keepLinksPrivate } from "./helpers";
 
 // The latest comments under a home's photo (under its row of things to do),
 // headed by how many liked it.
@@ -47,6 +46,10 @@ test("the feed: full-screen homes, a heart, comments in one thread under the pho
   );
   await likeInPhoto(clientHome, "the evergreens");
   await evergreensSaved;
+  // (She keeps what she does on links to them, so here her like is a count:
+  // what's public by default is lib/link-public's, not this test's.)
+  await keepLinksPrivate(client);
+  await client.goto(url);
 
   // The agent's Notifications name their own client, and say what they
   // liked, which only they see. (Each home below is opened by its own link,

@@ -237,9 +237,9 @@ export function ReelFeed({
   // On an agent's link: the page knows nobody but you and the agent can read
   // what's said on it (so "only you" can be said).
   alone?: boolean;
-  // On an agent's link: what they like, pass on and say about a home there
-  // shows on their own profile too (unless they've switched that off), so the
-  // link says so rather than "only you".
+  // On an agent's link: what they like and say about a home there is public
+  // too, by name (lib/link-public.ts), unless they've switched that off. What
+  // they say starts public, a tap from staying on the link.
   onProfile?: boolean;
   // Brings a home into view: the map's pins pick a home this way. `n` counts
   // picks, so picking the same home again still moves to it.
@@ -352,19 +352,18 @@ export function ReelFeed({
   const agent = agentCalled(agentName);
   // The agent on their own link: what they write is their note, for everyone on it.
   const notes = useNotesMode();
-  const seenBy: SeenBy =
+  // (Public pages say nothing: everything there is public, and the name
+  // prompt said so the first time.)
+  const seenBy: SeenBy | undefined =
     mode === "public"
-      ? { text: "Public, with your first name.", private: false }
+      ? undefined
       : notes
         ? { text: "Everyone on this link sees your feedback.", private: true }
-        : onProfile
-          ? {
-              text: alone ? `Shown to ${agent} and on your profile.` : "Shown to everyone on this link and on your profile.",
-              private: false,
-            }
-          : alone
-            ? { text: `Only you and ${agent} see this.`, private: true }
-            : { text: `Only ${agent} and people on this link see this.`, private: true };
+        : {
+            text: alone ? `Only you and ${agent} see this.` : `Only ${agent} and people on this link see this.`,
+            private: true,
+            choice: { publicByDefault: onProfile, keepLabel: alone ? `Keep it to ${agent}` : "Keep it to this link" },
+          };
   // Where the name prompt rises from: side by side, the white panel's foot.
   const nameAnchor = useRef<HTMLElement | null>(null);
 
@@ -1534,7 +1533,7 @@ function Panel({
   // agent's link) is asked to sign up first, whatever they tap: the photo, a
   // spot, the comment bar. Nothing to like or comment on opens before that;
   // once they're in, what they tapped goes on.
-  const { canReact, ensureName } = useThread();
+  const { canReact, ensureName, seenBy } = useThread();
   const signUpThen = (then: () => void) => {
     // (Back on what was tapped first, so what opens next gives the keyboard
     // back there when it closes, rather than to the sign-up sheet.)
@@ -1817,6 +1816,10 @@ function Panel({
   const hidden = clear || bare;
   const agentFirst = agentFirstName(agentName);
   const notes = useNotesMode();
+  // On a link, what's said about this home starts public (by name), unless
+  // they've switched that off or passed on it: then the box never invites a
+  // word "to" the agent, which would read as private.
+  const keptToLink = mode === "share" && !notes && !(seenBy?.choice?.publicByDefault && state.reaction !== "dislike");
   // Side by side on a wide screen (never beside the map, just a look there).
   const split = SPLIT_WIDE && !onOpen;
   // Likes on things in a photo, for the strip of photos.
@@ -2059,7 +2062,7 @@ function Panel({
     open: threadOpen,
     spot: thread?.spot,
     opened: thread?.commentId,
-    canShare: mode === "share" && liked,
+    canShare: mode === "share" && state.reaction !== "dislike",
     // (The row of buttons, with the heart and its count, is right above.)
     heartBeside: Boolean(actions),
     onOpen: openComment,
@@ -2560,7 +2563,7 @@ function Panel({
                   key={thread?.spot ? `${thread.spot.mediaKey}:${thread.spot.tag}` : "all"}
                   dark
                   listingKey={listing.ListingKey}
-                  canShare={mode === "share" && liked}
+                  canShare={mode === "share" && state.reaction !== "dislike"}
                   replyTo={replyTo}
                   onCancelReply={() => setReplyTo(null)}
                   spot={thread?.spot}
@@ -2571,10 +2574,10 @@ function Panel({
                         : `Comment on ${spotCalled}…`
                       : notes
                         ? `Add a note for ${notes.for}…`
-                        : mode === "share"
-                          ? `Tell ${agentFirst} what you think…`
-                          : undefined
+                        : undefined
                   }
+                  // (On a link, kept to it: words for the agent.)
+                  keptPlaceholder={mode === "share" && !notes && !spotCalled ? `Tell ${agentFirst} what you think…` : undefined}
                   label={spotCalled ? undefined : notes ? "Add a note" : "Add a comment"}
                   // In the panel, the emoji wait for the box, so the words get
                   // the room until you go to say something.
@@ -2604,7 +2607,7 @@ function Panel({
                     <span className="min-w-0 flex-1 truncate">
                       {notes
                         ? `Add a note for ${notes.for}…`
-                        : mode === "share"
+                        : keptToLink
                           ? `Tell ${agentFirst} what you think…`
                           : "Add a comment…"}
                     </span>

@@ -806,7 +806,7 @@ test("an agent hearts what a client said: their thread says Liked by, in stone, 
   const agent = await signInAgent(browser, "hal-hearts@example.com", "Hal Hearts");
   const { urls, dashboardUrl } = await createShare(agent, ["719 Saltmarsh"], ["Ivy"]);
 
-  // Ivy likes the home, and says something, shared on the public page too.
+  // Ivy likes the home, and says something: public too, by name, as it starts.
   const ivy = await signedIn(browser);
   await ivy.goto(urls.Ivy);
   const home = homeIn(ivy, SALTMARSH);
@@ -814,7 +814,6 @@ test("an agent hearts what a client said: their thread says Liked by, in stone, 
   await expect(heartOf(home)).toHaveAttribute("aria-pressed", "true");
   let sheet = await openComments(ivy, home);
   await sheet.getByLabel("Add a comment").fill(IVY_SAYS);
-  await sheet.getByLabel(/share publicly/).check();
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(commentIn(sheet, "Ivy", IVY_SAYS)).toBeVisible();
   await expect(sheet.getByText(/^Liked by/)).toHaveCount(0);
@@ -871,11 +870,11 @@ test("an agent hearts what a client said: their thread says Liked by, in stone, 
   // Only hers.
   await expect(sheet.getByText(/^Liked by/)).toHaveCount(1);
 
-  // In public her words show, as a buyer's, and the agent's heart never does.
+  // In public her words show, by her first name, and the agent's heart never does.
   const visitor = await (await browser.newContext()).newPage();
   await visitor.goto("/homes/SAMPLE-1008");
   const outside = await openComments(visitor, homeIn(visitor, SALTMARSH));
-  const shared = commentIn(outside, "A buyer", IVY_SAYS);
+  const shared = commentIn(outside, "Ivy", IVY_SAYS);
   await expect(shared).toBeVisible();
   await expect(shared).not.toContainText("Liked by");
   await expect(outside.getByText(/Liked by Hal/)).toHaveCount(0);
@@ -907,7 +906,7 @@ test("adding someone to a link whose one person was told it's private asks first
   const solo = await signedIn(browser);
   await solo.goto(url);
   let chat = await openComments(solo, homeIn(solo, "88 Heron Bluff Rd"));
-  await expect(chat.getByText("Shown to Alex Alpha and on your profile.")).toBeVisible();
+  await expect(chat.getByRole("button", { name: "Keep it to Alex Alpha" })).toBeVisible();
 
   // Adding Newbie says what that means, and adds nobody until Alex says so.
   const person = agent.getByRole("combobox", { name: "Add a person" });
@@ -945,7 +944,7 @@ test("adding someone to a link whose one person was told it's private asks first
   // Solo's link no longer says it's just the two of them.
   await solo.reload();
   chat = await openComments(solo, homeIn(solo, "88 Heron Bluff Rd"));
-  await expect(chat.getByText("Shown to everyone on this link and on your profile.")).toBeVisible();
+  await expect(chat.getByRole("button", { name: "Keep it to this link" })).toBeVisible();
 
   // Nobody on it now was told that, so the next person is added straight away.
   await person.fill("Third");

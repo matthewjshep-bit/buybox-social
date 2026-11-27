@@ -21,8 +21,11 @@ export type TimelineComment = {
   parentId: string | null;
   likes: number;
   likedByMe: boolean;
-  // On an agent's link: its author shared it on the public page.
+  // On an agent's link: its author shared it on the public page, without
+  // their name (how it was done before 2026-12-18).
   sharedPublicly?: boolean;
+  // On an agent's link: it's public too, by name (lib/link-public.ts).
+  publicCopy?: boolean;
   // On a public page: shared by a buyer from a private chat with their agent.
   fromPrivateChat?: boolean;
   // Their public profile, on public pages.
@@ -208,7 +211,8 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
       select listing_key, 'p:' || participant_id as who, null as name,
         reaction, liked, disliked, updated_at as at
       from reactions
-      where listing_key in ${sql(keys)} and (reaction = 'like' or cardinality(liked) > 0)`,
+      -- (A like that's public too shows as the public one, by name.)
+      where listing_key in ${sql(keys)} and (reaction = 'like' or cardinality(liked) > 0) and not public_copy`,
     sql<PhotoRow[]>`
       select pl.listing_key, 'v:' || pl.visitor_id as who, v.first_name as name,
         pl.media_key, pl.tag, pl.created_at as at
@@ -319,6 +323,7 @@ export async function getShareTimelines(
         body: string;
         created_at: Date;
         shared_publicly: boolean;
+        public_copy: boolean;
         media_key: string | null;
         spot: string | null;
         liked_by: string | null;
@@ -329,7 +334,8 @@ export async function getShareTimelines(
       }[]
     >`
       select c.id, c.listing_key, c.participant_id, p.first_name, a.full_name as agent_name,
-        c.body, c.created_at, c.shared_publicly, c.media_key, c.spot, c.parent_id, c.reply_to_participant,
+        c.body, c.created_at, c.shared_publicly, c.public_comment_id is not null as public_copy,
+        c.media_key, c.spot, c.parent_id, c.reply_to_participant,
         -- Their photo, where they've signed up and added one (only when asked for its faces).
         ${faces ? sql`pv.id` : sql`null::uuid`} as profile,
         ${faces ? sql`left(md5(pa.photo_data_url), 10)` : sql`null::text`} as photo_v,
@@ -396,6 +402,7 @@ export async function getShareTimelines(
             likes: 0,
             likedByMe: false,
             sharedPublicly: c.shared_publicly,
+            publicCopy: c.public_copy,
             personKey: personKey(c.participant_id ? `p:${c.participant_id}` : AGENT),
             ...(c.liked_by !== null && { likedBy: agentFirstName(c.liked_by) }),
             ...(faces && c.participant_id && c.profile && c.photo_v && { photo: photoUrl(c.profile, c.photo_v)! }),

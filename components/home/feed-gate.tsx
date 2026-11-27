@@ -14,7 +14,6 @@ export function FeedGate({ myName, children }: { myName: string | null; children
       actions={{ join: joinPublic, react: reactInStream, comment: commentInReel, likeComment: likeCommentInReel }}
       myName={myName}
       prompt="Your first name shows publicly."
-      seenBy={{ text: "Public, with your first name.", private: false }}
     >
       {children}
     </NameGate>

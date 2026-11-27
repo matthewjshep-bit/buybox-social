@@ -51,6 +51,7 @@ export type ThreadComment = {
   tag: CommentTag | null;
   body: string;
   createdAt: string;
+  // On the home's public page too: by name, or (before 2026-12-18) without it.
   sharedPublicly: boolean;
   // The spot in a photo it's about ("@62.3,68.1" or "Covered porch"), or one of
   // the facts (media key "facts", tag "Price").
@@ -524,7 +525,8 @@ export async function getThread(shareId: string) {
     }[]
   >`
     select c.id, c.listing_key, c.participant_id, p.first_name,
-           a.full_name as agent_name, c.tag, c.body, c.created_at, c.shared_publicly, c.media_key, c.spot,
+           a.full_name as agent_name, c.tag, c.body, c.created_at,
+           c.shared_publicly or c.public_comment_id is not null as shared_publicly, c.media_key, c.spot,
            -- Whose comment, or whose likes, a reply answers.
            coalesce(pp.first_name, pa.full_name, rp.first_name) as reply_to_name,
            c.reply_to_participant is not null as reply_to_likes

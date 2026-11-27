@@ -80,12 +80,13 @@ export const totalsForListing = () => sql`
   cross join lateral (
     select count(*)::int as n from public_comments where listing_key = l.listing_key) pc
   cross join lateral (
-    select count(*) filter (where reaction = 'like')::int as likes,
+    -- (Likes and comments on links that are public too count once, as the public ones.)
+    select count(*) filter (where reaction = 'like' and not public_copy)::int as likes,
            count(*) filter (where reaction = 'dislike')::int as dislikes
     from reactions where listing_key = l.listing_key) xr
   cross join lateral (
     select count(*)::int as n from comments
-    where listing_key = l.listing_key and participant_id is not null) xc
+    where listing_key = l.listing_key and participant_id is not null and public_comment_id is null) xc
   cross join lateral (
     select count(*)::int as n, max(s.created_at) as last_sent
     from share_listings sl join shares s on s.id = sl.share_id
@@ -100,7 +101,8 @@ export const totalsForListing = () => sql`
         select 'v' || visitor_id as who, unnest(liked) as aspect
         from public_reactions where listing_key = l.listing_key
         union
-        select 'p' || participant_id, unnest(liked) from reactions where listing_key = l.listing_key
+        select 'p' || participant_id, unnest(liked) from reactions
+        where listing_key = l.listing_key and not public_copy
         union
         select 'v' || visitor_id, aspect from public_photo_likes
         where listing_key = l.listing_key and aspect is not null
@@ -141,10 +143,10 @@ const weekActivity = () => sql`
   where created_at > now() - interval '7 days'
   union all
   select listing_key, 'p' || participant_id from reactions
-  where updated_at > now() - interval '7 days'
+  where not public_copy and updated_at > now() - interval '7 days'
   union all
   select listing_key, 'p' || participant_id from comments
-  where participant_id is not null and created_at > now() - interval '7 days'
+  where participant_id is not null and public_comment_id is null and created_at > now() - interval '7 days'
   union all
   select listing_key, 'v' || visitor_id from public_photo_likes
   where created_at > now() - interval '7 days'

@@ -321,8 +321,8 @@ test("a phone on its side keeps the words over the photo, the description to one
   await expect(sheet).toBeVisible();
   await expect.poll(async () => Math.round((await box(sheet)).y)).toBe(CHROME_FOOT);
   await expect(sheet.getByRole("button", { name: /^(Expand|Shrink) comments$/ })).toHaveCount(0);
-  for (const part of [sheet.getByLabel("Add a comment"), sheet.getByText("Public, with your first name.")]) {
-    const at = await box(part);
+  {
+    const at = await box(sheet.getByLabel("Add a comment"));
     expect(at.y + at.height).toBeLessThanOrEqual(390);
   }
   expect((await box(sheet.locator("[data-thread-scroll]"))).height).toBeGreaterThanOrEqual(100);
@@ -1005,7 +1005,7 @@ test("on a phone, the comments unfurl up over the photo, to just under the head,
   }
 });
 
-test("every comment box says who sees it, and signing up rises like a sheet, right where you are", async ({ page, browser }) => {
+test("a link's comment box says who sees it (a public page's needn't), and signing up rises like a sheet, right where you are", async ({ page, browser }) => {
   test.setTimeout(90_000);
   await page.goto("/homes/SAMPLE-1008");
   const home = homeIn(page, "719 Saltmarsh Ln");
@@ -1022,7 +1022,9 @@ test("every comment box says who sees it, and signing up rises like a sheet, rig
   await joinAs(page, "Odile");
   // Then the comments, where they were going.
   const sheet = commentsOf(home);
-  await expect(sheet.getByText("Public, with your first name.")).toBeVisible();
+  await expect(sheet).toBeVisible();
+  // (Everything here is public, and signing up said so: no line under the box.)
+  await expect(sheet.getByText("Public, with your first name.")).toHaveCount(0);
   const field = sheet.getByLabel("Add a comment");
   await field.fill("That fence");
   await field.press("Enter");
@@ -1039,25 +1041,24 @@ test("every comment box says who sees it, and signing up rises like a sheet, rig
     const client = await signedIn(browser);
     await client.goto(urls[name]);
     const clientHome = homeIn(client, "1204 Quillan St SE");
-    // The box asks you to tell the agent (and is still named "Add a comment").
-    await clientHome.getByRole("button", { name: "Tell Lane what you think…" }).click();
+    // Public as it starts, the box asks for a comment; kept to the link, it
+    // asks you to tell the agent (and is named "Add a comment" either way).
+    await clientHome.getByRole("button", { name: "Add a comment…" }).click();
     const private_ = commentsOf(clientHome);
-    await expect(private_.getByLabel("Add a comment")).toHaveAttribute("placeholder", "Tell Lane what you think…");
-    await expect(private_.getByText("Shown to everyone on this link and on your profile.")).toBeVisible();
-    await expect(private_.getByText(/Shown to Lane Agent/)).toHaveCount(0);
+    await expect(private_.getByLabel("Add a comment")).toHaveAttribute("placeholder", "Add a comment…");
+    // Public to start with, a tap from staying on the link (never "only you").
+    await expect(private_.getByText("Public, with your first name.")).toBeVisible();
+    await expect(private_.getByRole("button", { name: "Keep it to this link" })).toBeVisible();
+    await expect(private_.getByRole("button", { name: "Keep it to Lane Agent" })).toHaveCount(0);
     await expect(private_.getByText(/Everyone can see/)).toHaveCount(0);
     if (name === "Pim") {
-      // Liked, you may share it on the public page too: ticked, the line says so.
-      await client.keyboard.press("Escape");
-      await expect(private_).toBeHidden();
-      await heartOf(clientHome).click();
-      await expect(heartOf(clientHome)).toHaveAttribute("aria-pressed", "true");
-      await clientHome.getByRole("button", { name: /^Comments/ }).click();
-      await private_.getByRole("checkbox").check();
-      await expect(private_.getByText("Also public, without your name.")).toBeVisible();
-      await expect(private_.getByText(/Only Lane Agent/)).toHaveCount(0);
-      await private_.getByRole("checkbox").uncheck();
-      await expect(private_.getByText("Shown to everyone on this link and on your profile.")).toBeVisible();
+      // Kept to the link, the line says who reads it there; and back.
+      await private_.getByRole("button", { name: "Keep it to this link" }).click();
+      await expect(private_.getByText("Only Lane Agent and people on this link see this.")).toBeVisible();
+      await expect(private_.getByLabel("Add a comment")).toHaveAttribute("placeholder", "Tell Lane what you think…");
+      await expect(private_.getByText(/Only you/)).toHaveCount(0);
+      await private_.getByRole("button", { name: "Make public" }).click();
+      await expect(private_.getByText("Public, with your first name.")).toBeVisible();
     }
     await client.context().close();
   }

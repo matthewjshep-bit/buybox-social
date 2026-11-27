@@ -17,6 +17,7 @@ import {
   readDevice,
   type ActionResult,
 } from "@/lib/engagement";
+import { copyComment, copyLike, uncopyAll, uncopyComment, uncopyLike } from "@/lib/link-public";
 import { notifyAgent } from "@/lib/notify";
 import {
   deviceHashFor,
@@ -353,13 +354,6 @@ async function addAgentNote(
   return { ok: true };
 }
 
-const likesHome = async (participantId: string, listingKey: string) => {
-  const [row] = await sql`
-    select 1 from reactions
-    where participant_id = ${participantId} and listing_key = ${listingKey} and reaction = 'like'`;
-  return Boolean(row);
-};
-
 const listingLabel = async (listingKey: string) => {
   const [row] = await sql<{ address: string }[]>`
     select data->>'UnparsedAddress' as address from listings where listing_key = ${listingKey}`;
@@ -386,6 +380,7 @@ export async function setReaction(
       delete from reactions
       where share_id = ${actor.share.id} and listing_key = ${listingKey}
         and participant_id = ${actor.participant.id}`;
+    await uncopyLike(actor.participant.id, actor.share.id, listingKey);
   } else {
     await sql`
       insert into reactions (share_id, listing_key, participant_id, reaction, liked, disliked)
@@ -394,6 +389,9 @@ export async function setReaction(
       on conflict (share_id, listing_key, participant_id)
       do update set reaction = excluded.reaction, liked = excluded.liked,
         disliked = excluded.disliked, updated_at = now()`;
+    // A like is public too, by name; a pass never is.
+    if (state.reaction === "like") await copyLike(actor.participant.id, actor.share.id, listingKey, state.liked);
+    else await uncopyLike(actor.participant.id, actor.share.id, listingKey);
     after(async () => {
       const address = await listingLabel(listingKey);
       await notifyAgent(actor.share.id, `${actor.participant.first_name} ${describeReaction(state)} at ${address}`, {
@@ -415,7 +413,10 @@ export async function addComment(
   token: string,
   listingKey: string,
   body: string,
-  sharePublicly = false,
+  // Public too, by name, as well as on the link: what the link's comment box
+  // says by default ("Public, with your first name."). Not a reply, and never
+  // on a home they passed on (lib/link-public.ts). Messages leave it off.
+  toPublic = false,
   // What it answers, if it's a reply: a comment on this link, or someone's
   // likes here ("like:" and who they are on the link, as the page has it).
   parentId: unknown = null,
@@ -434,10 +435,6 @@ export async function addComment(
   // A reply is about whatever it answers.
   const anchor = reply ? null : await checkAnchor(listingKey, spot);
   if (anchor === false) return fail("That photo isn't there anymore.");
-  // A comment goes public only when its author asks, and only once they like
-  // the home, so shared quotes never warn other buyers off it. Replies never do.
-  const shared = !reply && sharePublicly === true && (await likesHome(actor.participant.id, listingKey));
-
   const [{ count }] = await sql<{ count: number }[]>`
     select count(*)::int as count from comments
     where participant_id = ${actor.participant.id}
@@ -445,11 +442,13 @@ export async function addComment(
   if (count >= MAX_COMMENTS_PER_MINUTE) return fail("Slow down a little, then try again.");
 
   const [comment] = await sql<{ id: string }[]>`
-    insert into comments (share_id, listing_key, participant_id, body, shared_publicly, media_key, spot,
+    insert into comments (share_id, listing_key, participant_id, body, media_key, spot,
       parent_id, reply_to_participant)
-    values (${actor.share.id}, ${listingKey}, ${actor.participant.id}, ${parsed.data}, ${shared},
+    values (${actor.share.id}, ${listingKey}, ${actor.participant.id}, ${parsed.data},
       ${anchor?.mediaKey ?? null}, ${anchor?.tag ?? null}, ${parent}::uuid, ${replyTo}::uuid)
     returning id`;
+  // (Their pick, in the box: it goes even with the switch off.)
+  if (!reply && toPublic === true) await copyComment(comment.id, true);
   after(async () => {
     const address = await listingLabel(listingKey);
     await notifyAgent(actor.share.id, `${actor.participant.first_name} ${reply ? "replied" : "commented"} on ${address}`, {
@@ -516,7 +515,8 @@ export async function askToSee(token: string, listingKey: string): Promise<AskRe
   return { ok: true, already: false };
 }
 
-// Lets an author take back a comment they shared publicly, or share it after all.
+// Lets an author make a comment of theirs on the link private (its public
+// copy comes down, or an old anonymous share does), or public after all.
 export async function setCommentSharing(
   token: string,
   commentId: string,
@@ -530,17 +530,14 @@ export async function setCommentSharing(
   if (preview) return fail(`${preview} Nothing here is saved.`);
   const participant = await personOn(found);
   if (!participant) return fail("We couldn't find that comment.");
-  // Taking a comment back is always allowed; sharing it needs a like.
-  const updated = await sql`
-    update comments c set shared_publicly = ${shared === true}
-    where c.id::text = ${commentId} and c.share_id = ${found.share.id}
-      and c.participant_id = ${participant.id}
-      and (${shared !== true} or exists (
-        select 1 from reactions r
-        where r.participant_id = c.participant_id and r.listing_key = c.listing_key
-          and r.reaction = 'like'))
-    returning c.id`;
-  if (updated.length === 0) return fail("We couldn't find that comment.");
+  const [mine] = await sql<{ id: string }[]>`
+    select c.id from comments c
+    where c.id::text = ${commentId} and c.share_id = ${found.share.id} and c.participant_id = ${participant.id}`;
+  if (!mine) return fail("We couldn't find that comment.");
+  // Making it private is always allowed; making it public, only what they
+  // said about a home they haven't passed on, still for sale.
+  if (shared !== true) await uncopyComment(mine.id);
+  else if (!(await copyComment(mine.id, true))) return fail("This one can't be made public.");
   refresh();
   return { ok: true };
 }
@@ -597,5 +594,22 @@ export async function likePhotoInShare(
     }
   });
   refresh();
+  return { ok: true };
+}
+
+// The word, once, on a link to someone who was here before likes and comments
+// on links became public: seen, or "Keep mine private", which switches that
+// off (as on Edit profile) and takes down anything already made public.
+export async function noteLinksNamed(keepPrivate: boolean): Promise<ActionResult> {
+  const account = await getCurrentUser();
+  if (!account?.role) return fail("Please sign in first.");
+  const off = keepPrivate === true;
+  await sql`
+    update visitors set links_named_noticed_at = now(), hide_links = hide_links or ${off}
+    where account_id = ${account.id}`;
+  if (off) {
+    await uncopyAll(account.id);
+    refresh();
+  }
   return { ok: true };
 }

@@ -73,9 +73,11 @@ test("one home: the link opens on a word from the agent, then the home, in the a
       return Boolean(header && article && header.compareDocumentPosition(article) & Node.DOCUMENT_POSITION_FOLLOWING);
     }),
   ).toBe(true);
-  // Owen is the only one on it, so what he says is between him and the agent.
+  // Owen is the only one on it: what he says is public, a tap from being
+  // between him and the agent.
   const chat = await openComments(page, home);
-  await expect(chat.getByText("Shown to Jordan Rivera and on your profile.")).toBeVisible();
+  await expect(chat.getByText("Public, with your first name.")).toBeVisible();
+  await expect(chat.getByRole("button", { name: "Keep it to Jordan Rivera" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(chat).toBeHidden();
 
@@ -431,11 +433,12 @@ test("the agent's Porchcard for the link says who on it hasn't weighed in yet; t
   await expect(actions.getByRole("button")).toHaveCount(onLink.length);
   for (const [i, name] of onLink.entries()) await expect(actions.getByRole("button").nth(i)).toHaveAccessibleName(name);
   await expect(home.locator("[data-bar-row]").getByRole("button")).toHaveCount(1);
-  await expect(home.locator("[data-bar-row]").getByRole("button")).toHaveAccessibleName(/what you think…$/);
+  // (What's said here starts public, by name: the bar asks for a comment, not words "to" the agent.)
+  await expect(home.locator("[data-bar-row]").getByRole("button")).toHaveAccessibleName(/^Add a comment…$/);
   await noFeedback(owen);
   // Two people on it: never "only you".
   const chat = await openComments(owen, home);
-  await expect(chat.getByText("Shown to everyone on this link and on your profile.")).toBeVisible();
+  await expect(chat.getByRole("button", { name: "Keep it to this link" })).toBeVisible();
   await expect(chat.getByText("What people think")).toHaveCount(0);
   await owen.keyboard.press("Escape");
 
@@ -517,14 +520,14 @@ test("'only you' is said only when nobody else can read it: not once the package
   await expect(home).toBeInViewport({ ratio: 0.9 });
   // Whoever holds the package's link reads what he says there too.
   const chat = await openComments(owen, home);
-  await expect(chat.getByText("Shown to everyone on this link and on your profile.")).toBeVisible();
-  await expect(chat.getByText(/Shown to Jordan Rivera/)).toHaveCount(0);
+  await expect(chat.getByRole("button", { name: "Keep it to this link" })).toBeVisible();
+  await expect(chat.getByRole("button", { name: "Keep it to Jordan Rivera" })).toHaveCount(0);
   await owen.keyboard.press("Escape");
   await expect(chat).toBeHidden();
   // (The Porchcard, which said so too, is the agent's now: not on the link.)
   await expect(owen.getByRole("button", { name: /Feedback/ })).toHaveCount(0);
   await expect(owen.getByText(/only you and/i)).toHaveCount(0);
-  expect(await (await owen.request.get(owenUrl)).text()).not.toContain("Shown to Jordan Rivera and");
+  expect(await (await owen.request.get(owenUrl)).text()).not.toContain("Only you and Jordan Rivera");
 });
 
 test("a link that isn't there says so, with a way home", async ({ page }) => {

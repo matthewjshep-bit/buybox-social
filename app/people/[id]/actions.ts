@@ -4,6 +4,7 @@ import { refresh } from "next/cache";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { ownedInPublic, uncopyAll } from "@/lib/link-public";
 import { BANNER_STYLE } from "@/lib/banner";
 import { fail, readDevice, type ActionResult } from "@/lib/engagement";
 import { NOT_AN_EMAIL } from "@/lib/people-picker";
@@ -89,17 +90,22 @@ export async function showPasses(shown: boolean): Promise<ActionResult> {
   return { ok: true };
 }
 
-// Whether what you do on links you were sent (likes, passes, what you say
-// about a home) shows on your page. Switched back on, it shows from then on:
-// never what you did while it was off.
+// Whether what you do on links you were sent is public: your likes and what
+// you say about a home, by name, on the home and your page (lib/link-public.ts),
+// and your passes there on your page. Switched off, what was made public from
+// your links comes down. Switched back on, it's public from then on: never
+// what you did while it was off.
 export async function showLinkActivity(shown: boolean): Promise<ActionResult> {
   if (typeof shown !== "boolean") return fail("We couldn't save that.");
   const visitor = await ownVisitor();
   if (!visitor) return fail("Please add your name first.");
-  await sql`
+  const [self] = await sql<{ account_id: string | null }[]>`
     update visitors set hide_links = ${!shown},
-      links_shown_from = case when ${shown} and hide_links then now() else links_shown_from end
-    where id = ${visitor.id}`;
+      links_shown_from = case when ${shown} and hide_links then now() else links_shown_from end,
+      links_named_noticed_at = coalesce(links_named_noticed_at, now())
+    where id = ${visitor.id}
+    returning account_id`;
+  if (!shown && self?.account_id) await uncopyAll(self.account_id);
   refresh();
   return { ok: true };
 }
@@ -118,6 +124,8 @@ export async function removeMyReaction(key: string, kind: Sentiment): Promise<Ac
   if (!listingKey.safeParse(key).success || !sentiment.safeParse(kind).success) return fail("We couldn't do that.");
   const visitor = await ownVisitor();
   if (!visitor) return fail("Please add your name first.");
+  // (Theirs here from now on, even a like that began on a link.)
+  await ownedInPublic(visitor.id, key);
   await sql`
     delete from public_reactions
     where listing_key = ${key} and visitor_id = ${visitor.id} and reaction = ${kind}`;

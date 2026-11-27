@@ -37,8 +37,9 @@ test("comments unfurl from the comment bar, under the head and over the photo, l
   expect(Math.round((await thread.boundingBox())!.y + (await thread.boundingBox())!.height)).toBe(height);
   await expect(home.locator("[data-home-head]")).toBeVisible();
   await expect(thread.getByRole("heading", { name: "Comments" })).toBeVisible();
-  // Who sees it, under the box.
-  await expect(thread.getByText("Public, with your first name.")).toBeVisible();
+  // Nothing under the box: everything here is public, as signing up said.
+  await expect(thread.getByText("Public, with your first name.")).toHaveCount(0);
+  await expect(thread.getByText(/Comments here are public/)).toHaveCount(0);
 
   // A quick emoji, then Enter posts it.
   await thread.getByRole("button", { name: "🔥" }).click();

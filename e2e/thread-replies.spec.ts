@@ -106,6 +106,8 @@ test("on a link, a reply to someone's comment stays on the link", async ({ brows
   await heartOf(owenHome).click();
   await expect(heartOf(owenHome)).toHaveAttribute("aria-pressed", "true");
   const owenSheet = await openComments(owen, owenHome);
+  // (Said for the people on the link: kept to it.)
+  await owenSheet.getByRole("button", { name: "Keep it to this link" }).click();
   await owenSheet.getByLabel("Add a comment").fill("Could we see it Saturday?");
   await owenSheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(owenSheet.getByText("Could we see it Saturday?")).toBeVisible();

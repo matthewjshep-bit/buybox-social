@@ -518,6 +518,8 @@ test("isolation: what's private on an agent's link never reaches the public page
   await card.getByRole("button", { name: /^Comment on/ }).click();
   const about = commentsOf(yaraHome);
   await expect(about.getByRole("heading", { name: "On a spot in photo 1" })).toBeVisible();
+  // (Each kept to Tilly: what's public by default is lib/link-public's, not this.)
+  await about.getByRole("button", { name: "Keep it to Tilly Agent" }).click();
   await about.getByRole("textbox").fill(SPOT_SECRET);
   await about.getByRole("button", { name: "Post", exact: true }).click();
   await expect(about).toBeHidden();
@@ -527,6 +529,7 @@ test("isolation: what's private on an agent's link never reaches the public page
   const spot = chat.getByRole("listitem").filter({ hasText: SPOT_SECRET }).locator('[data-spot-tag^="@"]');
   await expect(spot).toHaveCount(1);
   const spotTag = (await spot.getAttribute("data-spot-tag"))!;
+  await chat.getByRole("button", { name: "Keep it to Tilly Agent" }).click();
   await chat.getByLabel("Add a comment").fill(SECRET);
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat.getByText(SECRET)).toBeVisible();
@@ -569,7 +572,7 @@ test("isolation: what's private on an agent's link never reaches the public page
   }
 });
 
-test("isolation: a comment on a spot shared from a link shows its words in public, as a buyer's, never where it was left", async ({
+test("a comment on a spot on a link is public by default: in public, by her first name, on the spot", async ({
   browser,
 }) => {
   test.setTimeout(120_000);
@@ -581,7 +584,6 @@ test("isolation: a comment on a spot shared from a link shows its words in publi
   const zoeHome = homeIn(zoe, SALTMARSH);
   await zoeHome.scrollIntoViewIfNeeded();
   await settled(zoeHome);
-  // Sharing is offered once you like the home.
   await heartOf(zoeHome).click();
   await expect(heartOf(zoeHome)).toHaveAttribute("aria-pressed", "true");
   const SPOT = { x: 0.8, y: 0.45 };
@@ -592,39 +594,26 @@ test("isolation: a comment on a spot shared from a link shows its words in publi
   await card.getByRole("button", { name: /^Comment on/ }).click();
   const about = commentsOf(zoeHome);
   await expect(about.getByRole("heading", { name: "On a spot in photo 1" })).toBeVisible();
-  await about.getByLabel(/share publicly/).check();
+  await expect(about.getByText("Public, with your first name.")).toBeVisible();
   await about.getByRole("textbox").fill(WORDS);
   await about.getByRole("button", { name: "Post", exact: true }).click();
   await expect(about).toBeHidden();
-  const zoeChat = await openComments(zoe, zoeHome);
-  const spot = zoeChat.getByRole("listitem").filter({ hasText: WORDS }).locator('[data-spot-tag^="@"]');
-  await expect(spot).toHaveCount(1);
-  const spotTag = (await spot.getAttribute("data-spot-tag"))!;
   await zoe.keyboard.press("Escape");
 
-  // In public: what she said, under the photo, by "A buyer" with a lock, on
-  // no spot at all: no pin on the row, no spot in the comments.
+  // In public: what she said, under the photo, by Zoe (no lock), on its spot.
+  // Never the agent, or that it came from a link.
   const page = await (await browser.newContext()).newPage();
   await page.goto("/homes/SAMPLE-1008");
   const home = homeIn(page, SALTMARSH);
   await settled(home);
   const row = rowOf(home, WORDS);
-  await expect(row).toContainText(`A buyer ${WORDS}`);
-  await expect(row).not.toContainText("Zoe");
-  await expect(lockIn(row)).toHaveCount(1);
-  await expect(pinIn(row)).toHaveCount(0);
-  await expect(home.locator(`[data-spot-tag="${spotTag}"]`)).toHaveCount(0);
-  await expect(home.locator("[data-spot-highlight]")).toHaveCount(0);
-  await row.getByRole("button").click();
-  const sheet = commentsOf(home);
-  await expect(sheet).toBeVisible();
-  await expect(sheet.getByText(WORDS)).toBeVisible();
-  await expect(sheet.getByRole("button", { name: /: show it$/ })).toHaveCount(0);
-  await expect(sheet.getByRole("listitem").filter({ hasText: WORDS }).locator("[data-spot-tag]")).toHaveCount(0);
+  await expect(row).toContainText("Zoe");
+  await expect(row).not.toContainText("A buyer");
+  await expect(lockIn(row)).toHaveCount(0);
+  await expect(pinIn(row)).toHaveCount(1);
   const html = await (await page.request.get("/homes/SAMPLE-1008")).text();
   expect(html).toContain(WORDS);
-  expect(html).not.toContain(spotTag);
-  expect(html).not.toContain("Zoe");
+  expect(html).not.toContain("Tess Agent");
 });
 
 test("isolation: kept private, what you said on an agent's link stays off your own page, for you and for everyone; your public like counts there", async ({

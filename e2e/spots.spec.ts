@@ -347,6 +347,8 @@ test("a spot comment on an agent's link stays on the link", async ({ browser }) 
   const card = await pick(home, "the evergreens");
   await card.getByRole("button", { name: "Comment" }).click();
   const sheet = commentsOf(home);
+  // (Kept to the link: what's public by default is lib/link-public's.)
+  await sheet.getByRole("button", { name: "Keep it to Sloane Agent" }).click();
   await sheet.getByLabel("Comment on the evergreens").fill("The evergreens are my favorite part");
   await sheet.getByRole("button", { name: "Post", exact: true }).click();
   await expect(sheet).toBeHidden();

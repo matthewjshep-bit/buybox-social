@@ -111,6 +111,8 @@ test("an agent's take before they send: a note, a like on the front door, a disl
   // (Signed up a moment ago, and the link's one person now, so what she says
   // goes through at once.)
   const chat = await openComments(wren, hers);
+  // (A question for Nell: kept to her, not said in public as it starts.)
+  await chat.getByRole("button", { name: "Keep it to Nell Ortiz" }).click();
   await chat.getByLabel("Add a comment").fill(ASKED);
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(commentIn(chat, "Wren", ASKED)).toBeVisible();

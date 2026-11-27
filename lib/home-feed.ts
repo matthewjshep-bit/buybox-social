@@ -1,6 +1,7 @@
 import { cache } from "react";
 import type { Account } from "./auth";
 import { sql } from "./db";
+import { linkWho } from "./link-public";
 import { getReel, type FeedPost } from "./feed";
 import { feedHomeOf, type FeedHome, type FeedWho } from "./feed-home";
 import { getAffinity, getEngagement, getImpressions, rankFeed, type Candidate } from "./feed-rank";
@@ -485,12 +486,13 @@ export async function feedCounts(keys: string[]): Promise<Record<string, FeedCou
         select listing_key, 'v' || visitor_id as who from public_reactions
         where reaction = 'like' and listing_key in ${sql(keys)}
         union
-        select listing_key, 'p' || participant_id from reactions
-        where reaction = 'like' and listing_key in ${sql(keys)}
+        -- (Someone on a link by their account counts as their public self.)
+        select r.listing_key, ${linkWho("r")} from reactions r
+        where r.reaction = 'like' and r.listing_key in ${sql(keys)}
         union
         select listing_key, 'v' || visitor_id from public_photo_likes where listing_key in ${sql(keys)}
         union
-        select listing_key, 'p' || participant_id from photo_likes where listing_key in ${sql(keys)}) x
+        select pl.listing_key, ${linkWho("pl")} from photo_likes pl where pl.listing_key in ${sql(keys)}) x
       group by listing_key`,
     sql<{ listing_key: string; n: number }[]>`
       select listing_key, count(*)::int as n from (

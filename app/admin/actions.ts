@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireAdmin, requireSuperAdmin, SUPER_ADMIN_EMAIL, VIEW_AS_COOKIE } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { uncopyComment } from "@/lib/link-public";
 import { siteOrigin } from "@/lib/site";
 
 // Every action checks for an admin itself: a server action can be called
@@ -56,7 +57,8 @@ export async function deleteComment(id: string) {
 // stays in the chat, just no longer shows in public.
 export async function hideSharedComment(id: string) {
   await requireAdmin();
-  await sql`update comments set shared_publicly = false where id::text = ${id}`;
+  const [comment] = await sql<{ id: string }[]>`select id from comments where id::text = ${id}`;
+  if (comment) await uncopyComment(comment.id);
   revalidatePath("/", "layout");
 }
 
