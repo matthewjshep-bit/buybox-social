@@ -100,7 +100,15 @@ export function FollowingFeed({
               counts={counts[item.entry.home.key] ?? { likes: 0, comments: 0 }}
             />
           ) : item.kind === "post" ? (
-            <PostCard key={item.entry.id} entry={item.entry} reelFrom="feed" mine={mine} counts={counts} />
+            <PostCard
+              key={item.entry.id}
+              entry={item.entry}
+              reelFrom="feed"
+              mine={mine}
+              counts={counts}
+              own={Boolean(owner) && item.entry.who.profileId === owner}
+              isMe={Boolean(owner) && item.entry.who.profileId === owner}
+            />
           ) : (
             <StripCard key={`strip:${item.entries[0].id}`} entries={item.entries} />
           ),

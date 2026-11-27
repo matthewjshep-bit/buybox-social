@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useRef, useState, type CSSProperties } from "react";
+import { deleteMyPost, changeMyPost } from "@/app/send/actions";
 import { FeedBar } from "@/components/home/feed-bar";
 import { HomeSwipe } from "@/components/home-swipe";
+import { EditBox, OwnMenu } from "@/components/own-words";
 import { PhotoSwipe } from "@/components/photo-swipe";
 import { Avatar, Badge } from "@/components/ui";
 import { cn, formatPrice, timeAgo } from "@/lib/format";
@@ -17,7 +19,8 @@ import { card } from "@/lib/ui";
 // a swipe away, or several homes to swipe through (each named on its photo);
 // the facts of the one showing in a line; and under it the bar every feed
 // card has (how many liked that home, how many comments, which unfurl right
-// there). With no home: the words alone.
+// there). With no home: the words alone. Your own has "…" in its corner:
+// Edit its words, or Delete it, right where it is.
 
 // A photo's shape, kept between a little taller than wide and three by two.
 const shapeOf = (photo: { width?: number; height?: number }) =>
@@ -29,7 +32,7 @@ export function PostCard({
   isMe = false,
   mine,
   counts,
-  menu,
+  own = false,
 }: {
   entry: PostEntry;
   // Where the homes open full screen (`/reel?from=`).
@@ -40,16 +43,24 @@ export function PostCard({
   // many comments it has, by key, for the bar.
   mine: Record<string, ReactionState>;
   counts: Record<string, FeedCounts>;
-  // On your own page: what you can do with it.
-  menu?: ReactNode;
+  // The viewer's own: theirs to change or delete.
+  own?: boolean;
 }) {
   const { who, homes } = entry;
   const [shown, setShown] = useState(0);
+  // As it stands since it was changed here (the feed doesn't reload under it).
+  const [body, setBody] = useState(entry.body);
+  const [edited, setEdited] = useState(entry.edited);
+  const [editing, setEditing] = useState(false);
+  const [gone, setGone] = useState(false);
+  const more = useRef<HTMLButtonElement>(null);
+  const backToMenu = () => requestAnimationFrame(() => more.current?.focus({ preventScroll: true }));
   const home = homes[Math.min(shown, homes.length - 1)];
   const reel = (key: string, photo?: number | null) =>
     `/reel?${new URLSearchParams({ from: reelFrom, home: key, ...(photo != null && { photo: String(photo) }) })}`;
   const sentence = homes.length === 0 ? "posted" : homes.length === 1 ? "posted about this home" : `posted ${homes.length} homes`;
   const time = timeAgo(entry.at);
+  if (gone) return null;
   return (
     <li className={cn(card, "relative overflow-hidden")} data-post={entry.postId} data-item={entry.id}>
       <div className="flex items-start gap-3 p-3.5">
@@ -71,11 +82,51 @@ export function PostCard({
             <time dateTime={entry.at} suppressHydrationWarning>
               {time}
             </time>
+            {edited && " · Edited"}
           </span>
         </p>
-        {menu}
+        {own && (
+          <OwnMenu
+            big
+            what="post"
+            triggerRef={more}
+            warn="It comes off your page, the feeds, and each home's comments."
+            onEdit={() => setEditing(true)}
+            onDelete={async () => {
+              const result = await deleteMyPost(entry.postId);
+              if (!result.ok) return result.error;
+              setGone(true);
+              return null;
+            }}
+            className="relative z-20 -my-1.5 -mr-2 shrink-0"
+          />
+        )}
       </div>
-      {entry.body && <p className="-mt-1 whitespace-pre-line break-words px-3.5 pb-3 text-body leading-snug">{entry.body}</p>}
+      {editing ? (
+        <div className="relative z-20 -mt-1 px-3.5 pb-3">
+          <EditBox
+            initial={body}
+            what="post"
+            enterSaves={false}
+            allowEmpty={homes.length > 0}
+            onCancel={() => {
+              setEditing(false);
+              backToMenu();
+            }}
+            onSave={async (next) => {
+              const result = await changeMyPost(entry.postId, next);
+              if (!result.ok) return result.error;
+              setBody(next);
+              setEdited(true);
+              setEditing(false);
+              backToMenu();
+              return null;
+            }}
+          />
+        </div>
+      ) : (
+        body && <p className="-mt-1 whitespace-pre-line break-words px-3.5 pb-3 text-body leading-snug">{body}</p>
+      )}
       {homes.length === 1 && home.photos.length > 0 && (
         <PhotoSwipe
           photos={home.photos}
@@ -90,7 +141,7 @@ export function PostCard({
       )}
       {homes.length > 1 && (
         <HomeSwipe
-          homes={homes.map((h) => ({ key: h.key, href: reel(h.key), address: h.address, photo: h.photo }))}
+          homes={homes.map((h) => ({ key: h.key, href: reel(h.key), address: h.address, price: h.price, photo: h.photo }))}
           label={`${who.name}'s post`}
           sizes="(min-width: 1024px) 600px, 100vw"
           onShown={setShown}

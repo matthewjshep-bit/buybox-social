@@ -95,6 +95,8 @@ export type MessageItem = {
   by: ThreadPerson;
   mine: boolean;
   body: string;
+  // Changed since it was said ("Edited").
+  edited?: boolean;
 };
 
 // A word about one of the homes: a bubble in the conversation, like any
@@ -112,6 +114,7 @@ export type CommentItem = {
   replyTo: { name: string; likes: boolean } | null;
   // A request to see the home in person (ASK_TO_SEE), said in words.
   ask: boolean;
+  edited?: boolean;
 };
 
 export type ThreadItem = HomesItem | MessageItem | CommentItem;
@@ -400,8 +403,10 @@ export const getThread = cache(async (me: Account, key: string): Promise<ThreadV
     Promise.all(ids.map((id) => getShareListings(id))),
     Promise.all(ids.map((id) => getShareThread(id))),
     // Messages about no home: a word on the link itself, from either side.
-    sql<{ id: string; share_id: string; participant_id: string | null; first_name: string | null; body: string; created_at: Date }[]>`
-      select c.id, c.share_id, c.participant_id, p.first_name, c.body, c.created_at
+    sql<
+      { id: string; share_id: string; participant_id: string | null; first_name: string | null; body: string; created_at: Date; edited: boolean }[]
+    >`
+      select c.id, c.share_id, c.participant_id, p.first_name, c.body, c.created_at, c.edited_at is not null as edited
       from comments c left join participants p on p.id = c.participant_id
       where c.share_id in ${sql(ids)} and c.listing_key is null
       order by c.created_at`,
@@ -477,6 +482,7 @@ export const getThread = cache(async (me: Account, key: string): Promise<ThreadV
             about: home,
             replyTo: c.replyTo ?? null,
             ask: c.body === ASK_TO_SEE,
+            ...(c.edited && { edited: true }),
           }),
         );
       saidAboutHomes.push(...said);
@@ -534,6 +540,7 @@ export const getThread = cache(async (me: Account, key: string): Promise<ThreadV
       by: fromSender ? senderOf(share) : someone(share, word.participant_id, word.first_name),
       mine,
       body: word.body,
+      ...(word.edited && { edited: true }),
     });
   }
   items.sort((a, b) => a.at.localeCompare(b.at));

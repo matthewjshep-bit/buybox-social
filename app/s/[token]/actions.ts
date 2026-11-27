@@ -19,6 +19,7 @@ import {
 } from "@/lib/engagement";
 import { copyComment, copyLike, uncopyAll, uncopyComment, uncopyLike } from "@/lib/link-public";
 import { notifyAgent } from "@/lib/notify";
+import { deleteLinkComment, editLinkComment } from "@/lib/own-words";
 import {
   deviceHashFor,
   linkOnce,
@@ -513,6 +514,37 @@ export async function askToSee(token: string, listingKey: string): Promise<AskRe
   after(() => emitLinkEvent(found.share.id, "showing.requested", { participantId: participant.id, listingKey }));
   refresh();
   return { ok: true, already: false };
+}
+
+// Your own comment on this link, in other words, or taken back (the replies
+// under it go with it, and its public copy, if it has one, changes or goes
+// too). Whoever wrote it: someone on the link, or the agent on their own.
+// (The home's key is for the page, as the comment box has it.)
+async function ownWordsOn(token: string, commentId: unknown) {
+  if (typeof commentId !== "string" || commentId.length > 64) return null;
+  const found = await getShareByToken(token);
+  const account = await getCurrentUser();
+  return found && account?.role ? { shareId: found.share.id, accountId: account.id, commentId } : null;
+}
+
+export async function editShareComment(token: string, _listingKey: string, commentId: string, body: string): Promise<ActionResult> {
+  const parsed = commentSchema.safeParse(body);
+  if (!parsed.success) return fail("Comments can be 1 to 1,000 characters.");
+  const own = await ownWordsOn(token, commentId);
+  if (!own || !(await editLinkComment(own.accountId, own.commentId, parsed.data, own.shareId))) {
+    return fail("That comment isn't there anymore.");
+  }
+  refresh();
+  return { ok: true };
+}
+
+export async function deleteShareComment(token: string, _listingKey: string, commentId: string): Promise<ActionResult> {
+  const own = await ownWordsOn(token, commentId);
+  if (!own || !(await deleteLinkComment(own.accountId, own.commentId, own.shareId))) {
+    return fail("That comment isn't there anymore.");
+  }
+  refresh();
+  return { ok: true };
 }
 
 // Lets an author make a comment of theirs on the link private (its public

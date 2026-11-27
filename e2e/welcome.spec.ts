@@ -59,9 +59,9 @@ test("an investor joins a step at a time, wears an Investor chip, and their list
 
   // Their own homes are deals: in the menu, on the page for them, and adding one.
   await page.getByRole("button", { name: "Account menu" }).click();
-  await page.getByRole("link", { name: "Deals" }).click();
+  await page.getByRole("link", { name: "My Deals" }).click();
   await page.waitForURL("**/dashboard/listings");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Deals");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("My Deals");
   await page.getByRole("link", { name: "Add a deal" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Add a deal");
   const form = await enterListingYourself(page);

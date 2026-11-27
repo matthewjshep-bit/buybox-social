@@ -28,7 +28,7 @@ export default async function EditListingPage({ params }: { params: Promise<{ ke
           under them the address and where it stands, together. */}
       <div className="flex items-center justify-between gap-3">
         <Link href="/dashboard/listings" className={backLink}>
-          <ArrowLeft aria-hidden size={18} /> {listingWords(agent.kind).Many}
+          <ArrowLeft aria-hidden size={18} /> {listingWords(agent.kind).Mine}
         </Link>
         {shown && (
           <Link

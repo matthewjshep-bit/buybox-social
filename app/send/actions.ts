@@ -5,12 +5,13 @@ import { after } from "next/server";
 import { z } from "zod";
 import { getViewAs, requireUser, type Account } from "@/lib/auth";
 import { sql } from "@/lib/db";
-import { MAX_COMMENTS_PER_MINUTE } from "@/lib/engagement";
+import { MAX_COMMENTS_PER_MINUTE, type ActionResult } from "@/lib/engagement";
 import { homeLiteOf, type HomeLite } from "@/lib/home-lite";
 import { kindOf, listingWords } from "@/lib/kinds";
 import { importMissing, runImportsAndContinue } from "@/lib/listings/imports";
 import type { Listing } from "@/lib/listings/types";
 import { getThreads, threadHref } from "@/lib/messages";
+import { deletePost, editPost } from "@/lib/own-words";
 import { pickSchema, type PersonPick } from "@/lib/people-picker";
 import { ensureAccountVisitor } from "@/lib/public";
 import { SEND_HOMES_MOST } from "@/lib/send-limits";
@@ -175,6 +176,29 @@ async function post(me: Account, body: string, keys: string[]): Promise<Publishe
   });
   refresh();
   return { ok: true, href: `/people/${visitor.id}`, said: "Posted" };
+}
+
+// Your own post, in other words (its homes stay), or taken back: off your
+// page, out of the feeds, and its words off each home's conversation. The
+// card changes where it is (nothing reloads under it, as a feed would).
+export async function changeMyPost(postId: string, body: string): Promise<ActionResult> {
+  const me = await requireUser();
+  const parsed = z.string().trim().max(1000).safeParse(body);
+  if (!parsed.success) return { ok: false, error: "Posts can be up to 1,000 characters." };
+  if (typeof postId !== "string" || postId.length > 64) return { ok: false, error: "That post isn't there anymore." };
+  const visitor = await ensureAccountVisitor(me);
+  const changed = await editPost(visitor.id, postId, parsed.data);
+  if (changed === "empty") return { ok: false, error: "Say something, or delete the post." };
+  if (changed === "gone") return { ok: false, error: "That post isn't there anymore." };
+  return { ok: true };
+}
+
+export async function deleteMyPost(postId: string): Promise<ActionResult> {
+  const me = await requireUser();
+  if (typeof postId !== "string" || postId.length > 64) return { ok: false, error: "That post isn't there anymore." };
+  const visitor = await ensureAccountVisitor(me);
+  if (!(await deletePost(visitor.id, postId))) return { ok: false, error: "That post isn't there anymore." };
+  return { ok: true };
 }
 
 export type { HomeLite };

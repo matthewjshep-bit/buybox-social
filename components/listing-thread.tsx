@@ -41,6 +41,10 @@ export type ThreadActions = {
   ) => Promise<ActionResult>;
   // Private threads only: an author shares or un-shares their own comment.
   setSharing?: (commentId: string, shared: boolean) => Promise<ActionResult>;
+  // Your own comment, in other words, or taken back (the replies under it
+  // go with it). The home's key is for the page, to load it again after.
+  editComment?: (listingKey: string, commentId: string, body: string) => Promise<ActionResult>;
+  deleteComment?: (listingKey: string, commentId: string) => Promise<ActionResult>;
   // Public threads only: liking a comment, which also turns on replies.
   likeComment?: (commentId: string, liked: boolean) => Promise<ActionResult>;
   // Liking, or not, something in a photo ("the kitchen") or a fact ("the price").

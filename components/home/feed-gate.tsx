@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { commentInReel, joinPublic, likeCommentInReel, reactInStream } from "@/app/homes/actions";
+import { commentInReel, deleteCommentInReel, editCommentInReel, joinPublic, likeCommentInReel, reactInStream } from "@/app/homes/actions";
 import { NameGate } from "@/components/listing-thread";
 
 // Around a feed of cards: the public conversation's actions (liking a home,
@@ -11,7 +11,14 @@ import { NameGate } from "@/components/listing-thread";
 export function FeedGate({ myName, children }: { myName: string | null; children: ReactNode }) {
   return (
     <NameGate
-      actions={{ join: joinPublic, react: reactInStream, comment: commentInReel, likeComment: likeCommentInReel }}
+      actions={{
+        join: joinPublic,
+        react: reactInStream,
+        comment: commentInReel,
+        editComment: editCommentInReel,
+        deleteComment: deleteCommentInReel,
+        likeComment: likeCommentInReel,
+      }}
       myName={myName}
       prompt="Your first name shows publicly."
     >

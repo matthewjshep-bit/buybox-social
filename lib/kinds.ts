@@ -20,8 +20,10 @@ export const kindOf = (account: { kind?: string | null; role?: string | null } |
 export const KIND_LABEL: Record<Kind, string | null> = { agent: "Agent", investor: "Investor", lender: "Lender", buyer: null };
 
 // What each calls the homes they put up: an investor's are deals; everyone
-// else's, listings.
-export type ListingWords = { one: string; many: string; One: string; Many: string };
-const LISTINGS: ListingWords = { one: "listing", many: "listings", One: "Listing", Many: "Listings" };
-const DEALS: ListingWords = { one: "deal", many: "deals", One: "Deal", Many: "Deals" };
+// else's, listings. `Mine`: what their own are called, to them (their menu,
+// their page for them, the tab on their own profile): an investor's are "My
+// Deals".
+export type ListingWords = { one: string; many: string; One: string; Many: string; Mine: string };
+const LISTINGS: ListingWords = { one: "listing", many: "listings", One: "Listing", Many: "Listings", Mine: "Listings" };
+const DEALS: ListingWords = { one: "deal", many: "deals", One: "Deal", Many: "Deals", Mine: "My Deals" };
 export const listingWords = (kind: Kind | null | undefined): ListingWords => (kind === "investor" ? DEALS : LISTINGS);

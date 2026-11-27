@@ -9,6 +9,7 @@ import { sql } from "@/lib/db";
 import { fail, MAX_COMMENTS_PER_MINUTE, type ActionResult } from "@/lib/engagement";
 import { getThread, type HomesItem } from "@/lib/messages";
 import { notifyAgent } from "@/lib/notify";
+import { deleteLinkComment, editLinkComment } from "@/lib/own-words";
 import { replyToClient } from "@/lib/sending";
 
 // What a message is about: one home in the conversation, or (null) the
@@ -88,4 +89,22 @@ export async function markThreadSeen(threadKey: string): Promise<void> {
           insert into thread_seen (account_id, thread_key, seen_at) values (${me.id}, ${threadKey}, now())
           on conflict (account_id, thread_key) do update set seen_at = now()`,
   ]);
+}
+
+// Your own message (or word about a home) in a conversation, in other words,
+// or taken back. Only ever yours: lib/own-words.ts.
+export async function editMessage(id: string, body: string): Promise<ActionResult> {
+  const me = await requireUser();
+  const parsed = text.safeParse(body);
+  if (!parsed.success) return fail("Messages can be 1 to 1,000 characters.");
+  if (!uuid.safeParse(id).success || !(await editLinkComment(me.id, id, parsed.data))) return fail("That message isn't there anymore.");
+  refresh();
+  return { ok: true };
+}
+
+export async function deleteMessage(id: string): Promise<ActionResult> {
+  const me = await requireUser();
+  if (!uuid.safeParse(id).success || !(await deleteLinkComment(me.id, id))) return fail("That message isn't there anymore.");
+  refresh();
+  return { ok: true };
 }

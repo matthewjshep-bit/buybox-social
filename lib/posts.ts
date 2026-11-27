@@ -19,6 +19,8 @@ export type PostEntry = {
   day: string;
   who: FeedWho;
   body: string;
+  // Changed since it was posted ("Edited").
+  edited: boolean;
   homes: FeedHome[];
 };
 
@@ -32,6 +34,7 @@ type PostRow = {
   first_name: string;
   is_agent: boolean;
   photo_v: string | null;
+  edited: boolean;
 };
 
 // These people's posts, newest first. Homes someone has since hidden from
@@ -39,7 +42,7 @@ type PostRow = {
 export async function getPostsBy(visitorIds: string[], { most = 40 }: { most?: number } = {}): Promise<PostEntry[]> {
   if (visitorIds.length === 0) return [];
   const rows = await sql<PostRow[]>`
-    select p.id, p.visitor_id, p.body, p.created_at, v.first_name,
+    select p.id, p.visitor_id, p.body, p.created_at, p.edited_at is not null as edited, v.first_name,
       coalesce(a.role = 'agent', false) as is_agent, left(md5(a.photo_data_url), 10) as photo_v
     from posts p join visitors v on v.id = p.visitor_id left join accounts a on a.id = v.account_id
     where p.visitor_id in ${sql(visitorIds)}
@@ -70,6 +73,7 @@ export async function getPostsBy(visitorIds: string[], { most = 40 }: { most?: n
         photo: photoUrl(row.visitor_id, row.photo_v),
       },
       body: row.body,
+      edited: row.edited,
       homes: byPost.get(row.id) ?? [],
     };
   });

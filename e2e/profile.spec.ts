@@ -1339,17 +1339,13 @@ test("on your own page you can take back a like or a comment, and nobody else ca
   await chat.getByRole("button", { name: "Post", exact: true }).first().click();
   await expect(chat.getByRole("list", { name: "Replies to Pia" }).getByText(ANSWER)).toBeVisible();
 
-  // Now it can't go from her page, and the server says the same when asked directly.
+  // It can still go from her page, and says the reply would go with it.
   await pia.reload();
   await options.click();
-  await expect(deleteOf(FIRST)).toHaveAttribute("aria-disabled", "true");
-  await expect(deleteOf(FIRST)).toHaveAccessibleDescription(/Comments with replies can't be deleted here/);
-  await expect(deleteOf(SECOND)).not.toHaveAttribute("aria-disabled");
-  await pia.route("**/people/**", (route) => (isAction(route) ? route.continue({ postData: first }) : route.continue()));
-  await deleteOf(SECOND).click();
-  await sheet.getByRole("button", { name: "Delete comment" }).click();
-  await expect(sheet.getByRole("alert")).toHaveText("Comments with replies can't be deleted here.");
-  await pia.unroute("**/people/**");
+  await expect(deleteOf(FIRST)).not.toHaveAttribute("aria-disabled");
+  await deleteOf(FIRST).click();
+  await expect(sheet.getByRole("button", { name: "Delete comment" })).toHaveAccessibleDescription(/with the replies to it/);
+  await sheet.getByRole("button", { name: "Cancel" }).click();
   await pia.keyboard.press("Escape");
 
   // Quinn, sending her comment as his own to delete, is refused.

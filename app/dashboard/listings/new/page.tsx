@@ -24,7 +24,7 @@ export default async function NewListingPage({ searchParams }: { searchParams: P
   return (
     <>
       <Link href="/dashboard/listings" className={backLink}>
-        <ArrowLeft aria-hidden size={18} /> {listingWords(agent.kind).Many}
+        <ArrowLeft aria-hidden size={18} /> {listingWords(agent.kind).Mine}
       </Link>
       <h1 className={cn(pageTitle, "mt-2")}>Add a {listingWords(agent.kind).one}</h1>
       <section aria-labelledby="find-title" className={cn(card, "mt-6 p-5")}>

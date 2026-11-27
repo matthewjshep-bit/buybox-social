@@ -165,6 +165,7 @@ export function FeedBar({
                 onAllComments={() => {}}
                 onReply={setReplyTo}
                 onGoToSpot={goToSpot}
+                onChanged={() => void load()}
               />
               {active && (
                 <div className="mt-2">

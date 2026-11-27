@@ -140,7 +140,7 @@ export default async function EditProfilePage() {
         <section id="layout" aria-labelledby="layout-title" className={cn(card, "mt-4 scroll-mt-4 p-5")}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 id="layout-title" className="text-lg font-semibold">
-              {listingWords(account.kind).Many}
+              {listingWords(account.kind).Mine}
             </h2>
             {/* Adding one, changing one: their own page for it. */}
             <Link href="/dashboard/listings" className={button({ kind: "secondary" })}>

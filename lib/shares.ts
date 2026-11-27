@@ -58,6 +58,8 @@ export type ThreadComment = {
   spot?: { mediaKey: string; tag: string } | null;
   // A reply: whose comment (or whose likes) it answers.
   replyTo?: { name: string; likes: boolean } | null;
+  // Changed since it was said ("Edited").
+  edited?: boolean;
 };
 
 // What a link is called, worked out the way the database does it; and its
@@ -522,10 +524,11 @@ export async function getThread(shareId: string) {
       spot: string | null;
       reply_to_name: string | null;
       reply_to_likes: boolean;
+      edited: boolean;
     }[]
   >`
     select c.id, c.listing_key, c.participant_id, p.first_name,
-           a.full_name as agent_name, c.tag, c.body, c.created_at,
+           a.full_name as agent_name, c.tag, c.body, c.created_at, c.edited_at is not null as edited,
            c.shared_publicly or c.public_comment_id is not null as shared_publicly, c.media_key, c.spot,
            -- Whose comment, or whose likes, a reply answers.
            coalesce(pp.first_name, pa.full_name, rp.first_name) as reply_to_name,
@@ -597,6 +600,7 @@ export async function getThread(shareId: string) {
         sharedPublicly: c.shared_publicly,
         spot: c.media_key && c.spot ? { mediaKey: c.media_key, tag: c.spot } : null,
         replyTo: c.reply_to_name ? { name: c.reply_to_name, likes: c.reply_to_likes } : null,
+        ...(c.edited && { edited: true }),
       }),
     ),
   };

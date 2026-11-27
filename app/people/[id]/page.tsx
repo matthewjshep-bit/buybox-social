@@ -328,7 +328,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                 aria-current={tab === key ? "page" : undefined}
                 className={tabClass(tab === key)}
               >
-                {key === "listings" ? listingWords(person.kind).Many : "Activity"}
+                {key === "listings" ? listingWords(person.kind)[isMe ? "Mine" : "Many"] : "Activity"}
                 {key === "listings" && <span className="text-muted tabular-nums">{listings.length}</span>}
               </Link>
             ))}

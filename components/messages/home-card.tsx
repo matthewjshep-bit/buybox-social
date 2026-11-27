@@ -2,7 +2,9 @@
 
 import { DoorOpen, Eye, Heart, X } from "lucide-react";
 import Link from "next/link";
-import type { MouseEvent, ReactNode } from "react";
+import { useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { deleteMessage, editMessage } from "@/app/messages/actions";
+import { EditBox, OwnMenu } from "@/components/own-words";
 import { Avatar, HomeThumb } from "@/components/ui";
 import { cn, formatPrice, namesList, timeAgo, whenWords } from "@/lib/format";
 import type { CommentItem, HomesItem, MessageItem, ThreadHome, ThreadPerson } from "@/lib/messages";
@@ -154,12 +156,63 @@ function HomeCard({
 
 // A message about no home in particular: a bubble, the viewer's own on the
 // right in the site's blue, anyone else's on the left, their face beside it.
+// Your own words in a conversation: "…" under them, to change them in place
+// or take them back. Changed, they say so at once (and "Edited"); deleted,
+// they go at once, while the conversation catches up.
+function useOwnWords(item: MessageItem | CommentItem) {
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [gone, setGone] = useState(false);
+  const more = useRef<HTMLButtonElement>(null);
+  const back = () => requestAnimationFrame(() => more.current?.focus({ preventScroll: true }));
+  const body = saved ?? item.body;
+  const own: Own = {
+    edited: Boolean(item.edited) || (saved !== null && saved !== item.body),
+    menu: item.mine ? (
+      <OwnMenu
+        what="message"
+        triggerRef={more}
+        onEdit={() => setEditing(true)}
+        onDelete={async () => {
+          const result = await deleteMessage(item.id);
+          if (!result.ok) return result.error;
+          setGone(true);
+          return null;
+        }}
+      />
+    ) : null,
+    editor: editing ? (
+      <EditBox
+        initial={body}
+        what="message"
+        onCancel={() => {
+          setEditing(false);
+          back();
+        }}
+        onSave={async (next) => {
+          const result = await editMessage(item.id, next);
+          if (!result.ok) return result.error;
+          setSaved(next);
+          setEditing(false);
+          back();
+          return null;
+        }}
+      />
+    ) : null,
+  };
+  return { gone, body, own };
+}
+
+type Own = { edited: boolean; menu: ReactNode; editor: ReactNode };
+
 export function MessageBubble({ item, named = false }: { item: MessageItem; named?: boolean }) {
+  const { gone, body, own } = useOwnWords(item);
+  if (gone) return null;
   return (
     <li id={`message-${item.id}`} className={cn("flex flex-col", item.mine ? "items-end" : "items-start")}>
       {named && <Speaker name={item.by.name} />}
-      <Bubble mine={item.mine} by={item.by} at={item.at}>
-        {item.body}
+      <Bubble mine={item.mine} by={item.by} at={item.at} own={own}>
+        {body}
       </Bubble>
     </li>
   );
@@ -172,6 +225,8 @@ export function MessageBubble({ item, named = false }: { item: MessageItem; name
 // the first of a run from someone in a conversation with several people.
 export function CommentMessage({ item, quote = true, named = false }: { item: CommentItem; quote?: boolean; named?: boolean }) {
   const street = item.about.address.split(",")[0];
+  const { gone, body, own } = useOwnWords(item);
+  if (gone) return null;
   return (
     <li id={`comment-${item.id}`} className={cn("flex flex-col", item.mine ? "items-end" : "items-start")}>
       {named && <Speaker name={item.by.name} />}
@@ -196,8 +251,8 @@ export function CommentMessage({ item, quote = true, named = false }: { item: Co
           {item.replyTo.likes && "'s likes"}
         </span>
       )}
-      <Bubble mine={item.mine} by={item.by} at={item.at} ask={item.ask}>
-        {item.body}
+      <Bubble mine={item.mine} by={item.by} at={item.at} ask={item.ask && body === item.body} own={own}>
+        {body}
       </Bubble>
     </li>
   );
@@ -245,14 +300,18 @@ function Bubble({
   by,
   at,
   ask = false,
+  own,
   children,
 }: {
   mine: boolean;
   by: ThreadPerson;
   at: string;
   ask?: boolean;
+  // Your own: Edit and Delete beside when, the box in place of the bubble while editing.
+  own?: Own;
   children?: ReactNode;
 }) {
+  if (own?.editor) return <div className="w-full max-w-[min(32rem,85%)]">{own.editor}</div>;
   return (
     <div className={cn("flex max-w-[85%] flex-col", mine ? "items-end" : "items-start")}>
       <div className="flex max-w-full items-end gap-2">
@@ -268,12 +327,16 @@ function Bubble({
           {children}
         </p>
       </div>
-      <span className={cn("mt-0.5 px-1 text-meta text-muted", !mine && "ml-8")}>
-        {!mine && <span className="sr-only">{by.name}, </span>}
-        <time dateTime={at} suppressHydrationWarning>
-          {timeAgo(at)}
-        </time>
-      </span>
+      <div className={cn("mt-0.5 flex min-h-6 items-center gap-1 px-1 text-meta text-muted", !mine && "ml-8")}>
+        <span>
+          {!mine && <span className="sr-only">{by.name}, </span>}
+          <time dateTime={at} suppressHydrationWarning>
+            {timeAgo(at)}
+          </time>
+          {own?.edited && " · Edited"}
+        </span>
+        {own?.menu}
+      </div>
     </div>
   );
 }

@@ -33,7 +33,7 @@ export default async function ListingsPage() {
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-        <h1 className={pageTitle}>{words.Many}</h1>
+        <h1 className={pageTitle}>{words.Mine}</h1>
         <Link href="/dashboard/listings/new" className={cn(button({ kind: "primary", size: "lg" }), "shrink-0 whitespace-nowrap")}>
           <Plus aria-hidden size={20} /> Add a {words.one}
         </Link>

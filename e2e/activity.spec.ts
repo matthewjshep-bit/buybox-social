@@ -170,18 +170,15 @@ test("activity shows people and homes, with repeats on one comment on one line",
   await hannah.goto("/activity");
   await expect(hannah.getByText("Nothing yet")).toBeVisible();
 
-  // Ana's comment has an answer, so it can't go from her page yet.
+  // Ana's comment has an answer: deleting it from her page says the answer goes too.
   await ana.goto("/people/me");
   await ana.waitForURL(/\/people\/[0-9a-f-]{36}$/);
   await ana.getByRole("button", { name: `Options for ${LAKEVIEW}` }).click();
   const sheet = ana.getByRole("dialog", { name: `Options for ${LAKEVIEW}` });
-  const locked = sheet.getByRole("button", { name: "Delete my comment", exact: true });
-  await expect(locked).toHaveAttribute("aria-disabled", "true");
-  await expect(locked).toHaveAccessibleDescription(/courtyard would be my office.*Comments with replies can't be deleted here/);
-  // Tapping it does nothing (once the sheet has come to rest, so the tap lands).
   await settle(sheet);
-  await locked.click({ force: true });
-  await expect(sheet.getByRole("button", { name: "Delete comment" })).toHaveCount(0);
+  await sheet.getByRole("button", { name: "Delete my comment", exact: true }).click();
+  await expect(sheet.getByRole("button", { name: "Delete comment" })).toHaveAccessibleDescription(/with the replies to it/);
+  await sheet.getByRole("button", { name: "Cancel" }).click();
   await ana.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
 

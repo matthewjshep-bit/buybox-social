@@ -4,6 +4,7 @@ import { Globe, Heart, Lock, MapPin, X } from "lucide-react";
 import Link from "next/link";
 import { createContext, useContext, useLayoutEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { useLinkAgent } from "@/components/agent-notes";
+import { EditBox, OwnMenu } from "@/components/own-words";
 import { useCommentLike, useThread, type ReplyTarget, type SpotRef } from "@/components/listing-thread";
 import { spotThread } from "@/components/photo-spots";
 import { Avatar, Badge } from "@/components/ui";
@@ -35,6 +36,7 @@ export type ThreadLook = "cover" | "panel" | "inline";
 
 // The colours of the ground it's on: white words on the dark ground, ink on white.
 type Tone = {
+  dark: boolean;
   fg: string;
   body: string;
   meta: string;
@@ -59,6 +61,7 @@ type Tone = {
 };
 
 const DARK: Tone = {
+  dark: true,
   fg: "text-white",
   body: "text-white/90",
   meta: "text-white/65",
@@ -80,6 +83,7 @@ const DARK: Tone = {
 };
 
 const LIGHT: Tone = {
+  dark: false,
   fg: "text-ink",
   body: "text-ink",
   meta: "text-muted",
@@ -108,6 +112,11 @@ const useTone = () => useContext(ToneContext);
 type Faces = { mine?: string; agent?: string };
 const FacesContext = createContext<Faces>({});
 
+// Which home the comments are on, for changing your own, and what to do once
+// one has changed (load them again, where nothing else does).
+type Changes = { listingKey: string; onChanged?: () => void };
+const ChangesContext = createContext<Changes | null>(null);
+
 export function CommentThread({
   post,
   mode,
@@ -125,6 +134,7 @@ export function CommentThread({
   onAllComments,
   onReply,
   onGoToSpot,
+  onChanged,
   className,
 }: {
   post: FeedPost;
@@ -157,6 +167,8 @@ export function CommentThread({
   onReply: (target: ReplyTarget) => void;
   // A comment about a spot: show it on the photo.
   onGoToSpot: (spot: SpotRef) => void;
+  // One of your own comments was changed or deleted.
+  onChanged?: () => void;
   className?: string;
 }) {
   const t = look === "inline" ? LIGHT : DARK;
@@ -203,6 +215,7 @@ export function CommentThread({
   );
   const spots = { name: (s: SpotRef) => spotName(post.listing, s), show: onGoToSpot };
   const linkAgent = useLinkAgent();
+  const changes: Changes = { listingKey: post.listing.ListingKey, onChanged };
   const faces: Faces = {
     mine: post.myFace,
     agent: (linkAgent?.agent.is_agent !== false && linkAgent?.agent.photo_data_url) || undefined,
@@ -212,7 +225,9 @@ export function CommentThread({
     return (
       <ToneContext.Provider value={t}>
         <FacesContext.Provider value={faces}>
+        <ChangesContext.Provider value={changes}>
           <Latest post={post} all={all} top={top} likesLine={likesLine} spots={spots} onOpen={onOpen} className={className} />
+        </ChangesContext.Provider>
         </FacesContext.Provider>
       </ToneContext.Provider>
     );
@@ -293,6 +308,7 @@ export function CommentThread({
     return (
       <ToneContext.Provider value={t}>
         <FacesContext.Provider value={faces}>
+        <ChangesContext.Provider value={changes}>
           <div className={cn("flex min-h-0 flex-1 flex-col", t.fg, className)}>
             <div className="px-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">{head}</div>
             <div
@@ -302,6 +318,7 @@ export function CommentThread({
               {list}
             </div>
           </div>
+        </ChangesContext.Provider>
         </FacesContext.Provider>
       </ToneContext.Provider>
     );
@@ -312,10 +329,12 @@ export function CommentThread({
     return (
       <ToneContext.Provider value={t}>
         <FacesContext.Provider value={faces}>
+        <ChangesContext.Provider value={changes}>
           <div className={cn("flex flex-col", t.fg, className)}>
             {spot && head}
             {list}
           </div>
+        </ChangesContext.Provider>
         </FacesContext.Provider>
       </ToneContext.Provider>
     );
@@ -323,6 +342,7 @@ export function CommentThread({
   return (
     <ToneContext.Provider value={t}>
       <FacesContext.Provider value={faces}>
+        <ChangesContext.Provider value={changes}>
         <div className={cn("flex flex-col", t.fg, className)}>
           {head}
           {list}
@@ -334,7 +354,8 @@ export function CommentThread({
             Hide comments
           </button>
         </div>
-      </FacesContext.Provider>
+      </ChangesContext.Provider>
+        </FacesContext.Provider>
     </ToneContext.Provider>
   );
 }
@@ -613,7 +634,17 @@ function Row({
 }) {
   const t = useTone();
   const { actions } = useThread();
+  const changes = useContext(ChangesContext);
   const [pending, startTransition] = useTransition();
+  // Your own: Edit and Delete under it ("…"). Changed, it says so at once
+  // and stays so while the thread loads again; deleted, it goes at once.
+  const { editComment, deleteComment } = actions;
+  const own = Boolean(comment.own && editComment && deleteComment && changes);
+  const [editing, setEditing] = useState(false);
+  const [savedBody, setSavedBody] = useState<string | null>(null);
+  const [gone, setGone] = useState(false);
+  const more = useRef<HTMLButtonElement>(null);
+  const backToMenu = () => requestAnimationFrame(() => more.current?.focus({ preventScroll: true }));
   // Public by name (or, from before, without it), on the home's own page too.
   const isPublic = Boolean(comment.publicCopy || comment.sharedPublicly);
   // Making one private is always allowed; making it public, only what they
@@ -626,14 +657,40 @@ function Row({
   // private chat, there's no one to answer.)
   const replyable = !comment.fromPrivateChat;
   const label = comment.mine ? "your comment" : comment.name;
+  const shown = savedBody !== null && savedBody !== comment.body ? { ...comment, body: savedBody, edited: true } : comment;
+  if (gone) return null;
   return (
     <li data-comment={comment.id} className={cn("flex gap-2.5", reply ? "py-1" : "py-1.5")}>
       <Face comment={comment} reply={reply} />
       <div className="min-w-0 flex-1">
         {answers && <p className={cn("text-meta leading-5", t.dim)}>Replying to {answers}</p>}
+        {editing && own ? (
+          <>
+            <p className="text-body font-semibold leading-5">{comment.name}</p>
+            <EditBox
+              initial={shown.body}
+              what="comment"
+              dark={t.dark}
+              onCancel={() => {
+                setEditing(false);
+                backToMenu();
+              }}
+              onSave={async (body) => {
+                const result = await editComment!(changes!.listingKey, comment.id, body);
+                if (!result.ok) return result.error;
+                setSavedBody(body);
+                setEditing(false);
+                backToMenu();
+                changes!.onChanged?.();
+                return null;
+              }}
+            />
+          </>
+        ) : (
         <p className="text-body leading-5">
-          <Said comment={comment} spots={spots} linked clamp={false} />
+          <Said comment={shown} spots={spots} linked clamp={false} />
         </p>
+        )}
         {/* The agent hearted it, as a creator does on a reel: a note, not a button. */}
         {comment.likedBy && (
           <p className="mt-1 flex">
@@ -645,7 +702,7 @@ function Row({
         )}
         {/* Words that act in a line of words: the line's height, a
             fingertip's touch (hit-44), so the thread reads close together. */}
-        <div className={cn("mt-0.5 flex min-h-6 flex-wrap items-center gap-x-4 text-meta font-semibold", t.dim)}>
+        <div hidden={editing} className={cn("mt-0.5 flex min-h-6 flex-wrap items-center gap-x-4 text-meta font-semibold", t.dim)}>
           {replyable && (
             <button
               type="button"
@@ -696,6 +753,23 @@ function Row({
             >
               {isPublic ? "Make private" : "Make public"}
             </button>
+          )}
+          {shown.edited && <span className="flex h-6 items-center font-normal">Edited</span>}
+          {own && (
+            <OwnMenu
+              what="comment"
+              dark={t.dark}
+              triggerRef={more}
+              warn={replies.length > 0 ? "The replies to it go too." : undefined}
+              onEdit={() => setEditing(true)}
+              onDelete={async () => {
+                const result = await deleteComment!(changes!.listingKey, comment.id);
+                if (!result.ok) return result.error;
+                setGone(true);
+                changes!.onChanged?.();
+                return null;
+              }}
+            />
           )}
         </div>
         {!reply && (

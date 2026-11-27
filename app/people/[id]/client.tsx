@@ -305,7 +305,7 @@ export function CardMenu({
             </p>
             <p id={`${id}-warn`} className="text-body leading-snug text-stone-700">
               It comes off this home and your profile for everyone
-              {comment.replies > 0 ? ", with your replies to it" : ""}. You can&apos;t undo this.
+              {comment.answered || comment.replies > 0 ? ", with the replies to it" : ""}. You can&apos;t undo this.
             </p>
             <button
               type="button"
@@ -337,7 +337,6 @@ export function CardMenu({
           <ul className="-mx-2 flex flex-col pb-1">
             {controls.map((control) => {
               const key = keyOf(control);
-              const locked = control.kind === "comment" && control.answered;
               // This one is on its way; the rest wait, dimmed, until it's done.
               const busy = pending && running === key;
               const waiting = pending && running !== key;
@@ -360,10 +359,10 @@ export function CardMenu({
                     type="button"
                     // Named for what it does; the comment it's about is read after.
                     aria-label={text}
-                    aria-disabled={locked || pending || undefined}
+                    aria-disabled={pending || undefined}
                     aria-describedby={control.kind === "comment" ? hint : undefined}
                     onClick={() => {
-                      if (locked || pending) return;
+                      if (pending) return;
                       if (control.kind === "comment") {
                         setError(null);
                         setAsking(control.id);
@@ -371,7 +370,7 @@ export function CardMenu({
                     }}
                     className={cn(
                       "flex min-h-12 w-full items-start gap-3 rounded-xl px-2 py-3 text-left transition-opacity",
-                      locked ? "cursor-not-allowed" : pending ? "cursor-wait" : "hover:bg-stone-50",
+                      pending ? "cursor-wait" : "hover:bg-stone-50",
                       waiting && "opacity-60",
                     )}
                   >
@@ -382,9 +381,7 @@ export function CardMenu({
                         "mt-px shrink-0",
                         busy
                           ? "animate-spin text-muted"
-                          : locked
-                            ? "text-stone-400"
-                            : control.kind === "comment"
+                          : control.kind === "comment"
                               ? "text-red-700"
                               : control.sentiment === "like"
                                 ? "text-rose-600"
@@ -395,7 +392,7 @@ export function CardMenu({
                       <span
                         className={cn(
                           "block break-words text-body font-semibold",
-                          locked ? "text-stone-500" : control.kind === "comment" ? "text-red-700" : "text-ink",
+                          control.kind === "comment" ? "text-red-700" : "text-ink",
                         )}
                       >
                         {text}
@@ -403,7 +400,6 @@ export function CardMenu({
                       {control.kind === "comment" && (
                         <span id={hint} className="block text-meta leading-snug text-muted">
                           <span className="block truncate">&ldquo;{control.body}&rdquo;</span>
-                          {locked && <span className="block">Comments with replies can&apos;t be deleted here</span>}
                         </span>
                       )}
                     </span>

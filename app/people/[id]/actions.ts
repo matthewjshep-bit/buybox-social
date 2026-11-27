@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { ownedInPublic, uncopyAll } from "@/lib/link-public";
+import { deletePublicComment } from "@/lib/own-words";
 import { BANNER_STYLE } from "@/lib/banner";
 import { fail, readDevice, type ActionResult } from "@/lib/engagement";
 import { NOT_AN_EMAIL } from "@/lib/people-picker";
@@ -152,28 +153,13 @@ export async function removeMySpots(key: string, kind: Sentiment, spots: unknown
   return { ok: true };
 }
 
-// Deletes a comment you wrote, unless someone else has answered it: their
-// words would go with it. (Your own replies to it go too.)
+// Deletes a comment you wrote (the replies under it go with it, as they do
+// from the comments themselves: lib/own-words.ts).
 export async function deleteMyComment(id: string): Promise<ActionResult> {
   if (typeof id !== "string" || id.length > 64) return fail("That comment isn't there anymore.");
   const visitor = await ownVisitor();
   if (!visitor) return fail("Please add your name first.");
-  const outcome = await sql.begin(async (tx) => {
-    // Held first, so a reply being saved this moment finishes and is counted
-    // below rather than going with the comment. Someone else's reads as gone,
-    // so it doesn't even say there's one there.
-    const [mine] = await tx`
-      select id from public_comments where id::text = ${id} and visitor_id = ${visitor.id} for update`;
-    if (!mine) return "gone";
-    const [deleted] = await tx`
-      delete from public_comments c
-      where c.id = ${mine.id}
-        and not exists (select 1 from public_comments r where r.parent_id = c.id and r.visitor_id <> ${visitor.id})
-      returning c.id`;
-    return deleted ? "deleted" : "answered";
-  });
-  if (outcome === "gone") return fail("That comment isn't there anymore.");
-  if (outcome === "answered") return fail("Comments with replies can't be deleted here.");
+  if (!(await deletePublicComment(visitor.id, id))) return fail("That comment isn't there anymore.");
   refresh();
   return { ok: true };
 }

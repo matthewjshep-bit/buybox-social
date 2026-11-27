@@ -167,11 +167,12 @@ function entriesOf(takes: Take[]): HomeFeedEntry[] {
 }
 
 // What the people you follow did, newest first: their takes on homes, and
-// their posts, in one order.
+// their posts, in one order. Your own posts are among them, as anywhere you
+// post: what you just shared is there when you come back to Home.
 async function followingEntries(visitorId: string | null): Promise<FeedItem[]> {
   if (!visitorId) return [];
   const ids = [...(await getFollowedIds(visitorId))].slice(0, FOLLOWED_MOST);
-  const [takes, posts] = await Promise.all([Promise.all(ids.map(takesOf)), getPostsBy(ids, { most: FEED_MOST })]);
+  const [takes, posts] = await Promise.all([Promise.all(ids.map(takesOf)), getPostsBy([...ids, visitorId], { most: FEED_MOST })]);
   return [...entriesOf(takes.flat()), ...posts].sort((a, b) => b.at.localeCompare(a.at) || a.id.localeCompare(b.id)).slice(0, FEED_MOST);
 }
 

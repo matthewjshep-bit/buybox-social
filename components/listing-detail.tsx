@@ -3,6 +3,8 @@ import type { ComponentProps } from "react";
 import { z } from "zod";
 import {
   commentInReel,
+  deleteCommentInReel,
+  editCommentInReel,
   joinPublic,
   likeCommentInReel,
   likePhotoInStream,
@@ -28,6 +30,8 @@ export const publicReelActions = {
   join: joinPublic,
   react: reactInStream,
   comment: commentInReel,
+  editComment: editCommentInReel,
+  deleteComment: deleteCommentInReel,
   likeComment: likeCommentInReel,
   likePhoto: likePhotoInStream,
   save: saveHome,

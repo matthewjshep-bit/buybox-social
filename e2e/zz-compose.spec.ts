@@ -81,10 +81,12 @@ test("two homes in one post: a carousel named for the author, each home on its s
   const second = carousel.getByRole("group", { name: `${FERNHOLLOW}, 2 of 2` });
   await expect(first).toBeVisible();
   await expect(second).toHaveCount(1);
-  // Each home named on its photo: the street alone.
-  await expect(first).toHaveText(CORBEL);
-  await expect(second).toHaveText(FERNHOLLOW);
-  await expect(carousel.locator("[data-home-count]")).toHaveText("1 of 2");
+  // Each home named on its photo: its price and street.
+  await expect(first).toHaveText(`$725K · ${CORBEL}`);
+  await expect(second).toHaveText(`$839K · ${FERNHOLLOW}`);
+  // Several homes at a glance: the next one's photo shows at the edge.
+  await expect(second).toBeInViewport();
+  await expect(carousel.locator("[data-home-count]")).toHaveText("1 of 2 homes");
   await expect(carousel.getByRole("button", { name: "Next home" })).toHaveCount(1);
   await expect(carousel.getByRole("button", { name: "Previous home" })).toHaveCount(1);
 
@@ -98,7 +100,7 @@ test("two homes in one post: a carousel named for the author, each home on its s
 
   // Swiped to the second home, they follow it.
   await carousel.locator(":scope > div").first().evaluate((el) => el.scrollTo({ left: el.clientWidth }));
-  await expect(carousel.locator("[data-home-count]")).toHaveText("2 of 2");
+  await expect(carousel.locator("[data-home-count]")).toHaveText("2 of 2 homes");
   await expect(facts).toContainText(FERNHOLLOW);
   await expect(facts).toContainText("$839,000");
   await expect(facts).toHaveAttribute("href", /^\/reel\?from=[\w-]+&home=SAMPLE-1004$/);

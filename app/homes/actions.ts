@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { ownedInPublic } from "@/lib/link-public";
+import { deletePublicComment, editPublicComment } from "@/lib/own-words";
 import { placeWords } from "@/lib/format";
 import { noteImpressions } from "@/lib/feed-rank";
 import { importMissing, runImportsAndContinue } from "@/lib/listings/imports";
@@ -327,6 +328,31 @@ export async function findHomesToPost(query: string): Promise<HomeToPost[]> {
     baths: data.BathroomsTotalInteger,
     photo: [...data.Media].sort((a, b) => a.Order - b.Order)[0]?.MediaURL ?? null,
   }));
+}
+
+// Your own comment on a home, in other words, or taken back (the replies
+// under it with it). It reloads only that home, as commenting does. (The
+// home's key is for the page, which reloads it after.)
+async function ownPublicVisitor() {
+  const [account, device] = await Promise.all([getCurrentUser(), readDevice()]);
+  const { visitor } = await getPublicIdentity(account?.role ? account : null, device);
+  return visitor;
+}
+
+export async function editCommentInReel(_listingKey: string, commentId: string, body: string): Promise<ActionResult> {
+  const parsed = commentSchema.safeParse(body);
+  if (!parsed.success) return fail("Comments can be 1 to 1,000 characters.");
+  if (typeof commentId !== "string" || commentId.length > 64) return fail("That comment isn't there anymore.");
+  const visitor = await ownPublicVisitor();
+  if (!visitor || !(await editPublicComment(visitor.id, commentId, parsed.data))) return fail("That comment isn't there anymore.");
+  return { ok: true };
+}
+
+export async function deleteCommentInReel(_listingKey: string, commentId: string): Promise<ActionResult> {
+  if (typeof commentId !== "string" || commentId.length > 64) return fail("That comment isn't there anymore.");
+  const visitor = await ownPublicVisitor();
+  if (!visitor || !(await deletePublicComment(visitor.id, commentId))) return fail("That comment isn't there anymore.");
+  return { ok: true };
 }
 
 export async function likeCommentInReel(commentId: string, liked: boolean): Promise<ActionResult> {

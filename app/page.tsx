@@ -111,7 +111,7 @@ export default async function HomePage() {
               book,
               brokerage: user.brokerage,
               brandColor: user.brand_color,
-              listings: listingWords(kindOf(user)).Many,
+              listings: listingWords(kindOf(user)).Mine,
               top,
             }
           : undefined

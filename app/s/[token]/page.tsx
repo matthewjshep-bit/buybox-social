@@ -26,7 +26,16 @@ import {
 import { headlineFromTimeline, type FeedPost } from "@/lib/feed";
 import { eventsFromTimeline } from "@/lib/ticker";
 import { getSharePhotoLikes, getShareTimelines, type TimelineReaction } from "@/lib/timeline";
-import { addComment, askToSee, joinThread, likePhotoInShare, setCommentSharing, setReaction } from "./actions";
+import {
+  addComment,
+  askToSee,
+  deleteShareComment,
+  editShareComment,
+  joinThread,
+  likePhotoInShare,
+  setCommentSharing,
+  setReaction,
+} from "./actions";
 import { Backdrop } from "@/components/join";
 import { ShareEnd, ShareReel, ShareWelcome } from "./client";
 import { leaveLink } from "./leave";
@@ -141,7 +150,7 @@ export default async function SharePage({ params, searchParams }: Props) {
   // agent made for them, a way off it.
   const signedIn = viewer?.role && !agentViewing ? viewer : null;
   const [timelines, photoLikes, account, agentProfile, viewing, mine, quickInvitee] = await Promise.all([
-    getShareTimelines(share.id, listings, me?.id ?? null),
+    getShareTimelines(share.id, listings, me?.id ?? null, { agent: agentViewing }),
     getSharePhotoLikes(share.id, keys, me?.id ?? null, { agent: agentViewing }),
     signedIn ? linkAccount(signedIn, device, share.id) : null,
     // The agent is a person on Porchcard too, once they have a page; and
@@ -279,6 +288,8 @@ export default async function SharePage({ params, searchParams }: Props) {
           react: setReaction.bind(null, token),
           comment: addComment.bind(null, token),
           setSharing: setCommentSharing.bind(null, token),
+          editComment: editShareComment.bind(null, token),
+          deleteComment: deleteShareComment.bind(null, token),
           likePhoto: likePhotoInShare.bind(null, token),
         }}
         // (The agent's own look is never asked a name: nothing there is saved.)

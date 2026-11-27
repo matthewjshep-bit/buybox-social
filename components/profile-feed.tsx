@@ -90,6 +90,7 @@ export function ProfileFeed({
                   entry={entry.post}
                   reelFrom={reelFrom}
                   isMe={isMe}
+                  own={isMe}
                   mine={bars?.mine ?? {}}
                   counts={bars?.counts ?? {}}
                 />

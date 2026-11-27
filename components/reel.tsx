@@ -306,7 +306,7 @@ export function ReelFeed({
   // reaction it waits till the taps stop: the page saves one thing at a time,
   // and a reload queued between a like and the next tap would hold that tap
   // up (the line says what you did at once, meanwhile).
-  const { likePhoto } = actions;
+  const { likePhoto, editComment, deleteComment } = actions;
   const soon = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   useEffect(() => {
     const timers = soon.current;
@@ -337,6 +337,20 @@ export function ReelFeed({
             if (result.ok) reloadSoon(listingKey);
             return result;
           },
+          ...(editComment && {
+            editComment: async (listingKey: string, commentId: string, body: string) => {
+              const result = await editComment(listingKey, commentId, body);
+              if (result.ok) reload(listingKey);
+              return result;
+            },
+          }),
+          ...(deleteComment && {
+            deleteComment: async (listingKey: string, commentId: string) => {
+              const result = await deleteComment(listingKey, commentId);
+              if (result.ok) reload(listingKey);
+              return result;
+            },
+          }),
           ...(likePhoto && {
             likePhoto: async (listingKey: string, mediaKey: string, tag: string, reaction: SpotReaction) => {
               const result = await likePhoto(listingKey, mediaKey, tag, reaction);
@@ -1632,6 +1646,8 @@ function Panel({
     // one of those).
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
+      // (Your own words' menu, or the box they're being changed in, takes its own.)
+      if ((event.target as Element | null)?.closest?.("[data-keeps-escape]")) return;
       const dialog = (event.target as Element | null)?.closest?.("dialog[open]");
       if (dialog && !dialog.contains(home.current)) return;
       event.preventDefault();
@@ -1684,7 +1700,7 @@ function Panel({
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       const at = event.target as Element | null;
-      if (at?.closest?.("[data-spot-card]")) return;
+      if (at?.closest?.("[data-spot-card], [data-keeps-escape]")) return;
       const dialog = at?.closest?.("dialog[open]");
       if (dialog && !dialog.contains(home.current)) return;
       if (home.current?.querySelector("[data-dropdown]:not([hidden])")) return;

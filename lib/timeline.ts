@@ -40,6 +40,11 @@ export type TimelineComment = {
   // On an agent's link: the agent hearted it. Their first name, for "Liked by
   // Jordan". Never on public pages.
   likedBy?: string;
+  // Theirs to change or take back: what the viewer wrote (on their own link,
+  // the agent's words too).
+  own?: boolean;
+  // Changed since it was said ("Edited").
+  edited?: boolean;
   // On the agent's own page of a link: the photo of the person who said it,
   // if they've added one. Never on public pages.
   photo?: string;
@@ -188,10 +193,11 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
         is_agent: boolean;
         media_key: string | null;
         spot: string | null;
+        edited: boolean;
       }[]
     >`
       select c.id, c.listing_key, c.visitor_id, v.first_name, c.body, c.created_at, c.parent_id,
-        c.reply_to_visitor, c.media_key, c.spot,
+        c.reply_to_visitor, c.media_key, c.spot, c.edited_at is not null as edited,
         (select count(*)::int from public_comment_likes cl where cl.comment_id = c.id) as likes,
         exists (select 1 from public_comment_likes cl
           where cl.comment_id = c.id and cl.visitor_id = ${visitorId}::uuid) as liked_by_me,
@@ -261,6 +267,8 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
             body: c.body,
             at: c.created_at.toISOString(),
             mine: c.visitor_id === visitorId,
+            own: c.visitor_id === visitorId,
+            ...(c.edited && { edited: true }),
             // (A reply to someone whose likes have since gone stands on its own.)
             parentId: c.parent_id ?? (c.reply_to_visitor ? (ids.get(`v:${c.reply_to_visitor}`) ?? null) : null),
             likes: c.likes,
@@ -303,7 +311,8 @@ export async function getShareTimelines(
   shareId: string,
   listings: Listing[],
   participantId: string | null,
-  { faces = false }: { faces?: boolean } = {},
+  // `agent`: the link's agent is the one looking (their own words are theirs to change).
+  { faces = false, agent = false }: { faces?: boolean; agent?: boolean } = {},
 ) {
   // (The agent's own likes, from their first pass, are a line of their own.)
   const timelines = new Map<string, TimelineItem[]>();
@@ -331,10 +340,11 @@ export async function getShareTimelines(
         reply_to_participant: string | null;
         profile: string | null;
         photo_v: string | null;
+        edited: boolean;
       }[]
     >`
       select c.id, c.listing_key, c.participant_id, p.first_name, a.full_name as agent_name,
-        c.body, c.created_at, c.shared_publicly, c.public_comment_id is not null as public_copy,
+        c.body, c.created_at, c.edited_at is not null as edited, c.shared_publicly, c.public_comment_id is not null as public_copy,
         c.media_key, c.spot, c.parent_id, c.reply_to_participant,
         -- Their photo, where they've signed up and added one (only when asked for its faces).
         ${faces ? sql`pv.id` : sql`null::uuid`} as profile,
@@ -398,6 +408,8 @@ export async function getShareTimelines(
             body: c.body,
             at: c.created_at.toISOString(),
             mine: c.participant_id !== null && c.participant_id === participantId,
+            own: c.participant_id === null ? agent : c.participant_id === participantId,
+            ...(c.edited && { edited: true }),
             parentId: c.parent_id ?? (c.reply_to_participant ? (ids.get(`p:${c.reply_to_participant}`) ?? null) : null),
             likes: 0,
             likedByMe: false,
