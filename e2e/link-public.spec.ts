@@ -3,7 +3,7 @@
 // page, and the client hears about the answer. "Keep it to <agent>" keeps one
 // on the link; so does anything said about a home they passed on.
 import { expect, test } from "@playwright/test";
-import { commentIn, createShare, heartOf, homeIn, openComments, signInAgent, signUpBuyer, toFirstHome } from "./helpers";
+import { commentIn, createShare, expectPassed, heartOf, homeIn, openComments, pass, signInAgent, signUpBuyer, toFirstHome } from "./helpers";
 
 const QUILLAN = "1204 Quillan St SE";
 const SALTMARSH = "719 Saltmarsh Ln";
@@ -24,9 +24,9 @@ test("a client's comment on a link can be answered and hearted by anyone; one ke
 
   // Passes on the first and says why: that stays on the link, with no way to make it public.
   const first = homeIn(rae, QUILLAN);
-  await first.getByRole("button", { name: "Pass on this home" }).click();
-  await expect(first.getByRole("button", { name: "Pass on this home" })).toHaveAttribute("aria-pressed", "true");
+  await pass(rae, first);
   await expect(homeIn(rae, SALTMARSH)).toBeInViewport({ ratio: 0.9 });
+  await expectPassed(rae, first);
   await rae.waitForLoadState("networkidle");
   await rae.goto(url);
   await toFirstHome(rae);

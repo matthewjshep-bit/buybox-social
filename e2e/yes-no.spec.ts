@@ -1,16 +1,16 @@
-// Yes or no to a home in one tap: an X (pass, and on to the next home) and
-// a heart (like) side by side in the row right under the photo, the first
-// two things in it.
+// Yes or no to a home: a heart (like), the first thing in the row right under
+// the photo, and "Not for me" (pass, and on to the next home), the first thing
+// in its More menu.
 // They are the one heart and the one pass a home has, so they reach your own
 // page and your agent. On an agent's link, the last screen is every home
-// again, small, each with the same two buttons. And a mouse's wheel goes on a
+// again, small, each with a like and a pass. And a mouse's wheel goes on a
 // home at a time.
 import { expect, test } from "@playwright/test";
-import { createShare, heartOf, joinAs, signInAgent, signUpBuyer, toFirstHome } from "./helpers";
+import { createShare, expectPassed, heartOf, joinAs, notForMe, openMore, pass, signInAgent, signUpBuyer, toFirstHome } from "./helpers";
 
 const PHONE = { width: 390, height: 780 };
 
-test("the X passes and goes on to the next home; the heart likes; both show on your own page", async ({ browser }) => {
+test("Not for me passes and goes on to the next home; the heart likes; both show on your own page", async ({ browser }) => {
   test.setTimeout(90_000);
   const page = await signUpBuyer(browser, `yes.no.${Date.now()}@example.com`, "Yara");
   await page.setViewportSize(PHONE);
@@ -22,28 +22,28 @@ test("the X passes and goes on to the next home; the heart likes; both show on y
   const firstAddress = (await first.getAttribute("aria-label"))!;
   const secondAddress = (await second.getAttribute("aria-label"))!;
 
-  // Both in the row under the photo, a fingertip wide: the X first, at the
-  // left, the heart right beside it, both level; neither on the photo.
-  const pass = first.getByRole("button", { name: "Pass on this home" });
+  // The heart in the row under the photo, a fingertip wide: first, at the
+  // left, not on the photo. No X in the row: passing is in More.
   const like = heartOf(first);
   const photo = (await first.locator("[data-photo-frame]").first().boundingBox())!;
   const row = first.locator("[data-actions]");
-  await expect(row.getByRole("button").nth(0)).toHaveAccessibleName("Pass on this home");
-  await expect(row.getByRole("button").nth(1)).toHaveAccessibleName(/^Like /);
-  const [x, heart] = [(await pass.boundingBox())!, (await like.boundingBox())!];
-  expect(x.width).toBeGreaterThanOrEqual(44);
-  expect(x.height).toBeGreaterThanOrEqual(44);
+  await expect(row.getByRole("button").nth(0)).toHaveAccessibleName(/^Like /);
+  await expect(row.getByRole("button", { name: "Pass on this home" })).toHaveCount(0);
+  const heart = (await like.boundingBox())!;
   expect(heart.width).toBeGreaterThanOrEqual(44);
   expect(heart.height).toBeGreaterThanOrEqual(44);
-  expect(x.x).toBeLessThan(40);
-  expect(heart.x).toBeGreaterThan(x.x + x.width - 1);
-  expect(heart.x).toBeLessThan(x.x + x.width + 16);
-  expect(Math.abs(x.y - heart.y)).toBeLessThan(2);
-  expect(x.y).toBeGreaterThanOrEqual(photo.y + photo.height - 1);
-  expect(x.y - (photo.y + photo.height)).toBeLessThanOrEqual(12);
+  expect(heart.x).toBeLessThan(40);
+  expect(heart.y).toBeGreaterThanOrEqual(photo.y + photo.height - 1);
+  expect(heart.y - (photo.y + photo.height)).toBeLessThanOrEqual(12);
 
-  // The X: passed, and on to the next home without another tap.
-  await pass.click();
+  // "Not for me", the first thing in More, a fingertip tall: passed, and on
+  // to the next home without another tap.
+  const more = await openMore(page, first);
+  await expect(more.getByRole("button", { name: /^(?!Close$|Expand |Shrink )/ }).first()).toHaveAccessibleName("Not for me");
+  await expect(notForMe(more)).toHaveAttribute("aria-pressed", "false");
+  expect((await notForMe(more).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await notForMe(more).click();
+  await expect(more).toBeHidden();
   await expect(second).toBeInViewport({ ratio: 0.9 });
   await expect.poll(async () => Math.abs((await second.boundingBox())?.y ?? 99)).toBeLessThan(1);
 
@@ -52,22 +52,17 @@ test("the X passes and goes on to the next home; the heart likes; both show on y
   await likeSecond.click();
   await expect(likeSecond).toHaveAttribute("aria-pressed", "true");
   await expect(second.getByRole("button", { name: /^Like (?!the )/ })).toHaveCount(1);
-  // (No "Not for me" under More any more: the X is how a home is passed on.)
-  await second.getByRole("button", { name: "More options" }).click();
-  const more = page.getByRole("dialog", { name: "More" });
-  await expect(more).toBeVisible();
-  await expect(more.getByRole("button", { name: "Not for me" })).toHaveCount(0);
-  await page.keyboard.press("Escape");
-  await expect(more).toBeHidden();
   await expect(second).toBeInViewport({ ratio: 0.9 });
 
-  // Back on the first, its X says it was passed on; tapped again, it's taken back, and stays.
+  // Back on the first, "Not for me" says it was passed on; tapped again, it's
+  // taken back, and stays.
   await first.scrollIntoViewIfNeeded();
-  await expect(pass).toHaveAttribute("aria-pressed", "true");
-  await pass.click();
-  await expect(pass).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(async () => Math.abs((await first.boundingBox())?.y ?? 99)).toBeLessThan(1);
+  await expectPassed(page, first);
+  await pass(page, first);
   await expect(first).toBeInViewport({ ratio: 0.9 });
-  await pass.click();
+  await expectPassed(page, first, false);
+  await pass(page, first);
   await expect(second).toBeInViewport({ ratio: 0.9 });
 
   // On their own page: the like, and under "Didn't like", the pass.
@@ -99,7 +94,7 @@ test("a turn of the mouse wheel goes on one home, and back", async ({ browser })
   await expect(homes.nth(0)).toBeInViewport({ ratio: 0.9 });
 });
 
-test("on an agent's link the wheel leaves the welcome for the homes, and a client's X reaches the agent", async ({ browser }) => {
+test("on an agent's link the wheel leaves the welcome for the homes, and a client's pass reaches the agent", async ({ browser }) => {
   test.setTimeout(90_000);
   const agent = await signInAgent(browser, `yn.agent.${Date.now()}@example.com`, "Nan Agent");
   const { url } = await createShare(agent, ["1204 Quillan", "719 Saltmarsh"], ["Quin"]);
@@ -113,9 +108,9 @@ test("on an agent's link the wheel leaves the welcome for the homes, and a clien
   await expect(first).toBeInViewport({ ratio: 0.9 });
   await expect.poll(async () => Math.abs((await first.boundingBox())?.y ?? 99)).toBeLessThan(1);
 
-  // Quin passes on it with the X: on to the second home.
+  // Quin passes on it (Not for me): on to the second home.
   // (Asked who they are first, once; then it goes on by itself.)
-  await first.getByRole("button", { name: "Pass on this home" }).click();
+  await pass(quin, first);
   await joinAs(quin, "Quin");
   await expect(quin.getByRole("article").nth(1)).toBeInViewport({ ratio: 0.9 });
 
@@ -155,20 +150,18 @@ test("on an agent's link the wheel leaves the welcome for the homes, and a clien
   await expect(sends.locator('[id^="home-"]').filter({ hasText: "1204 Quillan" })).toContainText("Quin passed");
   await expect(sends.locator('[id^="home-"]').filter({ hasText: "719 Saltmarsh" })).toContainText("Quin liked it");
 
-  // The agent, looking at their own link, sees it as Quin does: the X and the
-  // heart on each home, and on the last screen. They're Quin's to tap: the
+  // The agent, looking at their own link, sees it as Quin does: Not for me and
+  // the heart on each home, and on the last screen. They're Quin's to tap: the
   // agent's tap says so, and neither passes nor goes on.
   await agent.goto(url);
   await toFirstHome(agent).catch(() => {});
   const theirFirst = agent.getByRole("article").first();
   await expect(theirFirst).toBeInViewport({ ratio: 0.9 });
-  const theirX = theirFirst.getByRole("button", { name: "Pass on this home" });
-  await expect(theirX).toBeVisible();
   await expect(heartOf(theirFirst)).toBeVisible();
-  await theirX.click();
+  await pass(agent, theirFirst);
   await expect(agent.getByRole("status").filter({ hasText: "That's for your client to tap." })).toBeVisible();
-  await expect(theirX).toHaveAttribute("aria-pressed", "false");
   await expect(theirFirst).toBeInViewport({ ratio: 0.9 });
+  await expectPassed(agent, theirFirst, false);
   await agent.evaluate(() => {
     const reel = document.querySelector<HTMLElement>("[data-reel]")!;
     reel.scrollTo({ top: reel.scrollHeight });

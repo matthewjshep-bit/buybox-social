@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { createShare, detailsForm, heartOf, homeIn, joinAs, saveDetails, signInAgent, signUpBuyer, toDetails } from "./helpers";
+import { createShare, detailsForm, expectPassed, heartOf, homeIn, joinAs, pass, saveDetails, signInAgent, signUpBuyer, toDetails } from "./helpers";
 
 // Search's other side: people, by name. (The names here are unusual on
 // purpose: every test shares one database, and a name finds anyone with it.)
@@ -196,9 +196,9 @@ test("an agent's client isn't found by anyone else until they like something (in
   await ysolde.addInitScript(() => localStorage.setItem("buybox:nudges", JSON.stringify({ photos: true, next: true })));
   await ysolde.goto(url);
   const quillan = homeIn(ysolde, "1204 Quillan St SE");
-  await quillan.getByRole("button", { name: "Pass on this home" }).click();
+  await pass(ysolde, quillan);
   await joinAs(ysolde, "Ysolde", "ysolde.search@example.com");
-  await expect(quillan.getByRole("button", { name: "Pass on this home" })).toHaveAttribute("aria-pressed", "true");
+  await expectPassed(ysolde, quillan);
 
   // A stranger doesn't find her, and she's not offered to them to follow.
   const tamsin = await signUpBuyer(browser, "tamsin.search@example.com", "Tamsin Looker");

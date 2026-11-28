@@ -73,7 +73,9 @@ async function SendBox({
         to={to}
         // To someone for an agent (as on their Home), from Messages, and with a
         // home already picked; anyone else starts out posting to everyone.
-        audience={agent || query.aud === "someone" || homeKey ? "someone" : "everyone"}
+        // (From a home's Share: "Post to your followers" starts public, "Send
+        // to someone" private; on its own, an agent starts with a client.)
+        audience={query.aud === "everyone" ? "everyone" : agent || query.aud === "someone" || homeKey ? "someone" : "everyone"}
       />
     </>
   );

@@ -207,10 +207,10 @@ test("the year built, the description and who listed it are words to read, opene
   const more = await openMore(phone, onPhone);
   await expect(more.getByText("Year built", { exact: true })).toHaveCount(0);
   await expect(more.getByText(/^Listed by/)).toHaveCount(0);
+  // (No Porchcard there for a visitor.)
+  await expect(more.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
   await phone.keyboard.press("Escape");
   await expect(more).toBeHidden();
-  // (No Porchcard there for a visitor.)
-  await expect(phone.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
 
   // An agent, going through a link's homes on a phone, has the Porchcard, and
   // a fact there opens what's been said about it.

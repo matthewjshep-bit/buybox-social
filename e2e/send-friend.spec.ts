@@ -10,7 +10,7 @@
 // On a home for sale, their Send is the home's main button: it opens the box
 // with that home already picked, from Browse, from a home opened over their
 // feed, and from an agent's own listing on the agent's profile.
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import {
   enterListingYourself,
   heartOf,
@@ -18,6 +18,7 @@ import {
   joinAs,
   openComments,
   pickHome,
+  sendToSomeone,
   signInAgent,
   signUpBuyer,
   threadComment,
@@ -198,14 +199,14 @@ test("someone who isn't an agent sends a home from the box on Home, and hears ba
   await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Messages");
 });
 
-test("Send on a home opens the box with that home picked, for someone: in Browse, over their own page, and on an agent's own listing", async ({
+test("Share, then Send to someone, on a home opens the box with that home picked, for someone: in Browse, over their own page, and on an agent's own listing", async ({
   browser,
 }) => {
   test.setTimeout(150_000);
   const stamp = Date.now();
   const noor = await signUpBuyer(browser, `noor.sends.${stamp}@example.com`, "Noor");
-  // (Send, on the photo's corner.)
-  const send = (address: string) => homeIn(noor, address).getByRole("button", { name: `Send ${address}`, exact: true });
+  // (Share, under the photo, then Send to someone.)
+  const send = (address: string, where: Locator = homeIn(noor, address)) => sendToSomeone(noor, where, address);
   // The box as it arrives with a home: open as a page, for someone, the home
   // among the picked ones with no searching, and room for another.
   const picked = noor.getByRole("list", { name: "Picked homes" });
@@ -219,9 +220,9 @@ test("Send on a home opens the box with that home picked, for someone: in Browse
     await expect(noor.getByRole("button", { name: "Add a home" })).toBeVisible();
   };
 
-  // A home on its own page: Send, and the box has it.
+  // A home on its own page: Send to someone, and the box has it.
   await noor.goto("/homes/SAMPLE-1009");
-  await send(QUILLAN).click();
+  await send(QUILLAN);
   await noor.waitForURL(/\/send\?home=SAMPLE-1009$/);
   await arrivedWith(QUILLAN);
 
@@ -247,8 +248,7 @@ test("Send on a home opens the box with that home picked, for someone: in Browse
   const open = stage.locator(`[data-home="${pinned}"]`);
   await expect(open).toBeInViewport({ ratio: 0.9 });
   const address = (await open.getAttribute("aria-label"))!;
-  await expect(open.getByRole("button", { name: /^Share/ })).toHaveCount(0);
-  await open.getByRole("button", { name: `Send ${address}`, exact: true }).click();
+  await send(address, open);
   await noor.waitForURL(new RegExp(`/send\\?home=${pinned}$`));
   await arrivedWith(address);
   await expect(stage).toHaveCount(0);
@@ -280,9 +280,7 @@ test("Send on a home opens the box with that home picked, for someone: in Browse
   await noor.goto(profile);
   await noor.getByRole("list", { name: "Listings" }).getByRole("link", { name: new RegExp(OWN) }).first().click();
   await noor.waitForURL(/\/reel\?from=listings/);
-  // (Send is the pill in the photo's top left corner; "Olga's listings · 1 of 1"
-  // is the band after it, which must leave the whole pill tappable.)
-  await send(OWN).click();
+  await send(OWN);
   await noor.waitForURL((url) => url.pathname === "/send" && url.searchParams.get("home") === key);
   await arrivedWith(OWN);
   const who = noor.getByRole("combobox", { name: "Who's it for?" });

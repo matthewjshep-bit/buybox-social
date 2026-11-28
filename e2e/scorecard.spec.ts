@@ -20,6 +20,8 @@ import {
   openComments,
   openMore,
   openScorecard,
+  expectFeedback,
+  notForMe,
   pick,
   settle,
   signInAgent,
@@ -29,11 +31,12 @@ import {
 
 // The Porchcard: everything people think of a home in one place. On the
 // homes themselves it's an agent's alone, going through a link's homes (or a
-// client's), from the button in the row under the photo (the X, the heart,
-// Comments, then Send, Feedback and More): what everyone makes of the home,
-// as a public page may say it (no private pass, no name from anyone's
-// link). Everyone else has Save there, and no way to it. What each person
-// on a link thinks, by name, is the agent's on that link's own page.
+// client's), from "Feedback" in the home's More menu (the "…" by its price):
+// what everyone makes of the home, as a public page may say it (no private
+// pass, no name from anyone's link). Everyone else has no way to it. The row
+// under the photo is everyone's: the heart, Comments, Share, and Save at the
+// far right. What each person on a link thinks, by name, is the agent's on
+// that link's own page.
 
 const HERON = "88 Heron Bluff Rd";
 const ALDER = "16420 NE Alder Crest Way";
@@ -47,8 +50,8 @@ const settled = async (home: Locator) => {
 
 const page$ = async (browser: Browser, options = {}) => (await browser.newContext(options)).newPage();
 
-// The row under the photo (the X, the heart, Comments, then what's on the
-// right), and the comment bar alone at the foot: the same on every home, at
+// The row under the photo (the heart, Comments, Share, then Save at the
+// far right), and the comment bar alone at the foot: the same on every home, at
 // every width. Nothing sits on the photo.
 const rowUnder = async (home: Locator, names: (string | RegExp)[], pill: string | RegExp) => {
   const actions = home.locator("[data-actions]");
@@ -89,9 +92,9 @@ test("a quiet home, for an agent going through a link's homes: the Porchcard und
   const home = await linkHomes(agent, dashboardUrl, "SAMPLE-1010", HERON);
   await settled(home);
 
-  // Under the photo, one row: the X, the heart, Comments, then Send, Feedback
-  // and More; at the foot, the comment bar alone. Nothing on the photo.
-  await rowUnder(home, ["Pass on this home", `Like ${HERON}`, "Comments", `Send ${HERON}`, "Feedback", "More options"], /…$/);
+  // Under the photo, one row: the heart, Comments, Share and Save; at the
+  // foot, the comment bar alone. Nothing on the photo. Feedback is in More.
+  await rowUnder(home, [`Like ${HERON}`, "Comments", `Share ${HERON}`, `Save ${HERON}`], /…$/);
 
   // Nobody's said or liked anything: one card for it all, then the rest in order.
   const card = await openScorecard(agent, home);
@@ -126,14 +129,14 @@ test("a quiet home, for an agent going through a link's homes: the Porchcard und
   await expect(again).toBeHidden();
 
   // So does the line under the photo, in bold, with nothing to tap: the
-  // Porchcard stays in the row.
+  // Porchcard stays in More.
   await expect(latestIn(home).getByText("1 like", { exact: true })).toBeVisible();
   await expect(latestIn(home).getByRole("button")).toHaveCount(0);
-  await expect(home.getByRole("button", { name: "Feedback", exact: true })).toBeVisible();
+  await expectFeedback(agent, home);
   expect(pageErrors).toEqual([]);
 });
 
-test("for everyone else there's no Porchcard: Save is in its place, and a comment under the photo opens its comments", async ({
+test("for everyone else there's no Porchcard: nothing in More, and a comment under the photo opens its comments", async ({
   browser,
 }) => {
   const page = await page$(browser);
@@ -143,10 +146,10 @@ test("for everyone else there's no Porchcard: Save is in its place, and a commen
   const home = homeIn(page, HERON);
   await settled(home);
 
-  // Under the photo, one row: the X, the heart, Comments, then Share (a
-  // visitor), Save and More; the comment bar alone at the foot.
-  await rowUnder(home, ["Pass on this home", /^Like 88 Heron Bluff Rd/, /^Comments/, `Share ${HERON}`, `Save ${HERON}`, "More options"], "Add a comment…");
-  await expect(page.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
+  // Under the photo, one row: the heart, Comments, Share and Save; the
+  // comment bar alone at the foot.
+  await rowUnder(home, [/^Like 88 Heron Bluff Rd/, /^Comments/, `Share ${HERON}`, `Save ${HERON}`], "Add a comment…");
+  await expectFeedback(page, home, false);
 
   // A like, and the line under the photo counts it. (No line rolling through
   // who did what.)
@@ -179,7 +182,7 @@ test("for everyone else there's no Porchcard: Save is in its place, and a commen
   // Signed in now, as on the page before: still Save, still no Porchcard.
   await page.reload();
   await expect(homeIn(page, HERON).getByRole("button", { name: `Save ${HERON}`, exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
+  await expectFeedback(page, homeIn(page, HERON), false);
 
   // Beside the map, a home is just a look: no Porchcard there.
   const map = await page$(browser, { viewport: { width: 1400, height: 900 } });
@@ -251,13 +254,12 @@ test("public and private: a link's people, passes and words stay on the link, an
   await wes.keyboard.press("Escape");
   await heartOf(wesHome).click();
   await expect(heartOf(wesHome)).toHaveAttribute("aria-pressed", "true");
-  // No Porchcard for him: Save where it would be, in the row under the
-  // photo (signed in now, having said something: Send, where a visitor has
-  // Share), and what the home is opens from the head above the photo, with
-  // nothing about anyone in it.
+  // No Porchcard for him: the row under the photo as everyone has it (Share
+  // and Save), and what the home is opens from the head above the photo,
+  // with nothing about anyone in it.
   await rowUnder(
     wesHome,
-    ["Pass on this home", /^Like 16420 NE Alder Crest Way/, /^Comments/, `Send ${ALDER}`, `Save ${ALDER}`, "More options"],
+    [/^Like 16420 NE Alder Crest Way/, /^Comments/, `Share ${ALDER}`, `Save ${ALDER}`],
     "Add a comment…",
   );
   const wesHead = wesHome.getByRole("button", { name: "About this home", exact: true });
@@ -310,10 +312,10 @@ test("public and private: a link's people, passes and words stay on the link, an
   await expect(comments).toBeVisible();
   await expect(comments.getByText(WES_SAYS)).toBeVisible();
   await expect(comments).not.toContainText(/\bUma\b|\bVic\b|Saturday/);
-  // ...and back: folded away, the Feedback button is where it was.
+  // ...and back: folded away, Feedback is in More, where it was.
   await comments.getByRole("button", { name: "Hide comments" }).click();
   await expect(comments).toBeHidden();
-  await tessHome.getByRole("button", { name: "Feedback", exact: true }).click();
+  await openScorecard(tess, tessHome);
   await expect(card).toBeVisible();
 
   // A spot in the photos goes to the photo, its card open.
@@ -345,12 +347,12 @@ test("public and private: a link's people, passes and words stay on the link, an
   await tess.keyboard.press("Escape");
   await expect(tessMore).toBeHidden();
 
-  // On the link, under the photo: the X, the heart, Comments and More (no
-  // Share on a link of one's own, nothing to save, and no Porchcard), and
-  // the comment bar alone at the foot.
+  // On the link, under the photo: the heart, Comments and Share (the home,
+  // not the link; nothing to save, and no Porchcard), and the comment bar
+  // alone at the foot.
   await uma.reload();
-  await rowUnder(homeIn(uma, ALDER), ["Pass on this home", /^Like 16420 NE Alder Crest Way/, /^Comments/, "More options"], /what you think…$/);
-  await expect(uma.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
+  await rowUnder(homeIn(uma, ALDER), [/^Like 16420 NE Alder Crest Way/, /^Comments/, `Share ${ALDER}`], /what you think…$/);
+  await expectFeedback(uma, homeIn(uma, ALDER), false);
   // [P] What she said is in the link's comments; Wes's public words never are.
   const umaComments = await openComments(uma, homeIn(uma, ALDER));
   await expect(umaComments.getByText(UMA_SAYS)).toBeVisible();
@@ -445,15 +447,15 @@ test("on a desktop the home reads as on a phone, in one column: the facts above 
   if (await kofiRow.count()) await expect(kofiRow).toContainText("Kofi");
   else await expect(latest.getByRole("button", { name: /^View all \d+ comments$/ })).toBeVisible();
   await expect(home.getByRole("group", { name: "Recent activity" })).toHaveCount(0);
-  // The row under the photo, for anyone but an agent in a link's homes:
-  // Save, no Porchcard; and, signed in, Send; and the comment bar alone at
-  // the foot. (On a desktop as on a phone: nothing on the photo.)
+  // The row under the photo, the same for everyone: the heart, Comments,
+  // Share and Save, no Porchcard; and the comment bar alone at the foot. (On
+  // a desktop as on a phone: nothing on the photo.)
   await rowUnder(
     home,
-    ["Pass on this home", /^Like 16420 NE Alder Crest Way/, /^Comments, \d+$/, `Send ${ALDER}`, `Save ${ALDER}`, "More options"],
+    [/^Like 16420 NE Alder Crest Way/, /^Comments, \d+$/, `Share ${ALDER}`, `Save ${ALDER}`],
     "Add a comment…",
   );
-  await expect(words.getByRole("button", { name: `Send ${ALDER}`, exact: true })).toHaveAttribute("title", "Send");
+  await expect(words.getByRole("button", { name: `Share ${ALDER}`, exact: true })).toHaveAttribute("title", "Share");
   await words.getByRole("button", { name: /^Comments, \d+$/ }).click();
   const said = commentsOf(home);
   await expect(commentIn(said, "Kofi", "The walk up to the door is lovely.")).toBeVisible();
@@ -468,10 +470,10 @@ test("on a desktop the home reads as on a phone, in one column: the facts above 
   await page.keyboard.press("Escape");
   await expect(said).toBeHidden();
   await expect(home.locator("[data-actions]")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
+  await expectFeedback(page, home, false);
 
   // An agent, going through a link's homes with this one on it: what people
-  // think is the Porchcard, from the row under the photo, risen from the
+  // think is the Porchcard, from More, risen from the
   // foot of the screen as on a phone; what the home is, it leaves to the head.
   const phone = await signInAgent(browser, "dale-desktop@example.com", "Dale Desktop");
   const { dashboardUrl } = await createShare(phone, ["16420 NE Alder Crest"]);
@@ -480,10 +482,7 @@ test("on a desktop the home reads as on a phone, in one column: the facts above 
   agent.on("pageerror", (error) => pageErrors.push(error.message));
   const theirs = await linkHomes(agent, dashboardUrl, "SAMPLE-1011", ALDER);
   await settled(theirs);
-  await expect(theirs.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(1);
-  await theirs.locator("[data-actions]").getByRole("button", { name: "Feedback", exact: true }).click();
-  const card = agent.getByRole("dialog", { name: "Feedback" });
-  await expect(card).toBeVisible();
+  const card = await openScorecard(agent, theirs);
   await expect(card.getByLabel(/^\d+ (person|people) liked it$/)).toBeVisible();
   // The whole card, facts and all, as on a phone (no panel beside the photo to leave them to).
   await expect(card.getByRole("heading", { name: "The facts" })).toHaveCount(1);
@@ -501,8 +500,7 @@ test("on a desktop the home reads as on a phone, in one column: the facts above 
   await expect(card).toBeHidden();
 
   // The comments from the keyboard: the Porchcard gives way to them, under the photo.
-  await theirs.getByRole("button", { name: "Feedback", exact: true }).click();
-  await expect(card).toBeVisible();
+  await openScorecard(agent, theirs);
   await card.getByRole("button", { name: /^See the \d+ comments?$/ }).press("Enter");
   const comments = commentsOf(theirs);
   await expect(comments).toBeVisible();
@@ -510,8 +508,7 @@ test("on a desktop the home reads as on a phone, in one column: the facts above 
   await expect(agent.getByRole("dialog")).toHaveCount(0);
   await agent.keyboard.press("Escape");
   await expect(comments).toBeHidden();
-  await theirs.getByRole("button", { name: "Feedback", exact: true }).click();
-  await expect(card).toBeVisible();
+  await openScorecard(agent, theirs);
   // A spot in the photos goes to the photo, its card open, as on a phone.
   const row = card.getByRole("button", { name: /^Front door, photo 1, / });
   await row.press("Enter");
@@ -538,9 +535,9 @@ test("on a link with more than one home, the agent's Porchcard sets this one bes
     const page = home.page();
     const saved = () =>
       page.waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
-    // The X on the photo (which goes on to the next home), then back on it, and More to say why.
+    // Not for me, in More (which goes on to the next home), then back on it, and More to say why.
     let save = saved();
-    await home.getByRole("button", { name: "Pass on this home" }).click();
+    await notForMe(await openMore(page, home)).click();
     await save;
     await home.scrollIntoViewIfNeeded();
     const more = await openMore(page, home);
@@ -581,7 +578,7 @@ test("on a link with more than one home, the agent's Porchcard sets this one bes
   await ana.keyboard.press("Escape");
   await expect(more).toBeHidden();
   // (No Porchcard for her on the link: it's the agent's.)
-  await expect(ana.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
+  await expectFeedback(ana, homeIn(ana, LAKEVIEW), false);
 
   // Bo passes on the first, for its price too.
   const bo = await signedIn(browser);
@@ -617,7 +614,7 @@ test("on a link with more than one home, the agent's Porchcard sets this one bes
   const changed = ana.waitForResponse(
     (res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]),
   );
-  await homeIn(ana, QUILLAN).getByRole("button", { name: "Pass on this home" }).click();
+  await notForMe(await openMore(ana, homeIn(ana, QUILLAN))).click();
   await changed;
   await expect(async () => {
     const again = await linkPorchcard(agent, dashboardUrl, QUILLAN);

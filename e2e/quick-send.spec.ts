@@ -1,5 +1,5 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
-import { createShare, enterCode, heartOf, homeIn, joinAs, openMore, signInAgent, signUpBuyer, toFirstHome, toLinkReady, toWho, pickHome } from "./helpers";
+import { expect, test, type Page } from "@playwright/test";
+import { createShare, enterCode, heartOf, homeIn, joinAs, openShare, pickHome, sendPill, signInAgent, signUpBuyer, toFirstHome, toLinkReady, toWho } from "./helpers";
 
 type Shared = { title?: string; text?: string; url?: string; inTap: boolean };
 type Stubbed = { shared: Shared[]; shareAnswer: "send" | "cancel"; inTap: boolean };
@@ -52,25 +52,21 @@ async function watchLinkNames(page: Page) {
   return seen;
 }
 
-// An agent on a home, with a link waiting for Send.
+// An agent's one-tap Send is the pill beside the map, for the home showing
+// in the pane. (A home's own row has Share, for everyone: Send to someone
+// there goes on to the box for sharing homes.) An agent there, with a link
+// waiting for Send.
 async function agentOnHome(page: Page, key = "SAMPLE-1004") {
   await page.context().addInitScript(stubShareSheet);
   const seen = await watchLinkNames(page);
-  await page.goto(`/homes/${key}`);
+  await page.goto(`/search?home=${key}`);
   await expect.poll(() => seen.token.length).toBe(1);
   return { seen, token: seen.token[0] };
 }
 
-// Send, in the row of buttons under the photo (with the X, the heart and
-// Comments), wherever a home is shown, at every width.
+// Send this home, the pill beside the map, saying which home it sends.
 const sendButton = (page: Page, address: string) =>
-  homeIn(page, address).getByRole("button", { name: `Send ${address}`, exact: true });
-
-async function visitor(browser: Browser) {
-  const page = await (await browser.newContext()).newPage();
-  await page.context().addInitScript(stubShareSheet);
-  return page;
-}
+  sendPill(page).and(page.getByRole("button", { name: new RegExp(`^Send this home\\W+${address}$`) }));
 
 test("one tap on Send: the share sheet opens at once on a new link to the home, and the link greets who it's for", async ({
   browser,
@@ -88,10 +84,8 @@ test("one tap on Send: the share sheet opens at once on a new link to the home, 
   await sendButton(agent, "96 Fernhollow Ln").click();
   const sheet = agent.getByRole("dialog", { name: "Sent. Who's it for?" });
   await expect(sheet).toBeVisible();
-  // (The one in the row under the photo.)
-  const waiting = agent.locator(
-    'article[aria-label="96 Fernhollow Ln"] button[aria-label="Send this home, getting a new link…"]:visible',
-  );
+  // (The pill beside the map.)
+  const waiting = agent.locator('button[aria-label="Send this home, getting a new link…"]:visible');
   await expect(waiting).toHaveAttribute("aria-disabled", "true");
   seen.hold = null;
   release();
@@ -210,10 +204,10 @@ test("closing the share sheet unsent leaves no link behind, and a link that didn
   // The home sells between the tap and the link being made (the tests' sold
   // home stands in for it): the link isn't made, and the agent is told to
   // send again.
-  await agent.goto("/homes/SAMPLE-1004");
+  await agent.goto("/search?home=SAMPLE-1004");
   await expect.poll(() => seen.token.length).toBe(2);
   const second = seen.token[1];
-  await agent.route("**/homes/SAMPLE-1004", async (route) => {
+  await agent.route((url) => url.pathname === "/search", async (route) => {
     const body = route.request().postData();
     if (route.request().method() !== "POST" || !body?.includes(second)) return route.fallback();
     await route.fallback({ postData: body.replace("SAMPLE-1004", "SAMPLE-SOLD") });
@@ -227,18 +221,23 @@ test("closing the share sheet unsent leaves no link behind, and a link that didn
   await expect(sheet.getByRole("button", { name: "Save" })).toHaveCount(0);
   expect((await request.get(`/s/${second}`)).status()).toBe(404);
 
-  // A home that has sold isn't one to send: its page keeps plain Share.
+  // A home that has sold isn't one to send: its Share has only its page.
   await agent.goto("/homes/SAMPLE-SOLD");
   const sold = homeIn(agent, "9 Sold Example Ct");
-  await expect(sold.getByRole("button", { name: "Share 9 Sold Example Ct", exact: true })).toBeVisible();
+  const soldShare = await openShare(agent, sold, "9 Sold Example Ct");
+  await expect(soldShare.getByRole("button", { name: "Send to someone" })).toHaveCount(0);
+  await expect(soldShare.getByRole("button", { name: "Post to your followers" })).toHaveCount(0);
+  await expect(soldShare.getByRole("button", { name: "Copy link" })).toBeVisible();
   await expect(sold.getByRole("button", { name: /^Send / })).toHaveCount(0);
+  await agent.keyboard.press("Escape");
+  await expect(soldShare).toBeHidden();
 
   // Send makes a client's private link. The home's public page, to post
-  // anywhere, is under More: "Share link", for an agent as for everyone.
+  // anywhere, is its Share: "Share via…", for an agent as for everyone.
   await agent.goto("/homes/SAMPLE-1004");
   const before = (await shared(agent)).length;
-  const more = await openMore(agent, homeIn(agent, "96 Fernhollow Ln"));
-  await more.getByRole("button", { name: "Share link", exact: true }).click();
+  const more = await openShare(agent, homeIn(agent, "96 Fernhollow Ln"), "96 Fernhollow Ln");
+  await more.getByRole("button", { name: "Share via…", exact: true }).click();
   await expect(more).toBeHidden();
   await expect.poll(async () => (await shared(agent)).length).toBe(before + 1);
   const handedOver = (await shared(agent)).at(-1)!;
@@ -343,50 +342,71 @@ test("on a computer, Send copies the message and link, and two open tabs never s
   expect((await request.get(`/s/${two.token}`)).status()).toBe(404);
 });
 
-test("a buyer's Send goes on to the box with the home picked, and visitors still share the public page; an agent without a name is asked for one; the map has Send", async ({
+test("a buyer's Share sends or posts the home from the box with it picked, or hands on its public page; visitors the same, signing in first; an agent without a name is asked for one; the map has Send", async ({
   browser,
 }) => {
   test.setTimeout(90_000);
-  // A buyer: Send where Share was, the same word the top bar has. The home's
-  // public page is under More ("Share link"), and nothing else there sends.
+  // A buyer: Share, under the photo, the one way to pass a home on. Its
+  // sheet sends it to someone or posts it (both the box, this home picked),
+  // or hands its public page to the phone's share sheet. Nothing sends there
+  // and then.
   const buyer = await signUpBuyer(browser, "bea-buyer@example.com", "Bea Buyer");
   await buyer.context().addInitScript(stubShareSheet);
   await buyer.goto("/homes/SAMPLE-1004");
   const hers = homeIn(buyer, "96 Fernhollow Ln");
-  const send = hers.getByRole("button", { name: "Send 96 Fernhollow Ln", exact: true });
-  await expect(send).toBeVisible();
-  await expect(hers.getByRole("button", { name: /^Share/ })).toHaveCount(0);
+  await expect(hers.getByRole("button", { name: /^Send / })).toHaveCount(0);
   await expect(hers.getByRole("button", { name: "Send to a client" })).toHaveCount(0);
-  const more = await openMore(buyer, hers);
-  await expect(more.getByText("Send to someone")).toHaveCount(0);
-  await more.getByRole("button", { name: "Share link", exact: true }).click();
+  let share = await openShare(buyer, hers, "96 Fernhollow Ln");
+  await expect(share.getByRole("button", { name: /^(?!Close$)/ })).toHaveText(["Send to someone", "Post to your followers", "Copy link", "Share via…"]);
+  await share.getByRole("button", { name: "Share via…", exact: true }).click();
   await expect.poll(async () => (await shared(buyer))[0]?.url).toMatch(/\/homes\/SAMPLE-1004$/);
-  await expect(more).toBeHidden();
-  // Send: nothing handed to the share sheet; on to Send homes, this home picked.
-  await send.click();
+  await expect(share).toBeHidden();
+  // Send to someone: nothing handed to the share sheet; on to the box, this
+  // home picked, private.
+  share = await openShare(buyer, hers, "96 Fernhollow Ln");
+  await share.getByRole("button", { name: "Send to someone", exact: true }).click();
   await buyer.waitForURL(/\/send\?home=SAMPLE-1004$/);
   await expect(buyer.getByRole("heading", { level: 1 })).toHaveText("Share homes");
   await expect(buyer.getByRole("list", { name: "Picked homes" })).toContainText("96 Fernhollow Ln");
+  await expect(buyer.getByRole("button", { name: "Who sees this: Private" })).toBeVisible();
   expect(await shared(buyer)).toHaveLength(1);
-  // A home that has sold isn't one to send: plain Share, as for anyone.
+  // Post to your followers: the same box, starting public.
+  await buyer.goto("/homes/SAMPLE-1004");
+  share = await openShare(buyer, homeIn(buyer, "96 Fernhollow Ln"), "96 Fernhollow Ln");
+  await share.getByRole("button", { name: "Post to your followers", exact: true }).click();
+  await buyer.waitForURL(/\/send\?home=SAMPLE-1004&aud=everyone$/);
+  await expect(buyer.getByRole("list", { name: "Picked homes" })).toContainText("96 Fernhollow Ln");
+  await expect(buyer.getByRole("button", { name: "Who sees this: Public" })).toBeVisible();
+  // A home that has sold isn't one to send: its Share has only its page.
   await buyer.goto("/homes/SAMPLE-SOLD");
   const sold = homeIn(buyer, "9 Sold Example Ct");
-  await expect(sold.getByRole("button", { name: "Share 9 Sold Example Ct", exact: true })).toBeVisible();
+  share = await openShare(buyer, sold, "9 Sold Example Ct");
+  await expect(share.getByRole("button", { name: /^(?!Close$)/ })).toHaveText(["Copy link", "Share via…"]);
+  await buyer.keyboard.press("Escape");
   await expect(sold.getByRole("button", { name: /^Send / })).toHaveCount(0);
   await buyer.goto("/search");
   await expect(buyer.getByRole("region", { name: "Homes", exact: true }).getByRole("article").first()).toBeAttached();
   await expect(buyer.getByRole("button", { name: "Send this home" })).toHaveCount(0);
 
-  // Someone signed out: Share, the home's public page, as it was; and the
-  // same link under More.
-  const anon = await visitor(browser);
+  // Someone signed out: the same Share. Its link copied is the home's public
+  // page; sending it goes by signing in, first.
+  const anon = await (
+    await browser.newContext({ permissions: ["clipboard-read", "clipboard-write"] })
+  ).newPage();
+  await anon.context().addInitScript(stubShareSheet);
   await anon.goto("/homes/SAMPLE-1004");
   const theirs = homeIn(anon, "96 Fernhollow Ln");
   await expect(theirs.getByRole("button", { name: /^Send/ })).toHaveCount(0);
-  await theirs.getByRole("button", { name: "Share 96 Fernhollow Ln", exact: true }).click();
+  share = await openShare(anon, theirs, "96 Fernhollow Ln");
+  await share.getByRole("button", { name: "Copy link", exact: true }).click();
+  await expect(share.getByRole("button", { name: "Link copied", exact: true })).toBeVisible();
+  expect(await anon.evaluate(() => navigator.clipboard.readText())).toMatch(/\/homes\/SAMPLE-1004$/);
+  await share.getByRole("button", { name: "Share via…", exact: true }).click();
   await expect.poll(async () => (await shared(anon))[0]?.url).toMatch(/\/homes\/SAMPLE-1004$/);
-  await (await openMore(anon, theirs)).getByRole("button", { name: "Share link", exact: true }).click();
-  await expect.poll(async () => (await shared(anon))[1]?.url).toMatch(/\/homes\/SAMPLE-1004$/);
+  share = await openShare(anon, theirs, "96 Fernhollow Ln");
+  await expect(share.getByRole("button", { name: "Copy link", exact: true })).toBeVisible();
+  await share.getByRole("button", { name: "Send to someone", exact: true }).click();
+  await anon.waitForURL(/\/login/);
 
   // An agent who hasn't said who they are yet: that first.
   const fresh = await (await browser.newContext()).newPage();
@@ -397,7 +417,7 @@ test("a buyer's Send goes on to the box with the home picked, and visitors still
   await enterCode(fresh);
   await fresh.waitForURL("**/welcome**");
   await fresh.context().addInitScript(stubShareSheet);
-  await fresh.goto("/homes/SAMPLE-1004");
+  await fresh.goto("/search?home=SAMPLE-1004");
   await sendButton(fresh, "96 Fernhollow Ln").click();
   const first = fresh.getByRole("dialog", { name: "Before you send" });
 
@@ -580,26 +600,28 @@ test("what follows a Send downloads only for an agent, never for anyone else on 
   }
   expect(await visitorScripts()).not.toContain(SHEETS);
 
-  // An agent's page has them ready before the first tap.
+  // An agent's page with Send (beside the map) has them ready before the first tap.
   const agent = await signInAgent(browser, "lee-lazy@example.com", "Lee Lazy");
   const agentScripts = scriptsOf(agent);
-  await agent.goto("/homes/SAMPLE-1004");
+  await agent.goto("/search?home=SAMPLE-1004");
   await expect.poll(async () => (await agentScripts()).includes(SHEETS), { timeout: 15_000 }).toBe(true);
 });
 
-test("every home has Send in the row of buttons under its photo, nothing on the photo: a client's link for an agent, Send homes for anyone else, the link signed out", async ({
+test("every home has Share in the row of buttons under its photo, nothing on the photo: for an agent as for anyone, Send to someone and Post to your followers go on to the box with it picked", async ({
   browser,
 }) => {
   test.setTimeout(90_000);
   // An agent, on a phone: the paper plane alone, in the actions row under the
-  // photo (with the X, the heart and Comments), and the same sheet as the rail's Send.
+  // photo (with the heart and Comments), and the same Share as everyone's.
   const agent = await signInAgent(browser, "cora-corner@example.com", "Cora Corner");
-  await agentOnHome(agent);
+  await agent.context().addInitScript(stubShareSheet);
+  await agent.goto("/homes/SAMPLE-1004");
   const home = homeIn(agent, "96 Fernhollow Ln");
   const actions = home.locator("[data-actions]");
-  const send = actions.getByRole("button", { name: "Send 96 Fernhollow Ln" });
+  const send = actions.getByRole("button", { name: "Share 96 Fernhollow Ln", exact: true });
   await expect(send).toBeVisible();
   await expect(send).toHaveText("");
+  await expect(home.getByRole("button", { name: "Send 96 Fernhollow Ln" })).toHaveCount(0);
   // (Under the photo, not on it: the old corner pill is gone, and the button
   // starts below the photo's foot, a 44px target.)
   await expect(home.locator("[data-send-corner]")).toHaveCount(0);
@@ -608,30 +630,38 @@ test("every home has Send in the row of buttons under its photo, nothing on the 
   expect(box.y).toBeGreaterThanOrEqual(photo.y + photo.height - 1);
   expect(box.height).toBeGreaterThanOrEqual(44);
   expect(box.width).toBeGreaterThanOrEqual(44);
-  await send.click();
-  await expect(agent.getByRole("dialog", { name: "Sent. Who's it for?" })).toBeVisible({ timeout: 15_000 });
-  const [handed] = await shared(agent);
-  expect(handed.url).toMatch(/\/s\/[\w-]{32}$/);
+  const share = await openShare(agent, home, "96 Fernhollow Ln");
+  await expect(share.getByRole("button", { name: "Invite someone to this link" })).toHaveCount(0);
+  await share.getByRole("button", { name: "Send to someone", exact: true }).click();
+  // No link made in a tap: on to the box, this home picked, for a client.
+  await agent.waitForURL(/\/send\?home=SAMPLE-1004$/);
+  await expect(agent.getByRole("heading", { level: 1 })).toHaveText("Share homes");
+  await expect(agent.getByRole("list", { name: "Picked homes" })).toContainText("96 Fernhollow Ln");
+  await expect(agent.getByRole("button", { name: "Who sees this: Private" })).toBeVisible();
+  await expect(agent.getByRole("dialog", { name: /Who's it for\?$/ })).toHaveCount(0);
+  expect(await shared(agent)).toEqual([]);
 
   // On a wide screen the same row, under the photo, with the same icon alone:
-  // signed out it's Share; an agent's own listings have it too.
+  // signed out it's Share too.
   const wide = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   await wide.goto("/homes/SAMPLE-1004");
   const wideHome = homeIn(wide, "96 Fernhollow Ln");
-  const share = wideHome.locator("[data-actions]").getByRole("button", { name: "Share 96 Fernhollow Ln" });
-  await expect(share).toBeVisible();
-  await expect(share).toHaveText("");
+  const wideShare = wideHome.locator("[data-actions]").getByRole("button", { name: "Share 96 Fernhollow Ln" });
+  await expect(wideShare).toBeVisible();
+  await expect(wideShare).toHaveText("");
   await expect(wideHome.getByRole("button", { name: "Send 96 Fernhollow Ln" })).toHaveCount(0);
   const widePhoto = (await wideHome.getByRole("img").first().boundingBox())!;
-  const shareBox = (await share.boundingBox())!;
+  const shareBox = (await wideShare.boundingBox())!;
   expect(shareBox.y).toBeGreaterThanOrEqual(widePhoto.y + widePhoto.height - 1);
 
-  // A buyer: on to Send homes, with this one picked.
+  // A buyer: Post to your followers is the box with this one picked, public.
   const buyer = await signUpBuyer(browser, `cal.corner.${Date.now()}@example.com`, "Cal");
   await buyer.goto("/homes/SAMPLE-1004");
-  await homeIn(buyer, "96 Fernhollow Ln").getByRole("button", { name: "Send 96 Fernhollow Ln" }).click();
-  await buyer.waitForURL(/\/send\?home=SAMPLE-1004/);
+  const theirs = await openShare(buyer, homeIn(buyer, "96 Fernhollow Ln"), "96 Fernhollow Ln");
+  await theirs.getByRole("button", { name: "Post to your followers", exact: true }).click();
+  await buyer.waitForURL(/\/send\?home=SAMPLE-1004&aud=everyone$/);
   await expect(buyer.getByRole("heading", { level: 1 })).toHaveText("Share homes");
   await expect(buyer.getByRole("list", { name: "Picked homes" })).toContainText("96 Fernhollow Ln");
   await expect(buyer.getByRole("button", { name: "Remove 96 Fernhollow Ln" })).toBeVisible();
+  await expect(buyer.getByRole("button", { name: "Who sees this: Public" })).toBeVisible();
 });

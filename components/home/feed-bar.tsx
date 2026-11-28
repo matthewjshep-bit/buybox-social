@@ -1,10 +1,12 @@
 "use client";
 
-import { Heart, MessageCircle } from "lucide-react";
+import { Bookmark, Heart, MessageCircle, Send } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useId, useOptimistic, useState, useTransition } from "react";
 import { reloadReelHome } from "@/app/homes/actions";
 import { CommentThread } from "@/components/comment-thread";
+import { useSavedHomes } from "@/components/saved-homes";
+import { ShareSheet } from "@/components/share-sheet";
 import { CommentComposer, useThread, type ReplyTarget, type SpotRef } from "@/components/listing-thread";
 import type { FeedPost } from "@/lib/feed";
 import { cn } from "@/lib/format";
@@ -41,6 +43,11 @@ export function FeedBar({
   reelHref: string;
 }) {
   const { actions, ensureName } = useThread();
+  // The same row as under a home full screen: the heart, the comments, Share,
+  // and Save at the far end (where the page keeps track of what's saved).
+  const saves = useSavedHomes();
+  const savedIt = saves?.has(listingKey) ?? false;
+  const [sharing, setSharing] = useState(false);
   const router = useRouter();
   const id = useId();
 
@@ -143,7 +150,32 @@ export function FeedBar({
             {count(likes)}
           </span>
         )}
+        <button
+          type="button"
+          aria-label={`Share ${address}`}
+          title="Share"
+          onClick={() => setSharing(true)}
+          className="flex size-11 items-center justify-center rounded-full text-stone-700 transition-colors hover:bg-stone-100"
+        >
+          <Send aria-hidden size={21} />
+        </button>
+        {saves && active && (
+          <button
+            type="button"
+            aria-label={savedIt ? `Saved ${address}` : `Save ${address}`}
+            title={savedIt ? "Saved" : "Save"}
+            aria-pressed={savedIt}
+            onClick={() => saves.toggle(listingKey)}
+            className="ml-auto flex size-11 items-center justify-center rounded-full text-stone-700 transition-colors hover:bg-stone-100"
+          >
+            <Bookmark aria-hidden size={21} className={cn(savedIt && "fill-current text-ink")} />
+          </button>
+        )}
       </div>
+      <ShareSheet
+        home={sharing ? { key: listingKey, address, forSale: active } : null}
+        onClose={() => setSharing(false)}
+      />
       {error && (
         <p role="alert" className="px-3.5 pb-2 text-meta text-red-700">
           {error}

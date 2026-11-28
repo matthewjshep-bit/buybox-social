@@ -14,6 +14,8 @@ import { photoUrl, photoVersion } from "@/lib/person-photo";
 import { ensureAccountVisitor, getPublicIdentity } from "@/lib/public";
 import { kindOf, listingWords } from "@/lib/kinds";
 import { getTop } from "@/lib/top";
+import { savedAmong } from "@/lib/saved";
+import { SavedHomes } from "@/components/saved-homes";
 
 // The home page. Signed out: what Porchcard is, for agents and for buyers,
 // and a way to start (MarketingHome). Signed in, it's one page for everyone
@@ -82,40 +84,44 @@ export default async function HomePage() {
             },
       )
     : everyone;
-  const [publicTakes, counts, top] = await Promise.all([
+  const [publicTakes, counts, top, saved] = await Promise.all([
     myReactions(visitorId, feedKeys(feed)),
     // Under each card: how many liked it and how many comments it has.
     feedCounts(feedKeys(feed)),
     // Beside an agent's feed: the head of Popular. (What their clients do is
     // in Notifications and Messages.)
     book ? getTop({ visitorId, accountId: user.id, agent }) : null,
+    // Which of them they've saved, for each card's bookmark.
+    savedAmong(visitorId, feedKeys(feed)),
   ]);
   // Their hearts start out as they are in public. (What they decided on their
   // agent's link is said on the home leading the feed, not shown as a public
   // heart: a tap here is public, and a link's verdict changes on the link.)
   const mine = publicTakes;
   return (
-    <Home
-      firstName={firstName(user)}
-      me={{ ...me, banner }}
-      follows={follows}
-      profileHref={profileHref}
-      links={links}
-      suggestions={suggestions}
-      feed={feed}
-      mine={mine}
-      counts={counts}
-      agent={
-        book && top
-          ? {
-              book,
-              brokerage: user.brokerage,
-              brandColor: user.brand_color,
-              listings: listingWords(kindOf(user)).Mine,
-              top,
-            }
-          : undefined
-      }
-    />
+    <SavedHomes keys={saved}>
+      <Home
+        firstName={firstName(user)}
+        me={{ ...me, banner }}
+        follows={follows}
+        profileHref={profileHref}
+        links={links}
+        suggestions={suggestions}
+        feed={feed}
+        mine={mine}
+        counts={counts}
+        agent={
+          book && top
+            ? {
+                book,
+                brokerage: user.brokerage,
+                brandColor: user.brand_color,
+                listings: listingWords(kindOf(user)).Mine,
+                top,
+              }
+            : undefined
+        }
+      />
+    </SavedHomes>
   );
 }

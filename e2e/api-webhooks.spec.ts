@@ -6,7 +6,7 @@
 // profile, where the agent sees how the last one went and can send a test.
 import { expect, test } from "@playwright/test";
 import { Api, answers, expectError, expectNothingPrivate, expectSigned, makeKey, receiver, toolsCard } from "./api-helpers";
-import { homeIn, joinAs, openComments, signInAgent, toFirstHome } from "./helpers";
+import { homeIn, joinAs, openComments, pass, signInAgent, toFirstHome } from "./helpers";
 
 const QUILLAN = "1204 Quillan St SE";
 const SALTMARSH = "719 Saltmarsh Ln";
@@ -72,7 +72,7 @@ test("a tool's webhook hears each thing a client does on a link, signed, by firs
     // She passes on the first home (signing up as she does), on to the second.
     await toFirstHome(jamie);
     const quillan = homeIn(jamie, QUILLAN);
-    await quillan.getByRole("button", { name: "Pass on this home" }).click();
+    await pass(jamie, quillan);
     await joinAs(jamie, "Jamie", jamieEmail);
     const saltmarsh = homeIn(jamie, SALTMARSH);
     await expect(saltmarsh).toBeInViewport({ ratio: 0.9 });

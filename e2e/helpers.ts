@@ -133,7 +133,7 @@ export async function pickHome(page: Page, address: string) {
 }
 
 // A package of homes for one or more people. Each person gets their own link.
-// (With nobody, it's a link anyone can join: packageLink, in share-link.spec.ts.)
+// (With nobody, it's a link anyone can join: namelessLink, below.)
 export async function createShare(page: Page, addresses: string[], people: string[] = ["Jamie"]) {
   await page.goto("/send?aud=someone");
   for (const address of addresses) await pickHome(page, address);
@@ -258,7 +258,7 @@ export async function toFirstHome(page: Page) {
 
 // The heart on a home's rail (photo hearts are named "Like the kitchen").
 // The home's own heart on the rail (not a heart on a comment, in the feed beside the photo).
-// (It's in the photo's bottom right corner, opposite the X that passes.)
+// (It leads the row under the photo.)
 export const heartOf = (home: Locator) => home.getByRole("button", { name: /^Like (?!the )(?!.*\bcomment\b)/ });
 
 // One comment in a thread: who wrote it, and what it says.
@@ -308,10 +308,12 @@ export async function linkHomes(agent: Page, dashboardUrl: string, listingKey: s
   return home;
 }
 
-// A home's Porchcard: what everyone thinks of it, from the button on its rail
-// (an agent's alone, in a link's homes or a client's: linkHomes).
+// A home's Porchcard: what everyone thinks of it, from "Feedback" in its More
+// menu (an agent's alone, in a link's homes or a client's: linkHomes).
 export async function openScorecard(page: Page, home: Locator) {
-  await home.getByRole("button", { name: "Feedback", exact: true }).click();
+  const more = await openMore(page, home);
+  await more.getByRole("button", { name: "Feedback", exact: true }).click();
+  await expect(more).toBeHidden();
   const sheet = page.getByRole("dialog", { name: "Feedback" });
   await expect(sheet).toBeVisible();
   return sheet;
@@ -327,9 +329,50 @@ export async function linkPorchcard(agent: Page, dashboardUrl: string, address: 
   return card;
 }
 
+// A home's "…" (at the end of its price and address, over the photo): its
+// More menu, where "Not for me", Feedback (an agent's), Photo only and the
+// map are.
 export async function openMore(page: Page, home: Locator) {
   await home.getByRole("button", { name: "More options" }).click();
   const sheet = page.getByRole("dialog", { name: "More" });
+  await expect(sheet).toBeVisible();
+  return sheet;
+}
+
+// "Not for me", in a home's More menu: the way anyone passes on a home. The
+// menu goes, and (passed on, not taken back) the feed goes on to the next home.
+export const notForMe = (where: Page | Locator) => where.getByRole("button", { name: "Not for me", exact: true });
+export async function pass(page: Page, home: Locator) {
+  const more = await openMore(page, home);
+  await notForMe(more).click();
+  await expect(more).toBeHidden();
+}
+
+// Whether a home is passed on: "Not for me" pressed (or not) in its More menu,
+// which is put away again after.
+export async function expectPassed(page: Page, home: Locator, passed = true) {
+  await home.scrollIntoViewIfNeeded();
+  const more = await openMore(page, home);
+  await expect(notForMe(more)).toHaveAttribute("aria-pressed", String(passed));
+  await page.keyboard.press("Escape");
+  await expect(more).toBeHidden();
+}
+
+// Whether a home offers its Porchcard ("Feedback", in its More menu: an
+// agent's, in a link's homes or a client's), and More put away again after.
+export async function expectFeedback(page: Page, home: Locator, shown = true) {
+  const more = await openMore(page, home);
+  await expect(more.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(shown ? 1 : 0);
+  await page.keyboard.press("Escape");
+  await expect(more).toBeHidden();
+}
+
+// The "Share <address>" paper plane under a home (full screen, or a card in a
+// feed): the Share sheet, with Send to someone, Post to your followers, Copy
+// link and the rest.
+export async function openShare(page: Page, home: Locator, address: string) {
+  await home.getByRole("button", { name: `Share ${address}`, exact: true }).click();
+  const sheet = page.getByRole("dialog", { name: "Share" });
   await expect(sheet).toBeVisible();
   return sheet;
 }
@@ -344,16 +387,69 @@ export async function keepLinksPrivate(page: Page) {
   await expect(shown).toHaveAttribute("aria-checked", "false");
 }
 
-// Pass on a home, the way anyone does: the X in its photo's corner, which
-// goes on to the next home. Then back on the one passed on, with More open,
-// where "What made you pass?" is for anyone who'd like to say.
+// Pass on a home, the way anyone does: "Not for me" in its More menu, which
+// goes on to the next home. Then back on the one passed on, with More open
+// again ("Not for me" pressed), where "What made you pass?" is for anyone
+// who'd like to say.
 export async function passOn(page: Page, home: Locator) {
-  const x = home.getByRole("button", { name: "Pass on this home" });
-  await x.click();
-  await expect(x).toHaveAttribute("aria-pressed", "true");
+  const was = (await home.boundingBox())?.y ?? 0;
+  await pass(page, home);
+  // (On to the next home, once the pass has held: then back.)
+  await expect
+    .poll(async () => Math.abs(((await home.boundingBox())?.y ?? 0) - was), { timeout: 5000 })
+    .toBeGreaterThan(1)
+    .catch(() => undefined);
   await home.scrollIntoViewIfNeeded();
   await expect.poll(async () => Math.abs((await home.boundingBox())?.y ?? 99)).toBeLessThan(1);
-  return openMore(page, home);
+  const more = await openMore(page, home);
+  await expect(notForMe(more)).toHaveAttribute("aria-pressed", "true");
+  return more;
+}
+
+// Share, then "Send to someone": on to the box for sharing homes (/send), with
+// this one picked, private. (Agents too: it's how a home is sent from itself.)
+export async function sendToSomeone(page: Page, home: Locator, address: string) {
+  const share = await openShare(page, home, address);
+  await share.getByRole("button", { name: "Send to someone", exact: true }).click();
+  await page.waitForURL((url) => url.pathname === "/send" && url.searchParams.has("home"));
+}
+
+// An agent's one-tap Send, the pill beside the map (/search) for the home
+// showing in the pane: a link made there and then, and a sheet asking who
+// it's for. (The pill shows once the page has a link waiting for it.)
+export const sendPill = (page: Page) => page.getByRole("button", { name: /^Send this home/ }).filter({ visible: true });
+// On to the map with a home showing, once the page has its link waiting for
+// Send: the pill.
+export async function toSendPill(page: Page, key: string) {
+  const held = page.waitForResponse(
+    async (res) =>
+      res.request().method() === "POST" &&
+      Boolean(res.request().headers()["next-action"]) &&
+      /"token":"[\w-]{32}"/.test(await res.text().catch(() => "")),
+  );
+  await page.goto(`/search?home=${encodeURIComponent(key)}`);
+  await held;
+  return sendPill(page);
+}
+
+// A link with nobody named on it: the one anyone can join. The box for
+// sending homes asks who it's for, so this is the one-tap Send beside the map
+// (which makes the link first and asks who it's for after): skipped past,
+// straight to the link's own page, where the link is read.
+export async function namelessLink(agent: Page, key: string) {
+  await (await toSendPill(agent, key)).click();
+  const sheet = agent.getByRole("dialog", { name: /^(Sent\. )?Who's it for\?$|^Send this home$/ });
+  await expect(sheet).toBeVisible({ timeout: 15_000 });
+  // (The sheet's body loads a beat after it opens.) The slower way, when the
+  // one tap couldn't copy the link: made here.
+  const create = sheet.getByRole("button", { name: "Create link" });
+  const details = sheet.getByRole("link", { name: "Link details", disabled: false });
+  await expect(create.or(details)).toBeVisible();
+  if (await create.isVisible()) await create.click();
+  await details.click();
+  await agent.waitForURL(/\/dashboard\/shares\/[\w-]+(\?tab=.*)?$/);
+  const dashboardUrl = agent.url().split("?")[0];
+  return { url: await agent.getByLabel("Your link is ready").inputValue(), dashboardUrl };
 }
 
 // Scrolls the feed to the very end, loading every home on the way.

@@ -6,17 +6,7 @@
 // anyone but that agent. Everything here is taken back at the end, so no
 // later spec counts it.
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import {
-  createShare,
-  heartOf,
-  homeIn,
-  likeInPhoto,
-  openComments,
-  pick,
-  signedIn,
-  signInAgent,
-  signUpBuyer,
-} from "./helpers";
+import { createShare, heartOf, homeIn, likeInPhoto, openComments, pass, pick, signedIn, signInAgent, signUpBuyer } from "./helpers";
 import { takeBackAll } from "./own-page";
 
 test.describe.configure({ mode: "serial" });
@@ -366,7 +356,7 @@ test("privacy: hidden passes stay out, only the owner sees what they didn't like
   await Promise.all([saved(otto), heartOf(homeIn(otto, TAMSEN)).click()]);
   await expect(heartOf(homeIn(otto, TAMSEN))).toHaveAttribute("aria-pressed", "true");
   await otto.goto("/homes/SAMPLE-1013");
-  await Promise.all([saved(otto), homeIn(otto, LAKEVIEW).getByRole("button", { name: "Pass on this home" }).click()]);
+  await Promise.all([saved(otto), pass(otto, homeIn(otto, LAKEVIEW))]);
   await otto.goto("/homes/SAMPLE-1003");
   const thread = await openComments(otto, homeIn(otto, CORBEL));
   await thread.getByLabel("Add a comment").fill(OTTO_SAID);

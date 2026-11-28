@@ -6,7 +6,7 @@
 // never leaves it. One switch in Edit profile keeps it all private, and takes
 // down what was public; switched back on, only what they do from then on is.
 import { expect, test } from "@playwright/test";
-import { createShare, heartOf, homeIn, openComments, signInAgent, signUpBuyer, toFirstHome } from "./helpers";
+import { createShare, heartOf, homeIn, openComments, pass, signInAgent, signUpBuyer, toFirstHome } from "./helpers";
 
 const QUILLAN = "1204 Quillan St SE";
 const SALTMARSH = "719 Saltmarsh Ln";
@@ -25,9 +25,9 @@ test("likes and comments on an agent's link are public by name, passes only on t
   await pam.goto(url);
   await toFirstHome(pam);
 
-  // Passes on the first with the X (on to the second), likes the second, and says why.
+  // Passes on the first ("Not for me", on to the second), likes the second, and says why.
   const first = homeIn(pam, QUILLAN);
-  await first.getByRole("button", { name: "Pass on this home" }).click();
+  await pass(pam, first);
   const second = homeIn(pam, SALTMARSH);
   await expect(second).toBeInViewport({ ratio: 0.9 });
   await expect.poll(async () => Math.abs((await second.boundingBox())?.y ?? 99)).toBeLessThan(1);

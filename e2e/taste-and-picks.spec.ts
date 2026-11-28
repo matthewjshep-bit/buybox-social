@@ -1,18 +1,7 @@
 // Runs after the other specs (alphabetically last) because it likes a lot of
 // homes, which would throw off their counts.
 import { expect, test, type Locator } from "@playwright/test";
-import {
-  heartOf,
-  homeIn,
-  joinAs,
-  likeInPhoto,
-  openComments,
-  openMore,
-  scrollToEnd,
-  settle,
-  signUpBuyer,
-  tapPhoto,
-} from "./helpers";
+import { expectFeedback, heartOf, homeIn, joinAs, likeInPhoto, notForMe, openComments, openMore, scrollToEnd, settle, signUpBuyer, tapPhoto } from "./helpers";
 
 // Today's picks lead the home page: their old address still gets there.
 test("the old picks address goes home", async ({ page }) => {
@@ -47,7 +36,7 @@ test("the feed learns your taste from what you like and pass on", async ({ brows
   const saved = () =>
     pia.waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
   let save = saved();
-  await homes.nth(3).getByRole("button", { name: "Pass on this home" }).click();
+  await notForMe(await openMore(pia, homes.nth(3))).click();
   await save;
   await homes.nth(3).scrollIntoViewIfNeeded();
   const pass = await openMore(pia, homes.nth(3));
@@ -133,7 +122,7 @@ test("replies, comment likes, the activity bell, trending, and who liked what", 
   await dev.keyboard.press("Escape");
   await expect(devChat).toBeHidden();
   // (Counted up, it's in the Porchcard, which is an agent's: e2e/public.spec.ts.)
-  await expect(dev.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
+  await expectFeedback(dev, devHome, false);
   devChat = await openComments(dev, devHome);
 
   // Dev likes Cleo's comment and replies to it.

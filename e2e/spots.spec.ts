@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { signedIn, commentsOf, createShare, homeIn, joinAs, pick, settle, signInAgent, tapPhoto, heartOf } from "./helpers";
+import { commentsOf, createShare, expectFeedback, heartOf, homeIn, joinAs, pick, settle, signedIn, signInAgent, tapPhoto } from "./helpers";
 
 // The phone settings carry over to new contexts, touch included; a desktop has none.
 const DESKTOP = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, isMobile: false, hasTouch: false };
@@ -207,7 +207,7 @@ test("a tap on the words or the buttons isn't a tap on the photo, but just besid
   const CORBEL = "812 N Corbel St";
   const SHINGLED = "Shingled home with a wraparound porch and green lawn";
   // On a phone the price, size and address sit in a head above the photo, and
-  // under the photo the row of things to do (the X and the heart first), the
+  // under the photo the row of things to do (the heart first), the
   // latest comments, then the comment bar: nothing on the photo itself.
   await page.goto("/homes/SAMPLE-1003");
   const home = homeIn(page, CORBEL);
@@ -269,19 +269,18 @@ test("a tap on the words or the buttons isn't a tap on the photo, but just besid
   await page.waitForTimeout(500);
   await expect(home.locator("[data-spot-card]")).toHaveCount(0);
   // Nor is a tap between the buttons in the row under the photo (between
-  // Comments and Share, where there's room).
-  const commentsButton = (await row.getByRole("button", { name: /^Comments/ }).boundingBox())!;
-  // (Signed in, on a public home, it's Send; signed out, Share.)
-  const share = (await row.getByRole("button", { name: /^(Share|Send) / }).boundingBox())!;
-  expect(share.x - (commentsButton.x + commentsButton.width)).toBeGreaterThan(8);
-  await page.mouse.click((commentsButton.x + commentsButton.width + share.x) / 2, share.y + share.height / 2);
+  // Share and Save, at the far right, where there's room).
+  const share = (await row.getByRole("button", { name: /^Share / }).boundingBox())!;
+  const save = (await row.getByRole("button", { name: /^Saved? / }).boundingBox())!;
+  expect(save.x - (share.x + share.width)).toBeGreaterThan(8);
+  await page.mouse.click((share.x + share.width + save.x) / 2, save.y + save.height / 2);
   await page.waitForTimeout(500);
   await expect(home.locator("[data-spot-card]")).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.keyboard.press("Escape");
 
   // (No Porchcard to read about it in: that's an agent's, in a client's homes.)
-  await expect(home.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
+  await expectFeedback(page, home, false);
   // Still nothing drawn on the photo where Sky liked it.
   await expect(home.locator("[data-pin], [data-pins-toggle], [data-spot-highlight]")).toHaveCount(0);
 

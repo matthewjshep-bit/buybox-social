@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import {
   ArrowUp,
+  Check,
   ChevronDown,
   ClipboardList,
   ChevronUp,
@@ -12,13 +13,9 @@ import {
   Flame,
   Heart,
   ImageIcon,
-  Link2,
-  LoaderCircle,
   MapPin,
   MessageCircle,
   Send,
-  Share2,
-  UserPlus,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -41,6 +38,7 @@ import {
 import { createPortal, flushSync } from "react-dom";
 import { loadReel, recordView, reloadReelHome } from "@/app/homes/actions";
 import { CommentThread } from "@/components/comment-thread";
+import { ShareSheet } from "@/components/share-sheet";
 import { AspectChips, useReactions } from "@/components/like-pass";
 import { useNotesMode } from "@/components/agent-notes";
 import {
@@ -129,25 +127,10 @@ export type SendHome = {
   sqft: number | null;
 };
 
-const sendHomeOf = ({ listing }: FeedPost): SendHome => ({
-  listingKey: listing.ListingKey,
-  address: listing.UnparsedAddress,
-  city: listing.City,
-  price: listing.ListPrice,
-  beds: listing.BedroomsTotal ?? null,
-  baths: listing.BathroomsTotalInteger ?? null,
-  sqft: listing.LivingArea ?? null,
-});
 
-// What the rail's fourth button does: share the page, invite someone onto an
-// agent's link, or, on a home for sale, send it. An agent's Send ("send")
-// makes a client's link there and then ("sending": between one send and the
-// new link for the next); anyone else signed in goes on to the three steps
-// for sending homes, with this one picked ("steps").
-type ShareKind = "share" | "invite" | "send" | "sending" | "steps";
 
 // What can rise over a home.
-type SheetKind = "more" | "scorecard";
+type SheetKind = "more" | "scorecard" | "share";
 
 // The agent, in a sentence: their name, or "your agent" when the page
 // doesn't know it (it says "Your agent" then).
@@ -197,8 +180,6 @@ export function ReelFeed({
   onActiveChange,
   loadMore,
   onOpen,
-  onSend,
-  sendBusy = false,
   initialPhoto,
   initialComment,
   onPhotoSeen,
@@ -410,8 +391,6 @@ export function ReelFeed({
         lean={lean}
         contained={contained}
         onOpen={onOpen}
-        onSend={onSend}
-        sendBusy={sendBusy}
         initialPhoto={initialPhoto}
         initialComment={initialComment}
         context={context}
@@ -453,8 +432,6 @@ function Feed({
   lean,
   contained,
   onOpen,
-  onSend,
-  sendBusy,
   initialPhoto,
   initialComment,
   context,
@@ -489,8 +466,6 @@ function Feed({
   lean: boolean;
   contained: boolean;
   onOpen?: (listingKey: string) => void;
-  onSend?: (home: SendHome, panel?: HTMLElement | null) => void;
-  sendBusy: boolean;
   initialPhoto?: number;
   initialComment?: string;
   context?: ReelContext | null;
@@ -913,21 +888,6 @@ function Feed({
   const isForSale = (post: FeedPost) => post.listing.StandardStatus === "Active";
   // On a public page, a home for sale is sent by anyone signed in; signed
   // out, or once it's sold, there's only its page to share.
-  const shareKind = (post: FeedPost): ShareKind | null =>
-    mode === "share"
-      ? canInvite
-        ? "invite"
-        : null
-      : !isForSale(post)
-        ? "share"
-        : onSend
-          ? sendBusy
-            ? "sending"
-            : "send"
-          : signedIn
-            ? "steps"
-            : "share";
-
   // The link to this page (a home's public page, or the agent's link you're
   // on): handed to the phone's share sheet where there is one, or else copied.
   const shareLink = async (post: FeedPost) => {
@@ -945,13 +905,16 @@ function Feed({
     }
   };
 
-  const share = (post: FeedPost) => {
-    if (mode === "public" && isForSale(post)) {
-      if (onSend) return onSend(sendHomeOf(post), wide ? wordsOf(post.listing.ListingKey) : null);
-      // (Anyone else signed in: Send homes, which finds this one picked.)
-      if (signedIn) return router.push(`/send?home=${encodeURIComponent(post.listing.ListingKey)}`);
-    }
-    return shareLink(post);
+  // Its paper plane: the one Share sheet (send it, post it, its link).
+  const share = (post: FeedPost) => setSheet({ kind: "share", key: post.listing.ListingKey });
+  // Passed on ("Not for me", from its menu): and on to the next home. (The
+  // agent, on their own link, sees it as their client will; it's the
+  // client's to tap.)
+  const passOn = async (post: FeedPost) => {
+    if (notes) return say(THEIRS_TO_TAP);
+    const key = post.listing.ListingKey;
+    const was = (reactions.states[key] ?? NO_REACTION).reaction === "dislike";
+    if ((await reactions.choose(key, "dislike")) && !was) goTo(offset + posts.indexOf(post) + 1);
   };
 
   const sheetPost = sheet && posts.find((post) => post.listing.ListingKey === sheet.key);
@@ -1093,7 +1056,6 @@ function Feed({
         {posts.map((post, i) => {
           const key = post.listing.ListingKey;
           const state = reactions.states[key] ?? NO_REACTION;
-          const kind = shareKind(post);
           return (
             <Panel
               key={key}
@@ -1128,21 +1090,12 @@ function Feed({
               // end). Tapped again on a home already passed on, it's taken back.
               // (The agent, looking at their own link, sees the X as their
               // client will; it's the client's to tap.)
-              onPass={
-                notes
-                  ? () => say(THEIRS_TO_TAP)
-                  : async () => {
-                      const was = state.reaction === "dislike";
-                      if ((await reactions.choose(key, "dislike")) && !was) goTo(offset + i + 1);
-                    }
-              }
               onDoubleTapLike={() => reactions.like(key)}
               // (Wide, the panel's Comments button folds them away again.)
               onComments={() => (wide && thread?.key === key && !thread.spot ? setThread(null) : openThread(key))}
               onCompose={() => openThread(key, { compose: true })}
               onCommentSpot={(spot) => openThread(key, { compose: true, spot })}
               onCommentAt={(id) => openThread(key, { commentId: id })}
-              onScorecard={porchcard ? (section) => openScorecard(key, section) : undefined}
               saved={saves.now[key] ?? Boolean(post.saved)}
               onSave={save ? () => saves.toggle(key, !(saves.now[key] ?? Boolean(post.saved))) : undefined}
               onYours={tellYours}
@@ -1170,8 +1123,7 @@ function Feed({
                 dock.current = wordsOf(key);
                 setSheet({ kind: "more", key });
               }}
-              shareAs={kind}
-              onShare={kind ? () => share(post) : undefined}
+              onShare={() => share(post)}
               // (Not in a pop-out, which has just the one home.)
             />
           );
@@ -1283,22 +1235,20 @@ function Feed({
         agentName={agentName}
         // On a public page, for everyone (an agent too, whose Send makes a
         // client's private link): the link to the home's public page.
-        onShareLink={
-          mode === "public" && sheetPost
+        onPass={
+          sheetPost
             ? () => {
-                // (Gone first, so "Link copied" isn't said behind it.)
                 closeSheet("more");
-                void shareLink(sheetPost);
+                void passOn(sheetPost);
               }
             : undefined
         }
-        // On an agent's link, a phone's row under the photo has no room for
-        // Invite: it's here.
-        onInvite={
-          !wide && sheetPost && shareKind(sheetPost) === "invite"
+        onFeedback={
+          porchcard && sheetPost
             ? () => {
+                const key = sheetPost.listing.ListingKey;
                 closeSheet("more");
-                void shareLink(sheetPost);
+                openScorecard(key);
               }
             : undefined
         }
@@ -1313,6 +1263,25 @@ function Feed({
           if (sheetPost) setBare(offset + posts.indexOf(sheetPost));
         }}
         onClose={() => closeSheet("more")}
+      />
+      <ShareSheet
+        home={
+          sheet?.kind === "share" && sheetPost
+            ? {
+                key: sheetPost.listing.ListingKey,
+                address: sheetPost.listing.UnparsedAddress,
+                price: sheetPost.listing.ListPrice,
+                // (Sent or posted from "Share homes": a home for sale, by anyone
+                // with an account, or someone on their way to one.)
+                forSale: isForSale(sheetPost) && (mode === "public" || signedIn),
+              }
+            : null
+        }
+        // (Its public page: a home for sale, or one on a public page.)
+        linkable={Boolean(sheetPost) && (mode === "public" || isForSale(sheetPost!))}
+        invite={mode === "share" && canInvite && sheetPost ? () => void shareLink(sheetPost) : undefined}
+        anchor={wide ? dock : frame}
+        onClose={() => closeSheet("share")}
       />
     </div>
   );
@@ -1435,13 +1404,11 @@ function Panel({
   base,
   error,
   onLike,
-  onPass,
   onDoubleTapLike,
   onComments,
   onCompose,
   onCommentSpot,
   onCommentAt,
-  onScorecard,
   saved,
   onSave,
   onYours,
@@ -1459,7 +1426,6 @@ function Panel({
   onOpen,
   lean,
   onMore,
-  shareAs,
   onShare,
   take,
   host,
@@ -1490,8 +1456,6 @@ function Panel({
   base: ReactionState;
   error?: string;
   onLike: () => void;
-  // The X on the photo: pass on the home and go on to the next (taken back, it stays put).
-  onPass: () => void;
   onDoubleTapLike: () => void;
   onComments: () => void;
   // The comment bar: comments open with the cursor in the box.
@@ -1500,9 +1464,6 @@ function Panel({
   onCommentSpot: (spot: SpotRef) => void;
   // The comments, on one of them (from the latest under the photo, or the take).
   onCommentAt: (commentId: string) => void;
-  // Its Porchcard (at "About this home", from the description's "more").
-  // (None but for an agent: everyone else saves the home in its place.)
-  onScorecard?: (section?: "about") => void;
   // Saved by you, and the way to save it (or take it back).
   saved: boolean;
   onSave?: () => void;
@@ -1536,7 +1497,6 @@ function Panel({
   // Beside the map, wide: no row of round buttons (see ReelFeed's `lean`).
   lean: boolean;
   onMore: () => void;
-  shareAs: ShareKind | null;
   onShare?: () => void;
   // Why it's here: whose take on it, what they picked out and said.
   take?: HomeContext;
@@ -1978,23 +1938,12 @@ function Panel({
     "flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-full px-2 text-sm font-semibold tabular-nums transition-colors hover:bg-white/10 active:bg-white/15";
   // (One colour each: cn is plain clsx, so a second text colour wouldn't win.)
   const plain = cn(action, "text-white/90");
-  const sending = shareAs === "sending";
   const actions = !bare && !onOpen && !short && (
     <div
       data-actions
       data-keep-clear
       className="flex items-center gap-0.5 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] pt-1"
     >
-      <button
-        type="button"
-        aria-label="Pass on this home"
-        aria-pressed={state.reaction === "dislike"}
-        onClick={onPass}
-        title="Pass"
-        className={cn(action, state.reaction === "dislike" ? "text-amber-400" : "text-white/90")}
-      >
-        <X aria-hidden size={23} strokeWidth={2.5} />
-      </button>
       <LikeWithList things={things}>
         <button
           type="button"
@@ -2022,73 +1971,30 @@ function Panel({
         <MessageCircle aria-hidden size={22} />
         {comments > 0 && <span>{countLabel(comments)}</span>}
       </button>
-      <span className="ml-auto" />
-      {onShare && shareAs && !lean && (
+      {onShare && !lean && (
         <button
           type="button"
-          aria-label={
-            shareAs === "share"
-              ? `Share ${listing.UnparsedAddress}`
-              : shareAs === "invite"
-                ? "Invite someone"
-                : sending
-                  ? "Send this home, getting a new link…"
-                  : `Send ${listing.UnparsedAddress}`
-          }
-          title={shareAs === "share" ? "Share" : shareAs === "invite" ? "Invite" : "Send"}
-          aria-disabled={sending || undefined}
-          onClick={() => {
-            if (!sending) onShare();
-          }}
-          className={cn(plain, sending && "cursor-progress opacity-60")}
-        >
-          {sending ? (
-            <LoaderCircle aria-hidden size={21} className="animate-spin motion-reduce:animate-none" />
-          ) : shareAs === "share" ? (
-            <Share2 aria-hidden size={21} />
-          ) : shareAs === "invite" ? (
-            <UserPlus aria-hidden size={21} />
-          ) : (
-            <Send aria-hidden size={21} />
-          )}
-        </button>
-      )}
-      {onScorecard ? (
-        <button
-          type="button"
-          data-follow="scorecard"
-          aria-label="Feedback"
-          title="Feedback"
-          onClick={() => onScorecard()}
+          aria-label={`Share ${listing.UnparsedAddress}`}
+          title="Share"
+          onClick={onShare}
           className={plain}
         >
-          <ClipboardList aria-hidden size={21} />
+          <Send aria-hidden size={21} />
         </button>
-      ) : (
-        onSave && (
-          <button
-            type="button"
-            aria-label={saved ? `Saved ${listing.UnparsedAddress}` : `Save ${listing.UnparsedAddress}`}
-            title={saved ? "Saved" : "Save"}
-            aria-pressed={saved}
-            onClick={saveIt}
-            className={plain}
-          >
-            <Bookmark aria-hidden size={21} className={cn(saved && "fill-white")} />
-          </button>
-        )
       )}
-      <button
-        ref={moreButton}
-        type="button"
-        data-follow="more"
-        aria-label="More options"
-        title="More"
-        onClick={onMore}
-        className={plain}
-      >
-        <Ellipsis aria-hidden size={22} />
-      </button>
+      <span className="ml-auto" />
+      {onSave && (
+        <button
+          type="button"
+          aria-label={saved ? `Saved ${listing.UnparsedAddress}` : `Save ${listing.UnparsedAddress}`}
+          title={saved ? "Saved" : "Save"}
+          aria-pressed={saved}
+          onClick={saveIt}
+          className={plain}
+        >
+          <Bookmark aria-hidden size={21} className={cn(saved && "fill-white")} />
+        </button>
+      )}
     </div>
   );
   // The head above the photo: on a phone, upright, with the photo showing.
@@ -2385,14 +2291,29 @@ function Panel({
                         setAbout(!about);
                       }
                 }
-                className="absolute inset-0 flex items-center justify-end pr-[max(1rem,env(safe-area-inset-right))] transition-colors hover:bg-white/[0.04]"
+                className={cn(
+                  "absolute inset-y-0 left-0 flex items-center justify-end transition-colors hover:bg-white/[0.04]",
+                  onOpen ? "right-0 pr-[max(1rem,env(safe-area-inset-right))]" : "right-12",
+                )}
               >
-                <ChevronDown
-                  aria-hidden
-                  size={20}
-                  className={cn("text-white/70 transition-transform motion-reduce:transition-none", about && "rotate-180")}
-                />
+                {onOpen && <ChevronDown aria-hidden size={20} className="text-white/70" />}
               </button>
+              {/* Its menu, where a post's is, beside the price: Not for me,
+                  Feedback (an agent's), Photo only, the map. (Beside the
+                  map, the row just opens the home.) */}
+              {!onOpen && (
+                <button
+                  ref={moreButton}
+                  type="button"
+                  data-follow="more"
+                  aria-label="More options"
+                  title="More"
+                  onClick={onMore}
+                  className="absolute inset-y-0 right-0 flex w-12 items-center justify-center pr-[env(safe-area-inset-right)] text-white/80 transition-colors hover:bg-white/[0.06] hover:text-white"
+                >
+                  <Ellipsis aria-hidden size={22} />
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -2454,12 +2375,8 @@ function Panel({
               liked={liked}
               likes={likes}
               comments={comments}
-              shareAs={shareAs}
               onLike={onLike}
-              passed={state.reaction === "dislike"}
-              onPass={onPass}
               onComments={onComments}
-              onScorecard={onScorecard && (() => onScorecard())}
               saved={saved}
               onSave={saveIt}
               onShare={onShare}
@@ -2820,12 +2737,8 @@ function Rail({
   liked,
   likes,
   comments,
-  shareAs,
   onLike,
-  passed,
-  onPass,
   onComments,
-  onScorecard,
   saved,
   onSave,
   onShare,
@@ -2836,14 +2749,8 @@ function Rail({
   liked: boolean;
   likes: number;
   comments: number;
-  shareAs: ShareKind | null;
   onLike: () => void;
-  // The X, here beside the heart (elsewhere it's on the photo).
-  passed: boolean;
-  onPass?: () => void;
   onComments: () => void;
-  // The Porchcard (an agent's), or else Save.
-  onScorecard?: () => void;
   saved: boolean;
   onSave?: () => void;
   onShare?: () => void;
@@ -2882,13 +2789,6 @@ function Rail({
           </RailButton>
         </LikeWithList>
       </div>
-      {onPass && (
-        <div>
-          <RailButton name="Pass on this home" label="Pass" pressed={passed} onClick={onPass}>
-            <X aria-hidden size={28} className={cn("drop-shadow", passed ? "text-amber-400" : "text-white")} />
-          </RailButton>
-        </div>
-      )}
       <RailButton
         name={`Comments${comments ? `, ${comments}` : ""}`}
         label="Comments"
@@ -2897,47 +2797,16 @@ function Rail({
       >
         <MessageCircle size={28} {...icon} />
       </RailButton>
-      {onScorecard && (
-        <RailButton name="Feedback" label="Feedback" onClick={onScorecard} follow="scorecard">
-          <ClipboardList size={26} {...icon} />
-        </RailButton>
-      )}
-      {!onScorecard && onSave && (
-        <RailButton name={saved ? `Saved ${address}` : `Save ${address}`} label={saved ? "Saved" : "Save"} pressed={saved} onClick={onSave}>
-          <Bookmark aria-hidden size={27} className={cn(saved ? "fill-white text-white" : "text-white", "drop-shadow")} />
-        </RailButton>
-      )}
-      {/* For a moment after each send, while the link for the next is made,
-          it waits, turning, and says so (the same button, so the keyboard
-          comes back to it). */}
-      {onShare && (shareAs === "send" || shareAs === "sending") && (
-        <RailButton
-          name={shareAs === "sending" ? "Send to a client, getting a new link…" : "Send to a client"}
-          label="Send"
-          onClick={onShare}
-          busy={shareAs === "sending"}
-        >
-          {shareAs === "sending" ? (
-            <LoaderCircle size={26} aria-hidden className="animate-spin drop-shadow motion-reduce:animate-none" />
-          ) : (
-            <Send size={26} {...icon} />
-          )}
-        </RailButton>
-      )}
-      {/* Anyone else signed in: on to Send homes, with this one picked. */}
-      {onShare && shareAs === "steps" && (
-        <RailButton name="Send to someone" label="Send" onClick={onShare}>
+      {/* The same as the row under the photo, upright: Share, then Save; "Not
+          for me" and the rest in More. */}
+      {onShare && (
+        <RailButton name={`Share ${address}`} label="Share" onClick={onShare}>
           <Send size={26} {...icon} />
         </RailButton>
       )}
-      {onShare && shareAs === "invite" && (
-        <RailButton name="Invite someone" label="Invite" onClick={onShare}>
-          <UserPlus size={26} {...icon} />
-        </RailButton>
-      )}
-      {onShare && shareAs === "share" && (
-        <RailButton name="Share" label="Share" onClick={onShare}>
-          <Share2 size={26} {...icon} />
+      {onSave && (
+        <RailButton name={saved ? `Saved ${address}` : `Save ${address}`} label={saved ? "Saved" : "Save"} pressed={saved} onClick={onSave}>
+          <Bookmark aria-hidden size={27} className={cn(saved ? "fill-white text-white" : "text-white", "drop-shadow")} />
         </RailButton>
       )}
       <RailButton name="More options" label="More" onClick={onMore} follow="more">
@@ -3356,17 +3225,17 @@ function MoreSheet({
   onClose,
   anchor,
   returnTo,
-  onShareLink,
-  onInvite,
+  onPass,
+  onFeedback,
 }: {
   post: FeedPost | null;
   state: ReactionState;
   // Set on an agent's link (where there's no map to see the home on).
   agentName?: string;
-  // On a public page it offers "Share link": the home's public page, to pass on.
-  onShareLink?: () => void;
-  // On an agent's link, on a phone: invite someone onto it.
-  onInvite?: () => void;
+  // "Not for me": passed on (or, passed on already, taken back).
+  onPass?: () => void;
+  // An agent, in a link's homes: what their client made of it.
+  onFeedback?: () => void;
   anchor: RefObject<HTMLElement | null>;
   returnTo?: () => HTMLElement | null;
   onToggle: (aspect: Aspect) => void;
@@ -3384,16 +3253,22 @@ function MoreSheet({
           {state.reaction && <AspectChips state={state} onToggle={onToggle} />}
           {/* A menu's rows: full width, one colour, the icon says what each is. */}
           <div className="flex flex-col">
-            {onInvite && (
-              <button type="button" onClick={onInvite} className={menuRow({ flush: true })}>
-                <UserPlus aria-hidden size={18} />
-                Invite someone
+            {onPass && (
+              <button
+                type="button"
+                aria-pressed={state.reaction === "dislike"}
+                onClick={onPass}
+                className={menuRow({ flush: true })}
+              >
+                <X aria-hidden size={18} />
+                <span className="flex-1">Not for me</span>
+                {state.reaction === "dislike" && <Check aria-hidden size={18} className="text-ink!" />}
               </button>
             )}
-            {onShareLink && (
-              <button type="button" onClick={onShareLink} className={menuRow({ flush: true })}>
-                <Link2 aria-hidden size={18} />
-                Share link
+            {onFeedback && (
+              <button type="button" onClick={onFeedback} className={menuRow({ flush: true })}>
+                <ClipboardList aria-hidden size={18} />
+                Feedback
               </button>
             )}
             <button type="button" onClick={onPhotoOnly} className={menuRow({ flush: true })}>

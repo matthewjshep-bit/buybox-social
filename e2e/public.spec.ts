@@ -1,24 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import {
-  signedIn,
-  commentIn,
-  commentsOf,
-  createShare,
-  heartOf,
-  homeIn,
-  joinAs,
-  likeInPhoto,
-  linkHomes,
-  openComments,
-  openScorecard,
-  pickHome,
-  signInAgent,
-  signUpBuyer,
-  passOn,
-  openMore,
-  toLinkReady,
-  toWho,
-} from "./helpers";
+import { commentIn, commentsOf, createShare, expectFeedback, heartOf, homeIn, joinAs, likeInPhoto, linkHomes, notForMe, openComments, openMore, openScorecard, pass, passOn, pickHome, signedIn, signInAgent, signUpBuyer, toLinkReady, toWho } from "./helpers";
 
 const SECRET = "We could go 50k over asking.";
 const SHARED = "That fenced yard is perfect for our dog.";
@@ -116,8 +97,8 @@ test("public pages show the latest comments, never private words; a link shares 
   await expect(page.getByText(SECRET)).toHaveCount(0);
   await expect(page.getByText(/Quinn/)).toHaveCount(0);
   await page.keyboard.press("Escape");
-  // (No Porchcard for a visitor: Save is where it was.)
-  await expect(page.getByRole("button", { name: "Feedback", exact: true })).toHaveCount(0);
+  // (No Porchcard for a visitor: nothing in More; Save is where it was.)
+  await expectFeedback(page, post, false);
   await expect(post.getByRole("button", { name: `Save ${BRACKENFIELD}`, exact: true })).toBeVisible();
   // ...nor in the Porchcard the other agent has, which has what people like
   // and the quiet signals.
@@ -184,12 +165,12 @@ test("public pages show the latest comments, never private words; a link shares 
   await other.keyboard.press("Escape");
 
   // Passes made in public do show, with their specifics.
-  // (Asked who they are first, once; then the X has passed, and gone on to the next home.)
-  await otherPost.getByRole("button", { name: "Pass on this home" }).click();
+  // (Asked who they are first, once; then "Not for me" has passed, and gone on to the next home.)
+  await pass(other, otherPost);
   await joinAs(other, "Drew");
-  await expect(otherPost.getByRole("button", { name: "Pass on this home" })).toHaveAttribute("aria-pressed", "true");
   await otherPost.scrollIntoViewIfNeeded();
   const otherMore = await openMore(other, otherPost);
+  await expect(notForMe(otherMore)).toHaveAttribute("aria-pressed", "true");
   // (Saved before the page is loaded again.)
   const priceSaved = other.waitForResponse(
     (res) =>

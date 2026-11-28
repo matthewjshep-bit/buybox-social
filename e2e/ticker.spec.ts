@@ -388,7 +388,7 @@ test("beside the map: on a phone, the comments under the photo and Open full scr
   await phone.context().close();
 
   // Wide: the pane is a phone's width, so the comments are under the photo
-  // here too; the X and the heart are in the row under the photo (nothing
+  // here too; the heart and Comments are in the row under the photo (nothing
   // sits on the photo), the comments under that row, and the pane's own
   // Open full screen sits over the photo's top corner, under the head.
   const page = await (await browser.newContext(DESKTOP)).newPage();
@@ -397,20 +397,20 @@ test("beside the map: on a phone, the comments under the photo and Open full scr
   await expect(home).toBeVisible();
   await expect(latestOf(home)).toContainText(`Bo ${BO_SAID}`);
   await nothingGoesRound(home);
-  const [wideList, widePhoto, pass, heart, wideOpen] = [
+  const [wideList, widePhoto, said, heart, wideOpen] = [
     await box(latestOf(home)),
     await box(photoOf(home)),
-    await box(home.getByRole("button", { name: "Pass on this home" })),
+    await box(home.locator("[data-actions]").getByRole("button", { name: /^Comments/ })),
     await box(heartOf(home)),
     await box(page.getByRole("button", { name: "Open full screen" })),
   ];
-  expect(pass.y).toBeGreaterThanOrEqual(widePhoto.y + widePhoto.height - 1);
+  expect(said.y).toBeGreaterThanOrEqual(widePhoto.y + widePhoto.height - 1);
   expect(heart.y).toBeGreaterThanOrEqual(widePhoto.y + widePhoto.height - 1);
-  expect(Math.abs(pass.y - heart.y)).toBeLessThanOrEqual(1);
-  expect(pass.x + pass.width).toBeLessThan(heart.x);
-  expect(pass.height).toBeGreaterThanOrEqual(44);
+  expect(Math.abs(said.y - heart.y)).toBeLessThanOrEqual(1);
+  expect(heart.x + heart.width).toBeLessThanOrEqual(said.x + 1);
+  expect(said.height).toBeGreaterThanOrEqual(44);
   expect(heart.height).toBeGreaterThanOrEqual(44);
-  expect(wideList.y).toBeGreaterThanOrEqual(pass.y + pass.height - 1);
+  expect(wideList.y).toBeGreaterThanOrEqual(said.y + said.height - 1);
   expect(wideOpen.y).toBeGreaterThanOrEqual(widePhoto.y - 1);
   expect(wideOpen.y + wideOpen.height).toBeLessThan(widePhoto.y + widePhoto.height / 2);
   expect(wideOpen.height).toBeGreaterThanOrEqual(44);

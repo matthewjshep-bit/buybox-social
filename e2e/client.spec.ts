@@ -22,7 +22,7 @@ test("an agent's link page: what they want, remove and restore, add homes; their
   await likeInPhoto(kirkland, "the floating staircase");
 
   const olympia = homeIn(joe, "1204 Quillan St SE");
-  // Passing is the X on the photo; why, for anyone who'd like to say, is under More.
+  // Passing is "Not for me", under More; why, for anyone who'd like to say, is there too.
   const more = await passOn(joe, olympia);
   const why = more.getByRole("group", { name: "What made you pass?" });
   await why.getByRole("button", { name: "Exterior" }).click();

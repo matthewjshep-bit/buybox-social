@@ -48,7 +48,8 @@ import {
 import { getPublicIdentity } from "@/lib/public";
 import { getListingCounts } from "@/lib/listing-counts";
 import { getListingsLook, OWN_PREFIX } from "@/lib/own-listings";
-import { getSavedHomes } from "@/lib/saved";
+import { getSavedHomes, savedAmong } from "@/lib/saved";
+import { SavedHomes } from "@/components/saved-homes";
 import { storyOf } from "@/lib/taste-story";
 import { ANONYMOUS_BUYER } from "@/lib/timeline";
 import { yourClient, type YourClient } from "@/lib/your-client";
@@ -177,7 +178,11 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   // Under each card: how many liked the home and how many comments it has,
   // and the viewer's own take on it, for the heart.
   const feedHomes = [...new Set([...feed.cards.map((card) => card.home.key), ...postKeys(posts)])];
-  const [barCounts, barMine] = await Promise.all([feedCounts(feedHomes), myReactions(visitor?.id ?? null, feedHomes)]);
+  const [barCounts, barMine, barSaved] = await Promise.all([
+    feedCounts(feedHomes),
+    myReactions(visitor?.id ?? null, feedHomes),
+    savedAmong(visitor?.id ?? null, feedHomes),
+  ]);
 
   // The same page with other filters; paging starts over.
   const href = (next: { show?: ProfileShow; about?: string | null; side?: TopicSide; before?: string | null }) => {
@@ -277,301 +282,303 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   // Who they are, across the top; under it, what's theirs: an agent's
   // listings (and where they are), or what they've done, their taste beside it.
   return (
-    <main
-      className="mx-auto max-w-4xl px-4 pb-16 pt-4 lg:px-6 lg:pt-6"
-      // Whatever is focused in the feed scrolls clear of the filters stuck above it.
-      style={{ "--filters": about ? "5rem" : "0.5rem" } as CSSProperties}
-    >
-      {/* Their own: said small, as the dashboard says what it is. */}
-      {isMe && <p className={cn(pageLabel, "mb-2")}>Your public profile</p>}
-      <ProfileHeader
-        name={name}
-        fullName={person.isAgent && !unnamed ? person.agentName || undefined : undefined}
-        face={face}
-        isMe={isMe}
-        // (Said only while it's so: by default what they do there shows here.)
-        onLink={onLink && person.hideLinks}
-        unnamed={unnamed}
-        agent={person.isAgent}
-        kind={person.kind}
-        place={person.place}
-        since={person.since}
-        people={{ ...people, href: `/people/${person.id}` }}
-        photo={person.photo}
-        followsYou={followsYou}
-        client={
-          client
-            ? {
-                // (On "Between you and them" when that's there; else under their name.)
-                homes: between.length > 0 ? undefined : (clientHomes ?? undefined),
-                // (Signed up, or they'd have no page: so their conversation is their account's.)
-                page: person.accountId
-                  ? `/messages/${encodeURIComponent(`acct:${person.accountId}`)}`
-                  : `/messages/${encodeURIComponent(`link:${client.shareId}`)}`,
-              }
-            : undefined
-        }
-        bio={person.bio}
-        links={person.links}
-        contact={person.contact}
-        brokerage={person.brokerage}
-        personId={person.id}
-        brandColor={person.brandColor}
-        banner={person.banner}
-        follow={
-          isMe ? undefined : (
-            <FollowButton
-              personId={person.id}
-              name={name}
-              following={following}
-              signIn={account?.role ? undefined : `/login?next=${encodeURIComponent(`/people/${person.id}`)}`}
-            />
-          )
-        }
-      />
-      {between.length > 0 && (
-        <BetweenCard id="between" links={between} name={name} homes={clientHomes} className="mt-3" />
-      )}
-      {tabs && (
-        <div className="mt-3 flex items-end border-b border-stone-200">
-          <nav aria-label="Sections" className="-mb-px flex gap-1">
-            {(["listings", "activity"] as const).map((key) => (
-              <Link
-                key={key}
-                href={`/people/${person.id}?tab=${key}`}
-                scroll={false}
-                aria-current={tab === key ? "page" : undefined}
-                className={tabClass(tab === key)}
-              >
-                {key === "listings" ? listingWords(person.kind)[isMe ? "Mine" : "Many"] : "Activity"}
-                {key === "listings" && <span className="text-muted tabular-nums">{listings.length}</span>}
-              </Link>
-            ))}
-          </nav>
-          {/* Their own: where they add and change the listings they keep themselves. */}
-          {isMe && (
-            <Link
-              href="/dashboard/listings"
-              className={cn(linkClass, "ml-auto flex min-h-11 items-center gap-1.5 px-2 text-sm")}
-            >
-              <Pencil aria-hidden size={15} /> Edit {listingWords(person.kind).many}
-            </Link>
-          )}
-        </div>
-      )}
-
-      <div
-        className={cn(
-          "mt-4",
-          // One 600px column for what they've done, whatever's in it (on a tablet too, the
-          // taste card lined up over it); on a wide screen the taste card is beside it.
-          // Nothing yet at all: that's said as wide as the header over it.
-          tab === "activity" &&
-            (taste
-              ? "mx-auto max-w-[600px] lg:grid lg:max-w-none lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start lg:gap-6"
-              : nothingYet && !savedView
-                ? ""
-                : "mx-auto max-w-[600px]"),
-        )}
+    <SavedHomes keys={barSaved}>
+      <main
+        className="mx-auto max-w-4xl px-4 pb-16 pt-4 lg:px-6 lg:pt-6"
+        // Whatever is focused in the feed scrolls clear of the filters stuck above it.
+        style={{ "--filters": about ? "5rem" : "0.5rem" } as CSSProperties}
       >
-        {/* Their taste goes with what they've done: beside it on a wide screen (staying put
-            as the feed scrolls), above it on a phone. With their listings, it's out of the way. */}
-        {taste && (
-          <div className="mb-3 lg:sticky lg:top-[calc(var(--header)+0.5rem)] lg:mb-0">
-            <TasteStoryCard
-              name={name}
-              isMe={isMe}
-              prompt={prompt}
-              loves={loves}
-              passes={passChips}
-              passesPrivate={isMe && person.hidePasses}
-              current={current}
-              chipHref={chipHref}
-              controls={
-                controllable ? (
-                  <TasteControls loves={story.own.loves} passes={story.own.passes} hidePasses={person.hidePasses} />
-                ) : undefined
-              }
-            />
+        {/* Their own: said small, as the dashboard says what it is. */}
+        {isMe && <p className={cn(pageLabel, "mb-2")}>Your public profile</p>}
+        <ProfileHeader
+          name={name}
+          fullName={person.isAgent && !unnamed ? person.agentName || undefined : undefined}
+          face={face}
+          isMe={isMe}
+          // (Said only while it's so: by default what they do there shows here.)
+          onLink={onLink && person.hideLinks}
+          unnamed={unnamed}
+          agent={person.isAgent}
+          kind={person.kind}
+          place={person.place}
+          since={person.since}
+          people={{ ...people, href: `/people/${person.id}` }}
+          photo={person.photo}
+          followsYou={followsYou}
+          client={
+            client
+              ? {
+                  // (On "Between you and them" when that's there; else under their name.)
+                  homes: between.length > 0 ? undefined : (clientHomes ?? undefined),
+                  // (Signed up, or they'd have no page: so their conversation is their account's.)
+                  page: person.accountId
+                    ? `/messages/${encodeURIComponent(`acct:${person.accountId}`)}`
+                    : `/messages/${encodeURIComponent(`link:${client.shareId}`)}`,
+                }
+              : undefined
+          }
+          bio={person.bio}
+          links={person.links}
+          contact={person.contact}
+          brokerage={person.brokerage}
+          personId={person.id}
+          brandColor={person.brandColor}
+          banner={person.banner}
+          follow={
+            isMe ? undefined : (
+              <FollowButton
+                personId={person.id}
+                name={name}
+                following={following}
+                signIn={account?.role ? undefined : `/login?next=${encodeURIComponent(`/people/${person.id}`)}`}
+              />
+            )
+          }
+        />
+        {between.length > 0 && (
+          <BetweenCard id="between" links={between} name={name} homes={clientHomes} className="mt-3" />
+        )}
+        {tabs && (
+          <div className="mt-3 flex items-end border-b border-stone-200">
+            <nav aria-label="Sections" className="-mb-px flex gap-1">
+              {(["listings", "activity"] as const).map((key) => (
+                <Link
+                  key={key}
+                  href={`/people/${person.id}?tab=${key}`}
+                  scroll={false}
+                  aria-current={tab === key ? "page" : undefined}
+                  className={tabClass(tab === key)}
+                >
+                  {key === "listings" ? listingWords(person.kind)[isMe ? "Mine" : "Many"] : "Activity"}
+                  {key === "listings" && <span className="text-muted tabular-nums">{listings.length}</span>}
+                </Link>
+              ))}
+            </nav>
+            {/* Their own: where they add and change the listings they keep themselves. */}
+            {isMe && (
+              <Link
+                href="/dashboard/listings"
+                className={cn(linkClass, "ml-auto flex min-h-11 items-center gap-1.5 px-2 text-sm")}
+              >
+                <Pencil aria-hidden size={15} /> Edit {listingWords(person.kind).many}
+              </Link>
+            )}
           </div>
         )}
-        <div className="min-w-0">
-        {isMe && tab === "activity" && show === "all" && !savedView && !about && !before && (
-          // (In the 600px column even when "nothing yet" is said wider round it.)
-          <div className={cn(nothingYet && !taste && "mx-auto max-w-[600px]")}>
-            <Compose
-              mode="inline"
-              me={{ name: face || name, photo: person.photo, agent: person.isAgent }}
-              peer={!person.isAgent}
-            />
-          </div>
-        )}
-        {tab === "listings" ? (
-          <>
-          {listings.length > 1 && (
-            // One quiet line, "Sort: Newest", to pick the order from.
-            <div className="mb-1 flex justify-end px-0.5">
-              <SortPicker
-                label={`Sort ${listingWords(person.kind).many}`}
-                value={sort}
-                options={sorts.map((key) => ({ value: key, label: SORT_LABEL[key] }))}
-                href={`/people/${person.id}?tab=listings&sort=`}
+
+        <div
+          className={cn(
+            "mt-4",
+            // One 600px column for what they've done, whatever's in it (on a tablet too, the
+            // taste card lined up over it); on a wide screen the taste card is beside it.
+            // Nothing yet at all: that's said as wide as the header over it.
+            tab === "activity" &&
+              (taste
+                ? "mx-auto max-w-[600px] lg:grid lg:max-w-none lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start lg:gap-6"
+                : nothingYet && !savedView
+                  ? ""
+                  : "mx-auto max-w-[600px]"),
+          )}
+        >
+          {/* Their taste goes with what they've done: beside it on a wide screen (staying put
+              as the feed scrolls), above it on a phone. With their listings, it's out of the way. */}
+          {taste && (
+            <div className="mb-3 lg:sticky lg:top-[calc(var(--header)+0.5rem)] lg:mb-0">
+              <TasteStoryCard
+                name={name}
+                isMe={isMe}
+                prompt={prompt}
+                loves={loves}
+                passes={passChips}
+                passesPrivate={isMe && person.hidePasses}
+                current={current}
+                chipHref={chipHref}
+                controls={
+                  controllable ? (
+                    <TasteControls loves={story.own.loves} passes={story.own.passes} hidePasses={person.hidePasses} />
+                  ) : undefined
+                }
               />
             </div>
           )}
-          <ListingGrid
-            label={listingWords(person.kind).Many}
-            listings={ordered}
-            from={listingsFrom}
-            counts={counts ?? undefined}
-            // As they chose to lay them out.
-            layout={look?.layout ?? "featured"}
-            // A home they put here that someone else listed says who did.
-            credit={(listing) =>
-              listing.ListAgentFullName && !sameAgent(person.agentName, listing.ListAgentFullName)
-                ? `Listed by ${listing.ListAgentFullName}`
-                : null
-            }
-            // Their own profile: each listing they added themselves, a tap from changing it.
-            edit={
-              isMe
-                ? (listing) => (listing.ListingKey.startsWith(OWN_PREFIX) ? `/dashboard/listings/${listing.ListingKey}` : null)
-                : undefined
-            }
-          />
-            {pins.length > 0 && <ListingsMap homes={pins} from={listingsFrom} />}
-          </>
-        ) : savedView ? (
-          <section aria-labelledby="saved-title">
-            {/* "Saved" said once, by the filter beside it; the heading says whose eyes it's for. */}
-            <div className="flex items-center justify-between gap-3">
-              <h2 id="saved-title" className="flex items-center gap-1.5 text-meta font-semibold text-muted">
-                <span className="sr-only">Saved, </span>
-                <Lock aria-hidden size={13} className="shrink-0" />
-                Only you see this
-              </h2>
-              {control}
+          <div className="min-w-0">
+          {isMe && tab === "activity" && show === "all" && !savedView && !about && !before && (
+            // (In the 600px column even when "nothing yet" is said wider round it.)
+            <div className={cn(nothingYet && !taste && "mx-auto max-w-[600px]")}>
+              <Compose
+                mode="inline"
+                me={{ name: face || name, photo: person.photo, agent: person.isAgent }}
+                peer={!person.isAgent}
+              />
             </div>
-            <div className="mt-2">
-              {saved.length > 0 ? (
-                <ListingGrid
-                  listings={saved}
-                  from="saved"
-                  label="Saved homes"
-                  layout="grid2"
-                  counts={await getListingCounts(saved.map((listing) => listing.ListingKey))}
+          )}
+          {tab === "listings" ? (
+            <>
+            {listings.length > 1 && (
+              // One quiet line, "Sort: Newest", to pick the order from.
+              <div className="mb-1 flex justify-end px-0.5">
+                <SortPicker
+                  label={`Sort ${listingWords(person.kind).many}`}
+                  value={sort}
+                  options={sorts.map((key) => ({ value: key, label: SORT_LABEL[key] }))}
+                  href={`/people/${person.id}?tab=listings&sort=`}
                 />
-              ) : (
+              </div>
+            )}
+            <ListingGrid
+              label={listingWords(person.kind).Many}
+              listings={ordered}
+              from={listingsFrom}
+              counts={counts ?? undefined}
+              // As they chose to lay them out.
+              layout={look?.layout ?? "featured"}
+              // A home they put here that someone else listed says who did.
+              credit={(listing) =>
+                listing.ListAgentFullName && !sameAgent(person.agentName, listing.ListAgentFullName)
+                  ? `Listed by ${listing.ListAgentFullName}`
+                  : null
+              }
+              // Their own profile: each listing they added themselves, a tap from changing it.
+              edit={
+                isMe
+                  ? (listing) => (listing.ListingKey.startsWith(OWN_PREFIX) ? `/dashboard/listings/${listing.ListingKey}` : null)
+                  : undefined
+              }
+            />
+              {pins.length > 0 && <ListingsMap homes={pins} from={listingsFrom} />}
+            </>
+          ) : savedView ? (
+            <section aria-labelledby="saved-title">
+              {/* "Saved" said once, by the filter beside it; the heading says whose eyes it's for. */}
+              <div className="flex items-center justify-between gap-3">
+                <h2 id="saved-title" className="flex items-center gap-1.5 text-meta font-semibold text-muted">
+                  <span className="sr-only">Saved, </span>
+                  <Lock aria-hidden size={13} className="shrink-0" />
+                  Only you see this
+                </h2>
+                {control}
+              </div>
+              <div className="mt-2">
+                {saved.length > 0 ? (
+                  <ListingGrid
+                    listings={saved}
+                    from="saved"
+                    label="Saved homes"
+                    layout="grid2"
+                    counts={await getListingCounts(saved.map((listing) => listing.ListingKey))}
+                  />
+                ) : (
+                  <EmptyState
+                    icon={Bookmark}
+                    title="Nothing saved yet"
+                    action={
+                      <Link href="/search" data-empty-action className={button({ kind: "secondary" })}>
+                        Search homes
+                      </Link>
+                    }
+                  >
+                    Tap the bookmark on any home to keep it here.
+                  </EmptyState>
+                )}
+              </div>
+            </section>
+          ) : nothingYet ? (
+            isMe ? (
+              <>
+                {/* Nothing liked or said yet still leaves the way to what they saved. */}
+                <div className="mb-1 flex justify-end">{control}</div>
                 <EmptyState
-                  icon={Bookmark}
-                  title="Nothing saved yet"
+                  icon={Home}
+                  title="Nothing here yet"
                   action={
-                    <Link href="/search" data-empty-action className={button({ kind: "secondary" })}>
+                    <Link href="/search" data-empty-action className={button({ kind: "primary" })}>
                       Search homes
                     </Link>
                   }
-                >
-                  Tap the bookmark on any home to keep it here.
-                </EmptyState>
-              )}
-            </div>
-          </section>
-        ) : nothingYet ? (
-          isMe ? (
-            <>
-              {/* Nothing liked or said yet still leaves the way to what they saved. */}
-              <div className="mb-1 flex justify-end">{control}</div>
-              <EmptyState
-                icon={Home}
-                title="Nothing here yet"
-                action={
-                  <Link href="/search" data-empty-action className={button({ kind: "primary" })}>
-                    Search homes
-                  </Link>
-                }
-              />
-            </>
-          ) : (
-            <EmptyState icon={Home} title="Nothing yet">
-              {name} hasn&apos;t liked anything yet.
-            </EmptyState>
-          )
-        ) : (
-          <>
-            {/* A taste chip can narrow it; then it says so, with the way back. (Liked, Didn't like
-                and Comments are chosen on the first day's line.) Its own edge and background reach
-                past the cards' rings, so nothing shows round it once it sticks. */}
-            {about && label && (
-              <nav
-                aria-label="Showing"
-                className="sticky top-(--header) z-30 -mx-4 flex flex-wrap gap-2 bg-surface px-4 py-3 shadow-[0_1px_0_var(--color-stone-200)] lg:-mx-2 lg:-mt-3 lg:px-2"
-              >
-                <Link
-                  href={href({ about: null })}
-                  aria-label={`Remove ${label}`}
-                  className={cn(pill(), "min-w-0 bg-white text-ink ring-2 ring-ink hover:bg-stone-50")}
-                >
-                  {side === "like" && <Heart aria-hidden size={14} className="shrink-0 fill-rose-600 text-rose-600" />}
-                  {side === "pass" && <ThumbsDown aria-hidden size={14} className="shrink-0 text-amber-700" />}
-                  <span className="truncate">{label}</span>
-                  <X aria-hidden size={16} className="shrink-0" />
-                </Link>
-              </nav>
-            )}
-            {keptPrivate ? (
-              <EmptyState
-                icon={Lock}
-                title={`${name} keeps passes private.`}
-                action={
-                  <Link href={href({ show: "all" })} data-empty-action className={button({ kind: "secondary" })}>
-                    See everything
-                  </Link>
-                }
-              />
-            ) : feed.cards.length > 0 || posts.length > 0 || feed.earlier ? (
-              <FeedGate myName={account?.full_name?.trim() || null}>
-                <ProfileFeed
-                  cards={feed.cards}
-                  posts={posts}
-                  name={name}
-                  face={face}
-                  isMe={isMe}
-                  agent={person.isAgent}
-                  earlierHref={feed.earlier ? href({ before: feed.earlier }) : null}
-                  reelFrom={person.id}
-                  photo={person.photo}
-                  filters={{ show, about, side }}
-                  control={control}
-                  bars={{ counts: barCounts, mine: barMine }}
                 />
-              </FeedGate>
-            ) : (
-              <>
-                {/* Nothing to show still leaves the way to show something else. */}
-                <div className="mb-1 flex justify-end">{control}</div>
-                {before ? (
-                  <EmptyState icon={Home} title="That's all">
-                    <Link href={href({})} className="font-semibold text-brand underline-offset-2 hover:underline">
-                      Newest
-                    </Link>
-                  </EmptyState>
-                ) : label ? (
-                  <EmptyState icon={Home} title={`Nothing about the ${label.toLowerCase()} yet.`} />
-                ) : show === "passed" ? (
-                  <EmptyState icon={ThumbsDown} title="Nothing passed on yet." />
-                ) : show === "comments" ? (
-                  <EmptyState icon={MessageCircle} title="No comments yet." />
-                ) : (
-                  <EmptyState icon={Heart} title="Nothing liked yet." />
-                )}
               </>
-            )}
-          </>
-        )}
+            ) : (
+              <EmptyState icon={Home} title="Nothing yet">
+                {name} hasn&apos;t liked anything yet.
+              </EmptyState>
+            )
+          ) : (
+            <>
+              {/* A taste chip can narrow it; then it says so, with the way back. (Liked, Didn't like
+                  and Comments are chosen on the first day's line.) Its own edge and background reach
+                  past the cards' rings, so nothing shows round it once it sticks. */}
+              {about && label && (
+                <nav
+                  aria-label="Showing"
+                  className="sticky top-(--header) z-30 -mx-4 flex flex-wrap gap-2 bg-surface px-4 py-3 shadow-[0_1px_0_var(--color-stone-200)] lg:-mx-2 lg:-mt-3 lg:px-2"
+                >
+                  <Link
+                    href={href({ about: null })}
+                    aria-label={`Remove ${label}`}
+                    className={cn(pill(), "min-w-0 bg-white text-ink ring-2 ring-ink hover:bg-stone-50")}
+                  >
+                    {side === "like" && <Heart aria-hidden size={14} className="shrink-0 fill-rose-600 text-rose-600" />}
+                    {side === "pass" && <ThumbsDown aria-hidden size={14} className="shrink-0 text-amber-700" />}
+                    <span className="truncate">{label}</span>
+                    <X aria-hidden size={16} className="shrink-0" />
+                  </Link>
+                </nav>
+              )}
+              {keptPrivate ? (
+                <EmptyState
+                  icon={Lock}
+                  title={`${name} keeps passes private.`}
+                  action={
+                    <Link href={href({ show: "all" })} data-empty-action className={button({ kind: "secondary" })}>
+                      See everything
+                    </Link>
+                  }
+                />
+              ) : feed.cards.length > 0 || posts.length > 0 || feed.earlier ? (
+                <FeedGate myName={account?.full_name?.trim() || null}>
+                  <ProfileFeed
+                    cards={feed.cards}
+                    posts={posts}
+                    name={name}
+                    face={face}
+                    isMe={isMe}
+                    agent={person.isAgent}
+                    earlierHref={feed.earlier ? href({ before: feed.earlier }) : null}
+                    reelFrom={person.id}
+                    photo={person.photo}
+                    filters={{ show, about, side }}
+                    control={control}
+                    bars={{ counts: barCounts, mine: barMine }}
+                  />
+                </FeedGate>
+              ) : (
+                <>
+                  {/* Nothing to show still leaves the way to show something else. */}
+                  <div className="mb-1 flex justify-end">{control}</div>
+                  {before ? (
+                    <EmptyState icon={Home} title="That's all">
+                      <Link href={href({})} className="font-semibold text-brand underline-offset-2 hover:underline">
+                        Newest
+                      </Link>
+                    </EmptyState>
+                  ) : label ? (
+                    <EmptyState icon={Home} title={`Nothing about the ${label.toLowerCase()} yet.`} />
+                  ) : show === "passed" ? (
+                    <EmptyState icon={ThumbsDown} title="Nothing passed on yet." />
+                  ) : show === "comments" ? (
+                    <EmptyState icon={MessageCircle} title="No comments yet." />
+                  ) : (
+                    <EmptyState icon={Heart} title="Nothing liked yet." />
+                  )}
+                </>
+              )}
+            </>
+          )}
+          </div>
         </div>
-      </div>
-      {/* What you just did on your page, said in a word: "Link copied", "Like removed". */}
-      {isMe && <Toast />}
-    </main>
+        {/* What you just did on your page, said in a word: "Link copied", "Like removed". */}
+        {isMe && <Toast />}
+      </main>
+    </SavedHomes>
   );
 }

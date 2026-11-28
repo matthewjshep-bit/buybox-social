@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, openComments, pastNameStep, saveDetails, signInAgent, toFirstHome } from "./helpers";
+import { createShare, heartOf, homeIn, joinAs, openComments, pastNameStep, saveDetails, signInAgent, toFirstHome, toSendPill } from "./helpers";
 
 // A client's own link leads on to the rest of Porchcard and never ends in a
 // dead end: signed in, their menu and the bell are in the agent's header; a
@@ -281,8 +281,8 @@ test("a quick Send named for someone, opened on a new device, starts the name pr
       },
     });
   });
-  await agent.goto("/homes/SAMPLE-1004");
-  await homeIn(agent, "96 Fernhollow Ln").getByRole("button", { name: "Send 96 Fernhollow Ln", exact: true }).click();
+  // (An agent's one-tap Send: the pill beside the map.)
+  await (await toSendPill(agent, "SAMPLE-1004")).click();
   const sheet = agent.getByRole("dialog", { name: "Sent. Who's it for?" });
   // (The link is made as the sheet opens; on a busy machine that takes a moment.)
   await expect(sheet).toBeVisible({ timeout: 15_000 });

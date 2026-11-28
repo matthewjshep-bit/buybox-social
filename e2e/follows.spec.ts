@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { commentIn, createShare, heartOf, homeIn, joinAs, openComments, signInAgent, signUpBuyer } from "./helpers";
+import { commentIn, createShare, heartOf, homeIn, joinAs, openComments, pass, signInAgent, signUpBuyer } from "./helpers";
 
 const saved = (page: Page) =>
   page.waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
@@ -162,7 +162,7 @@ test("the Following stream: one card per home however many people liked it, only
   await bo.goto("/homes/SAMPLE-1002");
   await Promise.all([saved(bo), heartOf(homeIn(bo, TAMSEN)).click()]);
   await bo.goto("/homes/SAMPLE-1013");
-  await Promise.all([saved(bo), homeIn(bo, LAKEVIEW).getByRole("button", { name: "Pass on this home" }).click()]);
+  await Promise.all([saved(bo), pass(bo, homeIn(bo, LAKEVIEW))]);
 
   // Dee follows them both.
   const dee = await signUpBuyer(browser, "dee.stream@example.com", "Dee Stream");

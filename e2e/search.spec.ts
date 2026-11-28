@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { commentsOf, heartOf, homeIn, joinAs, settle, signUpBuyer } from "./helpers";
+import { commentsOf, heartOf, homeIn, joinAs, pass, settle, signUpBuyer } from "./helpers";
 
 // (A pin is named by its short price, its address and its price: "$689K, 719
 // Saltmarsh Ln, $689,000". The home beside the map has a price to tap too.)
@@ -198,7 +198,8 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
     })
     .toBe(0);
   const actions = halvard.locator("[data-actions]");
-  const inPane = ["Pass on this home", /^Like 10421 Halvard Way NE/, /^Comments/, /^Save 10421 Halvard Way NE/, "More options"];
+  // (Pass, with the rest of what's in More, is the head's "…", by the price.)
+  const inPane = [/^Like 10421 Halvard Way NE/, /^Comments/, /^Save 10421 Halvard Way NE/];
   await expect(actions.getByRole("button")).toHaveCount(inPane.length);
   for (const [i, name] of inPane.entries()) await expect(actions.getByRole("button").nth(i)).toHaveAccessibleName(name);
   await expect(heartOf(halvard)).toBeVisible();
@@ -208,6 +209,7 @@ test("the map beside one home at a time: filters, pins and the home pane follow 
   // button of its own anywhere else.)
   await expect(halvard.getByRole("button", { name: /^Comments/ }).filter({ visible: true })).toHaveCount(1);
   await expect(halvard.getByRole("button", { name: /^Send/ }).filter({ visible: true })).toHaveCount(0);
+  await expect(halvard.locator("[data-home-head]").getByRole("button", { name: "More options" })).toBeVisible();
   const bar = halvard.locator("[data-bar-row]");
   await expect(bar.getByRole("button")).toHaveCount(1);
   await expect(bar.getByRole("button")).toHaveAccessibleName("Add a comment…");
@@ -541,7 +543,7 @@ test("signed in, Search is homes or people: the switch sits above the field on a
   expect(sheetBox.x + sheetBox.width).toBeLessThanOrEqual(paneBox.x + paneBox.width + 1);
   await page.keyboard.press("Escape");
   await expect(comments).toBeHidden();
-  await first.getByRole("button", { name: "Pass on this home" }).click();
+  await pass(page, first);
   const second = page.getByRole("article").nth(1);
   await expect(second).toBeInViewport({ ratio: 0.9 });
   const secondKey = (await second.getAttribute("data-home"))!;

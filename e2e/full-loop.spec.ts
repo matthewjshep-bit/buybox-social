@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import { joinAs, enterCode, signedIn, createShare, heartOf, homeIn, likeInPhoto, openComments, photoList, pick, signInAgent, passOn } from "./helpers";
+import { createShare, enterCode, expectPassed, heartOf, homeIn, joinAs, likeInPhoto, notForMe, openComments, pass, passOn, photoList, pick, signedIn, signInAgent } from "./helpers";
 
 test("one package, a link for each person: they react, the agent compares and replies", async ({ browser }) => {
   test.setTimeout(60_000);
@@ -91,12 +91,11 @@ test("one package, a link for each person: they react, the agent compares and re
         Boolean(res.request().headers()["next-action"]) &&
         (res.request().postData() ?? "").includes(says),
     );
-  const notForMe = samHouse.getByRole("button", { name: "Pass on this home" });
   const samMore = await passOn(sam, samHouse);
   let save = saving('"yard"');
   await samMore.getByRole("group", { name: "What made you pass?" }).getByRole("button", { name: "Yard" }).click();
   await save;
-  await expect(notForMe).toHaveAttribute("aria-pressed", "true");
+  await expect(notForMe(samMore)).toHaveAttribute("aria-pressed", "true");
   await sam.keyboard.press("Escape");
 
   // Reactions persist across a reload; tapping again switches one off.
@@ -107,16 +106,16 @@ test("one package, a link for each person: they react, the agent compares and re
   await expect(thread.getByText(/^1 like$|^Liked by /)).toBeVisible();
   await expect(thread).not.toContainText(/pass/i);
   save = saving('"reaction":null');
-  await notForMe.click();
+  await pass(sam, samHouse);
   await save;
-  await expect(notForMe).toHaveAttribute("aria-pressed", "false");
+  await expectPassed(sam, samHouse, false);
   await jamie.reload();
   thread = await openComments(jamie, house);
   await expect(thread.getByText(/Sam passed/)).toHaveCount(0);
   save = saving('"reaction":"dislike"');
-  await notForMe.click();
+  await pass(sam, samHouse);
   await save;
-  await expect(notForMe).toHaveAttribute("aria-pressed", "true");
+  await expectPassed(sam, samHouse);
 
   // The agent sees all of it in plain words, and replies.
   await agent.goto(`${agent.url().split("?")[0]}?tab=homes`);

@@ -5,26 +5,8 @@
 // and passes; whoever was sent the homes sees their own take and the
 // sender's words, never other people's passes. Opening a conversation is
 // having seen it, on either side.
-import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, openComments, signInAgent, signUpBuyer, threadComment } from "./helpers";
-
-// A link with nobody named on it. The box for sending homes asks who it's
-// for, so this is the one-tap Send on the home itself (which makes the link
-// first and asks who it's for after), skipped past to the link's own page.
-async function namelessLink(agent: Page, key: string, address: string) {
-  await agent.goto(`/homes/${key}`);
-  await homeIn(agent, address).getByRole("button", { name: `Send ${address}`, exact: true }).click();
-  const sheet = agent.getByRole("dialog", { name: /^(Sent\. )?Who's it for\?$|^Send this home$/ });
-  await expect(sheet).toBeVisible({ timeout: 15_000 });
-  // (The sheet's body loads a beat after it opens.) The slower way, when the
-  // one tap couldn't copy the link: made here.
-  const create = sheet.getByRole("button", { name: "Create link" });
-  const details = sheet.getByRole("link", { name: "Link details", disabled: false });
-  await expect(create.or(details)).toBeVisible();
-  if (await create.isVisible()) await create.click();
-  await details.click();
-  await agent.waitForURL(/\/dashboard\/shares\/[\w-]+(\?tab=.*)?$/);
-}
+import { expect, test } from "@playwright/test";
+import { createShare, expectPassed, heartOf, homeIn, joinAs, namelessLink, openComments, pass, signInAgent, signUpBuyer, threadComment } from "./helpers";
 
 const QUILLAN = "1204 Quillan St SE";
 const SALTMARSH = "719 Saltmarsh Ln";
@@ -51,8 +33,8 @@ test("an agent's Messages: one thread per person and one per group link, the hom
   await chat.getByRole("button", { name: "Post", exact: true }).click();
   await expect(chat).toContainText("Is the basement finished?");
   await jo.keyboard.press("Escape");
-  await homeIn(jo, SALTMARSH).getByRole("button", { name: "Pass on this home" }).click();
-  await expect(homeIn(jo, SALTMARSH).getByRole("button", { name: "Pass on this home" })).toHaveAttribute("aria-pressed", "true");
+  await pass(jo, homeIn(jo, SALTMARSH));
+  await expectPassed(jo, homeIn(jo, SALTMARSH));
   // Signed in on her link, Contact has a way into that conversation (Lena shows no phone or email).
   await jo.getByRole("banner").getByRole("button", { name: "Contact" }).click();
   const contact = jo.getByRole("dialog", { name: "Contact Lena Messages" });
@@ -215,7 +197,7 @@ test("an agent's Messages: one thread per person and one per group link, the hom
   await agent.waitForURL(/\/dashboard\/shares\//);
   await agent.goto(`${agent.url().split("?")[0]}?tab=people`);
   await expect(agent.getByRole("button", { name: /^Delete\b/ })).toHaveCount(0);
-  await namelessLink(agent, "SAMPLE-1013", "5902 Lakeview Terrace SE");
+  await namelessLink(agent, "SAMPLE-1013");
   await agent.goto("/messages");
   const nameless = list.getByRole("link", { name: /^Link for 5902 Lakeview/ });
   await expect(nameless).toContainText("Not opened yet");

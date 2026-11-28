@@ -99,23 +99,17 @@ test("the feed: full-screen homes, a heart, comments in one thread under the pho
   const evergreens = await pick(post, "the evergreens");
   await expect(evergreens.getByRole("button", { name: "Like the evergreens, 1 like", exact: true })).toBeVisible();
   await evergreens.getByRole("button", { name: "Close" }).click();
-  // Yes or no to the home itself is one tap, in the row right under the photo.
-  await expect(post.getByRole("button", { name: "Pass on this home" })).toBeVisible();
+  // Yes to the home itself is one tap: the heart, leading the row right under
+  // the photo's foot; nothing sits on the photo. (No is "Not for me", in More.)
   await expect(heartOf(post)).toBeVisible();
-  // The X first, the heart beside it, both under the photo's foot, in the
-  // row of things to do; nothing sits on the photo.
   const corners = (await photoFrame.boundingBox())!;
   const actions = post.locator("[data-actions]");
   const heartBox = (await heartOf(post).boundingBox())!;
-  const passBox = (await post.getByRole("button", { name: "Pass on this home" }).boundingBox())!;
-  expect(passBox.y).toBeGreaterThanOrEqual(corners.y + corners.height - 1);
   expect(heartBox.y).toBeGreaterThanOrEqual(corners.y + corners.height - 1);
-  expect(Math.abs(heartBox.y - passBox.y)).toBeLessThan(2);
-  expect(heartBox.x).toBeGreaterThan(passBox.x + passBox.width - 1);
   expect(heartBox.width).toBeGreaterThanOrEqual(44);
   expect(heartBox.height).toBeGreaterThanOrEqual(44);
-  await expect(actions.getByRole("button", { name: "Pass on this home" })).toHaveCount(1);
-  await expect(actions.getByRole("button", { name: /^Like 96 Fernhollow Ln/ })).toHaveCount(1);
+  await expect(actions.getByRole("button").first()).toHaveAccessibleName(/^Like 96 Fernhollow Ln/);
+  await expect(actions.getByRole("button", { name: "Pass on this home" })).toHaveCount(0);
   await expect(actions.getByRole("button", { name: /^Comments/ })).toHaveCount(1);
   await expect(buyer.getByText("Toby")).toHaveCount(0);
 

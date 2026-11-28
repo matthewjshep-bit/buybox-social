@@ -6,28 +6,7 @@
 // was done to it; the link's own page is a tap from the top, and leads back
 // to the conversation it belongs to. (The old Links page leads here.)
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, openComments, signedIn, signInAgent, threadComment, threadHome, threadRow } from "./helpers";
-
-// A link with nobody named on it: the one anyone can join. The box for
-// sending homes asks who it's for, so this is the one-tap Send on the home
-// itself (which makes the link first and asks who it's for after): skipped
-// past, straight to the link's own page, where the link is read.
-async function namelessLink(agent: Page, key: string, address: string) {
-  await agent.goto(`/homes/${key}`);
-  await homeIn(agent, address).getByRole("button", { name: `Send ${address}`, exact: true }).click();
-  const sheet = agent.getByRole("dialog", { name: /^(Sent\. )?Who's it for\?$|^Send this home$/ });
-  await expect(sheet).toBeVisible({ timeout: 15_000 });
-  // (The sheet's body loads a beat after it opens.) The slower way, when the
-  // one tap couldn't copy the link: made here.
-  const create = sheet.getByRole("button", { name: "Create link" });
-  const details = sheet.getByRole("link", { name: "Link details", disabled: false });
-  await expect(create.or(details)).toBeVisible();
-  if (await create.isVisible()) await create.click();
-  await details.click();
-  await agent.waitForURL(/\/dashboard\/shares\/[\w-]+(\?tab=.*)?$/);
-  const dashboardUrl = agent.url().split("?")[0];
-  return { url: await agent.getByLabel("Your link is ready").inputValue(), dashboardUrl };
-}
+import { createShare, heartOf, homeIn, namelessLink, openComments, signedIn, signInAgent, threadComment, threadHome, threadRow } from "./helpers";
 
 const actionAnswered = (page: Page) =>
   page.waitForResponse((res) => res.request().method() === "POST" && Boolean(res.request().headers()["next-action"]));
@@ -43,8 +22,8 @@ test("every link sent is a conversation, newest first: who it's for, how it's go
   const forMax = await createShare(lina, ["812 N Corbel"], ["Max"]);
   const forKit = await createShare(lina, ["10421 Halvard"], ["Kit"]);
   // Two with nobody on them, to the same home, one after the other.
-  const older = await namelessLink(lina, "SAMPLE-1004", "96 Fernhollow Ln");
-  const newer = await namelessLink(lina, "SAMPLE-1004", "96 Fernhollow Ln");
+  const older = await namelessLink(lina, "SAMPLE-1004");
+  const newer = await namelessLink(lina, "SAMPLE-1004");
   const pathOf = (url: string) => new URL(url).pathname;
   const idOf = (url: string) => pathOf(url).split("/").pop()!;
 

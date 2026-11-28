@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { createShare, heartOf, homeIn, joinAs, linkMade, signInAgent, signUpBuyer, toFirstHome, toWho, pickHome } from "./helpers";
+import { createShare, heartOf, homeIn, joinAs, linkMade, pickHome, sendPill, signInAgent, signUpBuyer, toFirstHome, toWho } from "./helpers";
 
 // A link is named for the people it's for, and the people come from one
 // picker, inside the box for sending homes (/send, under "Someone"): a first
@@ -309,21 +309,23 @@ async function watchLinks(page: Page) {
   return tokens;
 }
 
-// An agent on a home, once the page has a link waiting for Send.
+// An agent beside the map with a home showing, once the page has a link
+// waiting for Send (the pill: an agent's one-tap Send).
 async function readyToSend(page: Page, key = "SAMPLE-1004") {
   const tokens = await watchLinks(page);
   const before = tokens.length;
-  await page.goto(`/homes/${key}`);
+  await page.goto(`/search?home=${key}`);
   await expect.poll(() => tokens.length).toBeGreaterThan(before);
 }
 
-// A link anyone can open, the way an agent gets one in a tap: Send on the
-// home, the share sheet (stood in for) handed the link, and nobody named in
+// A link anyone can open, the way an agent gets one in a tap: Send beside
+// the map, the share sheet (stood in for) handed the link, and nobody named in
 // the sheet that follows. (The box won't send to nobody: "Say who it's for.")
 // Gives back the link, and where it is on the dashboard.
 async function openLink(page: Page, key: string, address: string) {
   await readyToSend(page, key);
-  await homeIn(page, address).getByRole("button", { name: `Send ${address}`, exact: true }).click();
+  await expect(sendPill(page)).toHaveAccessibleName(new RegExp(`${address}$`));
+  await sendPill(page).click();
   const sheet = page.getByRole("dialog", { name: "Sent. Who's it for?" });
   await expect(sheet).toBeVisible();
   const details = sheet.getByRole("link", { name: "Link details" });
@@ -344,8 +346,8 @@ test("a home from Send named for Toby: whoever opens it as Toby is Toby, once; a
   test.setTimeout(120_000);
   const agent = await signInAgent(browser, "tad-toby@example.com", "Tad Sender");
   await readyToSend(agent);
-  // (Send, on the photo's corner.)
-  const send = homeIn(agent, "96 Fernhollow Ln").getByRole("button", { name: "Send 96 Fernhollow Ln", exact: true });
+  // (Send, the pill beside the map.)
+  const send = sendPill(agent);
   const sheet = agent.getByRole("dialog", { name: "Sent. Who's it for?" });
 
   await send.click();

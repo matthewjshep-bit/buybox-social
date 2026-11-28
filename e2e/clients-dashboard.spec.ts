@@ -8,7 +8,7 @@
 // address leads here.
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import { createShare, homeIn, joinAs, pickHome, signInAgent, threadComment, threadHome, threadRow, toFirstHome } from "./helpers";
+import { createShare, homeIn, joinAs, pickHome, signInAgent, threadComment, threadHome, threadRow, toFirstHome, toSendPill } from "./helpers";
 
 const QUILLAN = "1204 Quillan St SE";
 
@@ -24,11 +24,10 @@ test("whoever wants a showing is waiting on Messages, with Reply under the home,
   const sharePath = new URL(dashboardUrl).pathname;
   const shareId = sharePath.split("/").pop()!;
   // Someone else who hasn't opened theirs, and a link with nobody on it yet
-  // (the box asks who it's for, so that one is the one-tap Send on the home
-  // itself, which makes the link first and asks after).
+  // (the box asks who it's for, so that one is the one-tap Send beside the
+  // map, which makes the link first and asks after).
   await createShare(fern, ["10421 Halvard"], ["Max"]);
-  await fern.goto("/homes/SAMPLE-1004");
-  await homeIn(fern, "96 Fernhollow Ln").getByRole("button", { name: "Send 96 Fernhollow Ln", exact: true }).click();
+  await (await toSendPill(fern, "SAMPLE-1004")).click();
   const sheet = fern.getByRole("dialog", { name: /^(Sent\. )?Who's it for\?$|^Send this home$/ });
   await expect(sheet).toBeVisible({ timeout: 15_000 });
   // (The sheet's body comes a beat after the sheet: wait for one or the other.)

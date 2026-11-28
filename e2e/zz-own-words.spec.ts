@@ -181,7 +181,7 @@ test("a post: its words changed in place, on its home too; deleted, it's off you
   await box.press("Enter");
   await expect(box).toBeVisible();
   await box.fill(FIXED);
-  await card.getByRole("button", { name: "Save" }).click();
+  await card.getByRole("button", { name: "Save", exact: true }).click();
   await expect(box).toHaveCount(0);
   await expect(card).toContainText(FIXED);
   await expect(card.locator("[data-card-line]")).toContainText("Edited");

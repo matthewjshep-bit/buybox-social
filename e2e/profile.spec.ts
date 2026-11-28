@@ -33,21 +33,7 @@ import {
   type TasteStory,
 } from "../lib/taste-story";
 import { takeFromCards } from "../lib/reel-context";
-import { enterCode,
-  commentIn,
-  createShare,
-  heartOf,
-  homeIn,
-  likeInPhoto,
-  openComments,
-  openMore,
-  pastNameStep,
-  pick,
-  signInAgent,
-  signUpBuyer,
-  passOn,
-  keepLinksPrivate,
-} from "./helpers";
+import { commentIn, createShare, enterCode, heartOf, homeIn, keepLinksPrivate, likeInPhoto, notForMe, openComments, openMore, passOn, pastNameStep, pick, signInAgent, signUpBuyer } from "./helpers";
 import { takeBackAll } from "./own-page";
 
 const CORBEL = "812 N Corbel St";
@@ -528,7 +514,7 @@ test("with that switched off, what someone does on an agent's link never shows o
     const saved = homeIn(rowan, QUILLAN);
     // The pass and why, as More has them from the server.
     const take = await openMore(rowan, saved);
-    await expect(saved.getByRole("button", { name: "Pass on this home" })).toHaveAttribute("aria-pressed", "true", { timeout: 2000 });
+    await expect(notForMe(take)).toHaveAttribute("aria-pressed", "true", { timeout: 2000 });
     await expect(
       take.getByRole("group", { name: "What made you pass?" }).getByRole("button", { name: "Yard" }),
     ).toHaveAttribute("aria-pressed", "true", { timeout: 2000 });
