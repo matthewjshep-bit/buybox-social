@@ -83,6 +83,8 @@ test("a home from a pasted Zillow link, found and picked in the box; named for s
   await remove.click();
   await expect(picked.getByRole("listitem")).toHaveCount(1);
   await expect(picked).toContainText(QUILLAN);
+  // (Remove puts the keyboard back in the search, for the next home.)
+  await expect(search).toBeFocused();
 
   // A home, but nobody: it can't go yet, and it says why.
   await expect(send).toBeDisabled();

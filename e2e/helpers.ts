@@ -421,15 +421,12 @@ export const sendPill = (page: Page) => page.getByRole("button", { name: /^Send 
 // On to the map with a home showing, once the page has its link waiting for
 // Send: the pill.
 export async function toSendPill(page: Page, key: string) {
-  const held = page.waitForResponse(
-    async (res) =>
-      res.request().method() === "POST" &&
-      Boolean(res.request().headers()["next-action"]) &&
-      /"token":"[\w-]{32}"/.test(await res.text().catch(() => "")),
-  );
   await page.goto(`/search?home=${encodeURIComponent(key)}`);
-  await held;
-  return sendPill(page);
+  const pill = sendPill(page);
+  // (Ready once its link is: until then it says it's getting one.)
+  await expect(pill).toBeVisible({ timeout: 15_000 });
+  await expect(pill).not.toHaveAttribute("aria-disabled", "true", { timeout: 15_000 });
+  return pill;
 }
 
 // A link with nobody named on it: the one anyone can join. The box for
