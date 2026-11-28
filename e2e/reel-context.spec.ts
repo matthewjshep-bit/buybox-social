@@ -136,6 +136,15 @@ test("a card on someone's page opens their highlights on a stage that takes the 
   const corbel = homeIn(popout, CORBEL);
   await expect(corbel).toBeInViewport({ ratio: 0.9 });
   await page.waitForURL(/home=SAMPLE-1003/);
+  // (Come to rest: until it has, it isn't the home showing, and anything
+  // opened on it folds away again.)
+  await expect
+    .poll(async () => {
+      const was = (await corbel.boundingBox())!.y;
+      await page.waitForTimeout(150);
+      return Math.abs((await corbel.boundingBox())!.y - was);
+    })
+    .toBeLessThan(0.5);
   // It opens on her photo, not its first: the kitchen, where she liked the bar stools.
   await expect(corbel.getByRole("img", { name: KITCHEN })).toBeInViewport();
 
@@ -144,7 +153,10 @@ test("a card on someone's page opens their highlights on a stage that takes the 
   // and what she said. Not what she didn't like: that's for her own page only.
   const why = corbel.getByRole("region", { name: "Why it's here" });
   const row = why.getByRole("button", { expanded: false });
-  await expect(row).toContainText("Ines's highlights · 2 of 3Ines liked the bar stools");
+  await expect(row).toHaveAccessibleName("Ines's highlights · 2 of 3 · Ines liked the bar stools");
+  await expect(why).toContainText("Ines's highlights · 2 of 3Ines liked the bar stools");
+  // Her face (and her name) go to her page, as a post's header does; the rest of the row opens the take.
+  await expect(why.getByRole("link", { name: "Ines's profile" })).toHaveAttribute("href", inesPage);
   const [rowBox, facts] = [(await row.boundingBox())!, (await corbel.getByRole("button", { name: "About this home" }).boundingBox())!];
   expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(facts.y + 1);
   expect(rowBox.height).toBeGreaterThanOrEqual(44);
@@ -336,7 +348,7 @@ test("on a phone the pop-out is the whole screen, with whose take it is heading 
 
   // One line until it's tapped; then all of it, in place.
   const toggle = why.getByRole("button", { expanded: false });
-  await expect(toggle).toContainText("Ines liked the bar stools");
+  await expect(toggle).toHaveAccessibleName(/Ines liked the bar stools/);
   await toggle.click();
   await expect(why.getByRole("button", { expanded: true })).toBeVisible();
   await expect(why.getByRole("link", { name: "Ines", exact: true })).toBeVisible();

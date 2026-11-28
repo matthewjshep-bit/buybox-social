@@ -45,6 +45,11 @@ export type TimelineComment = {
   own?: boolean;
   // Changed since it was said ("Edited").
   edited?: boolean;
+  // A reply to a comment its author has since taken back: still under it,
+  // where the thread shows "Comment deleted".
+  parentGone?: boolean;
+  // That placeholder itself (made by the thread, never read from the database).
+  deleted?: boolean;
   // On the agent's own page of a link: the photo of the person who said it,
   // if they've added one. Never on public pages.
   photo?: string;
@@ -194,10 +199,12 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
         media_key: string | null;
         spot: string | null;
         edited: boolean;
+        parent_gone: boolean;
       }[]
     >`
       select c.id, c.listing_key, c.visitor_id, v.first_name, c.body, c.created_at, c.parent_id,
         c.reply_to_visitor, c.media_key, c.spot, c.edited_at is not null as edited,
+        (c.parent_id is not null and not exists (select 1 from public_comments p where p.id = c.parent_id)) as parent_gone,
         (select count(*)::int from public_comment_likes cl where cl.comment_id = c.id) as likes,
         exists (select 1 from public_comment_likes cl
           where cl.comment_id = c.id and cl.visitor_id = ${visitorId}::uuid) as liked_by_me,
@@ -269,6 +276,7 @@ export async function getPublicTimelines(listings: Listing[], visitorId: string 
             mine: c.visitor_id === visitorId,
             own: c.visitor_id === visitorId,
             ...(c.edited && { edited: true }),
+            ...(c.parent_gone && { parentGone: true }),
             // (A reply to someone whose likes have since gone stands on its own.)
             parentId: c.parent_id ?? (c.reply_to_visitor ? (ids.get(`v:${c.reply_to_visitor}`) ?? null) : null),
             likes: c.likes,
@@ -341,10 +349,12 @@ export async function getShareTimelines(
         profile: string | null;
         photo_v: string | null;
         edited: boolean;
+        parent_gone: boolean;
       }[]
     >`
       select c.id, c.listing_key, c.participant_id, p.first_name, a.full_name as agent_name,
-        c.body, c.created_at, c.edited_at is not null as edited, c.shared_publicly, c.public_comment_id is not null as public_copy,
+        c.body, c.created_at, c.edited_at is not null as edited,
+        (c.parent_id is not null and not exists (select 1 from comments pc where pc.id = c.parent_id)) as parent_gone, c.shared_publicly, c.public_comment_id is not null as public_copy,
         c.media_key, c.spot, c.parent_id, c.reply_to_participant,
         -- Their photo, where they've signed up and added one (only when asked for its faces).
         ${faces ? sql`pv.id` : sql`null::uuid`} as profile,
@@ -410,6 +420,7 @@ export async function getShareTimelines(
             mine: c.participant_id !== null && c.participant_id === participantId,
             own: c.participant_id === null ? agent : c.participant_id === participantId,
             ...(c.edited && { edited: true }),
+            ...(c.parent_gone && { parentGone: true }),
             parentId: c.parent_id ?? (c.reply_to_participant ? (ids.get(`p:${c.reply_to_participant}`) ?? null) : null),
             likes: 0,
             likedByMe: false,

@@ -638,28 +638,28 @@ test("on a phone a listing's address and price are never cut short, and Send sta
   await expect(row.getByRole("button", { name: `Feature ${LONG}` })).toBeVisible();
 });
 
-test("an agent's listings sort newest or most active, and a closed deal still takes likes and comments", async ({
+test("an agent's listings sort newest, oldest, most active or by price, and a closed deal still takes likes and comments", async ({
   browser,
 }) => {
   test.setTimeout(150_000);
   const agent = await signInAgent(browser, "sol.sorter@example.com", "Sol Sorter");
-  const add = async (address: string) => {
+  const add = async (address: string, price = "450000") => {
     await agent.goto("/dashboard/listings/new");
     const form = await enterListingYourself(agent);
     await form.getByLabel("Add photos").setInputFiles([{ name: "one.png", mimeType: "image/png", buffer: PNG }]);
     await form.getByLabel("Street address").fill(address);
     await form.getByLabel("City").fill("Burien");
     await form.getByLabel("ZIP").fill("98166");
-    await form.getByLabel("Price", { exact: true }).fill("450000");
+    await form.getByLabel("Price", { exact: true }).fill(price);
     await form.getByLabel("Beds").fill("3");
     await form.getByLabel("Baths").fill("2");
     await form.getByLabel("Sq ft", { exact: true }).fill("1400");
     await form.getByRole("button", { name: "Add listing" }).click();
     await agent.waitForURL(/\/dashboard\/listings$/);
   };
-  await add("1 Sort Ln");
-  await add("2 Sort Ln");
-  await add("3 Sort Ln");
+  await add("1 Sort Ln", "450000");
+  await add("2 Sort Ln", "380000");
+  await add("3 Sort Ln", "520000");
   // The newest is a deal done: it goes after the ones still available.
   await agent.getByRole("link", { name: "Edit 3 Sort Ln" }).click();
   const details = agent.getByRole("form", { name: "Listing details" });
@@ -670,14 +670,37 @@ test("an agent's listings sort newest or most active, and a closed deal still ta
   await agent.waitForURL(/\/people\/[\w-]+$/);
   const profile = new URL(agent.url()).pathname;
 
-  // Nothing featured: newest first (the closed one last), with Newest and
-  // Most active to pick from.
+  // Nothing featured: newest first (the closed one last), in one quiet
+  // "Sort: Newest" picker with the other orders.
   const fan = await signUpBuyer(browser, `cleo.closed.${Date.now()}@example.com`, "Cleo");
   await fan.goto(profile);
-  const sorts = fan.getByRole("group", { name: "Sort listings" });
-  await expect(sorts.getByRole("link")).toHaveText(["Newest", "Most active"]);
-  await expect(sorts.getByRole("link", { name: "Newest" })).toHaveAttribute("aria-current", "true");
+  const sorts = fan.getByRole("combobox", { name: "Sort listings" });
+  await expect(sorts.locator("option")).toHaveText([
+    "Newest",
+    "Oldest",
+    "Most active",
+    "Price (high to low)",
+    "Price (low to high)",
+  ]);
+  await expect(sorts).toHaveValue("newest");
+  await expect(fan.getByText("Sort:", { exact: true })).toBeVisible();
   const tiles = fan.getByRole("list", { name: "Listings" }).getByRole("listitem");
+  await expect(tiles.nth(0)).toContainText("2 Sort Ln");
+  await expect(tiles.nth(1)).toContainText("1 Sort Ln");
+  await expect(tiles.nth(2)).toContainText("3 Sort Ln");
+
+  // Oldest, and by price either way: the available ones first, the closed one after.
+  await sorts.selectOption("oldest");
+  await expect(fan).toHaveURL(/sort=oldest/);
+  await expect(tiles.nth(0)).toContainText("1 Sort Ln");
+  await expect(tiles.nth(1)).toContainText("2 Sort Ln");
+  await sorts.selectOption("price-desc");
+  await expect(fan).toHaveURL(/sort=price-desc/);
+  await expect(tiles.nth(0)).toContainText("1 Sort Ln");
+  await expect(tiles.nth(1)).toContainText("2 Sort Ln");
+  await expect(tiles.nth(2)).toContainText("3 Sort Ln");
+  await sorts.selectOption("price-asc");
+  await expect(fan).toHaveURL(/sort=price-asc/);
   await expect(tiles.nth(0)).toContainText("2 Sort Ln");
   await expect(tiles.nth(1)).toContainText("1 Sort Ln");
   await expect(tiles.nth(2)).toContainText("3 Sort Ln");
@@ -697,8 +720,8 @@ test("an agent's listings sort newest or most active, and a closed deal still ta
 
   // Most active: the closed one leads now, and the homes opened from there go in that order.
   await fan.goto(profile);
-  await sorts.getByRole("link", { name: "Most active" }).click();
-  await expect(sorts.getByRole("link", { name: "Most active" })).toHaveAttribute("aria-current", "true");
+  await sorts.selectOption("active");
+  await expect(sorts).toHaveValue("active");
   await expect(tiles.nth(0)).toContainText("3 Sort Ln");
   await expect(tiles.nth(1)).toContainText("2 Sort Ln");
   await tiles.nth(0).getByRole("link").first().click();
@@ -710,11 +733,19 @@ test("an agent's listings sort newest or most active, and a closed deal still ta
   await agent.getByRole("button", { name: "Feature 2 Sort Ln" }).click();
   await expect(agent.getByRole("button", { name: "2 Sort Ln is featured" })).toHaveAttribute("aria-pressed", "true");
   await fan.goto(profile);
-  await expect(sorts.getByRole("link")).toHaveText(["Featured", "Newest", "Most active"]);
+  await expect(sorts.locator("option")).toHaveText([
+    "Featured",
+    "Newest",
+    "Oldest",
+    "Most active",
+    "Price (high to low)",
+    "Price (low to high)",
+  ]);
+  await expect(sorts).toHaveValue("featured");
   await expect(tiles.nth(0)).toContainText("2 Sort Ln");
   await expect(tiles.nth(2)).toContainText("3 Sort Ln");
-  await sorts.getByRole("link", { name: "Newest" }).click();
-  await expect(sorts.getByRole("link", { name: "Newest" })).toHaveAttribute("aria-current", "true");
+  await sorts.selectOption("newest");
+  await expect(sorts).toHaveValue("newest");
   await expect(tiles.nth(0)).toContainText("2 Sort Ln");
   await expect(tiles.nth(2)).toContainText("3 Sort Ln");
 });

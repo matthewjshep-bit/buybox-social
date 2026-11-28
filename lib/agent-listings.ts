@@ -4,9 +4,9 @@ import type { Listing } from "./listings/types";
 import { getCopiedKeys, getListingsLook, getPinnedListings, getShownOwnListings } from "./own-listings";
 
 // How an agent's listings can be put in order on their page: as they chose
-// (the one they feature first), newest first, or the most liked and talked
-// about first.
-export const LISTING_SORTS = ["featured", "newest", "active"] as const;
+// (the one they feature first), newest or oldest first, the most liked and
+// talked about first, or by price.
+export const LISTING_SORTS = ["featured", "newest", "oldest", "active", "price-desc", "price-asc"] as const;
 export type ListingSort = (typeof LISTING_SORTS)[number];
 export const isListingSort = (value: unknown): value is ListingSort =>
   typeof value === "string" && (LISTING_SORTS as readonly string[]).includes(value);
@@ -25,14 +25,25 @@ export function sortListings(
   sort: ListingSort,
   counts?: Map<string, { likes: number; comments: number }>,
 ): Listing[] {
-  // (Those still available before the ones they've closed, in Featured and
-  // Newest; Most active goes by what people did, closed or not.)
+  // (Those still available before the ones they've closed, in every order
+  // but Most active, which goes by what people did, closed or not.)
   const closed = (listing: Listing) => listing.StandardStatus === "Closed";
   const openFirst = (list: Listing[]) => [...list.filter((listing) => !closed(listing)), ...list.filter(closed)];
   // (The one they feature leads, whatever it is.)
   if (sort === "featured") return listings.length > 0 ? [listings[0], ...openFirst(listings.slice(1))] : listings;
   const newest = (a: Listing, b: Listing) => listedAt(b) - listedAt(a);
   if (sort === "newest") return openFirst([...listings].sort(newest));
+  if (sort === "oldest") return openFirst([...listings].sort((a, b) => newest(b, a)));
+  if (sort === "price-desc" || sort === "price-asc") {
+    // (One with no price goes last, either way.)
+    const price = (listing: Listing) => Number(listing.ListPrice) || 0;
+    const way = sort === "price-asc" ? 1 : -1;
+    return openFirst(
+      [...listings].sort(
+        (a, b) => Number(!price(a)) - Number(!price(b)) || way * (price(a) - price(b)) || newest(a, b),
+      ),
+    );
+  }
   const activity = (listing: Listing) => {
     const count = counts?.get(listing.ListingKey);
     return count ? count.likes + count.comments : 0;

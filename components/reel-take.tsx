@@ -138,13 +138,19 @@ export function TakeCard({
     if (!something && !eyebrow && !fallback) return null;
     const where = eyebrow ? [eyebrow.title, eyebrow.place].filter(Boolean).join(" · ") : null;
     const lead = takes[0];
+    // Their face and name go to their page, as a post's header does; the
+    // rest of the row opens the take, when there's more to it. (The name is
+    // for a finger or a mouse: the face is the one link to it a keyboard or
+    // a screen reader meets.)
+    const page = lead?.who.profileId ? `/people/${lead.who.profileId}` : null;
     const line = lead ? (
       <>
-        {/* (Plain words, nothing to open: their name is the way to their page.) */}
-        {!deep && lead.who.profileId ? (
+        {page ? (
           <Link
-            href={`/people/${lead.who.profileId}`}
-            className="font-semibold text-white underline-offset-2 hover:underline"
+            href={page}
+            tabIndex={-1}
+            aria-hidden
+            className="relative z-10 font-semibold text-white underline-offset-2 hover:underline"
           >
             {lead.who.name}
           </Link>
@@ -165,7 +171,13 @@ export function TakeCard({
     ) : null;
     const Icon = forYou || fallback?.icon === "sparkles" ? Sparkles : fallback?.icon === "send" ? Send : House;
     const face = lead ? (
-      <Face who={lead.who} />
+      page ? (
+        <Link href={page} aria-label={`${lead.who.name}'s profile`} className="relative z-10 shrink-0 rounded-full">
+          <Face who={lead.who} />
+        </Link>
+      ) : (
+        <Face who={lead.who} />
+      )
     ) : line ? (
       <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/80">
         <Icon size={16} />
@@ -193,7 +205,27 @@ export function TakeCard({
           hidden && "invisible opacity-0",
         )}
       >
-        {deep ? (
+        {deep && page ? (
+          // The row opens the take from anywhere but the face and the name,
+          // which sit over it and go to their page.
+          <div className={cn(rowClass, "relative transition-colors hover:bg-white/[0.04]")}>
+            <button
+              ref={row}
+              type="button"
+              aria-expanded={open}
+              aria-controls={bodyId}
+              aria-label={[where, `${lead.who.name}${afterName(lead)}`].filter(Boolean).join(" · ")}
+              onClick={() => setOpen(!open)}
+              className="absolute inset-0"
+            />
+            {words}
+            <ChevronDown
+              aria-hidden
+              size={20}
+              className={cn("shrink-0 text-white/70 transition-transform motion-reduce:transition-none", open && "rotate-180")}
+            />
+          </div>
+        ) : deep ? (
           <button
             ref={row}
             type="button"

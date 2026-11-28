@@ -33,6 +33,7 @@ import {
   useState,
   useId,
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type Ref,
   type RefObject,
@@ -87,6 +88,10 @@ import { glass, menuRow } from "@/lib/ui";
 // than 44rem on a wide screen (`column`). The side-by-side code stays behind
 // this switch for now.
 const SPLIT_WIDE = false;
+// The photo's height with the comments up as a sheet: what's left above a
+// sheet of a bit over half the frame (22rem at least), never less than 7rem
+// (the home still there to see) or more than it had.
+const SHEET_STAGE = "min(var(--stage-full), max(7rem, calc(100cqh - var(--photo-top) - max(22rem, 56cqh))))";
 // (The layout wide screens had before either: gone.)
 const legacy = (classes: string) => (SPLIT_WIDE ? "" : classes) && "";
 // On a wide screen (the frame 48rem and up), the head and the words sit in
@@ -1754,9 +1759,12 @@ function Panel({
     const el = words.current;
     const view = window.visualViewport;
     if (!threadOpen || sideBySide || !el || !view) return;
+    // (Typing, the sheet reaches up to the head: with the keyboard taking
+    // the foot of the screen, the comments need the room more than the photo.)
     const place = () => {
       const lift = Math.max(0, Math.round(window.innerHeight - (view.offsetTop + view.height)));
       el.style.bottom = lift > 0 ? `${lift}px` : "";
+      el.style.top = lift > 0 ? "calc(var(--head-top) + var(--head-h))" : "";
     };
     place();
     view.addEventListener("resize", place);
@@ -1765,8 +1773,58 @@ function Panel({
       view.removeEventListener("resize", place);
       view.removeEventListener("scroll", place);
       el.style.bottom = "";
+      el.style.top = "";
     };
   }, [threadOpen, sideBySide]);
+  // The comments as a sheet (a phone, upright): pulled down by its top (the
+  // grip and the header), it follows the finger and, let go far enough
+  // down, goes away; not far enough, it springs back.
+  const sheet = threadOpen && !sideBySide && !short && !bare;
+  // It slides up as it's opened: once, then (not again when the home is
+  // drawn anew, say once a comment is posted).
+  const sheetWas = useRef(sheet);
+  useLayoutEffect(() => {
+    const was = sheetWas.current;
+    sheetWas.current = sheet;
+    if (!sheet || was || !words.current || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // (Revealed from its foot up, not moved: what's in it is where it will
+    // be from the start, so nothing scrolls to reach it mid-way.)
+    words.current.animate(
+      [{ clipPath: "inset(70% 0 0 0 round 1rem 1rem 0 0)" }, { clipPath: "inset(0 0 0 0 round 1rem 1rem 0 0)" }],
+      { duration: 240, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
+    );
+  }, [sheet]);
+  const dragSheet = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const el = words.current;
+    const at = event.target as Element;
+    if (!el || !at.closest("[data-sheet-grip]") || at.closest("button, a")) return;
+    const startY = event.clientY;
+    const pointer = event.pointerId;
+    let moved = 0;
+    // (Followed wherever the finger goes, on the window: the sheet keeps it
+    // too where it can, so a quick pull isn't lost to whatever's under it.)
+    try {
+      el.setPointerCapture(pointer);
+    } catch {}
+    el.style.transition = "none";
+    const move = (e: PointerEvent) => {
+      if (e.pointerId !== pointer) return;
+      moved = Math.max(0, e.clientY - startY);
+      el.style.transform = moved ? `translateY(${moved}px)` : "";
+    };
+    const up = (e: PointerEvent) => {
+      if (e.pointerId !== pointer) return;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      el.style.transition = "";
+      el.style.transform = "";
+      if (moved > Math.min(120, el.offsetHeight / 4)) closeThread(false);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
   // "Photo only" puts away any card, and a tap on the photo then is
   // just a look: nothing waits to pop up when everything comes back.
   if (bare && picked) setPicked(null);
@@ -2138,9 +2196,12 @@ function Panel({
                   // a couple of comments under the photo, as on a phone.)
                   "[--words-min:max(8.75rem,calc(6.75rem+var(--words-pad)))] @3xl/reel:[--words-min:max(8.75rem,calc(6.75rem+var(--words-pad)),28cqh)]",
               // (On a wide screen, as tall as the column is wide, at most.)
-              "[--stage-height:min(calc(0.75*min(100cqw,44rem)),calc(100cqh-var(--photo-top)-var(--words-min)-env(safe-area-inset-bottom)))]",
+              // (Its full height; with the comments up as a sheet, the photo
+              // shrinks into what's left above it: --stage-height, below.)
+              "[--stage-full:min(calc(0.75*min(100cqw,44rem)),calc(100cqh-var(--photo-top)-var(--words-min)-env(safe-area-inset-bottom)))]",
+              "[--stage-height:var(--stage-full)]",
               // (A phone on its side has no column to fit: the photo is as wide as it was.)
-              "@3xl/reel:not-short:[--col:clamp(30rem,calc(var(--stage-height)*4/3),44rem)] @3xl/reel:short:[--col:44rem]",
+              "@3xl/reel:not-short:[--col:clamp(30rem,calc(var(--stage-full)*4/3),44rem)] @3xl/reel:short:[--col:44rem]",
               "@3xl/reel:[--photo-left:calc((100cqw-var(--col))/2)] @3xl/reel:[--photo-right:calc((100cqw-var(--col))/2)]",
               "[--photo-bottom:calc(100cqh-var(--photo-top)-var(--stage-height))]",
               "[--backdrop-top:var(--photo-top)] [--backdrop-bottom:var(--photo-bottom)]",
@@ -2166,6 +2227,9 @@ function Panel({
       style={
         {
           ...(railTop !== null && { "--rail-top": `${railTop}px` }),
+          // The comments up, as a sheet from the foot: the photo above it,
+          // smaller, so the home is still there to see (as a reel's video is).
+          ...(sheet && { "--stage-height": SHEET_STAGE }),
           "--block-top": block.top,
           "--block-bottom": block.bottom,
           // (Inside a photo's own slide, which is just the stage; a photo
@@ -2191,7 +2255,8 @@ function Panel({
           }}
           onSettle={setSettled}
           onDoubleTap={onOpen ? undefined : likeWhatsShown}
-          onTap={onOpen ? () => onOpen() : photos.enabled && !hidden ? tapPhoto : undefined}
+          // (With the comments up as a sheet, a tap on the photo puts them away.)
+          onTap={onOpen ? () => onOpen() : sheet ? () => closeThread(false) : photos.enabled && !hidden ? tapPhoto : undefined}
           onHold={onOpen ? undefined : onHoldPhoto}
           controls={!onOpen}
           chrome={!hidden}
@@ -2428,17 +2493,22 @@ function Panel({
               "--panel-height": `min(max(${stageFoot(listing.Media)} - var(--photo-top), 30rem), 100cqh - var(--photo-top) - ${STAGE_BAND})`,
             } as CSSProperties
           }
+          onPointerDown={sheet ? dragSheet : undefined}
           className={cn(
-            "absolute inset-x-0 bottom-0 flex flex-col bg-night transition-[opacity,visibility] duration-300",
+            "absolute inset-x-0 bottom-0 flex flex-col transition-[opacity,visibility] duration-300",
             // (On a wide screen, in the column with the head and the photo.)
             column,
             threadOpen && !sideBySide
-              ? // Unfurled on a phone: up over the photo, to just under the
-                // head (on its side, to the chrome), everything in it to be
-                // tapped and scrolled.
-                "pointer-events-auto top-[calc(var(--head-top)+var(--head-h))] z-30 short:top-(--head-top)"
+              ? // Unfurled on a phone: a sheet up from the foot, under the
+                // photo (made smaller for it), everything in it to be tapped
+                // and scrolled; it slides up as it comes. (On its side, over
+                // the photo, to the chrome.)
+                cn(
+                  "pointer-events-auto z-30 top-[calc(var(--photo-top)+var(--stage-height))] rounded-t-2xl bg-stone-900 shadow-[0_-8px_24px_rgb(0_0_0/0.35)]",
+                  "short:top-(--head-top) short:rounded-none",
+                )
               : cn(
-                  "top-[calc(var(--photo-top)+var(--stage-height))]",
+                  "top-[calc(var(--photo-top)+var(--stage-height))] bg-night",
                   // On its side: over the photo, on a shade of their own that
                   // starts a little above the first line, so every line of it reads
                   // on the brightest photo.

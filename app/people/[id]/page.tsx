@@ -54,6 +54,7 @@ import { ANONYMOUS_BUYER } from "@/lib/timeline";
 import { yourClient, type YourClient } from "@/lib/your-client";
 import { button, link as linkClass, pageLabel, pill, tab as tabClass } from "@/lib/ui";
 import { listingWords } from "@/lib/kinds";
+import { SortPicker } from "@/components/sort-picker";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -252,12 +253,26 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   const look = tab === "listings" ? await getListingsLook(person.accountId) : null;
   const counts = tab === "listings" ? await getListingCounts(listings.map((listing) => listing.ListingKey)) : null;
   const start = defaultListingSort(listings, look?.featured ?? null);
-  const sorts: ListingSort[] = start === "featured" ? ["featured", "newest", "active"] : ["newest", "active"];
+  const sorts: ListingSort[] = [
+    ...(start === "featured" ? (["featured"] as const) : []),
+    "newest",
+    "oldest",
+    "active",
+    "price-desc",
+    "price-asc",
+  ];
   const sort = isListingSort(query.sort) && sorts.includes(query.sort) ? query.sort : start;
   const ordered = counts ? sortListings(listings, sort, counts) : listings;
   // (What it starts with goes without saying.)
   const listingsFrom = `listings:${person.id}${sort === start ? "" : `:${sort}`}`;
-  const SORT_LABEL: Record<ListingSort, string> = { featured: "Featured", newest: "Newest", active: "Most active" };
+  const SORT_LABEL: Record<ListingSort, string> = {
+    featured: "Featured",
+    newest: "Newest",
+    oldest: "Oldest",
+    active: "Most active",
+    "price-desc": "Price (high to low)",
+    "price-asc": "Price (low to high)",
+  };
 
   // Who they are, across the top; under it, what's theirs: an agent's
   // listings (and where they are), or what they've done, their taste beside it.
@@ -394,23 +409,14 @@ export default async function ProfilePage({ params, searchParams }: Props) {
         {tab === "listings" ? (
           <>
           {listings.length > 1 && (
-            <div role="group" aria-label={`Sort ${listingWords(person.kind).many}`} className="mb-3 flex gap-1.5 px-0.5">
-              {sorts.map((key) => (
-                <Link
-                  key={key}
-                  href={`/people/${person.id}?tab=listings&sort=${key}`}
-                  scroll={false}
-                  replace
-                  aria-current={key === sort ? "true" : undefined}
-                  className={cn(
-                    // (A 44px touch area around a 36px pill.)
-                    "flex h-9 items-center rounded-full px-3.5 text-sm font-semibold transition-colors hit-44",
-                    key === sort ? "bg-ink text-white" : "text-ink hover:bg-black/5",
-                  )}
-                >
-                  {SORT_LABEL[key]}
-                </Link>
-              ))}
+            // One quiet line, "Sort: Newest", to pick the order from.
+            <div className="mb-1 flex justify-end px-0.5">
+              <SortPicker
+                label={`Sort ${listingWords(person.kind).many}`}
+                value={sort}
+                options={sorts.map((key) => ({ value: key, label: SORT_LABEL[key] }))}
+                href={`/people/${person.id}?tab=listings&sort=`}
+              />
             </div>
           )}
           <ListingGrid

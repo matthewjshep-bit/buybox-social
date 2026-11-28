@@ -1344,7 +1344,7 @@ test("on your own page you can take back a like or a comment, and nobody else ca
   await options.click();
   await expect(deleteOf(FIRST)).not.toHaveAttribute("aria-disabled");
   await deleteOf(FIRST).click();
-  await expect(sheet.getByRole("button", { name: "Delete comment" })).toHaveAccessibleDescription(/with the replies to it/);
+  await expect(sheet.getByRole("button", { name: "Delete comment" })).toHaveAccessibleDescription(/Its replies stay, under “Comment deleted”/);
   await sheet.getByRole("button", { name: "Cancel" }).click();
   await pia.keyboard.press("Escape");
 

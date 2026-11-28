@@ -274,6 +274,23 @@ export function commentIn(thread: Locator, name: string, body: string) {
 // the photo becomes the "Comments" region, thread and comment box both.
 export const commentsOf = (home: Locator) => home.getByRole("region", { name: "Comments" });
 
+// Waits until the comments, coming up as a sheet, have come to rest.
+export const atRest = async (locator: Locator) => {
+  await expect
+    .poll(async () => {
+      const was = (await locator.boundingBox())!.y;
+      await locator.page().waitForTimeout(100);
+      return Math.abs((await locator.boundingBox())!.y - was);
+    })
+    .toBeLessThan(0.5);
+  await revealed(locator);
+};
+// (And its reveal has finished: until then, its top can't be tapped.)
+const revealed = (locator: Locator) =>
+  locator.evaluate((el) =>
+    Promise.all((el.closest("[data-words]") ?? el).getAnimations().map((animation) => animation.finished)).then(() => undefined),
+  );
+
 export async function openComments(page: Page, home: Locator) {
   await home.getByRole("button", { name: /^Comments/ }).click();
   const thread = commentsOf(home);

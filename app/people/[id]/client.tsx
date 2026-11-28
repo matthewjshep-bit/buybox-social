@@ -304,8 +304,9 @@ export function CardMenu({
               &ldquo;{comment.body}&rdquo;
             </p>
             <p id={`${id}-warn`} className="text-body leading-snug text-stone-700">
-              It comes off this home and your profile for everyone
-              {comment.answered || comment.replies > 0 ? ", with the replies to it" : ""}. You can&apos;t undo this.
+              It comes off this home and your profile for everyone.
+              {comment.answered || comment.replies > 0 ? " Its replies stay, under “Comment deleted”." : ""} You can&apos;t
+              undo this.
             </p>
             <button
               type="button"

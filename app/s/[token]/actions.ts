@@ -320,8 +320,9 @@ async function replyTarget(
     return { parent: null, replyTo: person.id };
   }
   if (parentId.length > 64) return { error: "That comment isn't there anymore." };
+  // (A comment taken back still has its thread: "Comment deleted", over the replies.)
   const [found] = await sql`
-    select 1 from comments
+    select 1 from comments_all
     where id::text = ${parentId} and share_id = ${shareId} and listing_key = ${listingKey}
       and parent_id is null and reply_to_participant is null`;
   if (!found) return { error: "That comment isn't there anymore." };

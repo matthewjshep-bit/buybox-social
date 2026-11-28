@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
-import { signedIn,
+import { atRest, signedIn,
   commentIn,
   commentsOf,
   createShare,
@@ -853,7 +853,7 @@ test("on a desktop, the home reads as on a phone, in one column down the middle:
     .toBeLessThan(1440);
 });
 
-test("on a desktop, comments unfurl up over the photo in the same column, as on a phone, to just under the head; Escape folds them away", async ({
+test("on a desktop, comments come up as a sheet in the same column, as on a phone, under the photo (smaller, still in sight); Escape folds them away", async ({
   browser,
 }) => {
   // (On a home already among the busiest this week by now: what's said here
@@ -869,15 +869,20 @@ test("on a desktop, comments unfurl up over the photo in the same column, as on 
   await rail.click();
   const sheet = commentsOf(home);
   await expect(sheet).toBeVisible();
-  // The words under the photo, grown: the same column, up over the photo to
-  // just under the head (which stays), down to the foot of the window. Not a
-  // dialog over the page: nothing is shut off, and no tabs (the Porchcard is
-  // an agent's). The row of things to do steps aside while they're open.
+  // The words under the photo, grown into a sheet: the same column, from
+  // under the photo (smaller now, still in sight under the head, which
+  // stays) down to the foot of the window. Not a dialog over the page:
+  // nothing is shut off, and no tabs (the Porchcard is an agent's). The row
+  // of things to do steps aside while they're open.
   const words = home.locator("[data-words]");
   const panel = await box(words);
   await expect.poll(async () => Math.round((await box(sheet)).x)).toBe(Math.round(panel.x));
   inTheColumn(await box(sheet), width);
-  await expect.poll(async () => Math.round((await box(sheet)).y)).toBe(Math.round(head.y + head.height));
+  await atRest(sheet);
+  const up = await box(photoOf(home));
+  expect(up.y).toBeGreaterThanOrEqual(head.y + head.height - 1);
+  expect(up.height).toBeGreaterThanOrEqual(100);
+  expect(up.y + up.height).toBeLessThanOrEqual((await box(sheet)).y + 1);
   expect(Math.round((await box(sheet)).y + (await box(sheet)).height)).toBe(height);
   await expect(home.locator("[data-home-head]")).toBeVisible();
   await expect(actionsOf(home)).toBeHidden();
@@ -938,21 +943,18 @@ test("on a desktop, comments unfurl up over the photo in the same column, as on 
   await expect(sheet).toBeHidden();
   await expect(rail).toBeFocused();
 
-  // With the comments open, the photo is under them: a click where the
-  // photo was lands on the comments, and opens no card about a spot. The X
-  // folds them away, and the photo and its row are back.
+  // With the comments open, a click on the photo above them puts them
+  // away, and opens no card about a spot. The X does too, and the photo and
+  // its row are back.
   await rail.click();
   await expect(sheet).toBeVisible();
+  await atRest(sheet);
   const photo = await box(photoOf(home));
-  expect(
-    await page.evaluate(
-      ({ x, y }) => Boolean(document.elementFromPoint(x, y)?.closest("[role='region'][aria-label='Comments']")),
-      { x: photo.x + photo.width * 0.6, y: photo.y + photo.height * 0.66 },
-    ),
-  ).toBe(true);
-  await page.mouse.click(photo.x + photo.width * 0.6, photo.y + photo.height * 0.66);
+  await page.mouse.click(photo.x + photo.width * 0.6, photo.y + photo.height * 0.5);
+  await expect(sheet).toBeHidden();
   await page.waitForTimeout(500);
   await expect(home.locator("[data-spot-card]")).toHaveCount(0);
+  await rail.click();
   await expect(sheet).toBeVisible();
   await sheet.getByRole("button", { name: "Hide comments" }).click();
   await expect(sheet).toBeHidden();
@@ -966,7 +968,7 @@ test("on a desktop, comments unfurl up over the photo in the same column, as on 
   await expect(sheet).toBeHidden();
 });
 
-test("on a phone, the comments unfurl up over the photo, to just under the head, and fold away again", async ({ browser }) => {
+test("on a phone, the comments come up as a sheet under the photo, which stays in sight, and fold away again", async ({ browser }) => {
   for (const options of [undefined, IPHONE]) {
     const page = await phone(browser, options);
     await page.goto("/homes/SAMPLE-1006");
@@ -979,15 +981,21 @@ test("on a phone, the comments unfurl up over the photo, to just under the head,
     const sheet = commentsOf(home);
     await expect(sheet).toBeVisible();
     const { height } = page.viewportSize()!;
-    // From right under the head (which stays) to the foot of the screen: one
-    // block, the thread scrolling inside it and the comment box at its foot.
-    await expect.poll(async () => Math.round((await box(sheet)).y)).toBe(Math.round(head.y + head.height));
+    // From under the photo (smaller, under the head, which stays) to the foot
+    // of the screen: one block, the thread scrolling inside it and the
+    // comment box at its foot.
+    await atRest(sheet);
+    const photo = await box(photoOf(home));
+    expect(photo.y).toBeGreaterThanOrEqual(head.y + head.height - 1);
+    expect(photo.height).toBeGreaterThanOrEqual(100);
+    expect(photo.y + photo.height).toBeLessThanOrEqual((await box(sheet)).y + 1);
+    expect((await box(sheet)).height).toBeGreaterThan(height * 0.45);
     expect(Math.round((await box(sheet)).y + (await box(sheet)).height)).toBe(height);
     await expect(home.locator("[data-home-head]")).toBeVisible();
     await expect(sheet.getByLabel("Add a comment")).toBeVisible();
     const foot = await box(sheet.getByLabel("Add a comment"));
     expect(foot.y + foot.height).toBeLessThanOrEqual(height);
-    // No sheet, no handle to drag: it's the words under the photo, grown.
+    // Not a dialog: the words under the photo, grown into a sheet.
     await expect(page.getByRole("dialog", { name: "Comments" })).toHaveCount(0);
     await expect(sheet.getByRole("button", { name: /^(Expand|Shrink) comments$/ })).toHaveCount(0);
     await expect(latest).toBeHidden();

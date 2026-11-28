@@ -1,3 +1,4 @@
+import type { TransactionSql } from "postgres";
 import { sql } from "./db";
 
 // Your own words, changed or taken back, by whoever said them and no one
@@ -6,10 +7,39 @@ import { sql } from "./db";
 // once in two places is one thing to the person who said it: a comment on a
 // link that's public too (lib/link-public.ts) changes, or goes, in both, and
 // a post's words on each of its homes' conversations go with the post.
-// Taking something back takes the replies under it with it, as anywhere.
+// Taking something back leaves the replies under it where they are: other
+// people's words. With replies, it's kept as "Comment deleted" (its words
+// cleared, deleted_at set: the views public_comments and comments leave it
+// out, so it's gone everywhere but over its replies); without, it's deleted.
+// The last reply under it to go takes it too (a trigger: see
+// supabase/migrations/20261220000000_keep_replies.sql).
 //
 // Each says whether it found the words (and they were the caller's): false
 // reads as "that isn't there anymore".
+
+type Tx = TransactionSql;
+
+// Taken back: kept over its replies, or gone. Its hearts go either way.
+async function takeBackPublic(tx: Tx, ids: string[]) {
+  if (ids.length === 0) return;
+  const kept = await tx<{ id: string }[]>`
+    update public_comments c set body = '', deleted_at = now()
+    where c.id in ${tx(ids)} and exists (select 1 from public_comments r where r.parent_id = c.id)
+    returning c.id`;
+  if (kept.length) await tx`delete from public_comment_likes where comment_id in ${tx(kept.map((c) => c.id))}`;
+  // (The kept ones are out of the view by now.)
+  await tx`delete from public_comments where id in ${tx(ids)}`;
+}
+
+async function takeBackLink(tx: Tx, ids: string[]) {
+  if (ids.length === 0) return;
+  const kept = await tx<{ id: string }[]>`
+    update comments c set body = '', deleted_at = now()
+    where c.id in ${tx(ids)} and exists (select 1 from comments r where r.parent_id = c.id)
+    returning c.id`;
+  if (kept.length) await tx`delete from share_comment_likes where comment_id in ${tx(kept.map((c) => c.id))}`;
+  await tx`delete from comments where id in ${tx(ids)}`;
+}
 
 // ——— On a home's page ———
 
@@ -33,8 +63,9 @@ export async function deletePublicComment(visitorId: string, id: string): Promis
       select id from public_comments where id::text = ${id} and visitor_id = ${visitorId} for update`;
     if (!mine) return false;
     // Said on a link first: gone from there too.
-    await tx`delete from comments where public_comment_id = ${mine.id}`;
-    await tx`delete from public_comments where id = ${mine.id}`;
+    const link = await tx<{ id: string }[]>`select id from comments where public_comment_id = ${mine.id}`;
+    await takeBackLink(tx, link.map((c) => c.id));
+    await takeBackPublic(tx, [mine.id]);
     return true;
   });
 }
@@ -70,8 +101,8 @@ export async function deleteLinkComment(accountId: string, id: string, shareId?:
         ${shareId ? tx`and c.share_id = ${shareId}` : tx``}
       for update`;
     if (!mine) return false;
-    if (mine.public_comment_id) await tx`delete from public_comments where id = ${mine.public_comment_id}`;
-    await tx`delete from comments where id = ${mine.id}`;
+    if (mine.public_comment_id) await takeBackPublic(tx, [mine.public_comment_id]);
+    await takeBackLink(tx, [mine.id]);
     return true;
   });
 }
@@ -79,6 +110,10 @@ export async function deleteLinkComment(accountId: string, id: string, shareId?:
 // ——— Posts ———
 
 export type PostChange = "ok" | "gone" | "empty";
+
+// A post's words on each of its homes.
+const postWords = async (tx: Tx, postId: string) =>
+  (await tx<{ id: string }[]>`select id from public_comments where post_id = ${postId}`).map((c) => c.id);
 
 // New words for a post. Its homes stay as they were; its words on each
 // home's conversation change with it (a post that had none says them there
@@ -93,7 +128,7 @@ export async function editPost(visitorId: string, postId: string, body: string):
     if (!body && post.homes === 0) return "empty";
     await tx`update posts set body = ${body}, edited_at = now() where id = ${post.id}`;
     if (!body) {
-      await tx`delete from public_comments where post_id = ${post.id}`;
+      await takeBackPublic(tx, await postWords(tx, post.id));
       return "ok";
     }
     await tx`update public_comments set body = ${body}, edited_at = now() where post_id = ${post.id}`;
@@ -112,7 +147,7 @@ export async function deletePost(visitorId: string, postId: string): Promise<boo
     const [post] = await tx<{ id: string }[]>`
       select id from posts where id::text = ${postId} and visitor_id = ${visitorId} for update`;
     if (!post) return false;
-    await tx`delete from public_comments where post_id = ${post.id}`;
+    await takeBackPublic(tx, await postWords(tx, post.id));
     await tx`delete from posts where id = ${post.id}`;
     return true;
   });

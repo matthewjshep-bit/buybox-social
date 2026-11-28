@@ -177,7 +177,7 @@ test("activity shows people and homes, with repeats on one comment on one line",
   const sheet = ana.getByRole("dialog", { name: `Options for ${LAKEVIEW}` });
   await settle(sheet);
   await sheet.getByRole("button", { name: "Delete my comment", exact: true }).click();
-  await expect(sheet.getByRole("button", { name: "Delete comment" })).toHaveAccessibleDescription(/with the replies to it/);
+  await expect(sheet.getByRole("button", { name: "Delete comment" })).toHaveAccessibleDescription(/Its replies stay, under “Comment deleted”/);
   await sheet.getByRole("button", { name: "Cancel" }).click();
   await ana.keyboard.press("Escape");
   await expect(sheet).toBeHidden();

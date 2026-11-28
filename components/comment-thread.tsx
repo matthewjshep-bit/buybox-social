@@ -182,7 +182,7 @@ export function CommentThread({
   const isNew = (comment: TimelineComment) => inline && !known.has(comment.id);
   // How many times "See more" has been asked for.
   const [more, setMore] = useState(0);
-  const inScope = spot ? (spotThread(post.timeline, spot) as TimelineComment[]) : all;
+  const inScope = withDeleted(spot ? (spotThread(post.timeline, spot) as TimelineComment[]) : all);
   const name = spot ? spotName(post.listing, spot) : null;
   // The agent's first (on a link, theirs are marked; on their own listing's
   // public page, theirs are the host's), then the newest.
@@ -194,7 +194,8 @@ export function CommentThread({
     .sort((a, b) => Number(leads(b)) - Number(leads(a)) || b.at.localeCompare(a.at));
   const repliesTo = (id: string) => inScope.filter((comment) => comment.parentId === id).sort((a, b) => a.at.localeCompare(b.at));
   // Under a card: the ones with something to them first, a few at a time.
-  const ranked = inline ? rankComments(top, (id) => repliesTo(id).length) : top;
+  // (A comment taken back, kept over its replies, comes after the rest.)
+  const ranked = lastDeleted(inline ? rankComments(top, (id) => repliesTo(id).length) : top);
   const fresh = ranked.filter((comment) => isNew(comment) || repliesTo(comment.id).some(isNew));
   const rest = ranked.filter((comment) => !fresh.includes(comment));
   const shownTop = inline ? [...fresh, ...rest.slice(0, FEED_FIRST + more * FEED_MORE)] : ranked;
@@ -226,14 +227,14 @@ export function CommentThread({
       <ToneContext.Provider value={t}>
         <FacesContext.Provider value={faces}>
         <ChangesContext.Provider value={changes}>
-          <Latest post={post} all={all} top={top} likesLine={likesLine} spots={spots} onOpen={onOpen} className={className} />
+          <Latest post={post} all={all} top={top.filter((comment) => !comment.deleted)} likesLine={likesLine} spots={spots} onOpen={onOpen} className={className} />
         </ChangesContext.Provider>
         </FacesContext.Provider>
       </ToneContext.Provider>
     );
   }
 
-  const count = inScope.length;
+  const count = inScope.filter((comment) => !comment.deleted).length;
   const title = name ? `On ${name}` : count ? `${count.toLocaleString("en-US")} ${count === 1 ? "comment" : "comments"}` : "Comments";
   const list = (
     <>
@@ -310,7 +311,11 @@ export function CommentThread({
         <FacesContext.Provider value={faces}>
         <ChangesContext.Provider value={changes}>
           <div className={cn("flex min-h-0 flex-1 flex-col", t.fg, className)}>
-            <div className="px-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">{head}</div>
+            {/* Its top is a grip: pulled down, the sheet goes (components/reel.tsx). */}
+            <div data-sheet-grip className="touch-none px-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">
+              <span aria-hidden className="mx-auto mt-2 block h-1 w-9 rounded-full bg-white/25" />
+              {head}
+            </div>
             <div
               data-thread-scroll
               className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[max(1rem,env(safe-area-inset-left))] pb-3 pr-[max(1rem,env(safe-area-inset-right))]"
@@ -658,6 +663,20 @@ function Row({
   const replyable = !comment.fromPrivateChat;
   const label = comment.mine ? "your comment" : comment.name;
   const shown = savedBody !== null && savedBody !== comment.body ? { ...comment, body: savedBody, edited: true } : comment;
+  // Taken back with replies under it: they stay, under "Comment deleted"
+  // (nothing to answer, heart or change there; its replies can still be
+  // answered, in the same thread).
+  if (comment.deleted || (gone && replies.length > 0)) {
+    return (
+      <li data-comment={comment.id} data-deleted className="flex gap-2.5 py-1.5">
+        <span aria-hidden className={cn("mt-0.5 size-7 shrink-0 rounded-full", t.line)} />
+        <div className="min-w-0 flex-1">
+          <p className={cn("text-body italic leading-5", t.dim)}>Comment deleted</p>
+          <Replies replies={replies} opened={opened} label="a deleted comment" thread={comment.id} canShare={canShare} onReply={onReply} />
+        </div>
+      </li>
+    );
+  }
   if (gone) return null;
   return (
     <li data-comment={comment.id} className={cn("flex gap-2.5", reply ? "py-1" : "py-1.5")}>
@@ -760,7 +779,7 @@ function Row({
               what="comment"
               dark={t.dark}
               triggerRef={more}
-              warn={replies.length > 0 ? "The replies to it go too." : undefined}
+              warn={replies.length > 0 ? "Its replies stay, under “Comment deleted”." : undefined}
               onEdit={() => setEditing(true)}
               onDelete={async () => {
                 const result = await deleteComment!(changes!.listingKey, comment.id);
@@ -850,6 +869,37 @@ function Replies({
     </>
   );
 }
+
+// Replies to a comment its author took back, under a stand-in for it
+// ("Comment deleted"), so they read as the thread they were.
+function withDeleted(comments: TimelineComment[]): TimelineComment[] {
+  const ids = new Set(comments.map((comment) => comment.id));
+  const stand = new Map<string, TimelineComment>();
+  for (const reply of comments) {
+    if (!reply.parentGone || !reply.parentId || ids.has(reply.parentId)) continue;
+    const was = stand.get(reply.parentId);
+    if (was && was.at <= reply.at) continue;
+    stand.set(reply.parentId, {
+      kind: "comment",
+      id: reply.parentId,
+      name: "",
+      isAgent: false,
+      body: "",
+      at: reply.at,
+      mine: false,
+      parentId: null,
+      likes: 0,
+      likedByMe: false,
+      deleted: true,
+    });
+  }
+  return stand.size ? [...comments, ...stand.values()] : comments;
+}
+
+const lastDeleted = (comments: TimelineComment[]) => [
+  ...comments.filter((comment) => !comment.deleted),
+  ...comments.filter((comment) => comment.deleted),
+];
 
 // "3 likes"; on an agent's link, with names to give: "Liked by Jenny and 2
 // others", "Liked by Jenny and you" (you're never one of the others).

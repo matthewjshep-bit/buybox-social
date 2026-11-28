@@ -2,7 +2,8 @@
 // conversations, and earlier specs count those homes' comments exactly.)
 // Your own words, anywhere you said them, are yours to change or take back:
 // "…" beside them, Edit (in place, marked "Edited" for everyone) and Delete
-// (asked once more; the replies under a comment go with it). A comment on a
+// (asked once more; the replies under a comment stay, under "Comment
+// deleted", until the last of them goes). A comment on a
 // home's page, one on an agent's link (and its public copy), a post (and its
 // words on its homes), a message. Never anyone else's.
 import { expect, test } from "@playwright/test";
@@ -15,7 +16,7 @@ const SALTMARSH_PAGE = "/homes/SAMPLE-1008";
 const CORBEL = "812 N Corbel St";
 const CORBEL_PAGE = "/homes/SAMPLE-1003";
 
-test("a comment on a home's page: Edit changes it for everyone, marked Edited; Escape leaves it as it was; Delete takes it and its replies away", async ({
+test("a comment on a home's page: Edit changes it for everyone, marked Edited; Escape leaves it as it was; Delete leaves its replies under Comment deleted", async ({
   browser,
 }) => {
   test.setTimeout(120_000);
@@ -63,21 +64,41 @@ test("a comment on a home's page: Edit changes it for everyone, marked Edited; E
   await theirs.getByLabel("Reply to Ola").press("Enter");
   await expect(theirs.getByText("Room for a garden.")).toBeVisible();
 
-  // Ola deletes it: asked first (the reply goes too), then gone, the reply with it.
+  // Ola deletes it: asked first (the reply stays), then gone, the reply under "Comment deleted".
   await ola.reload();
   const again = await openComments(ola, homeIn(ola, ALDER));
   const hers = again.locator("li[data-comment]").filter({ hasText: FIXED }).first();
   await hers.getByRole("button", { name: "Options for your comment" }).click();
   await ola.getByRole("button", { name: "Delete", exact: true }).click();
-  await expect(ola.getByRole("group", { name: "Delete this comment?" })).toContainText("The replies to it go too.");
+  await expect(ola.getByRole("group", { name: "Delete this comment?" })).toContainText("Its replies stay, under “Comment deleted”.");
   await expect(ola.getByRole("button", { name: "Cancel" })).toBeFocused();
   await ola.getByRole("group", { name: "Delete this comment?" }).getByRole("button", { name: "Delete", exact: true }).click();
   await expect(again.getByText(FIXED)).toHaveCount(0);
+  const placeholder = again.locator("li[data-deleted]").filter({ hasText: "Comment deleted" });
+  await expect(placeholder).toBeVisible();
+  await expect(placeholder.getByRole("button", { name: /^Options for/ })).toHaveCount(0);
+  await expect(placeholder.getByRole("button", { name: /^Reply/ })).toHaveCount(0);
+
+  // To everyone: the words gone, the reply still there, under "Comment deleted".
+  await zed.reload();
+  const later = await openComments(zed, homeIn(zed, ALDER));
+  await expect(later).not.toContainText(FIXED);
+  const kept = later.locator("li[data-deleted]").filter({ hasText: "Comment deleted" });
+  await kept.getByRole("button", { name: "View 1 reply" }).click();
+  const reply = kept.locator("li[data-comment]").filter({ hasText: "Room for a garden." });
+  await expect(reply).toBeVisible();
+
+  // The reply's author takes theirs back too: nothing's left of the thread.
+  await reply.getByRole("button", { name: "Options for your comment" }).click();
+  await zed.getByRole("button", { name: "Delete", exact: true }).click();
+  await zed.getByRole("group", { name: "Delete this comment?" }).getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(later.getByText("Room for a garden.")).toHaveCount(0);
   await expect(async () => {
-    const html = await (await zed.request.get(ALDER_PAGE)).text();
-    expect(html).not.toContain(FIXED);
-    expect(html).not.toContain("Room for a garden.");
-  }).toPass({ timeout: 10_000 });
+    await zed.reload();
+    const fresh = await openComments(zed, homeIn(zed, ALDER));
+    await expect(fresh.getByText("Room for a garden.")).toHaveCount(0);
+    await expect(fresh.locator("li[data-deleted]")).toHaveCount(0);
+  }).toPass({ timeout: 20_000 });
 });
 
 test("a comment on an agent's link: changed, its public copy says the same; deleted, it's gone from both", async ({ browser }) => {

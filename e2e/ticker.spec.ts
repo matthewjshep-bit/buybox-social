@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
-import { signedIn, toFirstHome, commentsOf, createShare, enterCode, heartOf, homeIn, openComments, pastNameStep, pick, settle, signInAgent, signUpBuyer, tapPhoto, passOn, keepLinksPrivate } from "./helpers";
+import { atRest, signedIn, toFirstHome, commentsOf, createShare, enterCode, heartOf, homeIn, openComments, pastNameStep, pick, settle, signInAgent, signUpBuyer, tapPhoto, passOn, keepLinksPrivate } from "./helpers";
 
 // Under the photo, the way a post reads: how many liked the home, then the
 // latest few comments, each a row that opens the comments on it. Nothing goes
@@ -307,12 +307,14 @@ test("on a wide screen, the comments are under the photo in its centred column, 
   await expect(sheet.locator("[data-comment]").filter({ hasText: BO_SAID })).toBeVisible();
   await expect(sheet.locator("[data-comment]").filter({ hasText: AL_SAID })).toBeVisible();
   expect(await sheet.locator("[data-thread-scroll]").evaluate((el) => el.scrollTop)).toBe(0);
-  // Opened, the block grows up over the photo to just under the head, in the
-  // same column, with its own X.
+  // Opened, the block grows into a sheet under the photo (smaller, still in
+  // sight under the head), in the same column, with its own X.
   const head = await box(home.locator("[data-home-head]"));
-  await expect.poll(async () => Math.round((await box(sheet)).y)).toBe(Math.round(head.y + head.height));
+  await atRest(sheet);
   const open = await box(sheet);
-  expect(open.y).toBeLessThanOrEqual(photo.y + 1);
+  const smaller = await box(photoOf(home));
+  expect(smaller.y).toBeGreaterThanOrEqual(head.y + head.height - 1);
+  expect(smaller.y + smaller.height).toBeLessThanOrEqual(open.y + 1);
   expect(Math.abs(open.x - words.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(open.width - words.width)).toBeLessThanOrEqual(1);
   await expect(sheet.getByRole("button", { name: "Hide comments" })).toBeVisible();
@@ -340,7 +342,8 @@ test("opened from someone's profile, what they did is in Why it's here; under th
   // the whole take opens, with what Bo said.
   const why = home.getByRole("region", { name: "Why it's here" });
   const row = why.getByRole("button", { expanded: false });
-  await expect(row).toContainText("Bo's highlights · 1 of 1Bo commented on this home");
+  await expect(row).toHaveAccessibleName("Bo's highlights · 1 of 1 · Bo commented on this home");
+  await expect(why).toContainText("Bo's highlights · 1 of 1Bo commented on this home");
   await expect(why).not.toContainText(/Al\b|A buyer/);
   const [rowBox, facts] = [await box(row), await box(home.getByRole("button", { name: "About this home" }))];
   expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(facts.y + 1);

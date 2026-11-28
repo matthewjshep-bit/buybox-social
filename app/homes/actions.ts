@@ -188,8 +188,9 @@ async function saveComment(
       if (!liked) return fail("Those likes aren't there anymore.");
       replyTo = who;
     } else {
+      // (A comment taken back still has its thread: "Comment deleted", over the replies.)
       const [found] = await sql`
-        select 1 from public_comments
+        select 1 from public_comments_all
         where id::text = ${ref} and listing_key = ${listingKey} and parent_id is null and reply_to_visitor is null`;
       if (!found) return fail("That comment isn't there anymore.");
       parent = ref;

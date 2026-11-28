@@ -463,8 +463,8 @@ test("on a desktop the home reads as on a phone, in one column: the facts above 
   await expect(said.getByRole("tablist")).toHaveCount(0);
   await expect(said.getByRole("button", { name: "Hide comments" })).toBeVisible();
   await expect(home.locator("[data-actions]")).toBeHidden();
-  const saidBox = (await said.boundingBox())!;
-  expect(saidBox.y).toBeLessThan(photoBox.y + photoBox.height / 2);
+  // (A sheet from the foot, up past the middle of where the photo was.)
+  await expect.poll(async () => (await said.boundingBox())!.y).toBeLessThan(photoBox.y + photoBox.height / 2);
   await page.keyboard.press("Escape");
   await expect(said).toBeHidden();
   await expect(home.locator("[data-actions]")).toBeVisible();

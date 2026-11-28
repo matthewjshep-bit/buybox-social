@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { commentIn, commentsOf, homeIn, joinAs } from "./helpers";
+import { atRest, commentIn, commentsOf, homeIn, joinAs } from "./helpers";
 
 const BRACKENFIELD = "2205 Brackenfield Ct NW";
 // The phone settings carry over to new contexts, touch included; a desktop has none.
@@ -21,9 +21,9 @@ test("comments unfurl from the comment bar, under the head and over the photo, l
   expect(barBox.y).toBeGreaterThan(address.y);
   expect(barBox.y + barBox.height).toBeGreaterThan(height - 40);
 
-  // Tapping it unfurls the comments where the latest of them were, ready to
-  // type: the block grows up over the photo to just under the head, which
-  // stays. No sheet: the same dark ground, one place for comments.
+  // Tapping it brings the comments up, ready to type: the block grows into a
+  // sheet from the foot, under the photo (smaller, still in sight, under the
+  // head, which stays). Not a dialog: one place for comments.
   const head = (await home.locator("[data-home-head]").boundingBox())!;
   // (Signed out, signing up comes first; then the comments, where they were going.)
   await bar.click();
@@ -33,7 +33,11 @@ test("comments unfurl from the comment bar, under the head and over the photo, l
   await expect(page.getByRole("dialog", { name: "Comments" })).toHaveCount(0);
   const field = thread.getByLabel("Add a comment");
   await expect(field).toBeFocused();
-  await expect.poll(async () => Math.round((await thread.boundingBox())!.y)).toBe(Math.round(head.y + head.height));
+  await atRest(thread);
+  const shown = (await home.locator("[data-photo-frame]").first().boundingBox())!;
+  expect(shown.y).toBeGreaterThanOrEqual(head.y + head.height - 1);
+  expect(shown.height).toBeGreaterThanOrEqual(100);
+  expect(shown.y + shown.height).toBeLessThanOrEqual((await thread.boundingBox())!.y + 1);
   expect(Math.round((await thread.boundingBox())!.y + (await thread.boundingBox())!.height)).toBe(height);
   await expect(home.locator("[data-home-head]")).toBeVisible();
   await expect(thread.getByRole("heading", { name: "Comments" })).toBeVisible();
@@ -180,18 +184,20 @@ test("on a desktop, comments unfurl over the photo in the same column, from the 
   const thread = commentsOf(home);
   await expect(thread).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Comments" })).toHaveCount(0);
-  // The words' block itself, grown up over the photo to just under the head,
-  // which stays, down to the window's foot, in the column; the photo keeps its
-  // place under it.
-  await expect.poll(async () => Math.round((await thread.boundingBox())!.y)).toBe(Math.round(head.y + head.height));
+  // The words' block itself, grown into a sheet down to the window's foot,
+  // in the column; the photo, smaller, stays in sight above it, under the
+  // head, which stays.
+  await atRest(thread);
   const box = (await thread.boundingBox())!;
   expect(Math.round(box.y + box.height)).toBe(height);
   expect(Math.abs(box.x - words.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(box.width - words.width)).toBeLessThanOrEqual(1);
-  expect(box.y).toBeLessThanOrEqual(before.y + 1);
   await expect(home.locator("[data-home-head]")).toBeVisible();
   const after = (await photo.boundingBox())!;
-  for (const key of ["x", "y", "width", "height"] as const) expect(Math.abs(after[key] - before[key])).toBeLessThanOrEqual(2);
+  expect(after.height).toBeLessThan(before.height);
+  expect(after.height).toBeGreaterThanOrEqual(100);
+  expect(after.y).toBeGreaterThanOrEqual(head.y + head.height - 1);
+  expect(after.y + after.height).toBeLessThanOrEqual(box.y + 1);
   // Nothing in it is shut off: the heading, the comment box at its foot, and
   // its own X; the row of buttons waits under it.
   await expect(home.locator("[data-words]")).not.toHaveAttribute("inert");
